@@ -8,14 +8,18 @@ import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capabili
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import {
   type FirstPartyMicrosandboxImageCandidateImportPorts,
-  type FirstPartyMicrosandboxImageCandidateImportRecord,
-  firstPartyMicrosandboxImageCandidateName,
-  firstPartyMicrosandboxImageCandidateReference,
   firstPartyMicrosandboxImageCandidateStagingReference,
   importFirstPartyMicrosandboxImageCandidate,
   planFirstPartyMicrosandboxImageCandidateImport,
-  writeFirstPartyMicrosandboxImageCandidateImportRecord,
 } from "./first-party-microsandbox-image-candidate-import.ts";
+import {
+  fingerprintFirstPartyMicrosandboxImageCandidateImportSourceReceipt,
+  type FirstPartyMicrosandboxImageCandidateImportRecord,
+  firstPartyMicrosandboxImageCandidateName,
+  firstPartyMicrosandboxImageCandidateReference,
+  readBoundFirstPartyMicrosandboxImageCandidateImportRecord,
+} from "./first-party-microsandbox-image-candidate-import-record.ts";
+import { writeFirstPartyMicrosandboxImageCandidateImportRecord } from "./local-first-party-microsandbox-image-candidate-import-ports.ts";
 import {
   bindFirstPartyMicrosandboxImageCandidateReceiptToCurrentMatrix,
   buildFirstPartyMicrosandboxImageCandidateReceipt,
@@ -67,10 +71,11 @@ Deno.test("candidate import plan is read-only and keeps qualification not-run", 
 });
 
 Deno.test("candidate import records three typed digest identities in operation order", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const ports = fakePorts({ receipt, indexDocument });
   const record = await importFirstPartyMicrosandboxImageCandidate({
     receipt,
+    matrix,
     ports,
   });
   const staging = firstPartyMicrosandboxImageCandidateStagingReference(
@@ -95,6 +100,21 @@ Deno.test("candidate import records three typed digest identities in operation o
     record.candidate.qualificationTarget.imageReference === candidate,
     false,
   );
+  assertEquals(
+    record.sourceReceipt.fingerprint,
+    await fingerprintFirstPartyMicrosandboxImageCandidateImportSourceReceipt(
+      record.sourceReceipt.receipt,
+    ),
+  );
+  assertEquals(
+    deterministicJson(record.sourceReceipt.receipt),
+    deterministicJson(receipt),
+  );
+  const bound = await readBoundFirstPartyMicrosandboxImageCandidateImportRecord(
+    deterministicJson(record),
+    matrix,
+  );
+  assertEquals(deterministicJson(bound), deterministicJson(record));
   assertEquals(ports.operations, [
     "createStagingToken:attempt-a",
     `inspectCachedImage:${staging}`,
@@ -117,9 +137,10 @@ Deno.test("candidate import records three typed digest identities in operation o
 });
 
 Deno.test("candidate import accepts equal OCI and Microsandbox hash text while preserving typed fields", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const record = await importFirstPartyMicrosandboxImageCandidate({
     receipt,
+    matrix,
     ports: fakePorts({
       receipt,
       indexDocument,
@@ -143,27 +164,79 @@ Deno.test("candidate import accepts equal OCI and Microsandbox hash text while p
 });
 
 Deno.test("candidate import is deterministic for the same receipt and observations", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const first = await importFirstPartyMicrosandboxImageCandidate({
     receipt,
+    matrix,
     ports: fakePorts({ receipt, indexDocument }),
   });
   const second = await importFirstPartyMicrosandboxImageCandidate({
     receipt,
+    matrix,
     ports: fakePorts({ receipt, indexDocument }),
   });
   assertEquals(first, second);
 });
 
+Deno.test("candidate import re-binds the receipt to the current matrix before Docker or Microsandbox", async () => {
+  const { receipt, indexDocument, matrix } = await fixtures();
+  const stale = JSON.parse(deterministicJson(receipt)) as Record<string, unknown>;
+  const inputMatrix = JSON.parse(deterministicJson(stale.inputMatrix)) as Record<
+    string,
+    unknown
+  >;
+  inputMatrix.fingerprint = `sha256:${"0".repeat(64)}`;
+  stale.inputMatrix = inputMatrix;
+  const ports = fakePorts({ receipt, indexDocument });
+  await assertRejects(
+    () =>
+      importFirstPartyMicrosandboxImageCandidate({
+        receipt: stale as unknown as FirstPartyMicrosandboxImageCandidateReceipt,
+        matrix,
+        ports,
+      }),
+    TypeError,
+    "current server-owned distribution matrix",
+  );
+  assertEquals(ports.operations, []);
+  assertEquals(ports.pulls, []);
+  assertEquals(ports.loads, []);
+  assertNeverTouchesCatalogPin(ports, receipt);
+});
+
+Deno.test("candidate import binds an unbound current receipt before Docker or Microsandbox", async () => {
+  const { receipt, indexDocument, matrix } = await fixtures();
+  const unbound = buildFirstPartyMicrosandboxImageCandidateReceipt({
+    matrix,
+    matrixFingerprint: receipt.inputMatrix.fingerprint,
+    physicalImageId: receipt.candidate.physicalImageId,
+    ociIndexDigest: receipt.candidate.oci.indexDigest,
+    platformManifestDigest: receipt.candidate.oci.platformManifestDigest,
+    locatorTag: receipt.candidate.locatorTag,
+    gitSha: receipt.candidate.git.sha,
+    gitTag: receipt.candidate.git.tag,
+    buildMetadata: receipt.candidate.build.metadata,
+  });
+  const ports = fakePorts({ receipt: unbound, indexDocument });
+  const record = await importFirstPartyMicrosandboxImageCandidate({
+    receipt: unbound,
+    matrix,
+    ports,
+  });
+  assertEquals(record.import.status, "imported");
+  assertEquals(ports.pulls.length > 0, true);
+  assertNeverTouchesCatalogPin(ports, unbound);
+});
+
 Deno.test("non-arm64 host fails before Docker or Microsandbox mutation", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const ports = fakePorts({
     receipt,
     indexDocument,
     hostArchitecture: "amd64",
   });
   await assertRejects(
-    () => importFirstPartyMicrosandboxImageCandidate({ receipt, ports }),
+    () => importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports }),
     Error,
     "native linux/arm64",
   );
@@ -174,14 +247,15 @@ Deno.test("non-arm64 host fails before Docker or Microsandbox mutation", async (
 });
 
 Deno.test("wrong Docker platform or runtime metadata fails closed before Microsandbox load", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const platform = fakePorts({
     receipt,
     indexDocument,
     docker: dockerInspectJson(receipt, { architecture: "amd64" }),
   });
   await assertRejects(
-    () => importFirstPartyMicrosandboxImageCandidate({ receipt, ports: platform }),
+    () =>
+      importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports: platform }),
     Error,
     "exact linux/arm64 first-party candidate",
   );
@@ -198,7 +272,8 @@ Deno.test("wrong Docker platform or runtime metadata fails closed before Microsa
     docker: dockerInspectJson(receipt, { user: "root" }),
   });
   await assertRejects(
-    () => importFirstPartyMicrosandboxImageCandidate({ receipt, ports: runtime }),
+    () =>
+      importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports: runtime }),
     Error,
     "exact linux/arm64 first-party candidate",
   );
@@ -207,13 +282,14 @@ Deno.test("wrong Docker platform or runtime metadata fails closed before Microsa
 });
 
 Deno.test("OCI index inspect tolerates a single trailing newline on the raw bytes", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const ports = fakePorts({
     receipt,
     indexDocument: `${indexDocument}\n`,
   });
   const record = await importFirstPartyMicrosandboxImageCandidate({
     receipt,
+    matrix,
     ports,
   });
   assertEquals(record.identities.ociIndexDigest, receipt.candidate.oci.indexDigest);
@@ -221,7 +297,7 @@ Deno.test("OCI index inspect tolerates a single trailing newline on the raw byte
 });
 
 Deno.test("OCI index with the wrong platform child fails before pull", async () => {
-  const { receipt } = await fixtures();
+  const { receipt, matrix } = await fixtures();
   const indexDocument = JSON.stringify({
     schemaVersion: 2,
     manifests: [{
@@ -241,6 +317,7 @@ Deno.test("OCI index with the wrong platform child fails before pull", async () 
     () =>
       importFirstPartyMicrosandboxImageCandidate({
         receipt: mismatched,
+        matrix,
         ports,
       }),
     Error,
@@ -252,14 +329,14 @@ Deno.test("OCI index with the wrong platform child fails before pull", async () 
 });
 
 Deno.test("save failure cleans the archive and never loads or removes a catalog pin", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const ports = fakePorts({
     receipt,
     indexDocument,
     saveError: new Error("docker image save failed"),
   });
   await assertRejects(
-    () => importFirstPartyMicrosandboxImageCandidate({ receipt, ports }),
+    () => importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports }),
     Error,
     "docker image save failed",
   );
@@ -271,7 +348,7 @@ Deno.test("save failure cleans the archive and never loads or removes a catalog 
 });
 
 Deno.test("a pre-existing invocation staging reference fails before mutation and is never deleted", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const stagingToken = "already-present";
   const staging = firstPartyMicrosandboxImageCandidateStagingReference(
     receipt,
@@ -284,7 +361,7 @@ Deno.test("a pre-existing invocation staging reference fails before mutation and
     initiallyCached: [candidateInspection(receipt, staging, MICROSANDBOX_DIGEST)],
   });
   await assertRejects(
-    () => importFirstPartyMicrosandboxImageCandidate({ receipt, ports }),
+    () => importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports }),
     Error,
     "staging reference already exists",
   );
@@ -299,7 +376,7 @@ Deno.test("a pre-existing invocation staging reference fails before mutation and
 });
 
 Deno.test("retry and concurrent imports use distinct invocation staging while keeping the factual record deterministic", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const retry = fakePorts({
     receipt,
     indexDocument,
@@ -317,11 +394,12 @@ Deno.test("retry and concurrent imports use distinct invocation staging while ke
   });
   const retryRecord = await importFirstPartyMicrosandboxImageCandidate({
     receipt,
+    matrix,
     ports: retry,
   });
   const [leftRecord, rightRecord] = await Promise.all([
-    importFirstPartyMicrosandboxImageCandidate({ receipt, ports: left }),
-    importFirstPartyMicrosandboxImageCandidate({ receipt, ports: right }),
+    importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports: left }),
+    importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports: right }),
   ]);
   const stagingReferences = [retry, left, right].map((ports) => ports.loads[0]!.tag);
   assertEquals(new Set(stagingReferences).size, 3);
@@ -331,14 +409,14 @@ Deno.test("retry and concurrent imports use distinct invocation staging while ke
 });
 
 Deno.test("candidate import refuses an archive load that did not apply its requested staging tag", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const ports = fakePorts({
     receipt,
     indexDocument,
     stagingLoadReferences: ["casys/archive-returned-other:tag"],
   });
   await assertRejects(
-    () => importFirstPartyMicrosandboxImageCandidate({ receipt, ports }),
+    () => importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports }),
     Error,
     "did not apply the requested staging reference",
   );
@@ -348,7 +426,7 @@ Deno.test("candidate import refuses an archive load that did not apply its reque
 });
 
 Deno.test("candidate import refuses an archive load that returns the active catalogue pin without deleting it", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const staging = firstPartyMicrosandboxImageCandidateStagingReference(
     receipt,
     "attempt-a",
@@ -365,7 +443,7 @@ Deno.test("candidate import refuses an archive load that returns the active cata
     ],
   });
   await assertRejects(
-    () => importFirstPartyMicrosandboxImageCandidate({ receipt, ports }),
+    () => importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports }),
     Error,
     "returned the active catalogue pin",
   );
@@ -374,7 +452,7 @@ Deno.test("candidate import refuses an archive load that returns the active cata
 });
 
 Deno.test("candidate import refuses a final load that did not apply its requested candidate tag", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const staging = firstPartyMicrosandboxImageCandidateStagingReference(
     receipt,
     "attempt-a",
@@ -385,7 +463,7 @@ Deno.test("candidate import refuses a final load that did not apply its requeste
     candidateLoadReferences: ["casys/archive-returned-other:tag"],
   });
   await assertRejects(
-    () => importFirstPartyMicrosandboxImageCandidate({ receipt, ports }),
+    () => importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports }),
     Error,
     "did not apply the requested final candidate reference",
   );
@@ -395,7 +473,7 @@ Deno.test("candidate import refuses a final load that did not apply its requeste
 });
 
 Deno.test("record-write failure quarantines only the final candidate newly imported by this invocation", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const staging = firstPartyMicrosandboxImageCandidateStagingReference(
     receipt,
     "attempt-a",
@@ -410,7 +488,7 @@ Deno.test("record-write failure quarantines only the final candidate newly impor
     writeRecordError: new Error("record filesystem unavailable"),
   });
   await assertRejects(
-    () => importFirstPartyMicrosandboxImageCandidate({ receipt, ports }),
+    () => importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports }),
     Error,
     "record filesystem unavailable",
   );
@@ -420,7 +498,7 @@ Deno.test("record-write failure quarantines only the final candidate newly impor
 });
 
 Deno.test("record-write failure retains a coherent pre-existing final candidate", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const staging = firstPartyMicrosandboxImageCandidateStagingReference(
     receipt,
     "attempt-a",
@@ -436,7 +514,7 @@ Deno.test("record-write failure retains a coherent pre-existing final candidate"
     writeRecordError: new Error("record filesystem unavailable"),
   });
   await assertRejects(
-    () => importFirstPartyMicrosandboxImageCandidate({ receipt, ports }),
+    () => importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports }),
     Error,
     "record filesystem unavailable",
   );
@@ -445,7 +523,7 @@ Deno.test("record-write failure retains a coherent pre-existing final candidate"
 });
 
 Deno.test("incoherent pre-existing final candidate fails without deletion", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const candidate = firstPartyMicrosandboxImageCandidateReference(
     "ngspice-worker",
     MICROSANDBOX_DIGEST,
@@ -463,7 +541,7 @@ Deno.test("incoherent pre-existing final candidate fails without deletion", asyn
     },
   });
   await assertRejects(
-    () => importFirstPartyMicrosandboxImageCandidate({ receipt, ports }),
+    () => importFirstPartyMicrosandboxImageCandidate({ receipt, matrix, ports }),
     Error,
     "incoherent pre-existing first-party Microsandbox candidate must not be deleted",
   );
@@ -475,7 +553,7 @@ Deno.test("incoherent pre-existing final candidate fails without deletion", asyn
 });
 
 Deno.test("coherent pre-existing final candidate is retained without a second load", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const candidate = firstPartyMicrosandboxImageCandidateReference(
     "ngspice-worker",
     MICROSANDBOX_DIGEST,
@@ -491,6 +569,7 @@ Deno.test("coherent pre-existing final candidate is retained without a second lo
   });
   const record = await importFirstPartyMicrosandboxImageCandidate({
     receipt,
+    matrix,
     ports,
   });
   assertEquals(record.import.status, "already-cached");
@@ -501,9 +580,10 @@ Deno.test("coherent pre-existing final candidate is retained without a second lo
 });
 
 Deno.test("import record writer is idempotent and refuses an incoherent collision", async () => {
-  const { receipt, indexDocument } = await fixtures();
+  const { receipt, indexDocument, matrix } = await fixtures();
   const record = await importFirstPartyMicrosandboxImageCandidate({
     receipt,
+    matrix,
     ports: fakePorts({ receipt, indexDocument }),
   });
   const directory = await Deno.makeTempDir({
@@ -539,10 +619,16 @@ Deno.test("import record writer is idempotent and refuses an incoherent collisio
 });
 
 Deno.test("candidate import module never calls catalog-pin acquisition", async () => {
-  const source = await Deno.readTextFile(
+  const orchestration = await Deno.readTextFile(
     new URL("./first-party-microsandbox-image-candidate-import.ts", import.meta.url),
   );
-  const acquisitionImport = source.match(
+  const ports = await Deno.readTextFile(
+    new URL(
+      "./local-first-party-microsandbox-image-candidate-import-ports.ts",
+      import.meta.url,
+    ),
+  );
+  const acquisitionImport = orchestration.match(
     /import \{([^}]+)\} from "\.\/first-party-microsandbox-image-acquisition\.ts"/u,
   );
   assertEquals(acquisitionImport !== null, true);
@@ -550,10 +636,15 @@ Deno.test("candidate import module never calls catalog-pin acquisition", async (
     acquisitionImport![1]!.includes("acquireFirstPartyMicrosandboxImage"),
     false,
   );
-  assertEquals(source.includes("acquireFirstPartyMicrosandboxImage("), false);
-  assertEquals(source.includes("buildDockerImage"), false);
-  assertEquals(source.includes("Image.prune"), false);
-  assertEquals(source.includes("force: true"), false);
+  assertEquals(orchestration.includes("acquireFirstPartyMicrosandboxImage("), false);
+  assertEquals(orchestration.includes("buildDockerImage"), false);
+  assertEquals(orchestration.includes('new Deno.Command("docker"'), false);
+  assertEquals(ports.includes("acquireFirstPartyMicrosandboxImage"), false);
+  assertEquals(ports.includes("buildDockerImage"), false);
+  assertEquals(ports.includes("Image.prune"), false);
+  assertEquals(ports.includes("force: true"), false);
+  assertEquals(orchestration.includes("Image.prune"), false);
+  assertEquals(orchestration.includes("force: true"), false);
 });
 
 interface FakePorts extends FirstPartyMicrosandboxImageCandidateImportPorts {
@@ -749,6 +840,7 @@ function dockerInspectJson(
 async function fixtures(): Promise<{
   readonly receipt: FirstPartyMicrosandboxImageCandidateReceipt;
   readonly indexDocument: string;
+  readonly matrix: Awaited<ReturnType<typeof currentMatrix>>;
 }> {
   const indexDocument = JSON.stringify({
     schemaVersion: 2,
@@ -775,15 +867,14 @@ async function fixtures(): Promise<{
     ociIndexDigest,
     buildMetadata: { "containerimage.digest": ociIndexDigest },
   });
-  return { receipt, indexDocument };
+  return { receipt, indexDocument, matrix: await currentMatrix() };
 }
 
 async function boundReceipt(input: {
   readonly ociIndexDigest: string;
   readonly buildMetadata: { readonly "containerimage.digest": string };
 }): Promise<FirstPartyMicrosandboxImageCandidateReceipt> {
-  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
-  const matrix = createFirstPartyMicrosandboxImageDistributionMatrix(catalog);
+  const matrix = await currentMatrix();
   const receipt = buildFirstPartyMicrosandboxImageCandidateReceipt({
     matrix,
     matrixFingerprint: await fingerprintFirstPartyMicrosandboxImageDistributionMatrix(
@@ -801,4 +892,9 @@ async function boundReceipt(input: {
     receipt,
     matrix,
   );
+}
+
+async function currentMatrix() {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  return createFirstPartyMicrosandboxImageDistributionMatrix(catalog);
 }

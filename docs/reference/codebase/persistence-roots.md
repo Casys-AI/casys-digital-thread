@@ -50,8 +50,10 @@ CAS, MRTR, engineering result, and Workbench command state.
 
 Local factual records for maintainer-only first-party Microsandbox candidate import.
 Each record names the OCI index digest, the linux/arm64 platform-manifest digest, and
-the observed Microsandbox digest as three distinct identities. Not a qualification
-attestation, catalogue pin, Thread evidence, or Workbench command.
+the observed Microsandbox digest as three distinct identities, and preserves the exact
+source candidate receipt. Parse/bind recalculates that receipt's fingerprint and rebinds
+the record to the current distribution matrix. It is not a qualification attestation,
+catalogue pin, Thread evidence, or Workbench command.
 
 #### `state/local/capability-runtime-microvm-preparation/`
 

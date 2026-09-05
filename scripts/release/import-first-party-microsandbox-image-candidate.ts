@@ -9,12 +9,12 @@
 
 import { createFirstPartyCapabilityRuntimeCatalog } from "../../src/adapters/control-plane/first-party-capability-binding-catalog.ts";
 import {
-  createLocalFirstPartyMicrosandboxImageCandidateImportPorts,
   importFirstPartyMicrosandboxImageCandidate,
   planFirstPartyMicrosandboxImageCandidateImport,
   renderFirstPartyMicrosandboxImageCandidateImportPlanText,
-  renderFirstPartyMicrosandboxImageCandidateImportRecordText,
 } from "../../src/adapters/control-plane/first-party-microsandbox-image-candidate-import.ts";
+import { renderFirstPartyMicrosandboxImageCandidateImportRecordText } from "../../src/adapters/control-plane/first-party-microsandbox-image-candidate-import-record.ts";
+import { createLocalFirstPartyMicrosandboxImageCandidateImportPorts } from "../../src/adapters/control-plane/local-first-party-microsandbox-image-candidate-import-ports.ts";
 import { readBoundFirstPartyMicrosandboxImageCandidateReceipt } from "../../src/adapters/control-plane/first-party-microsandbox-image-candidate-receipt.ts";
 import { createFirstPartyMicrosandboxImageDistributionMatrix } from "../../src/adapters/control-plane/first-party-microsandbox-image-distribution-matrix.ts";
 import { deterministicJson } from "../../src/domain/kernel/deterministic-json.ts";
@@ -100,6 +100,7 @@ export async function runFirstPartyMicrosandboxImageCandidateImportCli(
   const ports = await createLocalFirstPartyMicrosandboxImageCandidateImportPorts();
   const record = await importFirstPartyMicrosandboxImageCandidate({
     receipt,
+    matrix,
     ports,
   });
   return `${deterministicJson(record)}\n${

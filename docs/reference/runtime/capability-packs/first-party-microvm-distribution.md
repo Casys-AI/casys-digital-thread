@@ -11,20 +11,20 @@ Candidate import:
 
 ## Independently recorded provenance fields
 
-The fields below remain separate even when two systems happen to return the same
-SHA-256 text. Equality does not turn an OCI build identity into a Microsandbox
-runtime observation.
+The fields below remain separate even when two systems happen to return the same SHA-256
+text. Equality does not turn an OCI build identity into a Microsandbox runtime
+observation.
 
-| Identity                         | Meaning                                                                                       | Must not be treated as                                           |
-| -------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------- |
-| Logical catalogued microvm-image | One unit/material/cache recipe in the first-party catalogue                                   | A distinct physical OCI image                                    |
-| `physicalImageId`                | Stable descriptor-level identity of one physical worker image                                 | A field of the mutable build recipe or of the acquisition source |
-| `buildRecipe`                    | Repo-owned Dockerfile, context, `linux/arm64`, expected user/entrypoint/labels                | Proof of a bit-reproducible image or a runtime pin               |
-| Acquisition `source`             | How local cache preparation obtains bytes today (`trusted-dockerfile` or future `oci-digest`) | The GHCR candidate name or the Microsandbox runtime digest       |
-| Candidate OCI index              | Buildx output digest with requested SBOM/provenance and a unique commit-and-workflow-run tag  | The `linux/arm64` image manifest or a Microsandbox runtime pin   |
-| Candidate arm64 manifest         | Exact `linux/arm64` child selected from the raw OCI index                                     | The index digest, a qualification result, or a runtime pin       |
+| Identity                         | Meaning                                                                                       | Must not be treated as                                                                   |
+| -------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Logical catalogued microvm-image | One unit/material/cache recipe in the first-party catalogue                                   | A distinct physical OCI image                                                            |
+| `physicalImageId`                | Stable descriptor-level identity of one physical worker image                                 | A field of the mutable build recipe or of the acquisition source                         |
+| `buildRecipe`                    | Repo-owned Dockerfile, context, `linux/arm64`, expected user/entrypoint/labels                | Proof of a bit-reproducible image or a runtime pin                                       |
+| Acquisition `source`             | How local cache preparation obtains bytes today (`trusted-dockerfile` or future `oci-digest`) | The GHCR candidate name or the Microsandbox runtime digest                               |
+| Candidate OCI index              | Buildx output digest with requested SBOM/provenance and a unique commit-and-workflow-run tag  | The `linux/arm64` image manifest or a Microsandbox runtime pin                           |
+| Candidate arm64 manifest         | Exact `linux/arm64` child selected from the raw OCI index                                     | The index digest, a qualification result, or a runtime pin                               |
 | Candidate Microsandbox digest    | Manifest digest observed after `docker save` + Microsandbox `Image.load` of that arm64 image  | A replacement for the separately recorded OCI index, platform-manifest, or catalogue pin |
-| Qualification target             | The current catalogued Microsandbox runtime pin the candidate may later be compared against   | An output image identity or an automatic pin update              |
+| Qualification target             | The current catalogued Microsandbox runtime pin the candidate may later be compared against   | An output image identity or an automatic pin update                                      |
 
 Six logical bootstrap descriptors currently map to five physical images. Modelica
 qualified and admitted share one physical image. The versioned distribution contract
@@ -38,11 +38,10 @@ Package names are lowercase repositories under `ghcr.io/casys-ai/` of the form
 
 ## What distribution does and does not do
 
-Distribution emits candidate OCI images for the current recipes. Publication does
-not pull, import, qualify, or promote. A later maintainer-only import/inspection
-path may pull the exact `linux/arm64` platform manifest from one repository receipt
-and import it under a non-catalog Microsandbox candidate identity. That path still
-does not:
+Distribution emits candidate OCI images for the current recipes. Publication does not
+pull, import, qualify, or promote. A later maintainer-only import/inspection path may
+pull the exact `linux/arm64` platform manifest from one repository receipt and import it
+under a non-catalog Microsandbox candidate identity. That path still does not:
 
 - change or claim the catalogued Microsandbox runtime digest;
 - load under the active catalogue pin;
@@ -90,26 +89,32 @@ workflow is `.github/workflows/publish-first-party-microvm-images.yml`.
 
 ## Candidate import identities
 
-The GHCR receipt is not a Microsandbox cache entry. Maintainer import reads that
-exact receipt, re-reads the OCI index, proves exactly one `linux/arm64` child matches
-the receipt, pulls the platform-manifest digest, inspects OS/arch/user/entrypoint/labels,
-saves, and generates an invocation-owned nonce for a unique non-catalog staging tag.
-It refuses a pre-existing staging tag. Returned `Image.load` handles must prove the
-requested tag was applied and must not include the active catalogue pin. The observed
-Microsandbox digest is recorded, only the proven-owned staging reference is removed,
-and the same archive is loaded again as
+The GHCR receipt is not a Microsandbox cache entry. Maintainer import takes that exact
+receipt plus the current server-owned matrix, re-parses and re-binds the receipt before
+any Docker or Microsandbox effect, re-reads the OCI index, proves exactly one
+`linux/arm64` child matches the receipt, pulls the platform-manifest digest, inspects
+OS/arch/user/entrypoint/labels, saves, and generates an invocation-owned nonce for a
+unique non-catalog staging tag. It refuses a pre-existing staging tag. Returned
+`Image.load` handles must prove the requested tag was applied and must not include the
+active catalogue pin. The observed Microsandbox digest is recorded, only the
+proven-owned staging reference is removed, and the same archive is loaded again as
 `casys/first-party-candidate-<physicalImageId>@sha256:<observed-msb-digest>`.
 
 Microsandbox SDK 0.6.8 has `Image.load`, `Image.inspect`, and
 `Image.remove(reference, { force: false })`. It has no tag or relabel API. The second
 `Image.load` is therefore a re-import that applies the candidate reference, not an
 in-place retag. `Image.remove` is exact and never force or prune. The active catalogue
-target is never loaded, rewritten, or deleted. A generated staging reference is not
-part of the deterministic factual import record. If record persistence fails, only a
-new final candidate created by that invocation is quarantined. A coherent or
-incoherent pre-existing final candidate fails without deletion.
+target is never loaded, rewritten, or deleted. A generated staging reference is not part
+of the deterministic factual import record. If record persistence fails, only a new
+final candidate created by that invocation is quarantined. A coherent or incoherent
+pre-existing final candidate fails without deletion.
 
 CLI: `deno task release:first-party-microvm-images:import-candidate --receipt=<path>`.
 Default mode is planning/read. `--run` is the mutation acknowledgement. Qualification
 remains `not-run` and `eligibleForPromotion` remains `false`. The factual import record
-is local under `state/local/first-party-microsandbox-image-candidate-import/`.
+is the strict reusable authority for a later per-domain qualification: it preserves the
+exact source candidate receipt, recalculates that fingerprint on parse/bind, rebinds to
+the current matrix on read, and lives locally under
+`state/local/first-party-microsandbox-image-candidate-import/`. It is not a
+qualification attestation, catalogue pin, or promotion. Callers cannot select a
+provider, image, digest, tool, or argument.

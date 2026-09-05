@@ -1,7 +1,8 @@
 /**
  * Maintainer-only import/inspection of one first-party Microsandbox image
- * candidate. The only identity input is an exact repository receipt already
- * bound to the current server-owned distribution matrix.
+ * candidate. Identity inputs are an exact repository receipt and the current
+ * server-owned distribution matrix. The orchestration re-parses and re-binds
+ * that receipt to the matrix before any Docker or Microsandbox effect.
  *
  * Three immutable provenance fields stay separately recorded:
  * 1. OCI index digest from Buildx
@@ -21,13 +22,9 @@
  */
 
 import { samePinnedRepositoryDigest } from "../shared/docker-pinned-repository-digest.ts";
-import {
-  createLocalMicrosandboxSdk,
-  loadLocalMicrosandboxImageImportHandlesFromArchive,
-  microsandboxHostArchitecture,
-  type MicrosandboxImageImportHandle,
-  type MicrosandboxImageInspection,
-  type MicrosandboxSdk,
+import type {
+  MicrosandboxImageImportHandle,
+  MicrosandboxImageInspection,
 } from "../shared/execution/microsandbox-ephemeral-execution-backend.ts";
 import {
   deterministicJson,
@@ -39,20 +36,22 @@ import {
   type FirstPartyMicrosandboxTemporaryArchive,
   parseDockerSourceInspection,
 } from "./first-party-microsandbox-image-acquisition.ts";
-import type { FirstPartyMicrosandboxImageCandidateReceipt } from "./first-party-microsandbox-image-candidate-receipt.ts";
-
-export const FIRST_PARTY_MICROSANDBOX_IMAGE_CANDIDATE_IMPORT_RECORD_SCHEMA =
-  "first-party-microsandbox-image-candidate-import/2.0" as const;
+import {
+  type FirstPartyMicrosandboxImageCandidateReceipt,
+  readBoundFirstPartyMicrosandboxImageCandidateReceipt,
+} from "./first-party-microsandbox-image-candidate-receipt.ts";
+import type { FirstPartyMicrosandboxImageDistributionMatrix } from "./first-party-microsandbox-image-distribution-matrix.ts";
+import {
+  buildFirstPartyMicrosandboxImageCandidateImportRecord,
+  type FirstPartyMicrosandboxImageCandidateImportRecord,
+  firstPartyMicrosandboxImageCandidateName,
+  firstPartyMicrosandboxImageCandidateReference,
+} from "./first-party-microsandbox-image-candidate-import-record.ts";
 
 export const FIRST_PARTY_MICROSANDBOX_IMAGE_CANDIDATE_IMPORT_PLAN_SCHEMA =
   "first-party-microsandbox-image-candidate-import-plan/2.0" as const;
 
-export const FIRST_PARTY_MICROSANDBOX_IMAGE_CANDIDATE_IMPORT_RECORD_DIRECTORY =
-  "state/local/first-party-microsandbox-image-candidate-import" as const;
-
 const SHA256 = /^sha256:[0-9a-f]{64}$/u;
-const PULL_POLICY_NEVER = "never" as const;
-const CANDIDATE_REPOSITORY_PREFIX = "casys/first-party-candidate-" as const;
 const STAGING_REPOSITORY_PREFIX = "casys/first-party-candidate-staging-" as const;
 const STAGING_TOKEN = /^[a-z0-9](?:[a-z0-9-]{0,63})?$/u;
 const DOCKER_TAG = /^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$/u;
@@ -115,50 +114,6 @@ export interface FirstPartyMicrosandboxImageCandidateImportPlan {
   };
 }
 
-export interface FirstPartyMicrosandboxImageCandidateImportRecord {
-  readonly schemaVersion:
-    typeof FIRST_PARTY_MICROSANDBOX_IMAGE_CANDIDATE_IMPORT_RECORD_SCHEMA;
-  readonly candidate: {
-    readonly physicalImageId: string;
-    readonly imageName: string;
-    readonly oci: FirstPartyMicrosandboxImageCandidateReceipt["candidate"]["oci"];
-    readonly microsandbox: {
-      readonly candidateReference: string;
-      readonly manifestDigest: string;
-    };
-    readonly locatorTag: string;
-    readonly locatorReference: string;
-    readonly git: FirstPartyMicrosandboxImageCandidateReceipt["candidate"]["git"];
-    readonly qualificationTarget: FirstPartyMicrosandboxImageCandidateReceipt[
-      "candidate"
-    ]["qualificationTarget"];
-  };
-  readonly identities: {
-    readonly ociIndexDigest: string;
-    readonly ociPlatformManifestDigest: string;
-    readonly microsandboxManifestDigest: string;
-  };
-  readonly inputMatrix: {
-    readonly fingerprint: string;
-    readonly schemaVersion: FirstPartyMicrosandboxImageCandidateReceipt[
-      "inputMatrix"
-    ]["schemaVersion"];
-  };
-  readonly artifactCompliance: {
-    readonly licence: "unresolved";
-    readonly anonymousPull: "not-run";
-    readonly runtimeQualification: "not-run";
-    readonly eligibleForPromotion: false;
-    readonly sbom: "requested";
-    readonly provenance: "requested";
-  };
-  readonly import: {
-    readonly status: "imported" | "already-cached";
-    readonly hostArchitecture: "arm64";
-    readonly pullPolicy: typeof PULL_POLICY_NEVER;
-  };
-}
-
 export function firstPartyMicrosandboxImageCandidateStagingReference(
   receipt: FirstPartyMicrosandboxImageCandidateReceipt,
   stagingToken: string,
@@ -171,22 +126,6 @@ export function firstPartyMicrosandboxImageCandidateStagingReference(
     );
   }
   return `${STAGING_REPOSITORY_PREFIX}${receipt.candidate.physicalImageId}:${tag}`;
-}
-
-export function firstPartyMicrosandboxImageCandidateName(
-  physicalImageId: string,
-): string {
-  return `${CANDIDATE_REPOSITORY_PREFIX}${physicalImageId}`;
-}
-
-export function firstPartyMicrosandboxImageCandidateReference(
-  physicalImageId: string,
-  microsandboxManifestDigest: string,
-): string {
-  assertSha256(microsandboxManifestDigest, "candidate Microsandbox manifest digest");
-  return `${
-    firstPartyMicrosandboxImageCandidateName(physicalImageId)
-  }@${microsandboxManifestDigest}`;
 }
 
 export function planFirstPartyMicrosandboxImageCandidateImport(
@@ -221,9 +160,13 @@ export function planFirstPartyMicrosandboxImageCandidateImport(
 
 export async function importFirstPartyMicrosandboxImageCandidate(input: {
   readonly receipt: FirstPartyMicrosandboxImageCandidateReceipt;
+  readonly matrix: FirstPartyMicrosandboxImageDistributionMatrix;
   readonly ports: FirstPartyMicrosandboxImageCandidateImportPorts;
 }): Promise<FirstPartyMicrosandboxImageCandidateImportRecord> {
-  const receipt = input.receipt;
+  const receipt = await readBoundFirstPartyMicrosandboxImageCandidateReceipt(
+    deterministicJson(input.receipt),
+    input.matrix,
+  );
   const ports = input.ports;
   assertLiteralNotRunCompliance(receipt);
   assertHostArchitecture(ports.hostArchitecture);
@@ -339,9 +282,9 @@ export async function importFirstPartyMicrosandboxImageCandidate(input: {
       candidateReference,
       observedDigest,
     );
-    const record = buildImportRecord(receipt, {
-      candidateReference,
-      manifestDigest: observedDigest,
+    const record = await buildFirstPartyMicrosandboxImageCandidateImportRecord({
+      receipt,
+      microsandboxManifestDigest: observedDigest,
       status: preexisting === undefined ? "imported" : "already-cached",
     });
     await ports.writeImportRecord(record);
@@ -395,51 +338,6 @@ export async function importFirstPartyMicrosandboxImageCandidate(input: {
   }
 }
 
-export async function createLocalFirstPartyMicrosandboxImageCandidateImportPorts(
-  createSdk: () => Promise<MicrosandboxSdk> = createLocalMicrosandboxSdk,
-): Promise<FirstPartyMicrosandboxImageCandidateImportPorts> {
-  const sdk = await createSdk();
-  sdk.assertLocalBackend();
-  return Object.freeze({
-    hostArchitecture: microsandboxHostArchitecture(),
-    createStagingToken: createFirstPartyMicrosandboxImageCandidateStagingToken,
-    inspectOciIndex,
-    pullByDigest,
-    inspectDockerImage,
-    saveDockerImage,
-    loadImageFromArchive: (archivePath: string, tag: string) =>
-      loadLocalMicrosandboxImageImportHandlesFromArchive(archivePath, tag),
-    inspectCachedImage: (reference: string) => sdk.inspectImage(reference),
-    isImageNotFound: (error: unknown) => sdk.isImageNotFound(error),
-    removeExactCachedImage: (reference: string) =>
-      sdk.removeExactCachedImage(reference),
-    createTemporaryArchiveDirectory: createAllowedCandidateArchive,
-    writeImportRecord: writeFirstPartyMicrosandboxImageCandidateImportRecord,
-  });
-}
-
-export async function writeFirstPartyMicrosandboxImageCandidateImportRecord(
-  record: FirstPartyMicrosandboxImageCandidateImportRecord,
-  root: string = FIRST_PARTY_MICROSANDBOX_IMAGE_CANDIDATE_IMPORT_RECORD_DIRECTORY,
-): Promise<void> {
-  const text = `${deterministicJson(record)}\n`;
-  const directory = `${root}/${record.candidate.physicalImageId}`;
-  await Deno.mkdir(directory, { recursive: true });
-  const path = `${directory}/${importRecordFileName(record)}`;
-  try {
-    await Deno.writeTextFile(path, text, { createNew: true });
-  } catch (error) {
-    if (error instanceof Deno.errors.AlreadyExists) {
-      const existing = await Deno.readTextFile(path);
-      if (existing === text) return;
-      throw new Error(
-        "An incoherent first-party candidate import record already exists.",
-      );
-    }
-    throw error;
-  }
-}
-
 export function renderFirstPartyMicrosandboxImageCandidateImportPlanText(
   plan: FirstPartyMicrosandboxImageCandidateImportPlan,
 ): string {
@@ -459,25 +357,6 @@ export function renderFirstPartyMicrosandboxImageCandidateImportPlanText(
     `qualificationTarget.imageReference=${plan.qualificationTarget.imageReference}`,
     `runtimeQualification=${plan.artifactCompliance.runtimeQualification}`,
     `eligibleForPromotion=${plan.artifactCompliance.eligibleForPromotion}`,
-    "Domain qualification remains not-run. Promotion is false.",
-    "",
-  ].join("\n");
-}
-
-export function renderFirstPartyMicrosandboxImageCandidateImportRecordText(
-  record: FirstPartyMicrosandboxImageCandidateImportRecord,
-): string {
-  return [
-    `schemaVersion=${record.schemaVersion}`,
-    `status=${record.import.status}`,
-    `physicalImageId=${record.candidate.physicalImageId}`,
-    `oci.indexDigest=${record.identities.ociIndexDigest}`,
-    `oci.platformManifestDigest=${record.identities.ociPlatformManifestDigest}`,
-    `microsandbox.manifestDigest=${record.identities.microsandboxManifestDigest}`,
-    `microsandbox.candidateReference=${record.candidate.microsandbox.candidateReference}`,
-    `qualificationTarget.imageReference=${record.candidate.qualificationTarget.imageReference}`,
-    `runtimeQualification=${record.artifactCompliance.runtimeQualification}`,
-    `eligibleForPromotion=${record.artifactCompliance.eligibleForPromotion}`,
     "Domain qualification remains not-run. Promotion is false.",
     "",
   ].join("\n");
@@ -587,68 +466,6 @@ function assertExactCandidateMicrosandboxInspection(
     );
   }
   return image.manifestDigest;
-}
-
-function buildImportRecord(
-  receipt: FirstPartyMicrosandboxImageCandidateReceipt,
-  imported: {
-    readonly candidateReference: string;
-    readonly manifestDigest: string;
-    readonly status: "imported" | "already-cached";
-  },
-): FirstPartyMicrosandboxImageCandidateImportRecord {
-  return Object.freeze({
-    schemaVersion: FIRST_PARTY_MICROSANDBOX_IMAGE_CANDIDATE_IMPORT_RECORD_SCHEMA,
-    candidate: Object.freeze({
-      physicalImageId: receipt.candidate.physicalImageId,
-      imageName: receipt.candidate.imageName,
-      oci: receipt.candidate.oci,
-      microsandbox: Object.freeze({
-        candidateReference: imported.candidateReference,
-        manifestDigest: imported.manifestDigest,
-      }),
-      locatorTag: receipt.candidate.locatorTag,
-      locatorReference: receipt.candidate.locatorReference,
-      git: receipt.candidate.git,
-      qualificationTarget: receipt.candidate.qualificationTarget,
-    }),
-    identities: Object.freeze({
-      ociIndexDigest: receipt.candidate.oci.indexDigest,
-      ociPlatformManifestDigest: receipt.candidate.oci.platformManifestDigest,
-      microsandboxManifestDigest: imported.manifestDigest,
-    }),
-    inputMatrix: Object.freeze({
-      fingerprint: receipt.inputMatrix.fingerprint,
-      schemaVersion: receipt.inputMatrix.schemaVersion,
-    }),
-    artifactCompliance: Object.freeze({
-      licence: "unresolved" as const,
-      anonymousPull: "not-run" as const,
-      runtimeQualification: "not-run" as const,
-      eligibleForPromotion: false as const,
-      sbom: "requested" as const,
-      provenance: "requested" as const,
-    }),
-    import: Object.freeze({
-      status: imported.status,
-      hostArchitecture: "arm64" as const,
-      pullPolicy: PULL_POLICY_NEVER,
-    }),
-  });
-}
-
-function importRecordFileName(
-  record: FirstPartyMicrosandboxImageCandidateImportRecord,
-): string {
-  return [
-    hexDigest(record.identities.ociIndexDigest),
-    hexDigest(record.identities.ociPlatformManifestDigest),
-    hexDigest(record.identities.microsandboxManifestDigest),
-  ].join("-") + ".json";
-}
-
-function hexDigest(value: string): string {
-  return value.slice("sha256:".length);
 }
 
 async function matchingOciIndexBytes(
@@ -795,12 +612,6 @@ function assertHostArchitecture(hostArchitecture: string): void {
   }
 }
 
-function assertSha256(value: string, label: string): void {
-  if (!SHA256.test(value)) {
-    throw new TypeError(`${label} must be an exact lowercase sha256 digest.`);
-  }
-}
-
 function assertStagingToken(value: string): void {
   if (!STAGING_TOKEN.test(value)) {
     throw new TypeError(
@@ -818,10 +629,6 @@ function stagingLocatorPrefix(
   );
 }
 
-function createFirstPartyMicrosandboxImageCandidateStagingToken(): string {
-  return crypto.randomUUID();
-}
-
 function jsonObject(value: unknown, label: string): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new TypeError(`${label} must be a JSON object.`);
@@ -835,87 +642,4 @@ function stringArraysEqual(
 ): boolean {
   return left !== null && left.length === right.length &&
     left.every((value, index) => value === right[index]);
-}
-
-async function inspectOciIndex(reference: string): Promise<string> {
-  if (!reference.includes("@sha256:") || reference.endsWith(":latest")) {
-    throw new TypeError(
-      "OCI index inspect requires an exact digest-pinned reference.",
-    );
-  }
-  const output = await docker([
-    "buildx",
-    "imagetools",
-    "inspect",
-    "--raw",
-    reference,
-  ]);
-  if (!output.success) {
-    throw new Error(
-      `docker buildx imagetools inspect failed: ${decode(output.stderr).slice(-2_000)}`,
-    );
-  }
-  return decode(output.stdout);
-}
-
-async function inspectDockerImage(reference: string): Promise<unknown | undefined> {
-  const output = await docker([
-    "image",
-    "inspect",
-    "--format",
-    "{{json .}}",
-    reference,
-  ]);
-  if (!output.success) return undefined;
-  return JSON.parse(decode(output.stdout)) as unknown;
-}
-
-async function pullByDigest(reference: string): Promise<void> {
-  if (!reference.includes("@sha256:") || reference.endsWith(":latest")) {
-    throw new TypeError(
-      "First-party candidate pull requires an exact digest-pinned reference.",
-    );
-  }
-  const output = await docker(["pull", reference]);
-  if (!output.success) {
-    throw new Error(`docker pull failed: ${decode(output.stderr).slice(-2_000)}`);
-  }
-}
-
-async function saveDockerImage(reference: string, archivePath: string): Promise<void> {
-  const output = await docker(["image", "save", "-o", archivePath, reference]);
-  if (!output.success) {
-    throw new Error(
-      `docker image save failed: ${decode(output.stderr).slice(-2_000)}`,
-    );
-  }
-}
-
-async function createAllowedCandidateArchive(): Promise<
-  FirstPartyMicrosandboxTemporaryArchive
-> {
-  const directory = assertAllowedFirstPartyBootstrapTempPath(
-    await Deno.makeTempDir({
-      dir: "/tmp",
-      prefix: "casys-first-party-microsandbox-candidate-",
-    }),
-  );
-  return Object.freeze({
-    directory,
-    archivePath: `${directory}/image.tar`,
-    cleanup: () => Deno.remove(directory, { recursive: true }),
-  });
-}
-
-async function docker(args: readonly string[]): Promise<Deno.CommandOutput> {
-  return await new Deno.Command("docker", {
-    args: [...args],
-    stdin: "null",
-    stdout: "piped",
-    stderr: "piped",
-  }).output();
-}
-
-function decode(bytes: Uint8Array): string {
-  return new TextDecoder().decode(bytes);
 }
