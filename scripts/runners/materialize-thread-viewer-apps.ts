@@ -62,8 +62,7 @@ interface MaterializationCatalogBinding {
 }
 
 interface MaterializationCatalog {
-  readonly schemaVersion:
-    typeof THREAD_VIEWER_APP_MATERIALIZATION_CATALOG_SCHEMA;
+  readonly schemaVersion: typeof THREAD_VIEWER_APP_MATERIALIZATION_CATALOG_SCHEMA;
   readonly bindings: readonly MaterializationCatalogBinding[];
 }
 

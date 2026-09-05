@@ -246,12 +246,8 @@ Deno.test("overview connects exact project dependency evidence to open activity 
   };
 
   const hero = buildOverviewThreadHero(thread, [baseline, active]);
-  const evidence = hero.nodes.find((item) =>
-    item.key === `artifact:${evidenceRef.id}`
-  );
-  const dependency = hero.edges.find((edge) =>
-    edge.kind === "project-dependency"
-  );
+  const evidence = hero.nodes.find((item) => item.key === `artifact:${evidenceRef.id}`);
+  const dependency = hero.edges.find((edge) => edge.kind === "project-dependency");
 
   assertEquals(evidence?.lane, "requirements");
   assertEquals(dependency?.fromKey, `artifact:${evidenceRef.id}`);

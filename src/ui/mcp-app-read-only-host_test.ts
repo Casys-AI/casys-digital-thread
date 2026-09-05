@@ -69,9 +69,7 @@ Deno.test("read-only App host sends the session once and only after initialized"
   host.handleMessage(event(target, initialized()));
   host.handleMessage(event(target, initialized()));
   assertEquals(
-    target.posts.filter((post) =>
-      methodOf(post.message) === "ui/compose/event"
-    ),
+    target.posts.filter((post) => methodOf(post.message) === "ui/compose/event"),
     [{
       targetOrigin: "*",
       message: {
@@ -122,8 +120,7 @@ Deno.test("read-only App host source-locks the exact opaque App identity", () =>
     id: "wrong-app",
     error: {
       code: -32602,
-      message:
-        "App identity does not match the registered whole-App descriptor.",
+      message: "App identity does not match the registered whole-App descriptor.",
     },
   });
   assertEquals(
@@ -449,8 +446,7 @@ Deno.test("App offer delivered after its load works and a replacement document i
       );
     },
   });
-  let phase: Parameters<typeof advanceMcpAppFrameLoad>[0] =
-    "waiting-blank-load";
+  let phase: Parameters<typeof advanceMcpAppFrameLoad>[0] = "waiting-blank-load";
   [phase] = advanceMcpAppFrameLoad(phase);
   assertEquals(phase, "loading-app");
   [phase] = advanceMcpAppFrameLoad(phase);
@@ -551,9 +547,7 @@ class FakeTarget implements McpAppHostPostTarget {
     transfer?: Transferable[],
   ): void {
     this.posts.push(
-      transfer
-        ? { message, targetOrigin, transfer }
-        : { message, targetOrigin },
+      transfer ? { message, targetOrigin, transfer } : { message, targetOrigin },
     );
   }
 }
