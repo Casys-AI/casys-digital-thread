@@ -59,6 +59,6 @@ Loopback publications and the three start paths live on
 - [Import a first-party microVM image candidate](../../../how-to/maintainers/import-a-first-party-microvm-image-candidate.md)
   is the maintainer procedure for receipt-bound, non-catalog Microsandbox import. It
   does not qualify or promote.
-- [Qualify a first-party CAD microVM image candidate](../../../how-to/maintainers/qualify-a-first-party-cad-microvm-image-candidate.md)
-  is the maintainer procedure that binds that import record to one CAD worker atom and
-  records host/runtime evidence with `eligibleForPromotion=false`.
+- [Qualify a first-party microVM image candidate](../../../how-to/maintainers/qualify-a-first-party-cad-microvm-image-candidate.md)
+  is the maintainer procedure that binds that import record to one CAD or CalculiX worker
+  atom and records host/runtime evidence with `eligibleForPromotion=false`.

@@ -124,14 +124,16 @@ provider, image, digest, tool, or argument.
 After import, each domain gate consumes only that bound
 `first-party-microsandbox-image-candidate-import/3.0` record and executes the exact
 cached candidate image. CAD currently owns two distinct physical/runtime atoms:
-`build123d-isolated-worker` and `geometry-module-assembler-worker`. They are not
-substitutes. The gates accept only `--import-record=<path>` plus `--run` (geometry also
-`--recover`). Policy, limits, worker command, fixture and oracle stay code-owned. Import
-already owns acquisition; qualification never builds Docker, never deletes the candidate
-cache, and never writes the active catalogue pin.
+`build123d-isolated-worker` and `geometry-module-assembler-worker`. CalculiX owns
+`calculix-worker`. They are not substitutes. The gates accept only
+`--import-record=<path>` plus `--run` (geometry and CalculiX also `--recover`). Policy,
+limits, worker command, fixture and validators stay code-owned. Import already owns
+acquisition; qualification never builds Docker, never deletes the candidate cache, and
+never writes the active catalogue pin. CalculiX candidate qualification is not a product
+FEA verdict and not L3/L4/L5 engineering evidence.
 
 Candidate state lives under
 `state/local/first-party-microsandbox-image-candidate-qualification/<physicalImageId>/<import-record fingerprint>/`.
 Success is host/runtime evidence only: `eligibleForPromotion` stays `false`. It is not
 L3/L4/L5 engineering evidence. Procedure:
-[Qualify a first-party CAD microVM image candidate](../../../how-to/maintainers/qualify-a-first-party-cad-microvm-image-candidate.md).
+[Qualify a first-party microVM image candidate](../../../how-to/maintainers/qualify-a-first-party-cad-microvm-image-candidate.md).

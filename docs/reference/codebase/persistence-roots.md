@@ -59,11 +59,12 @@ catalogue pin, Thread evidence, or Workbench command.
 
 Per-physical-image, per-import-record host/runtime candidate qualification. CAD uses
 `build123d-isolated-worker/<import-record fingerprint>/` and
-`geometry-module-assembler-worker/<import-record fingerprint>/` with isolated attempts,
-attestations, captures, outputs and the strict qualification record. That record binds
-the observed `linux/arm64` host identity and the exact run/receipt. It is not the normal
-`capability-runtime-host` qualification store, not a catalogue pin, and not L3, L4 or L5
-engineering evidence. `eligibleForPromotion` stays `false`.
+`geometry-module-assembler-worker/<import-record fingerprint>/`. CalculiX uses
+`calculix-worker/<import-record fingerprint>/` with isolated WAL, CAS outputs, evidence,
+leases and the strict qualification record. That record binds the observed `linux/arm64`
+host identity and the exact run/receipt. It is not the normal `capability-runtime-host`
+qualification store, not `state/local/calculix-*`, not a catalogue pin, and not L3, L4
+or L5 engineering evidence. `eligibleForPromotion` stays `false`.
 
 #### `state/local/capability-runtime-microvm-preparation/`
 

@@ -34,6 +34,8 @@ export const BUILD123D_ISOLATED_WORKER_PHYSICAL_IMAGE_ID =
 export const GEOMETRY_MODULE_ASSEMBLER_WORKER_PHYSICAL_IMAGE_ID =
   "geometry-module-assembler-worker" as const;
 
+export const CALCULIX_WORKER_PHYSICAL_IMAGE_ID = "calculix-worker" as const;
+
 const SHA256 = /^sha256:[0-9a-f]{64}$/u;
 const SHA256_DIGEST = /^[0-9a-f]{64}$/u;
 const FORBIDDEN_FLAG_PATTERN =

@@ -72,7 +72,30 @@ used as its qualification input
 
 Earlier Docker-only CalculiX worker prequalification with fixed wrapper and declared
 outputs; it remains useful worker-contract evidence but not a substitute for the real
-local microVM gate or product runtime wiring
+local microVM gate, imported-candidate Microsandbox qualification, or product runtime
+wiring
+
+#### [`scripts/gates/verify-calculix-worker-candidate-qualification.ts`](../../../scripts/gates/verify-calculix-worker-candidate-qualification.ts)
+
+Maintainer-only imported-candidate qualification for `calculix-worker`. Input is only a
+bound `first-party-microsandbox-image-candidate-import/3.0` record plus `--run` or
+`--recover`. It reads the control-plane host observation once, refuses anything other
+than `linux/arm64` before composition, then reuses the production composition,
+`ExecuteIsolatedCalculixStaticProof`, validators, batch inspector, CAS reread and proven
+destruction under a candidate-specific root. `eligibleForPromotion` stays `false`. It is
+not a product FEA verdict and not L3/L4/L5 engineering evidence
+
+#### [`src/adapters/fea/isolated-v3/local-calculix-isolated-execution-options.ts`](../../../src/adapters/fea/isolated-v3/local-calculix-isolated-execution-options.ts)
+
+Code-owned active CalculiX policy, limits, wrapper digest and local server options. The
+server, the active vertical and the imported-candidate gate share this builder. The
+candidate factory accepts only an already-bound import record
+
+#### [`src/adapters/fea/isolated-v3/calculix-worker-candidate-qualification.ts`](../../../src/adapters/fea/isolated-v3/calculix-worker-candidate-qualification.ts)
+
+Record-bound plan/run/recover orchestration for an imported CalculiX worker candidate.
+Synthetic candidate-qualification identities only; it never reopens a historical product
+ROP/MRTR
 
 #### [`src/adapters/fea/isolated-v3/verify-run-fea-static-proof-v3-run-executor.ts`](../../../src/adapters/fea/isolated-v3/verify-run-fea-static-proof-v3-run-executor.ts)
 

@@ -74,6 +74,6 @@ verifies its fingerprint on parse/bind, keeps OCI index, platform-manifest, and
 Microsandbox digest as separate identities, and leaves `runtimeQualification=not-run`
 and `eligibleForPromotion=false`.
 
-CAD candidate qualification is a separate maintainer path:
-[Qualify a first-party CAD microVM image candidate](qualify-a-first-party-cad-microvm-image-candidate.md).
+Per-domain candidate qualification is a separate maintainer path:
+[Qualify a first-party microVM image candidate](qualify-a-first-party-cad-microvm-image-candidate.md).
 Do not run those gates from this import command, and do not edit catalogue pins.
