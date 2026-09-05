@@ -1,7 +1,10 @@
 import type { CSSProperties, JSX } from "react";
 import { useLayoutEffect, useRef } from "react";
 import type { ThreadViewerSession } from "./viewer-sessions-client.ts";
-import { createMcpAppReadOnlyHost } from "./mcp-app-read-only-host.ts";
+import {
+  createMcpAppReadOnlyHost,
+  type McpAppHostPresentationContext,
+} from "./mcp-app-read-only-host.ts";
 import {
   advanceMcpAppFrameLoad,
   type McpAppFrameDocumentPhase,
@@ -50,6 +53,7 @@ export function McpAppFrame({
     let blankLoadObserved = false;
     let controller: ReturnType<typeof createMcpAppReadOnlyHost> | undefined;
     let loadedDocument: LoadedMcpAppDocument | undefined;
+    let stopPresentationObservation: (() => void) | undefined;
     let active = true;
     const abort = new AbortController();
 
@@ -61,6 +65,7 @@ export function McpAppFrame({
     const invalidate = (): void => {
       if (!active) return;
       active = false;
+      stopPresentationObservation?.();
       abort.abort();
       revokeLoadedDocument();
       controller?.invalidate();
@@ -119,11 +124,29 @@ export function McpAppFrame({
       target,
       session,
       hostContext: {
-        theme: resolvedTheme(),
+        ...resolvedPresentationContext(),
         displayMode: "inline",
         availableDisplayModes: ["inline"],
       },
     });
+    // Follow presentation on the existing document: recreating the iframe
+    // would discard its resource port, session and interactive viewer state.
+    const updatePresentation = (): void => {
+      controller?.updateHostContext(resolvedPresentationContext());
+    };
+    const presentationObserver = new MutationObserver(updatePresentation);
+    presentationObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-theme", "class", "style", "lang"],
+    });
+    const themePreference = globalThis.matchMedia?.("(prefers-color-scheme: dark)");
+    themePreference?.addEventListener("change", updatePresentation);
+    globalThis.addEventListener("languagechange", updatePresentation);
+    stopPresentationObservation = () => {
+      presentationObserver.disconnect();
+      themePreference?.removeEventListener("change", updatePresentation);
+      globalThis.removeEventListener("languagechange", updatePresentation);
+    };
     const onMessage = (event: MessageEvent<unknown>): void => {
       controller?.handleMessage(event);
     };
@@ -154,6 +177,14 @@ export function McpAppFrame({
       style={{ display: "contents" } as CSSProperties}
     />
   );
+}
+
+function resolvedPresentationContext(): McpAppHostPresentationContext {
+  const locale = document.documentElement.lang.trim() || globalThis.navigator?.language;
+  return {
+    theme: resolvedTheme(),
+    ...(locale ? { locale } : {}),
+  };
 }
 
 function resolvedTheme(): "light" | "dark" {

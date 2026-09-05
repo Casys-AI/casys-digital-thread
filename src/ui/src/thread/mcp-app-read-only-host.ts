@@ -25,8 +25,12 @@ export interface McpAppHostMessageEvent {
   readonly ports?: readonly MessagePort[];
 }
 
-export interface McpAppInlineHostContext {
+export interface McpAppHostPresentationContext {
   readonly theme?: "light" | "dark";
+  readonly locale?: string;
+}
+
+export interface McpAppInlineHostContext extends McpAppHostPresentationContext {
   readonly displayMode: "inline";
   readonly availableDisplayModes: readonly ["inline"];
 }
@@ -34,6 +38,8 @@ export interface McpAppInlineHostContext {
 export interface McpAppReadOnlyHost {
   /** Accept one source-locked message. Returns false when it was ignored. */
   handleMessage(event: McpAppHostMessageEvent): boolean;
+  /** Update only host-owned presentation, preserving this App document and session. */
+  updateHostContext(context: McpAppHostPresentationContext): void;
   /** Permanently closes this document generation and drops pending reads. */
   invalidate(): void;
 }
@@ -74,12 +80,37 @@ export function createMcpAppReadOnlyHost(
   let pendingGeneration = 0;
   let resourcePort: MessagePort | undefined;
   let resourcePortOffersSealed = false;
+  let hostContext: McpAppInlineHostContext = {
+    ...presentationContext(options.hostContext),
+    displayMode: "inline",
+    availableDisplayModes: ["inline"],
+  };
+  let sentPresentation: McpAppHostPresentationContext | undefined;
 
   const post = (message: unknown): void => {
     if (!active) return;
     // `allow-scripts` without `allow-same-origin` gives the child an opaque
     // origin, so a more specific outgoing target origin is impossible.
     options.target.postMessage(message, "*");
+  };
+
+  const sendHostContextChanges = (): void => {
+    if (!active || !sessionDelivered || !sentPresentation) return;
+    const changes = {
+      ...(hostContext.theme !== sentPresentation.theme
+        ? { theme: hostContext.theme }
+        : {}),
+      ...(hostContext.locale !== sentPresentation.locale
+        ? { locale: hostContext.locale }
+        : {}),
+    };
+    if (Object.keys(changes).length === 0) return;
+    sentPresentation = presentationContext(hostContext);
+    post({
+      jsonrpc: "2.0",
+      method: "ui/notifications/host-context-changed",
+      params: changes,
+    });
   };
 
   const closeResourcePort = (): void => {
@@ -169,9 +200,10 @@ export function createMcpAppReadOnlyHost(
           // Absence is authoritative: no serverTools, serverResources,
           // sampling, message or provider capability exists in this host.
           hostCapabilities: {},
-          hostContext: { ...options.hostContext },
+          hostContext: { ...hostContext },
         },
       });
+      sentPresentation = presentationContext(hostContext);
       initializedResponseSent = true;
       return true;
     }
@@ -183,6 +215,9 @@ export function createMcpAppReadOnlyHost(
       }
       if (!sessionDelivered) {
         sessionDelivered = true;
+        // Presentation may have changed while the App accepted initialize.
+        // Deliver that latest context before its one recorded session.
+        sendHostContextChanges();
         post({
           jsonrpc: "2.0",
           method: "ui/compose/event",
@@ -238,11 +273,30 @@ export function createMcpAppReadOnlyHost(
 
   return {
     handleMessage,
+    updateHostContext(context): void {
+      if (!active) return;
+      hostContext = { ...hostContext, ...presentationContext(context) };
+      sendHostContextChanges();
+    },
     invalidate(): void {
       if (!active) return;
       active = false;
       closeResourcePort();
     },
+  };
+}
+
+/** Copy an explicit presentation allowlist; never forward capability or session fields. */
+function presentationContext(
+  value: McpAppHostPresentationContext,
+): McpAppHostPresentationContext {
+  return {
+    ...(value.theme === "light" || value.theme === "dark"
+      ? { theme: value.theme }
+      : {}),
+    ...(typeof value.locale === "string" && value.locale.trim().length > 0
+      ? { locale: value.locale.trim() }
+      : {}),
   };
 }
 
