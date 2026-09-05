@@ -1,11 +1,18 @@
-import { assertEquals, assertThrows } from "@std/assert";
-import { createFirstPartyCapabilityRuntimeCatalog } from "../../src/adapters/control-plane/first-party-capability-binding-catalog.ts";
-import { createFirstPartyMicrosandboxImageDistributionMatrix } from "../../src/adapters/control-plane/first-party-microsandbox-image-distribution-matrix.ts";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import {
+  bindFirstPartyMicrosandboxImageCandidateReceiptToCurrentMatrix,
   buildFirstPartyMicrosandboxImageCandidateReceipt,
   FIRST_PARTY_MICROSANDBOX_IMAGE_CANDIDATE_RECEIPT_SCHEMA,
+  parseFirstPartyMicrosandboxImageCandidateReceipt,
+  readBoundFirstPartyMicrosandboxImageCandidateReceipt,
   renderFirstPartyMicrosandboxImageCandidateReceiptText,
 } from "./first-party-microsandbox-image-candidate-receipt.ts";
+import {
+  createFirstPartyMicrosandboxImageDistributionMatrix,
+  fingerprintFirstPartyMicrosandboxImageDistributionMatrix,
+} from "./first-party-microsandbox-image-distribution-matrix.ts";
 
 const GIT_SHA = "a".repeat(40);
 const OCI_INDEX_DIGEST = `sha256:${"b".repeat(64)}`;
@@ -109,5 +116,75 @@ Deno.test("candidate receipt rejects incomplete matrix and mutable locator facts
       }),
     TypeError,
     "containerimage.digest must exactly match",
+  );
+});
+
+Deno.test("candidate receipt parse rebuilds the exact document and binds the current matrix", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const matrix = createFirstPartyMicrosandboxImageDistributionMatrix(catalog);
+  const fingerprint = await fingerprintFirstPartyMicrosandboxImageDistributionMatrix(
+    matrix,
+  );
+  const receipt = buildFirstPartyMicrosandboxImageCandidateReceipt({
+    matrix,
+    matrixFingerprint: fingerprint,
+    physicalImageId: "ngspice-worker",
+    ociIndexDigest: OCI_INDEX_DIGEST,
+    platformManifestDigest: PLATFORM_MANIFEST_DIGEST,
+    locatorTag: `git-${GIT_SHA}-run-7-1`,
+    gitSha: GIT_SHA,
+    gitTag: "first-party-microvm-v0.1.0",
+    buildMetadata: { "containerimage.digest": OCI_INDEX_DIGEST },
+  });
+  const parsed = parseFirstPartyMicrosandboxImageCandidateReceipt(
+    JSON.parse(deterministicJson(receipt)),
+  );
+  assertEquals(deterministicJson(parsed), deterministicJson(receipt));
+  const bound = await bindFirstPartyMicrosandboxImageCandidateReceiptToCurrentMatrix(
+    parsed,
+    matrix,
+  );
+  assertEquals(bound.inputMatrix.fingerprint, fingerprint);
+  const reread = await readBoundFirstPartyMicrosandboxImageCandidateReceipt(
+    `${deterministicJson(receipt)}\n`,
+    matrix,
+  );
+  assertEquals(reread.candidate.physicalImageId, "ngspice-worker");
+});
+
+Deno.test("candidate receipt bind refuses a fingerprint or matrix that is not current", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const matrix = createFirstPartyMicrosandboxImageDistributionMatrix(catalog);
+  const receipt = buildFirstPartyMicrosandboxImageCandidateReceipt({
+    matrix,
+    matrixFingerprint: MATRIX_FINGERPRINT,
+    physicalImageId: "ngspice-worker",
+    ociIndexDigest: OCI_INDEX_DIGEST,
+    platformManifestDigest: PLATFORM_MANIFEST_DIGEST,
+    locatorTag: `git-${GIT_SHA}-run-7-1`,
+    gitSha: GIT_SHA,
+    gitTag: "first-party-microvm-v0.1.0",
+    buildMetadata: { "containerimage.digest": OCI_INDEX_DIGEST },
+  });
+  await assertRejects(
+    () =>
+      bindFirstPartyMicrosandboxImageCandidateReceiptToCurrentMatrix(receipt, matrix),
+    TypeError,
+    "current server-owned distribution matrix",
+  );
+  assertThrows(
+    () =>
+      parseFirstPartyMicrosandboxImageCandidateReceipt({
+        ...receipt,
+        candidate: {
+          ...receipt.candidate,
+          oci: {
+            ...receipt.candidate.oci,
+            indexReference: "ghcr.io/example/not-the-receipt@sha256:00",
+          },
+        },
+      }),
+    TypeError,
+    "exact rebuilt first-party receipt",
   );
 });

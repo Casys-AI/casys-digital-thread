@@ -64,17 +64,17 @@ rebuilds are not bit-reproducible.
 
 The published digest is not the catalogued Microsandbox runtime digest.
 
-## 4. Qualify on the target ARM Mac before any pin change
+## 4. Import on the target ARM Mac before any pin change
 
-On the reviewed ARM Mac, pull the candidate by the exact digest from its receipt (with
-credentials if the package is private). Do not replace the active catalogue pin or load
-it under that active identity by hand. Use a reviewed candidate qualification path and
-keep the OCI source digest distinct from the resulting Microsandbox runtime digest. Run
-the existing worker/vertical qualification gates for that physical image; the candidate
-remains ineligible when qualification fails.
+On the reviewed ARM Mac, import from the exact receipt with
+[Import a first-party microVM image candidate](import-a-first-party-microvm-image-candidate.md).
+That path pulls the receipt's `linux/arm64` platform manifest, observes a distinct
+Microsandbox digest, and stores a non-catalog candidate. It does not replace the active
+catalogue pin or load under that active identity.
 
-Promotion is a later, reviewed catalogue change. Review the full matrix, the raw OCI
-index, the selected arm64 manifest, Buildx metadata, package visibility, and artefact
-licences before any anonymous pull or target-Mac qualification. This workflow must not
-edit `src/adapters/control-plane/` pins, worker contracts, or the capability-runtime
+Domain qualification remains a later, separate review. Promotion is a later, reviewed
+catalogue change. Review the full matrix, the raw OCI index, the selected arm64
+manifest, Buildx metadata, package visibility, and artefact licences before any
+anonymous pull or target-Mac qualification. This workflow must not edit
+`src/adapters/control-plane/` pins, worker contracts, or the capability-runtime
 catalogue.

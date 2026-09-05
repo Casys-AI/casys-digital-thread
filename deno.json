@@ -29,6 +29,7 @@
     "preview:browser": "deno run scripts/serve/console-browser-harness.ts",
     "thread:capture-syson-inventory": "deno run --allow-net=127.0.0.1:3009 --allow-write=state/local scripts/probes/capture-build123d-api-inventory.ts scripts/probes/capture-syson-model-inventory.ts",
     "release:first-party-microvm-images:matrix": "deno run --no-prompt --frozen --allow-read=. scripts/release/export-first-party-microsandbox-image-matrix.ts",
+    "release:first-party-microvm-images:import-candidate": "deno run --no-prompt --frozen --node-modules-dir=auto --allow-read --allow-write=state/local,/tmp,/private/tmp --allow-run=docker --allow-env=LOG,NAPI_RS_ENFORCE_VERSION_CHECK,NAPI_RS_NATIVE_LIBRARY_PATH,NAPI_RS_FORCE_WASI,NAPI_RS_WASI_FLAVOR,MSB_PATH,MSB_LIBKRUNFW_PATH,MSB_CONFIG_PATH,MSB_HOME,MSB_BACKEND,MSB_API_URL,MSB_API_KEY,MSB_PROFILE --allow-ffi=node_modules scripts/release/import-first-party-microsandbox-image-candidate.ts",
     "release:source-alpha:build": "deno run --no-prompt --frozen --allow-read --allow-write=dist/release --allow-run=git scripts/release/build-source-alpha-inventory.ts",
     "release:source-alpha:render": "deno run --no-prompt --frozen --allow-read --allow-write=dist/release scripts/release/render-third-party-notices.ts",
     "release:source-alpha:verify": "deno run --no-prompt --frozen --allow-read --allow-run=git scripts/release/verify-source-alpha-inventory.ts",

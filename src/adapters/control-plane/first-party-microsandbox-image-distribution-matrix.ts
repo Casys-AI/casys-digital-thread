@@ -13,7 +13,10 @@
  */
 
 import type { CapabilityRuntimeCatalog } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
-import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Hex,
+} from "../../domain/kernel/deterministic-json.ts";
 import {
   createFirstPartyMicrosandboxImageBootstrapDescriptors,
   type FirstPartyMicrosandboxImageBootstrapDescriptor,
@@ -123,6 +126,16 @@ export function planFirstPartyMicrosandboxImageDistribution(
   });
   assertFirstPartyMicrosandboxImageDistributionContract(matrix);
   return matrix;
+}
+
+/** SHA-256 of the exact current distribution-matrix document. */
+export async function fingerprintFirstPartyMicrosandboxImageDistributionMatrix(
+  matrix: FirstPartyMicrosandboxImageDistributionMatrix,
+): Promise<string> {
+  assertFirstPartyMicrosandboxImageDistributionContract(matrix);
+  return `sha256:${await sha256Hex(
+    new TextEncoder().encode(deterministicJson(matrix)),
+  )}`;
 }
 
 /**

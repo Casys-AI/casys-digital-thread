@@ -8,15 +8,16 @@
 import { join } from "node:path";
 import { createFirstPartyCapabilityRuntimeCatalog } from "../../src/adapters/control-plane/first-party-capability-binding-catalog.ts";
 import {
-  createFirstPartyMicrosandboxImageDistributionMatrix,
-  type FirstPartyMicrosandboxImageDistributionMatrix,
-} from "../../src/adapters/control-plane/first-party-microsandbox-image-distribution-matrix.ts";
-import { deterministicJson } from "../../src/domain/kernel/deterministic-json.ts";
-import {
   buildFirstPartyMicrosandboxImageCandidateReceipt,
   type FirstPartyMicrosandboxCandidateBuildMetadata,
   renderFirstPartyMicrosandboxImageCandidateReceiptText,
-} from "./first-party-microsandbox-image-candidate-receipt.ts";
+} from "../../src/adapters/control-plane/first-party-microsandbox-image-candidate-receipt.ts";
+import {
+  createFirstPartyMicrosandboxImageDistributionMatrix,
+  fingerprintFirstPartyMicrosandboxImageDistributionMatrix,
+  type FirstPartyMicrosandboxImageDistributionMatrix,
+} from "../../src/adapters/control-plane/first-party-microsandbox-image-distribution-matrix.ts";
+import { deterministicJson } from "../../src/domain/kernel/deterministic-json.ts";
 
 export interface WriteFirstPartyMicrosandboxImageCandidateReceiptArguments {
   readonly matrixPath: string;
@@ -40,7 +41,9 @@ export async function writeFirstPartyMicrosandboxImageCandidateReceipt(
   );
   const receipt = buildFirstPartyMicrosandboxImageCandidateReceipt({
     matrix,
-    matrixFingerprint: await sha256(deterministicJson(matrix)),
+    matrixFingerprint: await fingerprintFirstPartyMicrosandboxImageDistributionMatrix(
+      matrix,
+    ),
     physicalImageId: arguments_.physicalImageId,
     ociIndexDigest: arguments_.ociIndexDigest,
     platformManifestDigest: arguments_.platformManifestDigest,
@@ -152,14 +155,6 @@ function parseJsonObject(source: string, label: string): Record<string, unknown>
     throw new TypeError(`${label} must be a JSON object.`);
   }
   return parsed as Record<string, unknown>;
-}
-
-async function sha256(value: string): Promise<string> {
-  const bytes = new TextEncoder().encode(value);
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-  return `sha256:${
-    Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("")
-  }`;
 }
 
 if (import.meta.main) {

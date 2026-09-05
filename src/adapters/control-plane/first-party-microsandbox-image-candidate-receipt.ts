@@ -7,11 +7,13 @@
  * later, reviewed qualification may compare against.
  */
 
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import {
   assertFirstPartyMicrosandboxImageDistributionContract,
+  fingerprintFirstPartyMicrosandboxImageDistributionMatrix,
   type FirstPartyMicrosandboxImageDistributionEntry,
   type FirstPartyMicrosandboxImageDistributionMatrix,
-} from "../../src/adapters/control-plane/first-party-microsandbox-image-distribution-matrix.ts";
+} from "./first-party-microsandbox-image-distribution-matrix.ts";
 
 export const FIRST_PARTY_MICROSANDBOX_IMAGE_CANDIDATE_RECEIPT_SCHEMA =
   "first-party-microsandbox-image-candidate-receipt/1.0" as const;
@@ -173,6 +175,112 @@ export function buildFirstPartyMicrosandboxImageCandidateReceipt(
   });
 }
 
+export function parseFirstPartyMicrosandboxImageCandidateReceipt(
+  value: unknown,
+): FirstPartyMicrosandboxImageCandidateReceipt {
+  const root = jsonObject(value, "candidate receipt");
+  if (
+    root.schemaVersion !== FIRST_PARTY_MICROSANDBOX_IMAGE_CANDIDATE_RECEIPT_SCHEMA
+  ) {
+    throw new TypeError(
+      "Candidate receipt schema is not first-party-microsandbox-image-candidate-receipt/1.0.",
+    );
+  }
+  const candidate = jsonObject(root.candidate, "candidate receipt candidate");
+  const oci = jsonObject(candidate.oci, "candidate receipt oci");
+  const git = jsonObject(candidate.git, "candidate receipt git");
+  const build = jsonObject(candidate.build, "candidate receipt build");
+  const inputMatrix = jsonObject(
+    root.inputMatrix,
+    "candidate receipt input matrix",
+  );
+  const matrix = {
+    schemaVersion: inputMatrix.schemaVersion,
+    contract: inputMatrix.contract,
+    platform: inputMatrix.platform,
+    images: inputMatrix.images,
+  } as FirstPartyMicrosandboxImageDistributionMatrix;
+  const rebuilt = buildFirstPartyMicrosandboxImageCandidateReceipt({
+    matrix,
+    matrixFingerprint: requiredString(
+      inputMatrix.fingerprint,
+      "candidate receipt matrix fingerprint",
+    ),
+    physicalImageId: requiredString(
+      candidate.physicalImageId,
+      "candidate receipt physicalImageId",
+    ),
+    ociIndexDigest: requiredString(
+      oci.indexDigest,
+      "candidate receipt OCI index digest",
+    ),
+    platformManifestDigest: requiredString(
+      oci.platformManifestDigest,
+      "candidate receipt linux/arm64 OCI manifest digest",
+    ),
+    locatorTag: requiredString(candidate.locatorTag, "candidate receipt locator tag"),
+    gitSha: requiredString(git.sha, "candidate receipt git SHA"),
+    gitTag: requiredString(git.tag, "candidate receipt git tag"),
+    buildMetadata: copyJsonObject(build.metadata, "build metadata"),
+  });
+  if (deterministicJson(rebuilt) !== deterministicJson(value)) {
+    throw new TypeError(
+      "Candidate receipt is not the exact rebuilt first-party receipt.",
+    );
+  }
+  return rebuilt;
+}
+
+export async function bindFirstPartyMicrosandboxImageCandidateReceiptToCurrentMatrix(
+  receipt: FirstPartyMicrosandboxImageCandidateReceipt,
+  matrix: FirstPartyMicrosandboxImageDistributionMatrix,
+): Promise<FirstPartyMicrosandboxImageCandidateReceipt> {
+  const fingerprint = await fingerprintFirstPartyMicrosandboxImageDistributionMatrix(
+    matrix,
+  );
+  if (receipt.inputMatrix.fingerprint !== fingerprint) {
+    throw new TypeError(
+      "Candidate receipt matrix fingerprint is not the current server-owned distribution matrix.",
+    );
+  }
+  const currentBody = Object.freeze({
+    schemaVersion: matrix.schemaVersion,
+    contract: matrix.contract,
+    platform: matrix.platform,
+    images: matrix.images,
+  });
+  const receiptBody = Object.freeze({
+    schemaVersion: receipt.inputMatrix.schemaVersion,
+    contract: receipt.inputMatrix.contract,
+    platform: receipt.inputMatrix.platform,
+    images: receipt.inputMatrix.images,
+  });
+  if (deterministicJson(currentBody) !== deterministicJson(receiptBody)) {
+    throw new TypeError(
+      "Candidate receipt input matrix is not the current server-owned distribution matrix.",
+    );
+  }
+  return receipt;
+}
+
+export async function readBoundFirstPartyMicrosandboxImageCandidateReceipt(
+  source: string,
+  matrix: FirstPartyMicrosandboxImageDistributionMatrix,
+): Promise<FirstPartyMicrosandboxImageCandidateReceipt> {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(source);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new TypeError(`Candidate receipt must be valid JSON: ${detail}`);
+  }
+  const receipt = parseFirstPartyMicrosandboxImageCandidateReceipt(parsed);
+  return await bindFirstPartyMicrosandboxImageCandidateReceiptToCurrentMatrix(
+    receipt,
+    matrix,
+  );
+}
+
 export function renderFirstPartyMicrosandboxImageCandidateReceiptText(
   receipt: FirstPartyMicrosandboxImageCandidateReceipt,
 ): string {
@@ -292,7 +400,7 @@ function copyDistributionEntry(
 }
 
 function copyJsonObject(
-  value: FirstPartyMicrosandboxCandidateBuildMetadata,
+  value: unknown,
   path: string,
 ): FirstPartyMicrosandboxCandidateBuildMetadata {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -308,7 +416,7 @@ function copyJsonObject(
 }
 
 function copyJsonValue(
-  value: FirstPartyMicrosandboxCandidateJsonValue,
+  value: unknown,
   path: string,
 ): FirstPartyMicrosandboxCandidateJsonValue {
   if (
@@ -331,4 +439,18 @@ function copyJsonValue(
     return copyJsonObject(value as FirstPartyMicrosandboxCandidateJsonObject, path);
   }
   throw new TypeError(`${path} must be JSON data.`);
+}
+
+function jsonObject(value: unknown, label: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${label} must be a JSON object.`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function requiredString(value: unknown, label: string): string {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new TypeError(`${label} must be a non-empty string.`);
+  }
+  return value;
 }

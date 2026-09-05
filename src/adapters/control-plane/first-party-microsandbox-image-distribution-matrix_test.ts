@@ -12,6 +12,7 @@ import {
 import {
   assertFirstPartyMicrosandboxImageDistributionContract,
   createFirstPartyMicrosandboxImageDistributionMatrix,
+  fingerprintFirstPartyMicrosandboxImageDistributionMatrix,
   FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT,
   FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA,
   firstPartyMicrosandboxGhcrImageName,
@@ -106,6 +107,15 @@ Deno.test(
     );
     if (!geometry) throw new Error("geometry-module physical image is absent");
     assertEquals(geometry.expectedLabels !== undefined, true);
+    const fingerprint = await fingerprintFirstPartyMicrosandboxImageDistributionMatrix(
+      matrix,
+    );
+    assertEquals(fingerprint.startsWith("sha256:"), true);
+    assertEquals(fingerprint.length, 71);
+    assertEquals(
+      await fingerprintFirstPartyMicrosandboxImageDistributionMatrix(matrix),
+      fingerprint,
+    );
   },
 );
 

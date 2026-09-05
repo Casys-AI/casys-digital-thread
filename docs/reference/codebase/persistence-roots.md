@@ -46,6 +46,13 @@ recoverable pending/claim material for each brief-bound operational authorizatio
 Prepared or pending material alone is not authority. This root is distinct from Thread,
 CAS, MRTR, engineering result, and Workbench command state.
 
+#### `state/local/first-party-microsandbox-image-candidate-import/`
+
+Local factual records for maintainer-only first-party Microsandbox candidate import.
+Each record names the OCI index digest, the linux/arm64 platform-manifest digest, and
+the observed Microsandbox digest as three distinct identities. Not a qualification
+attestation, catalogue pin, Thread evidence, or Workbench command.
+
 #### `state/local/capability-runtime-microvm-preparation/`
 
 Current append-only intent and terminal journal for server-owned first-party microVM
