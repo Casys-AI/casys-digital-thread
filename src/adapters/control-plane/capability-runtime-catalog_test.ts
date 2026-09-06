@@ -95,6 +95,10 @@ Deno.test("atomic first-party runtime catalogue exposes only runtime materials a
     "modelica-worker-image",
   ]);
   assertEquals(modelica?.materials[0]?.effects.security, "reviewed");
+  assertEquals(modelica?.materials[0]?.effects.licence, {
+    status: "reviewed",
+    reference: "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md",
+  });
   assertEquals(modelica?.manifestFingerprint, {
     algorithm: "sha256",
     digest: "152f2581bb59a9c6ed0a05e145b9fae21b7ae0e72ccea5f2c36ab16a94aff4d5",
@@ -130,6 +134,19 @@ Deno.test("atomic first-party runtime catalogue exposes only runtime materials a
       ?.unitIds,
     ["casys.calculix-worker"],
   );
+  const calculixWorker = catalog.units.find((unit) =>
+    unit.id === "casys.calculix-worker"
+  );
+  assertEquals(calculixWorker?.version, "1.0.0");
+  assertEquals(
+    calculixWorker?.materials[0]?.imageReference,
+    "docker.io/casys/calculix-microsandbox-worker@sha256:2dc7d17454833a2c17b5812eb1e5504c4a025ef3764fc771fda2938d49fa9771",
+  );
+  assertEquals(calculixWorker?.materials[0]?.effects.licence, {
+    status: "unknown",
+    reference: "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md",
+  });
+  assertEquals(calculixWorker?.materials[0]?.effects.security, "reviewed");
   const sensitivity = catalog.bindings.find((binding) =>
     binding.id === "calculix-http-static-sensitivity"
   );

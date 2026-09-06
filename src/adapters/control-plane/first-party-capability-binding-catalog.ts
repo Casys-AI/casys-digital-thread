@@ -180,6 +180,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
         ["linux/arm64"],
         "reviewed",
+        "unknown",
       ),
     ]),
     unit("casys.mcp-calculix", [
@@ -479,6 +480,7 @@ function microvmMaterial(
   imageReference: string,
   platforms: readonly ("linux/arm64" | "linux/amd64")[],
   security: "reviewed" | "unknown",
+  licence: "reviewed" | "unknown" = "reviewed",
 ): AtomicCapabilityRuntimeMaterial {
   return {
     id,
@@ -499,7 +501,7 @@ function microvmMaterial(
       dockerSocket: false,
       devices: [],
       secretSlots: [],
-      licence: { status: "reviewed", reference: REVIEWED_LICENCE_DOC },
+      licence: { status: licence, reference: REVIEWED_LICENCE_DOC },
       security,
     },
   };

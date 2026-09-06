@@ -19,6 +19,7 @@
 
 import { createCalculixIsolatedExecutionComposition } from "../../src/adapters/fea/isolated-v3/calculix-isolated-execution-composition.ts";
 import { CALCULIX_ISOLATED_OUTPUT_BATCH_INSPECTOR } from "../../src/adapters/fea/isolated-v3/calculix-isolated-output-batch-inspector.ts";
+import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "../../src/adapters/fea/isolated-v3/local-calculix-image-reference.ts";
 import {
   CALCULIX_ISOLATED_OUTPUT_MANIFEST,
   type CalculixIsolatedStaticResult,
@@ -46,8 +47,6 @@ if (Deno.args.length !== 1 || Deno.args[0] !== "--run") {
   Deno.exit(0);
 }
 
-const IMAGE_DIGEST = "9b3a7468bfbc3f0fe27f7a9ac17c0eb72f1925968173e5a01d985cfa19cbc0a2";
-const IMAGE_REFERENCE = `casys/calculix-microsandbox-worker@sha256:${IMAGE_DIGEST}`;
 const WRAPPER_PATH = "src/adapters/fea/isolated-v3/calculix-static-proof-v1/run.ts";
 const WRAPPER_SHA256 =
   "507c29da72e346aa87465ce96572b19b42e96105c64b2854be73d6894592e4e2";
@@ -76,7 +75,7 @@ const POLICY = Object.freeze({
   fingerprint: await sha256Fingerprint({
     schemaVersion: "calculix-microsandbox-policy/1.0",
     backend: "microsandbox-local@0.6.8",
-    imageReference: IMAGE_REFERENCE,
+    imageReference: LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
     network: "deny-all",
     pullPolicy: "never",
     securityProfile: "restricted",
@@ -216,7 +215,7 @@ try {
   const composition = await createCalculixIsolatedExecutionComposition(
     {
       profile: {
-        imageReference: IMAGE_REFERENCE,
+        imageReference: LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
         wrapperSha256: WRAPPER_SHA256,
         policy: POLICY,
         limits: LIMITS,
@@ -238,7 +237,9 @@ try {
   const profile = await composition.profiles.initial();
   requireEqual(
     profile.runtime.imageDigest.digest,
-    IMAGE_DIGEST,
+    LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE.slice(
+      LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE.lastIndexOf("@sha256:") + 8,
+    ),
     "The composed runtime did not retain the qualified image digest.",
   );
 
@@ -388,7 +389,7 @@ try {
   gateResult = {
     schemaVersion: "calculix-microsandbox-vertical-gate/1.0",
     status: "passed",
-    imageReference: IMAGE_REFERENCE,
+    imageReference: LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
     isolationClass: receipt.runtime.isolationClass,
     recordedAuthority: {
       planSha256: PLAN_SHA256,
