@@ -136,7 +136,10 @@ export class CapabilityRuntimeSupervisor
    * Preparation never invents a work item or a run merely to start a private
    * server-owned prerequisite.  The registered operation must have exactly
    * one preparation demand; any execution, mixed, or no-runtime operation is
-   * refused before the host is observed or mutated.
+   * refused before the host is observed or mutated.  The unique binding is
+   * taken from the exact authorized envelope, current catalogue and admin
+   * lock — not from the current published-plan bindings, which may not yet
+   * include the later work item.
    */
   async requirePreparation(input: {
     readonly project: EngineeringProjectSnapshot;
@@ -157,6 +160,7 @@ export class CapabilityRuntimeSupervisor
       project: input.project,
       operation: input.operation,
       registered,
+      bindingSource: "authorized-envelope",
     });
     if (
       resolved.bindings.length !== 1 ||
@@ -180,7 +184,11 @@ export class CapabilityRuntimeSupervisor
     if (registered.runtimeDemand.kind === "none") {
       return undefined;
     }
-    return await this.#authorizeRegistered({ ...input, registered });
+    return await this.#authorizeRegistered({
+      ...input,
+      registered,
+      bindingSource: "plan",
+    });
   }
 
   async #authorizeRegistered(input: {
@@ -196,6 +204,7 @@ export class CapabilityRuntimeSupervisor
           readonly capabilities: readonly RequiredEngineeringCapability[];
         };
     };
+    readonly bindingSource: "plan" | "authorized-envelope";
   }): Promise<ResolvedCapabilityRuntimeOperation> {
     if (input.registered.runtimeDemand.kind !== "required") {
       throw new CapabilityRuntimeAuthorizationError(
@@ -208,7 +217,9 @@ export class CapabilityRuntimeSupervisor
     const requirements = flattenEngineeringCapabilityRequirements(
       input.registered.runtimeDemand.capabilities,
     );
-    const bindings = resolveRuntimeBindings(requirements, context);
+    const bindings = input.bindingSource === "authorized-envelope"
+      ? resolveAuthorizedRuntimeBindings(requirements, context)
+      : resolveRuntimeBindings(requirements, context);
     assertResolvedMaterialsHaveActiveAdminLock(context, bindings);
     return deepFreeze({
       schemaVersion: "resolved-capability-runtime-operation/2.0" as const,
@@ -374,6 +385,16 @@ function resolveRuntimeBindings(
   return selected.toSorted(compareResolvedBinding);
 }
 
+function resolveAuthorizedRuntimeBindings(
+  requirements: readonly RequiredEngineeringCapability[],
+  context: ProjectCapabilityRuntimeContext,
+): readonly ResolvedCapabilityRuntimeBinding[] {
+  const selected = requirements.map((requirement) =>
+    selectAuthorizedBinding(requirement, context.catalog, context)
+  );
+  return selected.toSorted(compareResolvedBinding);
+}
+
 function selectResolvedBinding(
   requirement: RequiredEngineeringCapability,
   catalog: CapabilityRuntimeCatalog,
@@ -395,19 +416,75 @@ function selectResolvedBinding(
       `No resolved binding is selected for ${requirement.id}@${requirement.version}.`,
     );
   }
+  return resolveSelectedCatalogBinding(
+    requirement,
+    planned.binding,
+    planned.unitIds,
+    catalog,
+    context,
+    context.plan,
+  );
+}
+
+function selectAuthorizedBinding(
+  requirement: RequiredEngineeringCapability,
+  catalog: CapabilityRuntimeCatalog,
+  context: ProjectCapabilityRuntimeContext,
+): ResolvedCapabilityRuntimeBinding {
+  const authorization = context.authorization!;
+  const covered = authorization.allowedCapabilities.some((candidate) =>
+    candidate.id === requirement.id &&
+    candidate.version === requirement.version &&
+    candidate.use === requirement.use &&
+    qualificationCovers(candidate.qualification, requirement.minimumQualification)
+  );
+  if (!covered) {
+    throw new CapabilityRuntimeAuthorizationError(
+      `Project capability runtime authorization does not cover ${requirement.id}@${requirement.version}.`,
+    );
+  }
+  const authorizedMatches = authorization.allowedBindings.filter((candidate) =>
+    candidate.capability.id === requirement.id &&
+    candidate.capability.version === requirement.version &&
+    candidate.capability.use === requirement.use
+  );
+  if (authorizedMatches.length !== 1) {
+    throw new CapabilityRuntimeAuthorizationError(
+      `Project capability authorization has ${authorizedMatches.length} exact bindings for ${requirement.id}@${requirement.version}; server selection is ambiguous.`,
+    );
+  }
+  const authorized = authorizedMatches[0]!;
+  return resolveSelectedCatalogBinding(
+    requirement,
+    authorized.binding,
+    authorized.unitIds,
+    catalog,
+    context,
+    undefined,
+  );
+}
+
+function resolveSelectedCatalogBinding(
+  requirement: RequiredEngineeringCapability,
+  selected: { readonly id: string; readonly version: string },
+  selectedUnitIds: readonly string[],
+  catalog: CapabilityRuntimeCatalog,
+  context: ProjectCapabilityRuntimeContext,
+  plan: ProjectCapabilityPlan | undefined,
+): ResolvedCapabilityRuntimeBinding {
   const catalogMatches = catalog.bindings.filter((candidate) =>
-    candidate.id === planned.binding!.id &&
-    candidate.version === planned.binding!.version
+    candidate.id === selected.id &&
+    candidate.version === selected.version
   );
   if (catalogMatches.length !== 1) {
     throw new CapabilityRuntimeAuthorizationError(
-      `Capability runtime catalogue has ${catalogMatches.length} entries for selected binding ${planned.binding.id}@${planned.binding.version}; server selection is ambiguous.`,
+      `Capability runtime catalogue has ${catalogMatches.length} entries for selected binding ${selected.id}@${selected.version}; server selection is ambiguous.`,
     );
   }
   const binding = catalogMatches[0]!;
   if (!bindingMatchesRequirement(binding, requirement)) {
     throw new CapabilityRuntimeAuthorizationError(
-      `Selected capability binding ${planned.binding.id} is absent or does not match its semantic requirement.`,
+      `Selected capability binding ${selected.id} is absent or does not match its semantic requirement.`,
     );
   }
   if (!qualificationCovers(binding.qualification, requirement.minimumQualification)) {
@@ -415,7 +492,7 @@ function selectResolvedBinding(
       `Selected capability binding ${binding.id} does not meet ${requirement.minimumQualification} qualification.`,
     );
   }
-  const materialLifecyclePairs = planned.unitIds.flatMap((unitId) => {
+  const materialLifecyclePairs = selectedUnitIds.flatMap((unitId) => {
     const unit = catalog.units.find((candidate) => candidate.id === unitId);
     if (!unit || !binding.unitIds.includes(unitId)) {
       throw new CapabilityRuntimeAuthorizationError(
@@ -443,7 +520,7 @@ function selectResolvedBinding(
   const runtimeModes = exactResolvedRuntimeModes(
     binding,
     materials,
-    context.plan,
+    plan,
   );
   const result: ResolvedCapabilityRuntimeBinding = {
     capability: {
@@ -460,14 +537,14 @@ function selectResolvedBinding(
     runtimeModes,
     hostLifecycles,
   };
-  assertAuthorizationAllowsBinding(context.authorization!, result, planned.unitIds);
+  assertAuthorizationAllowsBinding(context.authorization!, result, selectedUnitIds);
   return result;
 }
 
 function exactResolvedRuntimeModes(
   binding: QualifiedCapabilityRuntimeBinding,
   materials: readonly CapabilityRuntimeMaterialIdentity[],
-  plan: ProjectCapabilityPlan,
+  plan: ProjectCapabilityPlan | undefined,
 ): ResolvedCapabilityRuntimeBinding["runtimeModes"] {
   const modes = materials.map((material) => {
     const matches = binding.runtimeModes.filter((candidate) =>
@@ -481,17 +558,19 @@ function exactResolvedRuntimeModes(
       );
     }
     const mode = matches[0]!;
-    const planned = plan.materials.filter((candidate) =>
-      candidate.unitId === material.unitId &&
-      candidate.materialId === material.materialId
-    );
-    if (
-      planned.length !== 1 || planned[0]!.mode === "unavailable" ||
-      planned[0]!.mode !== mode.mode
-    ) {
-      throw new CapabilityRuntimeAuthorizationError(
-        `Project capability plan does not retain the exact runnable mode for ${material.unitId}/${material.materialId}.`,
+    if (plan !== undefined) {
+      const planned = plan.materials.filter((candidate) =>
+        candidate.unitId === material.unitId &&
+        candidate.materialId === material.materialId
       );
+      if (
+        planned.length !== 1 || planned[0]!.mode === "unavailable" ||
+        planned[0]!.mode !== mode.mode
+      ) {
+        throw new CapabilityRuntimeAuthorizationError(
+          `Project capability plan does not retain the exact runnable mode for ${material.unitId}/${material.materialId}.`,
+        );
+      }
     }
     return structuredClone(mode);
   });
