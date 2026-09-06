@@ -107,6 +107,9 @@ import {
   ThreadSnapshotLineageIntegrityError,
 } from "../../shared/stores/thread-snapshot-lineage.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
+import type { CapabilityRuntimeBoundMcpClient } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import { CapabilityRuntimeConnectionError } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import { openLeaseBoundCapabilityRuntimeMcpClient } from "../../../application/control-plane/capability-runtime-bound-mcp-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../../shared/stores/live-thread-update-store.ts";
 import {
   ARCHITECTURE_FEATURE_TYPING_AQL,
@@ -152,11 +155,19 @@ import {
   requireConfiguredOperationalCapability,
   settleCapabilityRuntimeSession,
 } from "../../../application/control-plane/capability-runtime-execution-admission.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import {
   type CapabilityRuntimeExecutionSession,
   type CapabilityRuntimeExecutionSessionCoordinator,
   CapabilityRuntimeSessionUnavailableError,
 } from "../../../application/control-plane/capability-runtime-execution-session.ts";
+
+type ExclusiveSysonRuntimeClient =
+  | { readonly kind: "injected"; readonly syson: McpToolClient }
+  | {
+    readonly kind: "bound";
+    readonly connection: CapabilityRuntimeBoundMcpClient;
+  };
 
 // ── Public re-exports ────────────────────────────────────────────────────────
 
@@ -206,8 +217,12 @@ export interface ModelWriteRequirementsRunExecutorDependencies {
   readonly sysmlSourceAnalysis: SysmlSourceAnalysisReader;
   readonly captures: FileCaptureStore<"requirements-capture">;
   readonly attempts: FileRequirementsAttemptStore;
-  /** Fixed server-owned MCP client. No agent value reaches this boundary. */
-  readonly syson: McpToolClient;
+  /**
+   * Production supplies the lease-bound publication. Focused tests may inject
+   * `syson` instead. Exactly one mode is required.
+   */
+  readonly syson?: McpToolClient;
+  readonly capabilityRuntimeConnection?: CapabilityRuntimeBoundMcpClient;
   readonly lease: EngineeringProjectRunLease;
   readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
   readonly capabilityRuntimeSession?: Pick<
@@ -346,7 +361,7 @@ export class ModelWriteRequirementsRunExecutor {
   readonly #sysmlSourceAnalysis: SysmlSourceAnalysisReader;
   readonly #captures: FileCaptureStore<"requirements-capture">;
   readonly #attempts: FileRequirementsAttemptStore;
-  readonly #syson: McpToolClient;
+  readonly #sysonClient: ExclusiveSysonRuntimeClient;
   readonly #lease: EngineeringProjectRunLease;
   readonly #capabilityRuntime: CapabilityRuntimeExecutionEligibility | undefined;
   readonly #capabilityRuntimeSession:
@@ -364,7 +379,11 @@ export class ModelWriteRequirementsRunExecutor {
     this.#sysmlSourceAnalysis = deps.sysmlSourceAnalysis;
     this.#captures = deps.captures;
     this.#attempts = deps.attempts;
-    this.#syson = deps.syson;
+    this.#sysonClient = exclusiveSysonRuntimeClient(
+      deps.syson,
+      deps.capabilityRuntimeConnection,
+      "Generic requirements write",
+    );
     this.#lease = deps.lease;
     this.#capabilityRuntime = deps.capabilityRuntime;
     this.#capabilityRuntimeSession = deps.capabilityRuntimeSession;
@@ -458,6 +477,26 @@ export class ModelWriteRequirementsRunExecutor {
           return await this.#requireOperationalCapability(fresh, run);
         },
       });
+      let syson: McpToolClient;
+      try {
+        syson = await this.#openSysonClient(
+          capabilitySession,
+          operationalCapability,
+        );
+      } catch (error) {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
+        capabilitySession = undefined;
+        if (error instanceof CapabilityRuntimeConnectionError) {
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            error.message,
+          );
+        }
+        throw error;
+      }
 
       await this.#commands.claimRun(origin, {
         ...command,
@@ -651,6 +690,7 @@ export class ModelWriteRequirementsRunExecutor {
       // predecessor before it is irreversibly deleted.
       const liveRequirementsElementId = await this
         .#findElementByLabelOrUndefined(
+          syson,
           editingContextId,
           target.elementId,
           proposal.partDefName,
@@ -697,13 +737,14 @@ export class ModelWriteRequirementsRunExecutor {
         try {
           const priorTargetedConstraintUsageIds = await this
             .#verifyTargetedRequirementUsage(
+              syson,
               editingContextId,
               liveRequirementsElementId,
               proposal.partDefName,
               target,
             );
           const priorLiveReadback = await extractAndVerifyOracleRequirements(
-            this.#syson,
+            syson,
             editingContextId,
             liveRequirementsElementId,
             priorCapture.requirements,
@@ -761,7 +802,7 @@ export class ModelWriteRequirementsRunExecutor {
           // retry rather than a silent second deletion.
           if (priorRequirementsElementId !== undefined) {
             try {
-              await this.#syson.callTool({
+              await syson.callTool({
                 name: "syson_element_delete",
                 arguments: {
                   editing_context_id: editingContextId,
@@ -785,7 +826,7 @@ export class ModelWriteRequirementsRunExecutor {
             renderRequirements,
           );
           try {
-            const insertResult = await this.#syson.callTool({
+            const insertResult = await syson.callTool({
               name: "syson_element_insert_sysml",
               arguments: {
                 editing_context_id: editingContextId,
@@ -808,6 +849,7 @@ export class ModelWriteRequirementsRunExecutor {
 
           // Step 20: identify element by label (D5 — never by exclusion).
           requirementsElementId = await this.#identifyByLabelOrFail(
+            syson,
             editingContextId,
             target.elementId,
             proposal.partDefName,
@@ -818,6 +860,7 @@ export class ModelWriteRequirementsRunExecutor {
 
       const targetedConstraintUsageIds = await this
         .#verifyTargetedRequirementUsage(
+          syson,
           editingContextId,
           requirementsElementId,
           proposal.partDefName,
@@ -829,7 +872,7 @@ export class ModelWriteRequirementsRunExecutor {
       let verifiedConstraintUsages: readonly VerifiedConstraintUsageIdentity[];
       try {
         const verifiedReadback = await extractAndVerifyOracleRequirements(
-          this.#syson,
+          syson,
           editingContextId,
           requirementsElementId,
           oracleRequirements,
@@ -1095,6 +1138,28 @@ export class ModelWriteRequirementsRunExecutor {
           run: await this.#currentRun(command.projectId, command.runId),
         },
       });
+      throw error;
+    }
+  }
+
+  async #openSysonClient(
+    session: CapabilityRuntimeExecutionSession,
+    operationalCapability: ResolvedCapabilityRuntimeOperation,
+  ): Promise<McpToolClient> {
+    if (this.#sysonClient.kind === "injected") return this.#sysonClient.syson;
+    try {
+      return await openLeaseBoundCapabilityRuntimeMcpClient({
+        connection: this.#sysonClient.connection,
+        session,
+        operationalCapability,
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          error.message,
+        );
+      }
       throw error;
     }
   }
@@ -1833,13 +1898,14 @@ export class ModelWriteRequirementsRunExecutor {
    * whether the prior element exists.
    */
   async #findElementByLabelOrUndefined(
+    syson: McpToolClient,
     editingContextId: string,
     parentId: string,
     partDefName: string,
   ): Promise<string | undefined> {
     let children: readonly unknown[];
     try {
-      const result = await this.#syson.callTool({
+      const result = await syson.callTool({
         name: "syson_element_children",
         arguments: {
           editing_context_id: editingContextId,
@@ -1874,13 +1940,14 @@ export class ModelWriteRequirementsRunExecutor {
   }
 
   async #identifyByLabelOrFail(
+    syson: McpToolClient,
     editingContextId: string,
     parentId: string,
     partDefName: string,
   ): Promise<string> {
     let children: readonly unknown[];
     try {
-      const result = await this.#syson.callTool({
+      const result = await syson.callTool({
         name: "syson_element_children",
         arguments: {
           editing_context_id: editingContextId,
@@ -1930,12 +1997,13 @@ export class ModelWriteRequirementsRunExecutor {
    * The subsequent constraint extractor verifies the predicates themselves.
    */
   async #verifyTargetedRequirementUsage(
+    syson: McpToolClient,
     editingContextId: string,
     requirementsElementId: string,
     requirementName: string,
     target: RequirementsTarget,
   ): Promise<readonly string[]> {
-    const element = await this.#syson.callTool({
+    const element = await syson.callTool({
       name: "syson_element_get",
       arguments: {
         editing_context_id: editingContextId,
@@ -1955,7 +2023,7 @@ export class ModelWriteRequirementsRunExecutor {
       );
     }
 
-    const childrenResult = await this.#syson.callTool({
+    const childrenResult = await syson.callTool({
       name: "syson_element_children",
       arguments: {
         editing_context_id: editingContextId,
@@ -2000,7 +2068,7 @@ export class ModelWriteRequirementsRunExecutor {
       );
     }
 
-    const typing = await this.#syson.callTool({
+    const typing = await syson.callTool({
       name: "syson_query_aql",
       arguments: {
         editing_context_id: editingContextId,
@@ -2410,6 +2478,22 @@ export class ModelWriteRequirementsRunExecutor {
     }
     return project;
   }
+}
+
+function exclusiveSysonRuntimeClient(
+  syson: McpToolClient | undefined,
+  connection: CapabilityRuntimeBoundMcpClient | undefined,
+  operationLabel: string,
+): ExclusiveSysonRuntimeClient {
+  if (syson !== undefined && connection === undefined) {
+    return { kind: "injected", syson };
+  }
+  if (syson === undefined && connection !== undefined) {
+    return { kind: "bound", connection };
+  }
+  throw new Error(
+    `${operationLabel} requires exactly one of a test SysON client or the lease-bound runtime connection.`,
+  );
 }
 
 function parseArchCapture(text: string): ParsedArchCapture {

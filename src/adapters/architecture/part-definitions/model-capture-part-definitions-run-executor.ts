@@ -51,6 +51,10 @@ import {
 } from "../../shared/cas/file-capture-store.ts";
 import { extractPartDefinitionStructures } from "../renderer/architecture-structure-extractor.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
+import type { CapabilityRuntimeBoundMcpClient } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import { CapabilityRuntimeConnectionError } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import { openLeaseBoundCapabilityRuntimeMcpClient } from "../../../application/control-plane/capability-runtime-bound-mcp-client.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type { EngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
 import type { FilePartDefinitionsPublicationStore } from "./file-part-definitions-publication-store.ts";
 import {
@@ -110,7 +114,12 @@ export interface ModelCapturePartDefinitionsRunExecutorDependencies {
     read(fingerprint: ContentFingerprint): Promise<string | undefined>;
   };
   readonly captures: FileCaptureStore<"part-definitions-capture">;
-  readonly syson: McpToolClient;
+  /**
+   * Production supplies the lease-bound publication. Focused tests may inject
+   * `syson` instead. Exactly one mode is required.
+   */
+  readonly syson?: McpToolClient;
+  readonly capabilityRuntimeConnection?: CapabilityRuntimeBoundMcpClient;
   readonly lease: EngineeringProjectRunLease;
   readonly publications: FilePartDefinitionsPublicationStore;
   readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
@@ -120,15 +129,30 @@ export interface ModelCapturePartDefinitionsRunExecutorDependencies {
   >;
 }
 
+type ExclusiveSysonRuntimeClient =
+  | { readonly kind: "injected"; readonly syson: McpToolClient }
+  | {
+    readonly kind: "bound";
+    readonly connection: CapabilityRuntimeBoundMcpClient;
+  };
+
 /**
  * SysON is read-only, but a durable publication record bridges the local
  * snapshot-save to project-attachment boundary. It is append-only and lets a
  * crash resume without a second provider read.
  */
 export class ModelCapturePartDefinitionsRunExecutor {
+  private readonly sysonClient: ExclusiveSysonRuntimeClient;
+
   constructor(
     private readonly d: ModelCapturePartDefinitionsRunExecutorDependencies,
-  ) {}
+  ) {
+    this.sysonClient = exclusiveSysonRuntimeClient(
+      d.syson,
+      d.capabilityRuntimeConnection,
+      "Generic PartDefinitions capture",
+    );
+  }
 
   async execute(
     origin: EngineeringProjectCommandOrigin,
@@ -201,6 +225,26 @@ export class ModelCapturePartDefinitionsRunExecutor {
               return await this.requireOperationalCapability(fresh, freshRun);
             },
           });
+          let syson: McpToolClient;
+          try {
+            syson = await this.openSysonClient(
+              capabilitySession,
+              operationalCapability,
+            );
+          } catch (error) {
+            await settleCapabilityRuntimeSession({
+              session: capabilitySession,
+              policy: { kind: "release" },
+            });
+            capabilitySession = undefined;
+            if (error instanceof CapabilityRuntimeConnectionError) {
+              throw new EngineeringProjectCommandError(
+                "invalid_transition",
+                error.message,
+              );
+            }
+            throw error;
+          }
           await this.d.commands.claimRun(origin, {
             ...command,
             commandId: step(command.commandId, "claim"),
@@ -213,7 +257,7 @@ export class ModelCapturePartDefinitionsRunExecutor {
           const input = await this.inputs(project, run);
           const sealed = extractPartDefinitionsFromCapture(input.architecture);
           const live = await extractPartDefinitionStructures(
-            this.d.syson,
+            syson,
             input.editingContextId,
             sealed.map((part) => ({ id: part.id, label: part.label })),
           );
@@ -651,6 +695,25 @@ export class ModelCapturePartDefinitionsRunExecutor {
     } catch { /* original refusal wins */ }
   }
 
+  private async openSysonClient(
+    session: CapabilityRuntimeExecutionSession,
+    operationalCapability: ResolvedCapabilityRuntimeOperation,
+  ): Promise<McpToolClient> {
+    if (this.sysonClient.kind === "injected") return this.sysonClient.syson;
+    try {
+      return await openLeaseBoundCapabilityRuntimeMcpClient({
+        connection: this.sysonClient.connection,
+        session,
+        operationalCapability,
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw denied(error.message);
+      }
+      throw error;
+    }
+  }
+
   private async requireOperationalCapability(
     project: EngineeringProjectSnapshot,
     run: EngineeringAgentRun,
@@ -818,6 +881,22 @@ function complete(
     );
   }
   return project;
+}
+
+function exclusiveSysonRuntimeClient(
+  syson: McpToolClient | undefined,
+  connection: CapabilityRuntimeBoundMcpClient | undefined,
+  operationLabel: string,
+): ExclusiveSysonRuntimeClient {
+  if (syson !== undefined && connection === undefined) {
+    return { kind: "injected", syson };
+  }
+  if (syson === undefined && connection !== undefined) {
+    return { kind: "bound", connection };
+  }
+  throw new Error(
+    `${operationLabel} requires exactly one of a test SysON client or the lease-bound runtime connection.`,
+  );
 }
 
 function denied(message: string): EngineeringProjectCommandError {

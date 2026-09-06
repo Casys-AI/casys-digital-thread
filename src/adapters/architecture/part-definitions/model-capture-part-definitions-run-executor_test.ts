@@ -1,5 +1,7 @@
 // deno-lint-ignore-file require-await -- promise-shaped in-memory ports mirror production interfaces.
-import { assert, assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { EngineeringProjectCommandError } from "../../../application/use-cases/project/engineering-project-command-service.ts";
+import { CapabilityRuntimeConnectionError } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
 import {
   deterministicJson,
   sha256Fingerprint,
@@ -29,6 +31,7 @@ import { findArchitectureArtifact } from "../renderer/model-write-architecture-r
 import { ModelCapturePartDefinitionsRunExecutor } from "./model-capture-part-definitions-run-executor.ts";
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../../domain/architecture/part-definitions/part-definitions-capture.ts";
 import {
+  passthroughCapabilityRuntimeConnection,
   recordingCapabilityRuntimeSession,
   successfulCapabilityRuntimeFor,
 } from "../../../testing/capability-runtime-execution-session-test-support.ts";
@@ -167,6 +170,182 @@ Deno.test("PartDefinitions capture keeps the run queued when JIT begin fails", a
   assertEquals(fixture.syson.calls, []);
   assertEquals(fixture.project.agentRuns[0]!.status, "queued");
 });
+
+Deno.test(
+  "PartDefinitions capture refuses both a test SysON client and a bound connection",
+  () => {
+    assertThrows(
+      () =>
+        new ModelCapturePartDefinitionsRunExecutor({
+          syson: {} as McpToolClient,
+          capabilityRuntimeConnection: passthroughCapabilityRuntimeConnection(
+            {} as McpToolClient,
+          ),
+        } as never),
+      Error,
+      "exactly one",
+    );
+    assertThrows(
+      () => new ModelCapturePartDefinitionsRunExecutor({} as never),
+      Error,
+      "exactly one",
+    );
+  },
+);
+
+Deno.test(
+  "PartDefinitions capture opens the bound SysON client after JIT and before claim",
+  async () => {
+    const fixture = await productFixture();
+    const events: string[] = [];
+    const lease = { id: "capability-jit-part-defs" } as never;
+    const session = recordingCapabilityRuntimeSession(async (input) => {
+      events.push("begin");
+      await input.recheck();
+      return {
+        lease,
+        releaseTerminal: () => Promise.resolve(),
+        retainForRecovery: () => undefined,
+      };
+    });
+    const originalCall = fixture.syson.callTool.bind(fixture.syson);
+    fixture.syson.callTool = (call) => {
+      events.push(`provider:${call.name}`);
+      return originalCall(call);
+    };
+    const originalClaim = fixture.commands.claimRun.bind(fixture.commands);
+    fixture.commands.claimRun = (origin, command) => {
+      events.push("claim");
+      return originalClaim(origin, command);
+    };
+    const connection = passthroughCapabilityRuntimeConnection(
+      fixture.syson as unknown as McpToolClient,
+      events,
+    );
+    const capability = successfulCapabilityRuntimeFor(
+      PROJECT_ID,
+      MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
+      "model.inspect-system",
+    );
+    await new ModelCapturePartDefinitionsRunExecutor({
+      projects: { get: async () => fixture.project } as never,
+      commands: fixture.commands as never,
+      snapshots: fixture.snapshots,
+      architectureCaptures: fixture.architectureCaptures,
+      seedCaptures: fixture.seedCaptures,
+      captures: fixture.captures,
+      capabilityRuntimeConnection: connection,
+      lease: immediateLease,
+      publications: fixture.publications,
+      capabilityRuntime: capability.capabilityRuntime,
+      capabilityRuntimeSession: session,
+    }).execute(AGENT, fixture.command());
+    assertEquals(events[0], "begin");
+    assertEquals(events.indexOf("begin") < events.indexOf("connect"), true);
+    assertEquals(events.indexOf("connect") < events.indexOf("open"), true);
+    assertEquals(events.indexOf("open") < events.indexOf("claim"), true);
+    assertEquals(
+      events.indexOf("claim") <
+        events.findIndex((event) => event.startsWith("provider:")),
+      true,
+    );
+    assertEquals(connection.opens, 1);
+    assertEquals(connection.requests[0]?.lease, lease);
+    assertEquals(connection.requests[0]?.binding, {
+      id: "model.inspect-system-binding",
+      version: "1",
+    });
+    assertEquals(connection.requests[0]?.launchGroup.id, "casys-syson");
+  },
+);
+
+Deno.test(
+  "a failed PartDefinitions runtime connection after JIT begin does not claim or call SysON",
+  async () => {
+    const fixture = await productFixture();
+    const session = recordingCapabilityRuntimeSession();
+    const connection = {
+      ...passthroughCapabilityRuntimeConnection(
+        fixture.syson as unknown as McpToolClient,
+      ),
+      broker: {
+        connect: () =>
+          Promise.reject(
+            new CapabilityRuntimeConnectionError(
+              "exact SysON publication is unavailable",
+            ),
+          ),
+      },
+    };
+    const capability = successfulCapabilityRuntimeFor(
+      PROJECT_ID,
+      MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
+      "model.inspect-system",
+    );
+    await assertRejects(
+      () =>
+        new ModelCapturePartDefinitionsRunExecutor({
+          projects: { get: async () => fixture.project } as never,
+          commands: fixture.commands as never,
+          snapshots: fixture.snapshots,
+          architectureCaptures: fixture.architectureCaptures,
+          seedCaptures: fixture.seedCaptures,
+          captures: fixture.captures,
+          capabilityRuntimeConnection: connection,
+          lease: immediateLease,
+          publications: fixture.publications,
+          capabilityRuntime: capability.capabilityRuntime,
+          capabilityRuntimeSession: session,
+        }).execute(AGENT, fixture.command()),
+      EngineeringProjectCommandError,
+      "publication is unavailable",
+    );
+    assertEquals(session.events, ["begin"]);
+    assertEquals(session.releases, 1);
+    assertEquals(session.retains, 0);
+    assertEquals(connection.opens, 0);
+    assertEquals(fixture.syson.calls, []);
+    assertEquals(fixture.project.agentRuns[0]!.status, "queued");
+  },
+);
+
+Deno.test(
+  "PartDefinitions publication resume never opens a second bound SysON client",
+  async () => {
+    const fixture = await productFixture({ failSnapshotOnce: true });
+    const events: string[] = [];
+    const connection = passthroughCapabilityRuntimeConnection(
+      fixture.syson as unknown as McpToolClient,
+      events,
+    );
+    const capability = successfulCapabilityRuntimeFor(
+      PROJECT_ID,
+      MODEL_CAPTURE_PART_DEFINITIONS_OPERATION,
+      "model.inspect-system",
+    );
+    const executor = () =>
+      new ModelCapturePartDefinitionsRunExecutor({
+        projects: { get: async () => fixture.project } as never,
+        commands: fixture.commands as never,
+        snapshots: fixture.snapshots,
+        architectureCaptures: fixture.architectureCaptures,
+        seedCaptures: fixture.seedCaptures,
+        captures: fixture.captures,
+        capabilityRuntimeConnection: connection,
+        lease: immediateLease,
+        publications: fixture.publications,
+        capabilityRuntime: capability.capabilityRuntime,
+        capabilityRuntimeSession: capability.capabilityRuntimeSession,
+      });
+    await assertRejects(() => executor().execute(AGENT, fixture.command()));
+    assertEquals(connection.opens, 1);
+    fixture.syson.failIfCalled = true;
+    const completed = await executor().execute(AGENT, fixture.command());
+    assertEquals(completed.agentRuns[0]!.status, "completed");
+    assertEquals(connection.opens, 1);
+    assertEquals(events.filter((event) => event === "connect").length, 1);
+  },
+);
 
 Deno.test("no FileArchitectureAttemptStore begin occurs before the SysON read", async () => {
   const source = await Deno.readTextFile(
@@ -664,8 +843,11 @@ async function productFixture(options: FixtureOptions = {}) {
     project,
     snapshots,
     architecture,
+    architectureCaptures,
+    seedCaptures,
     captures,
     publications,
+    commands,
     syson,
     command: () => ({
       commandId: "execute-capture-part-definitions",

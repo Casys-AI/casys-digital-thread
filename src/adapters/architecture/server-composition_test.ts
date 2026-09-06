@@ -6,6 +6,7 @@ import { FileLiveThreadUpdateStore } from "../shared/stores/live-thread-update-s
 import { FileThreadSnapshotStore } from "../shared/stores/file-thread-snapshot-store.ts";
 import { ArchitectureSysmlSourceAnalysisCaptureService } from "./agent-seal/architecture-sysml-source-analysis-capture.ts";
 import { ModelSealArchitectureSysmlRunExecutor } from "./agent-seal/model-seal-architecture-sysml-run-executor.ts";
+import { ModelCapturePartDefinitionsRunExecutor } from "./part-definitions/model-capture-part-definitions-run-executor.ts";
 import { ModelWriteArchitectureRunExecutor } from "./renderer/model-write-architecture-run-executor.ts";
 import { SysmlSourceAnalysisCaptureService } from "./renderer/sysml-source-analysis-capture.ts";
 import { ModelWriteRequirementsRunExecutor } from "./requirements/model-write-requirements-run-executor.ts";
@@ -22,7 +23,7 @@ import type {
   McpToolResult,
 } from "../../application/ports/out/mcp-tool-client.ts";
 
-Deno.test("architecture composition seals without SysON and writes only when a SysON URL is supplied", async () => {
+Deno.test("architecture composition seals without SysON and writes only through the lease-bound runtime connection", async () => {
   const root = await Deno.makeTempDir({
     prefix: "casys-architecture-composition-",
   });
@@ -69,31 +70,28 @@ Deno.test("architecture composition seals without SysON and writes only when a S
     assertEquals(withoutSyson.genericModelCapturePartDefinitions, undefined);
     assertEquals(withoutSyson.sysonModelSeed, undefined);
 
-    const withSyson = createArchitectureProject({
-      ...shared,
-      sysonMcpUrl: "http://127.0.0.1:1/mcp",
-    });
-    assertInstanceOf(
-      withSyson.genericModelWriteArchitecture,
-      ModelWriteArchitectureRunExecutor,
-    );
-    assertInstanceOf(
-      withSyson.genericModelWriteRequirements,
-      ModelWriteRequirementsRunExecutor,
-    );
-    assertInstanceOf(
-      withSyson.modelSealArchitectureSysml,
-      ModelSealArchitectureSysmlRunExecutor,
-    );
-    assertEquals(withSyson.sysonModelSeed, undefined);
-
     const withConnection = createArchitectureProject({
       ...shared,
-      sysonMcpUrl: "http://127.0.0.1:1/mcp",
       sysonRuntimeConnection: passthroughCapabilityRuntimeConnection(
         new CompositionSeedSyson(),
       ),
     });
+    assertInstanceOf(
+      withConnection.genericModelWriteArchitecture,
+      ModelWriteArchitectureRunExecutor,
+    );
+    assertInstanceOf(
+      withConnection.genericModelWriteRequirements,
+      ModelWriteRequirementsRunExecutor,
+    );
+    assertInstanceOf(
+      withConnection.genericModelCapturePartDefinitions,
+      ModelCapturePartDefinitionsRunExecutor,
+    );
+    assertInstanceOf(
+      withConnection.modelSealArchitectureSysml,
+      ModelSealArchitectureSysmlRunExecutor,
+    );
     assertInstanceOf(withConnection.sysonModelSeed, SysonModelSeedRunExecutor);
 
     assertInstanceOf(
@@ -114,9 +112,12 @@ Deno.test("architecture composition seals without SysON and writes only when a S
       new URL("./server-composition.ts", import.meta.url),
     );
     assertEquals(source.includes("CreateConsoleServerOptions"), false);
+    assertEquals(source.includes("HttpMcpToolClient"), false);
+    assertEquals(source.includes("sysonMcpUrl"), false);
     assertEquals(
-      source.includes("capabilityRuntimeConnection: sysonRuntimeConnection"),
-      true,
+      source.split("capabilityRuntimeConnection: sysonRuntimeConnection")
+        .length - 1,
+      4,
     );
   } finally {
     await Deno.remove(root, { recursive: true });

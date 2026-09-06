@@ -3,10 +3,10 @@
  * contributions.
  *
  * Agent-authored seal stores stay distinct from the renderer SysML capture.
- * Write-architecture, write-requirements and part-definitions still require
- * an explicit SysON URL. The SysON seed canary locates the publication through
- * the generic lease-bound connection handle; it never receives a URL.
- * `model.seal-architecture-sysml@1` never receives a provider client.
+ * Write-architecture, write-requirements, part-definitions and the SysON seed
+ * locate the publication through the generic lease-bound connection handle;
+ * they never receive a URL. `model.seal-architecture-sysml@1` never receives
+ * a provider client.
  * Requirements CAS is created once here so FEA, compilation basis, and ROP
  * reopen the same bytes.
  */
@@ -35,7 +35,6 @@ import {
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
   SYSON_MODEL_SEED_CAPTURE_DESCRIPTOR,
 } from "../shared/cas/file-capture-store.ts";
-import { HttpMcpToolClient } from "../shared/mcp/http-mcp-tool-client.ts";
 import type { EngineeringProjectRunLease } from "../shared/stores/file-engineering-project-run-lease.ts";
 import type { FileLiveThreadUpdateStore } from "../shared/stores/live-thread-update-store.ts";
 import { createArchitectureSysmlSourceAnalysisCaptureService } from "./agent-seal/architecture-sysml-source-analysis-composition.ts";
@@ -106,11 +105,10 @@ export interface ArchitectureProjectOptions {
   };
   readonly lease: EngineeringProjectRunLease;
   readonly liveUpdates: FileLiveThreadUpdateStore;
-  readonly sysonMcpUrl?: string;
   /**
-   * Lease-bound SysON seed publication. Composition owns the trusted binding
-   * and `casys-syson` mapping; the executor never names the URL. The same
-   * generic locator is reused for assembly observation.
+   * Lease-bound SysON publication. Composition owns the trusted binding and
+   * `casys-syson` mapping; the executors never name the URL. The same generic
+   * locator is reused for assembly observation.
    */
   readonly sysonRuntimeConnection?: CapabilityRuntimeBoundMcpClient;
   readonly foundation: ArchitectureFoundation;
@@ -232,7 +230,7 @@ export function createArchitectureFoundation(
 export function createArchitectureProject(
   options: ArchitectureProjectOptions,
 ): ArchitectureProject {
-  const { foundation, sysonMcpUrl, sysonRuntimeConnection } = options;
+  const { foundation, sysonRuntimeConnection } = options;
   const briefRequirementsReview = new PrepareProjectBriefRequirementsReview({
     projects: options.projects,
   });
@@ -263,7 +261,7 @@ export function createArchitectureProject(
       liveUpdates: options.liveUpdates,
     })
     : undefined;
-  const genericModelWriteArchitecture = sysonMcpUrl
+  const genericModelWriteArchitecture = sysonRuntimeConnection
     ? new ModelWriteArchitectureRunExecutor({
       projects: options.projects,
       commands: options.commands,
@@ -274,14 +272,14 @@ export function createArchitectureProject(
       attempts: new FileArchitectureAttemptStore(
         options.architectureAttemptDirectory,
       ),
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      capabilityRuntimeConnection: sysonRuntimeConnection,
       lease: options.lease,
       capabilityRuntime: options.capabilityRuntime,
       capabilityRuntimeSession: options.capabilityRuntimeSession,
       liveUpdates: options.liveUpdates,
     })
     : undefined;
-  const genericModelCapturePartDefinitions = sysonMcpUrl
+  const genericModelCapturePartDefinitions = sysonRuntimeConnection
     ? new ModelCapturePartDefinitionsRunExecutor({
       projects: options.projects,
       commands: options.commands,
@@ -292,7 +290,7 @@ export function createArchitectureProject(
         ...PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
         directory: options.partDefinitionsCaptureDirectory,
       }),
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      capabilityRuntimeConnection: sysonRuntimeConnection,
       lease: options.lease,
       publications: new FilePartDefinitionsPublicationStore(
         options.partDefinitionsPublicationDirectory,
@@ -301,7 +299,7 @@ export function createArchitectureProject(
       capabilityRuntimeSession: options.capabilityRuntimeSession,
     })
     : undefined;
-  const genericModelWriteRequirements = sysonMcpUrl
+  const genericModelWriteRequirements = sysonRuntimeConnection
     ? new ModelWriteRequirementsRunExecutor({
       projects: options.projects,
       commands: options.commands,
@@ -313,7 +311,7 @@ export function createArchitectureProject(
       attempts: new FileRequirementsAttemptStore(
         options.requirementsAttemptDirectory,
       ),
-      syson: new HttpMcpToolClient({ mcpUrl: sysonMcpUrl, timeoutMs: 30_000 }),
+      capabilityRuntimeConnection: sysonRuntimeConnection,
       lease: options.lease,
       capabilityRuntime: options.capabilityRuntime,
       capabilityRuntimeSession: options.capabilityRuntimeSession,
