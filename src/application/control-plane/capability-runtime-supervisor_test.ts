@@ -47,6 +47,12 @@ const PROJECT = {
   revision: 7,
 } as unknown as EngineeringProjectSnapshot;
 const OPERATION = { id: "verify.static", version: "1", bindings: [] };
+const PREPARATION_OPERATION = {
+  id: "design.write-geometry",
+  version: "1",
+  bindings: [],
+};
+const SANDBOX_IMAGE_DIGEST = "e".repeat(64);
 const WORK_ITEM = {
   id: "work:static",
   operation: OPERATION,
@@ -281,6 +287,142 @@ Deno.test("preparation entry refuses a registered execution operation before rea
   );
 });
 
+Deno.test("preparation resolves the authorized binding when the current plan has not selected that requirement yet", async () => {
+  const fixture = await preworkitemFixture();
+  assertEquals(
+    fixture.context.plan.bindings.map((binding) => binding.requirement.id),
+    ["mechanics.solve-static-structural"],
+  );
+
+  const resolved = await fixture.supervisor.requirePreparation({
+    project: PROJECT,
+    operation: PREPARATION_OPERATION,
+  });
+
+  assertEquals(resolved.bindings, [{
+    capability: {
+      id: "geometry.export-admitted-source",
+      version: "1",
+      use: "preparation",
+      minimumQualification: "qualified",
+    },
+    binding: { id: "build123d-export-admitted-source", version: "1" },
+    effectiveQualification: "qualified",
+    adapter: { id: "build123d-export", version: "1", source: "server" },
+    profile: null,
+    materials: [fixture.preparationMaterial],
+    runtimeModes: [{
+      material: fixture.preparationMaterial,
+      targetPlatform: "linux/arm64",
+      mode: "native",
+      qualificationAttestationFingerprint: FINGERPRINT,
+    }],
+    hostLifecycles: [{
+      material: fixture.preparationMaterial,
+      kind: "persistent-compose",
+      launchGroup: null,
+    }],
+  }]);
+  assertEquals(
+    (await fixture.supervisor.validate(queueInput()))?.bindings[0]?.binding.id,
+    "calculix-static-structural",
+  );
+});
+
+Deno.test("preparation refuses when the project has no authorization", async () => {
+  const fixture = await preworkitemFixture();
+  fixture.contexts.set(PROJECT.id, {
+    ...fixture.context,
+    authorization: undefined,
+  });
+
+  await assertRejects(
+    () =>
+      fixture.supervisor.requirePreparation({
+        project: PROJECT,
+        operation: PREPARATION_OPERATION,
+      }),
+    CapabilityRuntimeAuthorizationError,
+    "not-authorized",
+  );
+});
+
+Deno.test("preparation refuses when the authorized envelope does not name exactly one binding for the requirement", async () => {
+  const fixture = await preworkitemFixture();
+  const authorization = fixture.context.authorization!;
+  fixture.contexts.set(PROJECT.id, {
+    ...fixture.context,
+    authorization: {
+      ...authorization,
+      allowedBindings: authorization.allowedBindings.filter(
+        (binding) => binding.capability.use !== "preparation",
+      ),
+    },
+  });
+
+  await assertRejects(
+    () =>
+      fixture.supervisor.requirePreparation({
+        project: PROJECT,
+        operation: PREPARATION_OPERATION,
+      }),
+    CapabilityRuntimeAuthorizationError,
+    "has 0 exact bindings",
+  );
+});
+
+Deno.test("preparation refuses when the current catalogue does not retain the exact authorized binding", async () => {
+  const fixture = await preworkitemFixture();
+  fixture.contexts.set(PROJECT.id, {
+    ...fixture.context,
+    catalog: {
+      ...fixture.context.catalog,
+      bindings: fixture.context.catalog.bindings.filter(
+        (binding) => binding.id !== "build123d-export-admitted-source",
+      ),
+    },
+  });
+
+  await assertRejects(
+    () =>
+      fixture.supervisor.requirePreparation({
+        project: PROJECT,
+        operation: PREPARATION_OPERATION,
+      }),
+    CapabilityRuntimeAuthorizationError,
+    "catalogue has 0 entries",
+  );
+});
+
+Deno.test("execution still requires the current plan binding even when the authorized envelope covers the requirement", async () => {
+  const fixture = await preworkitemFixture();
+  fixture.contexts.set(PROJECT.id, {
+    ...fixture.context,
+    plan: {
+      ...fixture.context.plan,
+      bindings: [],
+      materials: [],
+    },
+  });
+
+  await assertRejects(
+    () => fixture.supervisor.validate(queueInput()),
+    CapabilityRuntimeAuthorizationError,
+    "plan has 0 selected candidates",
+  );
+  await assertRejects(
+    () =>
+      fixture.supervisor.requireExecution({
+        project: PROJECT,
+        run: { id: "run:static", workItemId: WORK_ITEM.id } as never,
+        workItem: WORK_ITEM,
+        operation: OPERATION,
+      }),
+    CapabilityRuntimeAuthorizationError,
+    "plan has 0 selected candidates",
+  );
+});
+
 Deno.test("lifecycle coordinator journals before host mutation and recovery keeps an unmet intent pending", async () => {
   const journal = new InMemoryCapabilityRuntimeJournal();
   const leases = new InMemoryCapabilityRuntimeLeaseStore();
@@ -456,6 +598,180 @@ function requiredDemand() {
       use: "execution" as const,
       minimumQualification: "qualified" as const,
     }],
+  };
+}
+
+function preparationDemand() {
+  return {
+    kind: "required" as const,
+    capabilities: [{
+      id: "geometry.export-admitted-source",
+      version: "1",
+      use: "preparation" as const,
+      minimumQualification: "qualified" as const,
+    }],
+  };
+}
+
+function dualRegistry(): CapabilityRuntimeOperationRegistry {
+  return {
+    require(operation) {
+      if (
+        operation.id === PREPARATION_OPERATION.id &&
+        operation.version === PREPARATION_OPERATION.version
+      ) {
+        return {
+          id: operation.id,
+          version: operation.version,
+          runtimeDemand: preparationDemand(),
+        };
+      }
+      return {
+        id: operation.id,
+        version: operation.version,
+        runtimeDemand: requiredDemand(),
+      };
+    },
+  };
+}
+
+function preworkitemFixture() {
+  const executionMaterial = {
+    unitId: "casys.calculix-worker",
+    materialId: "calculix-worker",
+    imageDigest: IMAGE_DIGEST,
+  };
+  const preparationMaterial = {
+    unitId: "casys.mcp-build123d-sandbox",
+    materialId: "mcp-build123d-sandbox-image",
+    imageDigest: SANDBOX_IMAGE_DIGEST,
+  };
+  const context = withAuthorizedPreparation(
+    runtimeContext(executionMaterial),
+    preparationMaterial,
+  );
+  const contexts = new InMemoryProjectCapabilityRuntimeContextReader();
+  contexts.set(PROJECT.id, context);
+  return Promise.resolve({
+    executionMaterial,
+    preparationMaterial,
+    context,
+    contexts,
+    supervisor: new CapabilityRuntimeSupervisor({
+      contexts,
+      operations: dualRegistry(),
+    }),
+  });
+}
+
+function withAuthorizedPreparation(
+  context: ProjectCapabilityRuntimeContext,
+  material: {
+    readonly unitId: string;
+    readonly materialId: string;
+    readonly imageDigest: string;
+  },
+): ProjectCapabilityRuntimeContext {
+  const authorization = context.authorization!;
+  const requirement = preparationDemand().capabilities[0]!;
+  return {
+    ...context,
+    catalog: {
+      ...context.catalog,
+      units: [
+        ...context.catalog.units,
+        {
+          id: material.unitId,
+          version: "1",
+          manifestFingerprint: FINGERPRINT,
+          materials: [{
+            id: material.materialId,
+            kind: "compose-service",
+            imageReference:
+              `example.test/build123d-sandbox@sha256:${material.imageDigest}`,
+            platforms: ["linux/arm64"],
+            lifecycle: "persistent",
+            launchGroup: null,
+            effects: {},
+          }],
+        },
+      ],
+      bindings: [
+        ...context.catalog.bindings,
+        {
+          id: "build123d-export-admitted-source",
+          version: "1",
+          capability: {
+            id: "geometry.export-admitted-source",
+            version: "1",
+          },
+          use: "preparation",
+          qualification: "qualified",
+          adapter: { id: "build123d-export", version: "1", source: "server" },
+          profile: null,
+          unitIds: [material.unitId],
+          qualificationEvidence: {
+            id: "qualification",
+            source: "test",
+            fingerprint: null,
+          },
+          runtimeModes: [{
+            material,
+            targetPlatform: "linux/arm64",
+            mode: "native",
+            qualificationAttestationFingerprint: FINGERPRINT,
+          }],
+          limitations: [],
+        },
+      ],
+    } as unknown as CapabilityRuntimeCatalog,
+    lock: {
+      ...context.lock,
+      units: [
+        ...context.lock.units,
+        {
+          id: material.unitId,
+          version: "1",
+          manifestFingerprint: FINGERPRINT,
+          desired: "active" as const,
+        },
+      ],
+    },
+    authorization: {
+      ...authorization,
+      allowedCapabilities: [
+        ...authorization.allowedCapabilities,
+        {
+          id: requirement.id,
+          version: requirement.version,
+          use: requirement.use,
+          qualification: "qualified" as const,
+        },
+      ],
+      allowedUnits: [
+        ...authorization.allowedUnits,
+        {
+          id: material.unitId,
+          version: "1",
+          manifestFingerprint: FINGERPRINT,
+        },
+      ],
+      allowedBindings: [
+        ...authorization.allowedBindings,
+        {
+          capability: {
+            id: requirement.id,
+            version: requirement.version,
+            use: requirement.use,
+          },
+          binding: { id: "build123d-export-admitted-source", version: "1" },
+          adapter: { id: "build123d-export", version: "1", source: "server" },
+          profile: null,
+          unitIds: [material.unitId],
+          materials: [material],
+        },
+      ],
+    },
   };
 }
 
