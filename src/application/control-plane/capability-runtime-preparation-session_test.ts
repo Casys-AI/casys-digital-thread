@@ -155,11 +155,12 @@ Deno.test("preparation refuses a non-preparation or mixed resolved operation bef
     now: () => AT,
   });
 
-  await assertRejects(
+  const error = await assertRejects(
     () => coordinator.begin({ project: PROJECT, operation: OPERATION }),
     CapabilityRuntimePreparationUnavailableError,
     "exactly one resolved preparation binding",
   );
+  assertEquals(error.phase, "scope");
   assertEquals(activations, 0);
 });
 
@@ -186,6 +187,115 @@ Deno.test("an interrupted pre-dispatch preparation reuses its exact live lease o
 
   await renewed.releaseSuccess();
   assertEquals(await leases.listActive(now), []);
+});
+
+Deno.test("preparation wraps unknown scope causes without leaking host details", async () => {
+  let activations = 0;
+  const coordinator = new CapabilityRuntimePreparationSessionCoordinator({
+    authorization: { requirePreparation: () => Promise.reject(leakError()) },
+    leases: new InMemoryCapabilityRuntimeLeaseStore(),
+    groups: unusedGroups(() => activations++),
+    now: () => AT,
+  });
+
+  const error = await assertRejects(
+    () => coordinator.begin({ project: PROJECT, operation: OPERATION }),
+    CapabilityRuntimePreparationUnavailableError,
+    "Preparation could not resolve its exact operational scope.",
+  );
+  assertEquals(error.phase, "scope");
+  assertNoLeak(error);
+  assertEquals(activations, 0);
+});
+
+Deno.test("preparation projection failures stay generic and do not leak host causes", async () => {
+  let activations = 0;
+  const coordinator = new class extends CapabilityRuntimePreparationSessionCoordinator {
+    protected override deriveEffectiveRuntimeProjection(): Promise<never> {
+      return Promise.reject(leakError());
+    }
+  }({
+    authorization: { requirePreparation: () => Promise.resolve(preparation()) },
+    leases: new InMemoryCapabilityRuntimeLeaseStore(),
+    groups: unusedGroups(() => activations++),
+    now: () => AT,
+  });
+
+  const error = await assertRejects(
+    () => coordinator.begin({ project: PROJECT, operation: OPERATION }),
+    CapabilityRuntimePreparationUnavailableError,
+    "Preparation could not derive its exact runtime projection.",
+  );
+  assertEquals(error.phase, "projection");
+  assertNoLeak(error);
+  assertEquals(activations, 0);
+});
+
+Deno.test("preparation lease recovery failures stay generic and do not leak host causes", async () => {
+  let activations = 0;
+  const coordinator = new CapabilityRuntimePreparationSessionCoordinator({
+    authorization: { requirePreparation: () => Promise.resolve(preparation()) },
+    leases: {
+      read: () => Promise.reject(leakError()),
+    } as never,
+    groups: unusedGroups(() => activations++),
+    now: () => AT,
+  });
+
+  const error = await assertRejects(
+    () => coordinator.begin({ project: PROJECT, operation: OPERATION }),
+    CapabilityRuntimePreparationUnavailableError,
+    "Preparation could not recover its exact lease.",
+  );
+  assertEquals(error.phase, "lease-recovery");
+  assertNoLeak(error);
+  assertEquals(activations, 0);
+});
+
+Deno.test("preparation host preflight failures stay generic and do not leak host causes", async () => {
+  const coordinator = new CapabilityRuntimePreparationSessionCoordinator({
+    authorization: { requirePreparation: () => Promise.resolve(preparation()) },
+    leases: new InMemoryCapabilityRuntimeLeaseStore(),
+    groups: {
+      ensureActive: () => Promise.reject(leakError()),
+    } as never,
+    now: () => AT,
+  });
+
+  const error = await assertRejects(
+    () => coordinator.begin({ project: PROJECT, operation: OPERATION }),
+    CapabilityRuntimePreparationUnavailableError,
+    "Preparation host preflight is unavailable.",
+  );
+  assertEquals(error.phase, "h1-preflight");
+  assertNoLeak(error);
+});
+
+Deno.test("preparation reports inactive host state as a safe h1-preflight refusal", async () => {
+  const coordinator = new CapabilityRuntimePreparationSessionCoordinator({
+    authorization: { requirePreparation: () => Promise.resolve(preparation()) },
+    leases: new InMemoryCapabilityRuntimeLeaseStore(),
+    groups: {
+      ensureActive: () =>
+        Promise.resolve({
+          group: GROUP,
+          states: new Map([[
+            "casys.mcp-build123d-sandbox\u0000mcp-build123d-sandbox-image",
+            { material: "installed" as const, runtime: "inactive" as const },
+          ]]),
+          mutation: undefined,
+        }),
+    } as never,
+    now: () => AT,
+  });
+
+  const error = await assertRejects(
+    () => coordinator.begin({ project: PROJECT, operation: OPERATION }),
+    CapabilityRuntimePreparationUnavailableError,
+    "did not reach an exact installed, active physical state",
+  );
+  assertEquals(error.phase, "h1-preflight");
+  assertNoLeak(error);
 });
 
 Deno.test("recorded replay cleanup releases only its exact extant lease without a new activation", async () => {
@@ -236,6 +346,38 @@ function preparationCoordinator(
     } as never,
     now,
   });
+}
+
+const LEAK = {
+  path: "/var/run/docker.sock",
+  endpoint: "http://127.0.0.1:2375/v1.41",
+  secret: "super-secret-token",
+  provider: "mcp-build123d",
+  payload: '{"image":"casys/build123d"}',
+};
+
+function leakError(): Error {
+  return new Error(
+    `Cannot start ${LEAK.provider} at ${LEAK.path} endpoint ${LEAK.endpoint} secret=${LEAK.secret} payload=${LEAK.payload}`,
+  );
+}
+
+function assertNoLeak(error: Error): void {
+  const text = `${error.name}\n${error.message}\n${error.stack ?? ""}`;
+  for (const value of Object.values(LEAK)) {
+    assertEquals(text.includes(value), false);
+  }
+  assertEquals(error.cause, undefined);
+}
+
+function unusedGroups(onActivate: () => void) {
+  return {
+    ensureActive: () => {
+      onActivate();
+      return Promise.reject(new Error("must not activate"));
+    },
+    releaseTerminal: () => Promise.reject(new Error("must not release")),
+  } as never;
 }
 
 function preparation(): ResolvedCapabilityRuntimeOperation {

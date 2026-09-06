@@ -632,10 +632,10 @@ export class ExportAdmittedProjectGeometry
         project,
         operation: { ...DESIGN_WRITE_GEOMETRY_OPERATION, bindings: [] },
       });
-    } catch {
+    } catch (cause) {
       throw exportError(
         "runtime_unavailable",
-        "The server-owned Build123d preparation runtime is unavailable.",
+        preparationRuntimeUnavailableMessage(cause),
       );
     }
     try {
@@ -1417,4 +1417,33 @@ function exportError(
   message: string,
 ): ProjectAdmittedGeometryExportError {
   return new ProjectAdmittedGeometryExportError(code, message);
+}
+
+function preparationRuntimeUnavailableMessage(cause: unknown): string {
+  const phase = safePreparationUnavailablePhase(cause);
+  if (phase === undefined) {
+    return "The server-owned Build123d preparation runtime is unavailable.";
+  }
+  return `The server-owned Build123d preparation runtime is unavailable (${phase}).`;
+}
+
+function safePreparationUnavailablePhase(
+  cause: unknown,
+): "scope" | "projection" | "lease-recovery" | "h1-preflight" | undefined {
+  if (
+    !(cause instanceof Error) ||
+    cause.name !== "CapabilityRuntimePreparationUnavailableError"
+  ) {
+    return undefined;
+  }
+  const phase = (cause as { readonly phase?: unknown }).phase;
+  switch (phase) {
+    case "scope":
+    case "projection":
+    case "lease-recovery":
+    case "h1-preflight":
+      return phase;
+    default:
+      return undefined;
+  }
 }
