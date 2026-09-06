@@ -4,6 +4,7 @@ import { FileCapabilityRuntimeAdminPolicyStore } from "../../adapters/control-pl
 import { createFirstPartyCapabilityRuntimeCatalog } from "../../adapters/control-plane/first-party-capability-binding-catalog.ts";
 import { FileEngineeringProjectRevisionStore } from "../../adapters/shared/stores/engineering-project-store.ts";
 import { ProjectBriefCommandService } from "../use-cases/project/project-brief-command-service.ts";
+import { briefCapabilityIntentRouteTable } from "../../orchestration/operations/brief-capability-intent-routes.ts";
 import { listRegisteredEngineeringOperations } from "../../orchestration/operations/registry.ts";
 import {
   ProjectCapabilityAuthorizationError,
@@ -29,6 +30,7 @@ Deno.test("explicit unused withdrawal shrinks a covered subset and later demand 
     const authorization = new ProjectCapabilityAuthorizationService({
       ledgers,
       registry: { list: listRegisteredEngineeringOperations },
+      routes: briefCapabilityIntentRouteTable,
       recordedPlans: unusedRecordedPlans(),
       catalog,
       qualificationSpecs: [],
@@ -233,6 +235,7 @@ Deno.test("unused withdrawal may resolve unknown security and unknown bytes by r
     const authorization = new ProjectCapabilityAuthorizationService({
       ledgers: new InMemoryProjectCapabilityLedgerStore(),
       registry: { list: listRegisteredEngineeringOperations },
+      routes: briefCapabilityIntentRouteTable,
       recordedPlans: unusedRecordedPlans(),
       catalog,
       qualificationSpecs: [],

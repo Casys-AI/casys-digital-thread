@@ -245,6 +245,32 @@ Deno.test("application use cases stay inward of adapters and orchestration", () 
   );
 });
 
+Deno.test("control-plane stays inward of orchestration", () => {
+  const edge = (
+    source: string,
+    target: string,
+    kind: ImportKind,
+  ): ModuleImport => ({ source, target, kind, specifier: target });
+
+  assertEquals([
+    isForbiddenLayerImport(edge(
+      "src/application/control-plane/compile-project-capability-demand.ts",
+      "src/orchestration/operations/registry.ts",
+      "runtime",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/application/control-plane/compile-project-capability-demand.ts",
+      "src/orchestration/operations/registry.ts",
+      "type-only",
+    )),
+    isForbiddenLayerImport(edge(
+      "src/application/control-plane/compile-project-capability-demand.ts",
+      "src/domain/capability/project-capability-demand.ts",
+      "runtime",
+    )),
+  ], [true, true, false]);
+});
+
 Deno.test("desktop chat and UI share the presentation contract without crossing runtimes", () => {
   const edge = (
     source: string,
@@ -683,6 +709,15 @@ function isForbiddenLayerImport(dependency: ModuleImport): boolean {
       "src/application/ports/",
       "src/application/use-cases/",
       "src/domain/",
+    ].some((prefix) => target.startsWith(prefix));
+  }
+  if (source.startsWith("src/application/control-plane/")) {
+    return target.startsWith("src/orchestration/") || [
+      "src/adapters/",
+      "src/presentation/",
+      "src/tools/",
+      "src/ui/",
+      "desktop/",
     ].some((prefix) => target.startsWith(prefix));
   }
   if (source.startsWith("src/application/")) {

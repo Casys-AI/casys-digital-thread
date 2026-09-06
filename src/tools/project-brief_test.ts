@@ -5,6 +5,7 @@ import { ProjectBriefCommandService } from "../application/use-cases/project/pro
 import { ProjectCapabilityAuthorizationService } from "../application/control-plane/project-capability-authorization-service.ts";
 import { InMemoryProjectCapabilityLedgerStore } from "../adapters/control-plane/file-project-capability-ledger-store.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "../adapters/control-plane/first-party-capability-binding-catalog.ts";
+import { briefCapabilityIntentRouteTable } from "../orchestration/operations/brief-capability-intent-routes.ts";
 import { listRegisteredEngineeringOperations } from "../orchestration/operations/registry.ts";
 import { LOCAL_YOLO_PROJECT_APPROVAL_MODE } from "./project-approval-mode.ts";
 
@@ -620,6 +621,7 @@ async function briefDependencies(
     capabilityAuthorization: new ProjectCapabilityAuthorizationService({
       ledgers: new InMemoryProjectCapabilityLedgerStore(),
       registry: { list: listRegisteredEngineeringOperations },
+      routes: briefCapabilityIntentRouteTable,
       recordedPlans: unusedRecordedPlans(),
       catalog: await createFirstPartyCapabilityRuntimeCatalog(),
       qualificationSpecs: [],

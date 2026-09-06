@@ -18,7 +18,7 @@ import {
   engineeringOperationRegistry,
   fingerprintRegisteredEngineeringOperationRegistry,
 } from "../../orchestration/operations/registry.ts";
-import type { RuntimePreparationPrerequisiteRegistryEntry } from "../../orchestration/operations/runtime-preparation-prerequisite-closure.ts";
+import type { RuntimePreparationPrerequisiteRegistryEntry } from "./runtime-preparation-prerequisite-closure.ts";
 
 const APPROVED_BRIEF_BASIS: EngineeringApprovedBriefBasis = {
   kind: "approved-brief",

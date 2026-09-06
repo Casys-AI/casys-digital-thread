@@ -24,6 +24,7 @@ import {
   type LocalCapabilityRuntimeRemovalTarget,
 } from "../../src/application/control-plane/local-capability-runtime-admin-service.ts";
 import { ProjectCapabilityAuthorizationService } from "../../src/application/control-plane/project-capability-authorization-service.ts";
+import { briefCapabilityIntentRouteTable } from "../../src/orchestration/operations/brief-capability-intent-routes.ts";
 import { ProjectCapabilityJitDemandReader } from "../../src/application/control-plane/project-capability-jit-demand-reader.ts";
 import type { ContentFingerprint } from "../../src/domain/kernel/primitives.ts";
 
@@ -145,6 +146,7 @@ async function main(request: CapabilityRuntimeAdminCliRequest): Promise<void> {
   const authorization = new ProjectCapabilityAuthorizationService({
     ledgers,
     registry: { list: () => [] },
+    routes: briefCapabilityIntentRouteTable,
     recordedPlans: {
       read: () =>
         Promise.reject(

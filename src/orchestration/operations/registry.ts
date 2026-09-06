@@ -103,13 +103,13 @@ import {
   type RegisteredEngineeringOperation,
   type RegisteredEngineeringOperationInput,
   type ValidatedRegisteredEngineeringOperationInput,
-} from "./operation-contract.ts";
+} from "../../application/control-plane/engineering-operation-registry.ts";
 import {
   resolveRuntimePreparationPrerequisiteRegistry,
   runtimePreparationPrerequisiteRegistryFingerprintPayload,
-} from "./runtime-preparation-prerequisite-closure.ts";
+} from "../../application/control-plane/runtime-preparation-prerequisite-closure.ts";
 
-export * from "./operation-contract.ts";
+export * from "../../application/control-plane/engineering-operation-registry.ts";
 
 const NO_RUNTIME_DEMAND = Object.freeze({ kind: "none" } as const);
 
