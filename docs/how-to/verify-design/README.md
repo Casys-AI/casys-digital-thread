@@ -8,6 +8,8 @@ Choose the concrete engineering outcome before opening a procedure.
   inspect dated local evidence without treating it as a clean-clone tutorial.
 - [Verify a new design from scratch](verify-a-new-design-from-scratch.md) — begin the
   bounded Behave path.
+- [Verify a new wall hook from source](verify-a-new-wall-hook-from-source.md) — new
+  Behave-only WH01 project from this checkout and the repo-owned two-file CAD source.
 - [Verify prescribed kinematics](verify-prescribed-kinematics.md) and
   [verify assembly integrity](verify-assembly-integrity.md) — bounded mechanism and
   assembly branches.

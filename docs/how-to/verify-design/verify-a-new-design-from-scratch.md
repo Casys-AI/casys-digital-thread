@@ -11,6 +11,9 @@ Optional product Modelica is a separate capture → admission → admitted micro
 The paired conversation commands. The Workbench is read-only. The person never types a
 provider tool. The agent never invents a metric, a unit, a `z*`, or an operation id.
 
+A concrete public vehicle from this checkout, with the repo-owned two-file CAD source:
+[Verify a new wall hook from source](verify-a-new-wall-hook-from-source.md).
+
 This page is the from-zero authority sequence. Ordinary start is cold Deno; H1 activates
 enrolled launch groups JIT under a lease when covered work needs them. Missing qualified
 material stays literal `unavailable`; do not present that as a completed proof. The

@@ -76,8 +76,11 @@ start the MCP fleet or dispatch CAD, FEA, or SysON work.
 
 This folder is not a provider-run recipe. Follow the
 [engineering-project walkthrough](../../docs/how-to/verify-design/walk-through-an-engineering-project.md)
-for review and human MRTRs. The exact fresh-evidence sequence is: admission
-(`compile.seal-admission@3`) → `design.execute-build123d@1` → isolated noncanonical
-draft; versus `project_admitted_geometry_export` → human MRTR →
-`design.write-geometry@1` → canonical STEP; then sealed proof case →
-`verify.run-fea-static-proof@3`. This demo does not queue or dispatch any route.
+for review and human MRTRs. A **new** Behave-only wall hook from this checkout uses
+[examples/wall-hook-wh01](../wall-hook-wh01/) and
+[Verify a new wall hook from source](../../docs/how-to/verify-design/verify-a-new-wall-hook-from-source.md).
+The exact fresh-evidence sequence is: admission (`compile.seal-admission@3`) →
+`design.execute-build123d@1` → isolated noncanonical draft; versus
+`project_admitted_geometry_export` → human MRTR → `design.write-geometry@1` → canonical
+STEP; then sealed proof case → `verify.run-fea-static-proof@3`. This demo does not queue
+or dispatch any route.

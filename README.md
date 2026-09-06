@@ -1,13 +1,13 @@
 # Casys Digital Thread
 
-Casys Digital Thread is an experimental, local-first engineering control plane. It
-turns reviewed project intent into traceable technical artifacts and bounded evidence
-through registered operations: deterministic engineering tools compute, humans retain
+Casys Digital Thread is an experimental, local-first engineering control plane. It turns
+reviewed project intent into traceable technical artifacts and bounded evidence through
+registered operations: deterministic engineering tools compute, humans retain
 consequential decisions, and the Workbench projects persisted state read-only.
 
 > **Status: active research / alpha.** The repository contains implemented contracts,
-> registered engineering operations, a native read-only Workbench, and dated local
-> pilot evidence. Coverage remains partial. A successful tool run is not by itself a
+> registered engineering operations, a native read-only Workbench, and dated local pilot
+> evidence. Coverage remains partial. A successful tool run is not by itself a
 > whole-product, manufacturing, conformity, release, or certification verdict.
 
 ## The engineering loop
@@ -32,7 +32,8 @@ The project supports idea-first, CAD-first, and reverse-engineering entry paths.
 path must recover explicit intent before it can make equivalent requirement claims.
 SysML, geometry, simulation, measurement, evaluation, and manufacturing evidence remain
 distinct records; one does not silently stand in for another. The current product
-boundary is described in [Product direction](docs/explanations/product/product-direction.md).
+boundary is described in
+[Product direction](docs/explanations/product/product-direction.md).
 
 “Local-first” means that project state, the control plane, the Workbench, and registered
 local execution paths are designed to live on the operator's machine. It does not mean
@@ -41,12 +42,12 @@ or other reviewed integrations may still use the network.
 
 ## Authority model
 
-| Actor | Owns | Does not own |
-| --- | --- | --- |
-| Human | Intent and consequential decisions | Provider envelopes or solver payloads |
-| Agent | Proposals, plans, queues, and execution of registered operations | Provider, tool, arguments, lowering, runtime, or self-approval |
-| Server | Sequences, profiles, parsers, lowering, recovery, and canonical publication | Human intent |
-| Workbench | Passive `GET` + SSE projection | Commands, MCP authority, or provider credentials |
+| Actor     | Owns                                                                        | Does not own                                                   |
+| --------- | --------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| Human     | Intent and consequential decisions                                          | Provider envelopes or solver payloads                          |
+| Agent     | Proposals, plans, queues, and execution of registered operations            | Provider, tool, arguments, lowering, runtime, or self-approval |
+| Server    | Sequences, profiles, parsers, lowering, recovery, and canonical publication | Human intent                                                   |
+| Workbench | Passive `GET` + SSE projection                                              | Commands, MCP authority, or provider credentials               |
 
 Agents must start with [AGENTS.md](AGENTS.md), then the
 [agent workspace reference](docs/reference/agent/agent-workspace.md). The registered
@@ -55,19 +56,22 @@ records are not a second authority model.
 
 ## Choose a path
 
-| Goal | Start here |
-| --- | --- |
-| Understand the product and its three judgement branches | [Product direction](docs/explanations/product/product-direction.md) |
-| Walk through a dated engineering project | [Walk through an engineering project](docs/how-to/verify-design/walk-through-an-engineering-project.md) |
-| Verify a new design from scratch | [Verify a new design](docs/how-to/verify-design/verify-a-new-design-from-scratch.md) |
-| Preview the read-only Workbench | [Preview the native Workbench](docs/how-to/workbench/preview-native-workbench.md) |
-| Understand the local runtime and ports | [Local runtime and ports](docs/reference/runtime/local-runtime-and-ports.md) |
-| Find the implementation behind a capability | [Codebase map](docs/reference/codebase/codebase-map.md) |
-| Browse all documentation by purpose | [Documentation guide](docs/README.md) |
+| Goal                                                    | Start here                                                                                              |
+| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Understand the product and its three judgement branches | [Product direction](docs/explanations/product/product-direction.md)                                     |
+| Walk through a dated engineering project                | [Walk through an engineering project](docs/how-to/verify-design/walk-through-an-engineering-project.md) |
+| Verify a new design from scratch                        | [Verify a new design](docs/how-to/verify-design/verify-a-new-design-from-scratch.md)                    |
+| Walk a new Behave-only wall hook from this checkout     | [Verify a new wall hook from source](docs/how-to/verify-design/verify-a-new-wall-hook-from-source.md)   |
+| Preview the read-only Workbench                         | [Preview the native Workbench](docs/how-to/workbench/preview-native-workbench.md)                       |
+| Understand the local runtime and ports                  | [Local runtime and ports](docs/reference/runtime/local-runtime-and-ports.md)                            |
+| Find the implementation behind a capability             | [Codebase map](docs/reference/codebase/codebase-map.md)                                                 |
+| Browse all documentation by purpose                     | [Documentation guide](docs/README.md)                                                                   |
 
-The project does not currently claim a clean-clone product tutorial. Existing
-walkthroughs are how-to guides because they solve concrete tasks and may depend on
-explicitly named local or dated evidence.
+A bounded local demonstration how-to walks a **new** Behave-only wall hook from this
+checkout. It is not a product, release, or certification tutorial, and it does not
+maintain historical `wall-hook-wh01`, `dl04`, or `dl05` state. Other walkthroughs remain
+how-to guides because they solve concrete tasks and may depend on explicitly named local
+or dated evidence.
 
 ## Validate a source checkout
 
@@ -86,8 +90,8 @@ the full source-validation sequence.
 
 Ordinary Digital Thread start is cold Deno (`deno task start`). Do not treat
 `docker compose up -d` as the atelier start or a clone-only quick start:
-CapabilityRuntime providers are H1 JIT launch groups, not the root Compose project.
-The complete provider-backed atelier currently has additional prerequisites: published
+CapabilityRuntime providers are H1 JIT launch groups, not the root Compose project. The
+complete provider-backed atelier currently has additional prerequisites: published
 images must be accessible, local microVM worker images must be prepared, and the
 optional ERPNext bridge expects its external repository, environment, and Docker
 network. The
@@ -96,19 +100,19 @@ task-specific how-to guide state the exact boundary for each path.
 
 ## Repository map
 
-| Path | Purpose |
-| --- | --- |
-| `server.ts`, `src/` | Project control, domain contracts, orchestration, persistence, and projections |
-| `desktop/` | Native desktop shell and packaged chat/runtime integration |
-| `src/ui/` | Read-only React + Vite Workbench |
+| Path                            | Purpose                                                                                                    |
+| ------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| `server.ts`, `src/`             | Project control, domain contracts, orchestration, persistence, and projections                             |
+| `desktop/`                      | Native desktop shell and packaged chat/runtime integration                                                 |
+| `src/ui/`                       | Read-only React + Vite Workbench                                                                           |
 | `docker-compose.yml`, `config/` | Maintainer diagnostic Compose topology and reviewed runtime configuration; H1 JIT groups are not this file |
-| `scripts/` | Gates, probes, runners, and local serving commands |
-| `state/fixtures/` | Checked-in, explicitly labelled test and demonstration fixtures |
-| `state/local/` | Ignored local project, Thread, CAS, and execution state; never commit it |
-| `docs/how-to/` | Goal-oriented procedures |
-| `docs/reference/` | Exact contracts, runtime facts, providers, and code locations |
-| `docs/explanations/` | Product and architecture reasoning |
-| `docs/project-dossiers/` | Dated, non-authoritative observations from engineering projects |
+| `scripts/`                      | Gates, probes, runners, and local serving commands                                                         |
+| `state/fixtures/`               | Checked-in, explicitly labelled test and demonstration fixtures                                            |
+| `state/local/`                  | Ignored local project, Thread, CAS, and execution state; never commit it                                   |
+| `docs/how-to/`                  | Goal-oriented procedures                                                                                   |
+| `docs/reference/`               | Exact contracts, runtime facts, providers, and code locations                                              |
+| `docs/explanations/`            | Product and architecture reasoning                                                                         |
+| `docs/project-dossiers/`        | Dated, non-authoritative observations from engineering projects                                            |
 
 Engineering provider servers are maintained in separate repositories and run here from
 reviewed images. Related public building blocks include

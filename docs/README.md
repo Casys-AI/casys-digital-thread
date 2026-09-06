@@ -24,6 +24,8 @@ verdict, release decision, conformity finding, or certification claim.
   [Walk through an engineering project](how-to/verify-design/walk-through-an-engineering-project.md).
 - **Verify a new design:** follow
   [Verify a new design from scratch](how-to/verify-design/verify-a-new-design-from-scratch.md),
+  or the concrete public wall-hook vehicle
+  [Verify a new wall hook from source](how-to/verify-design/verify-a-new-wall-hook-from-source.md),
   then
   [Review and correct after a proof](how-to/verify-design/review-and-correct-after-a-proof.md).
 - **Author or compile engineering source:** enter [compile how-tos](how-to/compile/).
@@ -88,7 +90,7 @@ complete a concrete task against the current product contracts.
 | [`explanations/`](explanations/README.md)         | Product rationale, verification doctrine, and Workbench design                |
 | [`project-dossiers/`](project-dossiers/README.md) | Dated, non-authoritative project tracking and evidence pointers               |
 | `legacy/` (reserved)                              | Retired, non-executable historical dossiers; never admission or live evidence |
-| [`media/`](media/)                                 | Public images and supporting visual artifacts used by documentation           |
+| [`media/`](media/)                                | Public images and supporting visual artifacts used by documentation           |
 
 Each deeper index routes its own scope, while domain-specific indexes own detailed
 inventories. This page stays short as the tree grows.

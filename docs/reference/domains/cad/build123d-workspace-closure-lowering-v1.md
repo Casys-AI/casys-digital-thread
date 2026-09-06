@@ -3,16 +3,23 @@
 Status: active Build123d 3.0 capture, compilation and admission contract
 
 `build123d-workspace-closure-lowering/1.0` is the server-side validation and lowering
-contract for one exact sealed `project-source-closure/1.0`. The registered Build123d
-3.0 profile uses it to create one executable effective unit for capture, preview,
-admission and their exact replays. It does not create a Python import environment and
-does not select or call a provider.
+contract for one exact sealed `project-source-closure/1.0`. The registered Build123d 3.0
+profile uses it to create one executable effective unit for capture, preview, admission
+and their exact replays. It does not create a Python import environment and does not
+select or call a provider.
 
 The authored closure and attachment remain evidence. The effective unit gets the
 separate identity `technical-unit:<closure sha256>`; it is never a replacement for a
-workspace `fileId`, logical name or path. A successful lower is not a real provider
-run, canonical STEP, isolated output, product verdict or an authority to skip the
-normal admission and MRTR path.
+workspace `fileId`, logical name or path. A successful lower is not a real provider run,
+canonical STEP, isolated output, product verdict or an authority to skip the normal
+admission and MRTR path.
+
+One live two-file shape — one executable root plus one direct scalar-leaf parameter file
+— was exercised through capture, lowering, `compile.seal-admission@3`, canonical export
+and `design.write-geometry@1`. See
+[Verify a new wall hook from source](../../../how-to/verify-design/verify-a-new-wall-hook-from-source.md).
+That walk does not create a Python import environment and does not widen this contract
+to other source shapes.
 
 ## Accepted v1 shape
 
@@ -104,4 +111,5 @@ canonical and isolated paths once their separate reviews are authorized; their a
 and outputs remain unchanged.
 
 Modelica and circuit-only SPICE have no multi-file lowering in this release. Their
-multi-file closures remain literally `source.dependency-lowering-unavailable`.
+multi-file closures remain literally `source.dependency-lowering-unavailable`. The WH01
+canonical-export walk does not change that.
