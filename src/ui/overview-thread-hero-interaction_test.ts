@@ -242,6 +242,41 @@ Deno.test("Whiteboard viewers remain free spatial objects and Fit recovers the w
   assertStringIncludes(viewer, "event.target !== event.currentTarget");
 });
 
+Deno.test("Hull monitor keeps pointer drag and supports bounded keyboard movement", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
+  );
+
+  const movement = sourceSection(
+    source,
+    "const moveHullMonitorByKeyboard = (",
+    "const toggleViewerExpanded = (",
+  );
+  assertStringIncludes(movement, "overviewDirectionDelta(direction, 18)");
+  assertStringIncludes(
+    movement,
+    "overviewThreadViewerScreenDeltaToWorld(",
+  );
+  assertStringIncludes(movement, "normalizeOverviewThreadViewerGeometry(");
+  assertStringIncludes(movement, "overviewViewerGeometryConstraints()");
+
+  const monitor = sourceSection(
+    source,
+    "function OverviewHullMonitorCard({",
+    "function OverviewFloatingViewer({",
+  );
+  assertStringIncludes(monitor, "onMoveByKeyboard");
+  assertStringIncludes(
+    monitor,
+    'aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"',
+  );
+  assertStringIncludes(monitor, "with drag or arrow keys");
+  assertStringIncludes(monitor, "onPointerDown={onDragStart}");
+  assertStringIncludes(monitor, "onPointerMove={onDrag}");
+  assertStringIncludes(monitor, "event.preventDefault()");
+  assertStringIncludes(monitor, "onMoveByKeyboard(event.key)");
+});
+
 Deno.test("Overview hierarchy drags whole group surfaces or labels while constraining nodes", async () => {
   const hero = await Deno.readTextFile(
     new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
