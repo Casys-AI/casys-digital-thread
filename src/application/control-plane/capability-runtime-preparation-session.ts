@@ -39,8 +39,25 @@ import type { CapabilityRuntimeGlobalJitDemandReader } from "./capability-runtim
 /** Preparation is bounded to one brief host reservation, not a run lifetime. */
 const PREPARATION_LEASE_TTL_MS = 15 * 60 * 1_000;
 
+/**
+ * Stable, non-sensitive begin() frontiers. Observation stays inside the H1
+ * supervisor call and is not a separate phase.
+ */
+export const CAPABILITY_RUNTIME_PREPARATION_UNAVAILABLE_PHASES = [
+  "scope",
+  "projection",
+  "lease-recovery",
+  "h1-preflight",
+] as const;
+
+export type CapabilityRuntimePreparationUnavailablePhase =
+  typeof CAPABILITY_RUNTIME_PREPARATION_UNAVAILABLE_PHASES[number];
+
 export class CapabilityRuntimePreparationUnavailableError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly phase: CapabilityRuntimePreparationUnavailablePhase,
+  ) {
     super(message);
     this.name = "CapabilityRuntimePreparationUnavailableError";
   }
@@ -79,28 +96,38 @@ export class CapabilityRuntimePreparationSessionCoordinator
     readonly project: EngineeringProjectSnapshot;
     readonly operation: EngineeringOperationRef;
   }): Promise<CapabilityRuntimePreparationSession> {
-    const scope = await this.#scope(input);
+    const scope = await atPreparationBoundary(
+      "scope",
+      "Preparation could not resolve its exact operational scope.",
+      () => this.#scope(input),
+    );
 
     const at = this.#now();
-    const effectiveRuntimeProjection =
-      await deriveEffectiveCapabilityRuntimeLaunchProjection({
-        launchGroup: scope.groups[0]!,
-        operation: scope.resolved,
-      });
-    const initialLease = await candidateLease({
-      projectId: input.project.project.id,
-      projectSnapshotId: input.project.id,
-      projectRevision: input.project.revision,
-      operationalCapabilityFingerprint: scope.fingerprint.digest,
-      bindingIds: scope.resolved.bindings.map((candidate) => candidate.binding.id),
-      lifecycles: scope.lifecycles,
-      groups: scope.groups,
-      at,
-    });
-    const reservation = await recoverableLease(
-      initialLease,
-      at,
-      this.options.leases,
+    const effectiveRuntimeProjection = await atPreparationBoundary(
+      "projection",
+      "Preparation could not derive its exact runtime projection.",
+      () =>
+        this.deriveEffectiveRuntimeProjection({
+          launchGroup: scope.groups[0]!,
+          operation: scope.resolved,
+        }),
+    );
+    const reservation = await atPreparationBoundary(
+      "lease-recovery",
+      "Preparation could not recover its exact lease.",
+      async () => {
+        const initialLease = await candidateLease({
+          projectId: input.project.project.id,
+          projectSnapshotId: input.project.id,
+          projectRevision: input.project.revision,
+          operationalCapabilityFingerprint: scope.fingerprint.digest,
+          bindingIds: scope.resolved.bindings.map((candidate) => candidate.binding.id),
+          lifecycles: scope.lifecycles,
+          groups: scope.groups,
+          at,
+        });
+        return await recoverableLease(initialLease, at, this.options.leases);
+      },
     );
 
     // H1 journals before any Docker mutation. An exact live reservation can be
@@ -108,35 +135,48 @@ export class CapabilityRuntimePreparationSessionCoordinator
     // is permitted only while the export WAL is still pre-dispatch. Expired
     // reservations receive an immutable successor linked to the old id; old
     // records are retained instead of deleted or silently overwritten.
-    const activated = await this.options.groups.ensureActive({
-      group: scope.groups[0]!,
-      expectedMaterials: scope.lifecycles.map((lifecycle) => lifecycle.material),
-      effectiveRuntimeProjection,
-      resolvedOperation: scope.resolved,
-      projectId: input.project.project.id,
-      lease: reservation.lease,
-      at,
-      reuseExistingLease: reservation.reuseExistingLease,
-      // Recheck the same sealed preparation authority while H1 is held. A
-      // concurrent revoke or lock change therefore wins before a lease claim,
-      // journal intent, pull, or Compose start.
-      guard: async () => {
-        try {
-          const current = validateResolvedCapabilityRuntimeOperation(
-            await this.options.authorization.requirePreparation(input),
-          );
-          return (await fingerprintResolvedCapabilityRuntimeOperation(current))
-            .digest === scope.fingerprint.digest;
-        } catch {
-          return false;
-        }
+    // Observation stays inside this supervisor call; it is not a separate
+    // preparation phase.
+    await atPreparationBoundary(
+      "h1-preflight",
+      "Preparation host preflight is unavailable.",
+      async () => {
+        const activated = await this.options.groups.ensureActive({
+          group: scope.groups[0]!,
+          expectedMaterials: scope.lifecycles.map((lifecycle) => lifecycle.material),
+          effectiveRuntimeProjection,
+          resolvedOperation: scope.resolved,
+          projectId: input.project.project.id,
+          lease: reservation.lease,
+          at,
+          reuseExistingLease: reservation.reuseExistingLease,
+          // Recheck the same sealed preparation authority while H1 is held. A
+          // concurrent revoke or lock change therefore wins before a lease claim,
+          // journal intent, pull, or Compose start.
+          guard: async () => {
+            try {
+              const current = validateResolvedCapabilityRuntimeOperation(
+                await this.options.authorization.requirePreparation(input),
+              );
+              return (await fingerprintResolvedCapabilityRuntimeOperation(current))
+                .digest === scope.fingerprint.digest;
+            } catch {
+              return false;
+            }
+          },
+        });
+        assertActiveExactMaterials(activated.states, scope.lifecycles);
       },
-    });
-    assertActiveExactMaterials(activated.states, scope.lifecycles);
-    const stored = await this.options.leases.read(reservation.lease.id);
+    );
+    const stored = await atPreparationBoundary(
+      "h1-preflight",
+      "Preparation host preflight is unavailable.",
+      () => this.options.leases.read(reservation.lease.id),
+    );
     if (!stored) {
       throw new CapabilityRuntimePreparationUnavailableError(
         "Preparation activation completed without an exact durable lease.",
+        "h1-preflight",
       );
     }
     return new ActiveCapabilityRuntimePreparationSession(
@@ -184,6 +224,14 @@ export class CapabilityRuntimePreparationSessionCoordinator
     });
   }
 
+  /** Isolated projection step after scope, before lease recovery. */
+  protected deriveEffectiveRuntimeProjection(input: {
+    readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+    readonly operation: ResolvedCapabilityRuntimeOperation;
+  }) {
+    return deriveEffectiveCapabilityRuntimeLaunchProjection(input);
+  }
+
   async #scope(input: {
     readonly project: EngineeringProjectSnapshot;
     readonly operation: EngineeringOperationRef;
@@ -198,6 +246,7 @@ export class CapabilityRuntimePreparationSessionCoordinator
     ) {
       throw new CapabilityRuntimePreparationUnavailableError(
         "Preparation authority does not match the exact current project operation.",
+        "scope",
       );
     }
     if (
@@ -206,6 +255,7 @@ export class CapabilityRuntimePreparationSessionCoordinator
     ) {
       throw new CapabilityRuntimePreparationUnavailableError(
         "Preparation requires exactly one resolved preparation binding.",
+        "scope",
       );
     }
     const lifecycles = exactPersistentLifecycles(
@@ -215,6 +265,7 @@ export class CapabilityRuntimePreparationSessionCoordinator
     if (groups.length !== 1) {
       throw new CapabilityRuntimePreparationUnavailableError(
         "Preparation requires one exact persistent launch group.",
+        "scope",
       );
     }
     return {
@@ -233,6 +284,21 @@ interface PreparationScope {
   }>[];
   readonly groups: readonly CapabilityRuntimeLaunchGroupReference[];
   readonly fingerprint: { readonly algorithm: "sha256"; readonly digest: string };
+}
+
+async function atPreparationBoundary<T>(
+  phase: CapabilityRuntimePreparationUnavailablePhase,
+  fallback: string,
+  work: () => Promise<T>,
+): Promise<T> {
+  try {
+    return await work();
+  } catch (cause) {
+    if (cause instanceof CapabilityRuntimePreparationUnavailableError) {
+      throw cause;
+    }
+    throw new CapabilityRuntimePreparationUnavailableError(fallback, phase);
+  }
 }
 
 async function recoverableLease(
@@ -257,6 +323,7 @@ async function recoverableLease(
   }
   throw new CapabilityRuntimePreparationUnavailableError(
     "Preparation lease recovery exceeded its bounded exact successor chain.",
+    "lease-recovery",
   );
 }
 
@@ -275,6 +342,7 @@ async function findLiveExactLease(
   }
   throw new CapabilityRuntimePreparationUnavailableError(
     "Preparation lease cleanup exceeded its bounded exact successor chain.",
+    "lease-recovery",
   );
 }
 
@@ -354,6 +422,7 @@ function exactPersistentLifecycles(
   ) {
     throw new CapabilityRuntimePreparationUnavailableError(
       "Preparation binding must have only exact persistent launch-group materials.",
+      "scope",
     );
   }
   return values as readonly Extract<CapabilityRuntimeHostLifecycle, {
@@ -419,6 +488,7 @@ function equivalentLease(
   ) {
     throw new CapabilityRuntimePreparationUnavailableError(
       "Preparation lease is already held for a different exact operational scope.",
+      "lease-recovery",
     );
   }
   return stored;
@@ -438,6 +508,7 @@ function assertActiveExactMaterials(
     ) {
       throw new CapabilityRuntimePreparationUnavailableError(
         "Preparation launch group did not reach an exact installed, active physical state.",
+        "h1-preflight",
       );
     }
   }

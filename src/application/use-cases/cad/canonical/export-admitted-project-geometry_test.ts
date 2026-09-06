@@ -47,6 +47,10 @@ import {
 } from "../../../../domain/kernel/deterministic-json.ts";
 import { sampleAdmissionSourceWorkspaceFields } from "../../../../testing/technical-source-capture-test-support.ts";
 import {
+  CAPABILITY_RUNTIME_PREPARATION_UNAVAILABLE_PHASES,
+  CapabilityRuntimePreparationUnavailableError,
+} from "../../../control-plane/capability-runtime-preparation-session.ts";
+import {
   type ArchitecturePartGraph,
   ExportAdmittedProjectGeometry,
   ProjectAdmittedGeometryExportError,
@@ -418,6 +422,63 @@ Deno.test("a corrupt durable replay refuses before preparation instead of blindl
   } finally {
     await Deno.remove(root, { recursive: true });
   }
+});
+
+Deno.test("admitted geometry export preserves only the safe preparation phase on runtime_unavailable", async () => {
+  const fixture = await harness();
+  assertEquals(
+    [...CAPABILITY_RUNTIME_PREPARATION_UNAVAILABLE_PHASES],
+    ["scope", "projection", "lease-recovery", "h1-preflight"],
+  );
+  for (const phase of CAPABILITY_RUNTIME_PREPARATION_UNAVAILABLE_PHASES) {
+    const service = serviceWithPreparation(fixture, () =>
+      Promise.reject(
+        new CapabilityRuntimePreparationUnavailableError(
+          `raw host cause at /var/run/docker.sock secret=super-secret-token ${phase}`,
+          phase,
+        ),
+      ));
+    const error = await assertExportError(
+      () => service.execute(fixture.command),
+      "runtime_unavailable",
+    );
+    assertEquals(
+      error.message,
+      `The server-owned Build123d preparation runtime is unavailable (${phase}).`,
+    );
+    assertEquals(error.cause, undefined);
+    assertEquals(error.message.includes("/var/run/docker.sock"), false);
+    assertEquals(error.message.includes("super-secret-token"), false);
+    assertEquals(error.message.includes("raw host cause"), false);
+  }
+  assertEquals(fixture.exporter.calls.length, 0);
+});
+
+Deno.test("unknown preparation failures stay generic without leaking causes", async () => {
+  const fixture = await harness();
+  const service = serviceWithPreparation(
+    fixture,
+    () =>
+      Promise.reject(
+        new Error(
+          "Cannot start mcp-build123d at /var/run/docker.sock endpoint http://127.0.0.1:2375 secret=super-secret-token",
+        ),
+      ),
+  );
+  const error = await assertExportError(
+    () => service.execute(fixture.command),
+    "runtime_unavailable",
+  );
+  assertEquals(
+    error.message,
+    "The server-owned Build123d preparation runtime is unavailable.",
+  );
+  assertEquals(error.cause, undefined);
+  assertEquals(error.message.includes("/var/run/docker.sock"), false);
+  assertEquals(error.message.includes("mcp-build123d"), false);
+  assertEquals(error.message.includes("super-secret-token"), false);
+  assertEquals(error.message.includes("("), false);
+  assertEquals(fixture.exporter.calls.length, 0);
 });
 
 Deno.test("a generic replay-store failure is fail-closed before preparation or provider", async () => {
@@ -1128,6 +1189,35 @@ function multiPartArchitecture(): ArchitecturePartGraph {
       usages: [],
     }],
   };
+}
+
+function serviceWithPreparation(
+  fixture: Harness,
+  begin: () => Promise<never>,
+): ExportAdmittedProjectGeometry {
+  return new ExportAdmittedProjectGeometry({
+    admissions: fixture.reader,
+    exporter: fixture.exporter,
+    exporterFactory: () => fixture.exporter,
+    projects: {
+      get: () =>
+        Promise.resolve({
+          project: { id: fixture.command.projectId },
+          threadSnapshots: [{
+            snapshotId: fixture.command.basis.snapshotId,
+            revision: fixture.command.basis.revision,
+            subjectId: fixture.command.basis.subjectId,
+          }],
+        } as never),
+    },
+    preparation: {
+      begin,
+      releaseRecorded: () => Promise.resolve(),
+    } as never,
+    architecture: fixture.architecture,
+    snapshots: fixture.snapshots,
+    geometryCaptures: fixture.geometryCaptures,
+  });
 }
 
 async function replayKey(command: ProjectAdmittedGeometryExportCommand) {
