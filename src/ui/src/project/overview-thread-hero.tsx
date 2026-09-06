@@ -905,6 +905,29 @@ export function OverviewThreadHero({
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
   };
+  const moveHullMonitorByKeyboard = (
+    direction: OverviewThreadD3FlowMoveDirection,
+  ) => {
+    const delta = overviewThreadViewerScreenDeltaToWorld(
+      overviewDirectionDelta(direction, 18),
+      whiteboardTransform,
+    );
+    setHullMonitor((current) =>
+      current
+        ? {
+          ...current,
+          ...normalizeOverviewThreadViewerGeometry(
+            {
+              ...current,
+              x: current.x + delta.x,
+              y: current.y + delta.y,
+            },
+            overviewViewerGeometryConstraints(),
+          ),
+        }
+        : current
+    );
+  };
   const toggleViewerExpanded = (viewerId: string) => {
     const viewport = viewportRef.current;
     const visibleTopLeft = viewport
@@ -1560,6 +1583,7 @@ export function OverviewThreadHero({
                   onDragStart={beginHullMonitorDrag}
                   onDrag={moveHullMonitor}
                   onDragEnd={endHullMonitorDrag}
+                  onMoveByKeyboard={moveHullMonitorByKeyboard}
                   onResizeStart={beginHullMonitorResize}
                   onResize={moveHullMonitorResize}
                   onResizeEnd={endHullMonitorResize}
@@ -2418,6 +2442,7 @@ function OverviewHullMonitorCard({
   onDragStart,
   onDrag,
   onDragEnd,
+  onMoveByKeyboard,
   onResizeStart,
   onResize,
   onResizeEnd,
@@ -2435,6 +2460,9 @@ function OverviewHullMonitorCard({
   readonly onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
   readonly onDrag: (event: ReactPointerEvent<HTMLElement>) => void;
   readonly onDragEnd: (event: ReactPointerEvent<HTMLElement>) => void;
+  readonly onMoveByKeyboard: (
+    direction: OverviewThreadD3FlowMoveDirection,
+  ) => void;
   readonly onResizeStart: (
     event: ReactPointerEvent<HTMLButtonElement>,
   ) => void;
@@ -2482,12 +2510,21 @@ function OverviewHullMonitorCard({
     >
       <header
         tabIndex={0}
-        aria-label={`Move ${flowGroupCaption(group)} hull monitor by dragging`}
+        aria-label={`Move ${
+          flowGroupCaption(group)
+        } hull monitor with drag or arrow keys`}
+        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight"
         onPointerDown={onDragStart}
         onPointerMove={onDrag}
         onPointerUp={onDragEnd}
         onPointerCancel={onDragEnd}
         onLostPointerCapture={onDragEnd}
+        onKeyDown={(event) => {
+          if (event.target !== event.currentTarget) return;
+          if (!isOverviewMoveDirection(event.key)) return;
+          event.preventDefault();
+          onMoveByKeyboard(event.key);
+        }}
       >
         <div>
           <p className={cn("m-0", SECTION_LABEL)}>
