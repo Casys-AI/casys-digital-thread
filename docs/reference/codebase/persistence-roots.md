@@ -46,6 +46,35 @@ recoverable pending/claim material for each brief-bound operational authorizatio
 Prepared or pending material alone is not authority. This root is distinct from Thread,
 CAS, MRTR, engineering result, and Workbench command state.
 
+#### `state/local/first-party-microsandbox-image-candidate-import/`
+
+Local factual records for maintainer-only first-party Microsandbox candidate import.
+Each record names the OCI index digest, the linux/arm64 platform-manifest digest, and
+the observed Microsandbox digest as three distinct identities, and preserves the exact
+source candidate receipt. Parse/bind recalculates that receipt's fingerprint and rebinds
+the record to the current distribution matrix. It is not a qualification attestation,
+catalogue pin, Thread evidence, or Workbench command.
+
+#### `state/local/first-party-microsandbox-image-candidate-qualification/`
+
+Per-physical-image, per-import-record host/runtime candidate qualification. CAD uses
+`build123d-isolated-worker/<import-record fingerprint>/` and
+`geometry-module-assembler-worker/<import-record fingerprint>/`. CalculiX uses
+`calculix-worker/<import-record fingerprint>/` with isolated WAL, CAS outputs, evidence,
+leases and the strict qualification record. Modelica uses
+`modelica-microsandbox-worker/<import-record fingerprint>/` with one aggregate
+`qualification.json` at that physical root and two profile-distinct subroots under
+`targets/openmodelica-qualified-kit/` and `targets/openmodelica-admitted-modelica/`
+(WAL, CAS outputs, profile attestations). The Modelica aggregate is a two-proof physical
+record; it is not the shared one-execution CAD/CalculiX schema. ngspice uses
+`ngspice-worker/<import-record fingerprint>/` with isolated WAL, CAS outputs,
+captures/attestations and the shared one-execution qualification record. None of these
+paths write `state/local/modelica-microsandbox-qualification`,
+`state/local/recorded-analysis/electrical/spice/admitted/`, the active
+`capability-runtime-host` qualification store, Thread, or project state. Host
+observation is `linux/arm64`. `eligibleForPromotion` stays `false`. This is not L3, L4
+or L5 engineering evidence.
+
 #### `state/local/capability-runtime-microvm-preparation/`
 
 Current append-only intent and terminal journal for server-owned first-party microVM

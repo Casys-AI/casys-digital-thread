@@ -3,14 +3,16 @@ import { pinnedOciImageReference } from "../../domain/compile/isolation/local-is
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import {
   createFirstPartyMicrosandboxImageBootstrapDescriptors,
-  FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
-  FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
+  FIRST_PARTY_MODELICA_CACHE_RECIPE_ID,
   FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
   type FirstPartyMicrosandboxImageBootstrapDescriptor,
   type FirstPartyOciDigestSource,
 } from "./first-party-microsandbox-image-bootstrap.ts";
 import {
+  assertFirstPartyMicrosandboxImageDistributionContract,
   createFirstPartyMicrosandboxImageDistributionMatrix,
+  fingerprintFirstPartyMicrosandboxImageDistributionMatrix,
+  FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT,
   FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA,
   firstPartyMicrosandboxGhcrImageName,
   firstPartyMicrosandboxGhcrPackageName,
@@ -18,17 +20,25 @@ import {
 } from "./first-party-microsandbox-image-distribution-matrix.ts";
 
 Deno.test(
-  "distribution matrix groups six logical workers into five physical images",
+  "distribution matrix groups five logical workers into five physical images",
   async () => {
     const catalog = await createFirstPartyCapabilityRuntimeCatalog();
     const descriptors = createFirstPartyMicrosandboxImageBootstrapDescriptors(
       catalog,
     );
     const matrix = createFirstPartyMicrosandboxImageDistributionMatrix(catalog);
-    assertEquals(descriptors.length, 6);
+    assertEquals(descriptors.length, 5);
     assertEquals(
       matrix.schemaVersion,
       FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA,
+    );
+    assertEquals(
+      FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA,
+      "first-party-microsandbox-image-distribution-matrix/3.0",
+    );
+    assertEquals(
+      matrix.contract,
+      FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT,
     );
     assertEquals(matrix.platform, "linux/arm64");
     assertEquals(matrix.images.map((image) => image.physicalImageId), [
@@ -67,19 +77,20 @@ Deno.test(
     assertEquals(modelica.context, ".");
     assertEquals(
       modelica.logicalTargets.map((target) => target.recipeId),
-      [
-        FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
-        FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
-      ],
+      [FIRST_PARTY_MODELICA_CACHE_RECIPE_ID],
     );
     assertEquals(
       modelica.logicalTargets.map((target) => target.unitId),
-      ["casys.modelica-qualified-worker", "casys.modelica-worker"],
+      ["casys.modelica-worker"],
+    );
+    assertEquals(
+      modelica.logicalTargets.map((target) => target.materialId),
+      ["modelica-worker-image"],
     );
     const cataloguedModelica = descriptors.find((descriptor) =>
-      descriptor.recipeId === FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID
+      descriptor.recipeId === FIRST_PARTY_MODELICA_CACHE_RECIPE_ID
     );
-    if (!cataloguedModelica) throw new Error("Modelica admitted descriptor is absent");
+    if (!cataloguedModelica) throw new Error("Modelica descriptor is absent");
     assertEquals(
       modelica.qualificationTarget.imageReference,
       pinnedOciImageReference(
@@ -100,20 +111,74 @@ Deno.test(
     );
     if (!geometry) throw new Error("geometry-module physical image is absent");
     assertEquals(geometry.expectedLabels !== undefined, true);
+    const fingerprint = await fingerprintFirstPartyMicrosandboxImageDistributionMatrix(
+      matrix,
+    );
+    assertEquals(fingerprint.startsWith("sha256:"), true);
+    assertEquals(fingerprint.length, 71);
+    assertEquals(
+      await fingerprintFirstPartyMicrosandboxImageDistributionMatrix(matrix),
+      fingerprint,
+    );
   },
 );
 
-Deno.test("Modelica qualified and admitted share one physical publication", async () => {
+Deno.test("Modelica has one physical publication and one logical target", async () => {
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();
   const matrix = createFirstPartyMicrosandboxImageDistributionMatrix(catalog);
   const modelicaEntries = matrix.images.filter((image) =>
     image.physicalImageId === "modelica-microsandbox-worker"
   );
   assertEquals(modelicaEntries.length, 1);
-  assertEquals(modelicaEntries[0]?.logicalTargets.length, 2);
+  assertEquals(modelicaEntries[0]?.logicalTargets.length, 1);
   assertEquals(
     matrix.images.reduce((count, image) => count + image.logicalTargets.length, 0),
-    6,
+    5,
+  );
+});
+
+Deno.test("distribution matrix rejects incomplete or duplicate physical release entries", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const matrix = createFirstPartyMicrosandboxImageDistributionMatrix(catalog);
+  assertThrows(
+    () =>
+      assertFirstPartyMicrosandboxImageDistributionContract(
+        {
+          ...matrix,
+          schemaVersion: "first-party-microsandbox-image-distribution-matrix/2.0",
+        } as unknown as typeof matrix,
+      ),
+    TypeError,
+    "unsupported schema or platform",
+  );
+  assertThrows(
+    () =>
+      assertFirstPartyMicrosandboxImageDistributionContract({
+        ...matrix,
+        images: matrix.images.slice(1),
+      }),
+    TypeError,
+    "exactly 5 physical images",
+  );
+  assertThrows(
+    () =>
+      assertFirstPartyMicrosandboxImageDistributionContract({
+        ...matrix,
+        images: [matrix.images[0]!, matrix.images[0]!, ...matrix.images.slice(2)],
+      }),
+    TypeError,
+    "duplicate physical image ids",
+  );
+  assertThrows(
+    () =>
+      assertFirstPartyMicrosandboxImageDistributionContract({
+        ...matrix,
+        images: matrix.images.map((image, index) =>
+          index === 0 ? { ...image, logicalTargets: [] } : image
+        ),
+      }),
+    TypeError,
+    "exactly 5 logical targets",
   );
 });
 
@@ -122,21 +187,18 @@ Deno.test("divergent recipes for one physical image are refused", async () => {
   const descriptors = createFirstPartyMicrosandboxImageBootstrapDescriptors(
     catalog,
   );
-  const qualified = descriptors.find((descriptor) =>
-    descriptor.recipeId === FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID
+  const modelica = descriptors.find((descriptor) =>
+    descriptor.recipeId === FIRST_PARTY_MODELICA_CACHE_RECIPE_ID
   );
-  const admitted = descriptors.find((descriptor) =>
-    descriptor.recipeId === FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID
-  );
-  if (!qualified || !admitted) throw new Error("Modelica descriptors are absent");
+  if (!modelica) throw new Error("Modelica descriptor is absent");
   assertThrows(
     () =>
       planFirstPartyMicrosandboxImageDistribution([
-        qualified,
+        modelica,
         {
-          ...admitted,
+          ...modelica,
           buildRecipe: {
-            ...admitted.buildRecipe,
+            ...modelica.buildRecipe,
             dockerfile: "images/ngspice-microsandbox-worker/Dockerfile",
           },
         },
@@ -199,8 +261,16 @@ Deno.test(
       ...ngspice,
       source: ociSource,
     };
-    const matrix = planFirstPartyMicrosandboxImageDistribution([acquiredByDigest]);
-    const image = matrix.images[0];
+    const matrix = planFirstPartyMicrosandboxImageDistribution(
+      descriptors.map((descriptor) =>
+        descriptor.recipeId === FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID
+          ? acquiredByDigest
+          : descriptor
+      ),
+    );
+    const image = matrix.images.find((candidate) =>
+      candidate.physicalImageId === "ngspice-worker"
+    );
     if (!image) throw new Error("planned image is absent");
     assertEquals(image.physicalImageId, "ngspice-worker");
     assertEquals(image.dockerfile, ngspice.buildRecipe.dockerfile);

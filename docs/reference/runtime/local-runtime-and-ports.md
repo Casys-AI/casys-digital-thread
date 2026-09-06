@@ -4,17 +4,17 @@ Audience: both · Diátaxis: reference · Kind: contract
 
 Where things run, and which page owns the file census.
 
-| Need                                             | Page                                                                                    |
-| ------------------------------------------------ | --------------------------------------------------------------------------------------- |
-| File census, CAS roots, isolation spine          | [codebase map](../codebase/codebase-map.md)                                             |
-| Admitted CAD/Modelica microVM pattern            | [admitted source isolated execution](../pipeline/admitted-source-isolated-execution.md) |
-| H01 isolation, WAL, and Thread collection bounds | [isolation and Thread boundedness](isolation-and-thread-boundedness.md)                 |
-| Capability demand and packs                      | [capability packs](capability-packs/README.md)                                          |
+| Need                                             | Page                                                                                     |
+| ------------------------------------------------ | ---------------------------------------------------------------------------------------- |
+| File census, CAS roots, isolation spine          | [codebase map](../codebase/codebase-map.md)                                              |
+| Admitted CAD/Modelica microVM pattern            | [admitted source isolated execution](../pipeline/admitted-source-isolated-execution.md)  |
+| H01 isolation, WAL, and Thread collection bounds | [isolation and Thread boundedness](isolation-and-thread-boundedness.md)                  |
+| Capability demand and packs                      | [capability packs](capability-packs/README.md)                                           |
 | First-party microVM candidate publication        | [first-party microVM distribution](capability-packs/first-party-microvm-distribution.md) |
-| Capability runtime connection                    | [capability runtime connection](capability-packs/capability-runtime-connection.md)      |
-| Agent tools, operations, grants                  | [agent workspace](../agent/agent-workspace.md)                                          |
-| Lookalike pairs                                  | [lookalike traps](../agent/lookalike-traps.md)                                          |
-| Loopback ports, YOLO, runtime ownership          | this page                                                                               |
+| Capability runtime connection                    | [capability runtime connection](capability-packs/capability-runtime-connection.md)       |
+| Agent tools, operations, grants                  | [agent workspace](../agent/agent-workspace.md)                                           |
+| Lookalike pairs                                  | [lookalike traps](../agent/lookalike-traps.md)                                           |
+| Loopback ports, YOLO, runtime ownership          | this page                                                                                |
 
 ## Local YOLO approval mode
 
@@ -48,8 +48,10 @@ attestation for digest
 qualify the exact candidate separately. The prior qualified emulated `linux/amd64`
 attestation for the historical 0.3.1 digest remains host evidence only; it cannot
 qualify this 0.3.2 material or rewrite the catalogue. HTTP `casys.mcp-calculix@0.8.2`
-and admitted Modelica `casys.modelica-worker` remain catalogue-`unqualified` and
-therefore non-activable until their own matching live qualifications exist.
+and the admitted Modelica binding `openmodelica-admitted-modelica` remain
+catalogue-`unqualified` and therefore non-activable until their own matching live
+qualifications exist. The shared `casys.modelica-worker` image is reviewed host/security
+material; that does not qualify the admitted method.
 
 The loopback automation task controls only the separate local-YOLO approval opt-in:
 

@@ -135,10 +135,7 @@ import {
   snapshotRef,
   unexpectedStatus,
 } from "../../shared/executor-run-helpers.ts";
-import {
-  assertThreadWriteBasisAvailable,
-  threadWriteBasisLeaseScope,
-} from "../../shared/thread-write-basis-guard.ts";
+import { threadWriteBasisLeaseScope } from "../../shared/thread-write-basis-guard.ts";
 import {
   BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
   BUILD123D_ISOLATED_WORKER_UNIT_ID,

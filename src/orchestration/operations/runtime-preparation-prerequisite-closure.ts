@@ -7,7 +7,6 @@ import { exactVersionToken, safeId } from "../../domain/kernel/case-validation.t
 import type {
   EngineeringOperationExecution,
   EngineeringOperationRuntimeDemand,
-  RegisteredEngineeringOperation,
 } from "./operation-contract.ts";
 
 /**

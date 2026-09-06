@@ -10,6 +10,10 @@ const PROFILE_FINGERPRINT = {
   algorithm: "sha256" as const,
   digest: "c".repeat(64),
 };
+const SECOND_PROFILE_FINGERPRINT = {
+  algorithm: "sha256" as const,
+  digest: "e".repeat(64),
+};
 
 Deno.test("Microsandbox cache architecture is translated from its exact code-owned material platform", () => {
   assertEquals(exactMicrosandboxMaterialArchitecture(["linux/arm64"]), "arm64");
@@ -105,7 +109,7 @@ Deno.test("Microsandbox capability cache refuses an execution-profile drift befo
 Deno.test("Microsandbox cache does not treat an unconfigured execution profile as executable", async () => {
   const cache = new LocalMicrosandboxCapabilityRuntimeCache(
     () => Promise.resolve(sdk(inspection())),
-    [{ ...expectation(), executionProfileFingerprint: undefined }],
+    [{ ...expectation(), allowedExecutionProfileFingerprints: [] }],
   );
   await assertRejects(
     () =>
@@ -116,6 +120,55 @@ Deno.test("Microsandbox cache does not treat an unconfigured execution profile a
       }),
     Error,
     "execution profile does not attest",
+  );
+});
+
+Deno.test("Microsandbox cache requires the current operation fingerprint to be in the closed allowed list", async () => {
+  const cache = new LocalMicrosandboxCapabilityRuntimeCache(
+    () => Promise.resolve(sdk(inspection())),
+    [{
+      ...expectation(),
+      allowedExecutionProfileFingerprints: [
+        PROFILE_FINGERPRINT,
+        SECOND_PROFILE_FINGERPRINT,
+      ],
+    }],
+  );
+  await cache.ensureExactCached({
+    material: { unitId: "casys.worker", materialId: "worker", imageDigest: DIGEST },
+    imageReference: REFERENCE,
+    executionProfileFingerprint: SECOND_PROFILE_FINGERPRINT,
+  });
+  await assertRejects(
+    () =>
+      cache.ensureExactCached({
+        material: { unitId: "casys.worker", materialId: "worker", imageDigest: DIGEST },
+        imageReference: REFERENCE,
+        executionProfileFingerprint: {
+          algorithm: "sha256",
+          digest: "d".repeat(64),
+        },
+      }),
+    Error,
+    "execution profile does not attest",
+  );
+});
+
+Deno.test("Microsandbox cache refuses duplicate allowed execution-profile fingerprints", () => {
+  assertThrows(
+    () =>
+      new LocalMicrosandboxCapabilityRuntimeCache(
+        () => Promise.resolve(sdk(inspection())),
+        [{
+          ...expectation(),
+          allowedExecutionProfileFingerprints: [
+            PROFILE_FINGERPRINT,
+            PROFILE_FINGERPRINT,
+          ],
+        }],
+      ),
+    TypeError,
+    "duplicate execution-profile fingerprint",
   );
 });
 
@@ -130,7 +183,7 @@ function expectation() {
       user: "65532:65532",
       entrypoint: ["/usr/local/bin/deno", "run"],
     },
-    executionProfileFingerprint: PROFILE_FINGERPRINT,
+    allowedExecutionProfileFingerprints: [PROFILE_FINGERPRINT],
   };
 }
 

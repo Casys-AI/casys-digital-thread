@@ -18,7 +18,6 @@ import {
 } from "./runtime/capability-runtime-launch-group.ts";
 import type {
   AtomicCapabilityRuntimeUnit,
-  CapabilityRuntimeBindingCandidate,
   CapabilityRuntimeBindMount,
   CapabilityRuntimeLicence,
   CapabilityRuntimeRequirementsPlan,

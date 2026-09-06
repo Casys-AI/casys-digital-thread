@@ -9,22 +9,20 @@ import {
   FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
   FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID,
   FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID,
-  FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
-  FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
+  FIRST_PARTY_MODELICA_CACHE_RECIPE_ID,
   FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
   firstPartyMicrosandboxBootstrapRepoRoot,
   resolveTrustedFirstPartyBootstrapPath,
 } from "./first-party-microsandbox-image-bootstrap.ts";
 
-Deno.test("first-party bootstrap descriptors cover the six catalogued microvm-images", async () => {
+Deno.test("first-party bootstrap descriptors cover the five catalogued microvm-images", async () => {
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();
   const descriptors = createFirstPartyMicrosandboxImageBootstrapDescriptors(catalog);
   assertEquals(descriptors.map((descriptor) => descriptor.recipeId), [
     FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
     FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID,
     FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID,
-    FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
-    FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
+    FIRST_PARTY_MODELICA_CACHE_RECIPE_ID,
     FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
   ]);
   assertEquals(
@@ -68,58 +66,51 @@ Deno.test("first-party bootstrap descriptors cover the six catalogued microvm-im
   }
 });
 
-Deno.test("Modelica qualified and admitted share one physical image and target digest", async () => {
+Deno.test("Modelica has one bootstrap descriptor, one material, and one physical image", async () => {
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();
   const descriptors = createFirstPartyMicrosandboxImageBootstrapDescriptors(catalog);
-  const qualified = descriptors.find((descriptor) =>
-    descriptor.recipeId === FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID
+  const modelica = descriptors.filter((descriptor) =>
+    descriptor.recipeId === FIRST_PARTY_MODELICA_CACHE_RECIPE_ID
   );
-  const admitted = descriptors.find((descriptor) =>
-    descriptor.recipeId === FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID
-  );
-  if (!qualified || !admitted) throw new Error("Modelica descriptors are absent");
-  assertEquals(qualified.unitId, "casys.modelica-qualified-worker");
-  assertEquals(admitted.unitId, "casys.modelica-worker");
-  assertEquals(qualified.recipeId === admitted.recipeId, false);
-  assertEquals(qualified.targetImageReference, admitted.targetImageReference);
-  assertEquals(qualified.target.manifestDigest, admitted.target.manifestDigest);
-  assertEquals(qualified.physicalImageId, admitted.physicalImageId);
-  assertEquals(qualified.physicalImageId, "modelica-microsandbox-worker");
-  if (
-    qualified.source.kind !== "trusted-dockerfile" ||
-    admitted.source.kind !== "trusted-dockerfile"
-  ) {
+  assertEquals(modelica.length, 1);
+  const descriptor = modelica[0]!;
+  assertEquals(descriptor.unitId, "casys.modelica-worker");
+  assertEquals(descriptor.materialId, "modelica-worker-image");
+  assertEquals(descriptor.physicalImageId, "modelica-microsandbox-worker");
+  if (descriptor.source.kind !== "trusted-dockerfile") {
     throw new Error("Modelica bootstrap must stay on trusted Dockerfiles");
   }
-  assertEquals(qualified.buildRecipe.dockerfile, admitted.buildRecipe.dockerfile);
-  assertEquals(qualified.buildRecipe.context, admitted.buildRecipe.context);
-  assertEquals(qualified.buildRecipe.user, admitted.buildRecipe.user);
-  assertEquals(qualified.source.dockerImageName, admitted.source.dockerImageName);
   const cataloguedModelica = catalog.units.find((unit) =>
     unit.id === "casys.modelica-worker"
-  )?.materials.find((material) => material.id === "modelica-admitted-worker-image");
+  )?.materials.find((material) => material.id === "modelica-worker-image");
   assertEquals(
-    admitted.targetImageReference,
+    descriptor.targetImageReference,
     pinnedOciImageReference(
       LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
       "$bootstrap.modelica",
     ),
   );
   assertEquals(
-    admitted.targetImageReference,
+    descriptor.targetImageReference,
     "docker.io/casys/modelica-microsandbox-worker@sha256:834c759291320eb5f35ccb6eba03587445d259dcb38a2814c5def4ac41d5d730",
   );
-  assertEquals(admitted.targetImageReference, cataloguedModelica?.imageReference);
-  assertEquals(admitted.target.reference, admitted.targetImageReference);
+  assertEquals(descriptor.targetImageReference, cataloguedModelica?.imageReference);
+  assertEquals(descriptor.target.reference, descriptor.targetImageReference);
+  assertEquals(
+    catalog.bindings.filter((binding) =>
+      binding.unitIds.includes("casys.modelica-worker")
+    ).map((binding) => binding.id),
+    ["openmodelica-qualified-kit", "openmodelica-admitted-modelica"],
+  );
   assertFirstPartyPhysicalImageHasUniqueTargetDigest(descriptors);
   assertThrows(
     () =>
       assertFirstPartyPhysicalImageHasUniqueTargetDigest([
-        qualified,
+        descriptor,
         {
-          ...admitted,
+          ...descriptor,
           target: {
-            ...admitted.target,
+            ...descriptor.target,
             manifestDigest: `sha256:${"0".repeat(64)}`,
           },
         },

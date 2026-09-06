@@ -70,9 +70,19 @@ export interface GeometryModuleDraftCapture {
   readonly fingerprint: ContentFingerprint;
 }
 
-export async function parseGeometryModuleDraftCapture(
+export function parseGeometryModuleDraftCapture(
   value: unknown,
 ): Promise<Omit<GeometryModuleDraftCapture, "fingerprint">> {
+  try {
+    return Promise.resolve(parseGeometryModuleDraftCaptureValue(value));
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+function parseGeometryModuleDraftCaptureValue(
+  value: unknown,
+): Omit<GeometryModuleDraftCapture, "fingerprint"> {
   const root = closedRecord(
     unsignedDraftRecord(value),
     [

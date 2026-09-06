@@ -1321,15 +1321,15 @@ function exactQualifiedModelicaMicrosandboxLifecycle(
   const lifecycle = microsandbox[0]!;
   if (
     lifecycle.launchGroup !== null ||
-    lifecycle.material.unitId !== "casys.modelica-qualified-worker" ||
-    lifecycle.material.materialId !== "modelica-qualified-worker-image" ||
+    lifecycle.material.unitId !== "casys.modelica-worker" ||
+    lifecycle.material.materialId !== "modelica-worker-image" ||
     lifecycle.material.imageDigest !== profile.runtimeBackend.imageDigest.digest ||
     !profile.runtimeBackend.imageReference.endsWith(
       `@sha256:${lifecycle.material.imageDigest}`,
     )
   ) {
     throw invalidTransition(
-      "Qualified Modelica execution requires the exact casys.modelica-qualified-worker/modelica-qualified-worker-image Microsandbox profile before host activation.",
+      "Qualified Modelica execution requires the exact casys.modelica-worker/modelica-worker-image Microsandbox profile before host activation.",
     );
   }
   return lifecycle;

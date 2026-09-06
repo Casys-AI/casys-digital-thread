@@ -16,8 +16,7 @@ import {
   FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
   FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID,
   FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID,
-  FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
-  FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
+  FIRST_PARTY_MODELICA_CACHE_RECIPE_ID,
   FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
   firstPartyMicrosandboxBootstrapCacheProfileBody,
 } from "./first-party-capability-runtime-cache-preparation-registry.ts";
@@ -42,8 +41,7 @@ Deno.test("first-party cache registry enrolls one recipe per catalogued microvm-
       FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
       FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID,
       FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID,
-      FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
-      FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
+      FIRST_PARTY_MODELICA_CACHE_RECIPE_ID,
       FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
     ].toSorted(),
   );
@@ -75,47 +73,40 @@ Deno.test("first-party cache registry enrolls one recipe per catalogued microvm-
     pinnedOciImageReference(LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE, "$test"),
   );
   assertEquals(
-    byId.get(FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID)?.scope.materials[0]
+    byId.get(FIRST_PARTY_MODELICA_CACHE_RECIPE_ID)?.scope.materials[0]
       ?.imageReference,
     pinnedOciImageReference(LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE, "$test"),
   );
   assertEquals(
-    byId.get(FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID)?.scope.materials[0]
-      ?.imageReference,
-    pinnedOciImageReference(LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE, "$test"),
+    byId.get(FIRST_PARTY_MODELICA_CACHE_RECIPE_ID)?.scope.materials[0]
+      ?.material,
+    {
+      unitId: "casys.modelica-worker",
+      materialId: "modelica-worker-image",
+      imageDigest: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE.slice(
+        LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE.lastIndexOf("@sha256:") + 8,
+      ),
+    },
   );
   assertEquals(
     byId.get(FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID)?.scope.materials[0]?.imageReference,
     pinnedOciImageReference(LOCAL_ADMITTED_SPICE_EXECUTION_IMAGE_REFERENCE, "$test"),
   );
 
-  const qualified = descriptors.find((descriptor) =>
-    descriptor.recipeId === FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID
+  const modelica = descriptors.filter((descriptor) =>
+    descriptor.recipeId === FIRST_PARTY_MODELICA_CACHE_RECIPE_ID
   );
-  const admitted = descriptors.find((descriptor) =>
-    descriptor.recipeId === FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID
-  );
-  if (!qualified || !admitted) {
-    throw new Error("Modelica bootstrap descriptors are absent");
-  }
-  assertEquals(qualified.physicalImageId, admitted.physicalImageId);
-  assertEquals(
-    qualified.target.manifestDigest,
-    admitted.target.manifestDigest,
-  );
-  assertEquals(
-    qualified.targetImageReference,
-    admitted.targetImageReference,
-  );
-  assertEquals(qualified.recipeId === admitted.recipeId, false);
+  assertEquals(modelica.length, 1);
+  assertEquals(modelica[0]?.unitId, "casys.modelica-worker");
+  assertEquals(modelica[0]?.materialId, "modelica-worker-image");
+  assertEquals(modelica[0]?.physicalImageId, "modelica-microsandbox-worker");
 
   const plan = await registry.plan(requested(recipes));
   assertEquals(plan.recipes.map((recipe) => recipe.id), [
     FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
     FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID,
     FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID,
-    FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
-    FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
+    FIRST_PARTY_MODELICA_CACHE_RECIPE_ID,
     FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
   ]);
   assertEquals(plan.unavailable, []);

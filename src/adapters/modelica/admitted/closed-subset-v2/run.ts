@@ -223,14 +223,12 @@ function normalizeAdmittedCsv(
   const expected = [
     "time",
     ...source.outputs.map((output) => output.name),
-    ...source.equations.filter((equation) => equation.discriminator === "der")
-      .map((equation) => `der(${equation.lhsName})`),
   ];
   if (
     header.length !== expected.length || new Set(header).size !== header.length ||
     expected.some((column) => !header.includes(column))
   ) {
-    fail("OpenModelica CSV columns are not the admitted output/derivative set.");
+    fail("OpenModelica CSV columns are not the admitted output set.");
   }
   const columns = new Map(header.map((column, index) => [column, index]));
   const samples: { time: number; values: Record<string, number> }[] = [];

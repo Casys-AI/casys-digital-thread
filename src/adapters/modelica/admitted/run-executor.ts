@@ -2188,14 +2188,14 @@ function exactAdmittedModelicaMicrosandboxLifecycle(
   if (
     lifecycle.launchGroup !== null ||
     lifecycle.material.unitId !== "casys.modelica-worker" ||
-    lifecycle.material.materialId !== "modelica-admitted-worker-image" ||
+    lifecycle.material.materialId !== "modelica-worker-image" ||
     lifecycle.material.imageDigest !== profile.runtimeBackend.imageDigest.digest ||
     !profile.runtimeBackend.imageReference.endsWith(
       `@sha256:${lifecycle.material.imageDigest}`,
     )
   ) {
     throw invalidTransition(
-      "Admitted Modelica execution requires the exact casys.modelica-worker/modelica-admitted-worker-image Microsandbox profile before host activation.",
+      "Admitted Modelica execution requires the exact casys.modelica-worker/modelica-worker-image Microsandbox profile before host activation.",
     );
   }
   return lifecycle;

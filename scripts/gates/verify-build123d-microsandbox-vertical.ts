@@ -13,16 +13,14 @@
  */
 
 import { createBuild123dExecutionComposition } from "../../src/adapters/cad/isolated/build123d-execution-composition.ts";
+import { createLocalBuild123dExecutionServerOptions } from "../../src/adapters/cad/isolated/first-party-build123d-execution.ts";
 import { OcctStepOutputValidator } from "../../src/adapters/cad/isolated/occt-step-output-validator.ts";
 import {
   ISOLATED_CODE_EXECUTION_REQUEST_SCHEMA,
   isolatedCodeExecutionReceiptRecord,
 } from "../../src/domain/compile/isolation/isolated-code-execution.ts";
 import { fingerprintResourceBytes } from "../../src/domain/compile/source/provider-resource-reader.ts";
-import {
-  deterministicJson,
-  sha256Fingerprint,
-} from "../../src/domain/kernel/deterministic-json.ts";
+import { deterministicJson } from "../../src/domain/kernel/deterministic-json.ts";
 
 if (Deno.args.length !== 1 || Deno.args[0] !== "--run") {
   console.log(JSON.stringify({
@@ -33,33 +31,9 @@ if (Deno.args.length !== 1 || Deno.args[0] !== "--run") {
   Deno.exit(0);
 }
 
-const IMAGE_DIGEST = "0e19aee61aaab326ec29e50753a0ef56432d255fb44fd21c40988e90ff7601f8";
-const IMAGE_REFERENCE = `casys/build123d-microsandbox-worker@sha256:${IMAGE_DIGEST}`;
-const LIMITS = Object.freeze({
-  maxWallTimeMs: 30_000,
-  maxCpuTimeMs: 25_000,
-  maxMemoryBytes: 1_024 * 1_048_576,
-  maxProcesses: 32,
-  maxStdoutBytes: 65_536,
-  maxStderrBytes: 65_536,
-  maxOutputFileBytes: 128 * 1_048_576,
-  maxOutputTotalBytes: 128 * 1_048_576,
-});
-const POLICY = Object.freeze({
-  id: "build123d-microsandbox-deny-all-v1",
-  version: "1.0.0",
-  fingerprint: await sha256Fingerprint({
-    schemaVersion: "build123d-microsandbox-policy/1.0",
-    backend: "microsandbox-local@0.6.8",
-    imageReference: IMAGE_REFERENCE,
-    network: "deny-all",
-    pullPolicy: "never",
-    securityProfile: "restricted",
-    supervisorUser: "0:0",
-    untrustedChildUser: "65532:65532",
-    limits: LIMITS,
-  }),
-});
+const options = await createLocalBuild123dExecutionServerOptions();
+const IMAGE_REFERENCE = options.profile.imageReference;
+const IMAGE_DIGEST = IMAGE_REFERENCE.slice(IMAGE_REFERENCE.lastIndexOf("@sha256:") + 8);
 const SOURCE = new TextEncoder().encode(
   "from build123d import Box\nresult = Box(10, 20, 30)\n",
 );
@@ -84,14 +58,7 @@ let result: unknown;
 
 try {
   const composition = await createBuild123dExecutionComposition(
-    {
-      profile: {
-        imageReference: IMAGE_REFERENCE,
-        policy: POLICY,
-        limits: LIMITS,
-      },
-      runtime: {},
-    },
+    options,
     { outputCasDirectory: `${temporaryDirectory}/cas` },
   );
   execution = composition.execution;

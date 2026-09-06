@@ -46,21 +46,20 @@ Deno.test("prescribed-kinematics L3 restart reads an uncertain request and never
   let runs = 0;
   let reads = 0;
   const observer: PrescribedKinematicsObserver = {
-    submitCase: async (request) => ({
-      caseSha256: request.requestFingerprint.digest,
-      caseUri: `chrono-case:sha256:${request.requestFingerprint.digest}`,
-    }),
-    run: async () => {
+    submitCase: (request) =>
+      Promise.resolve({
+        caseSha256: request.requestFingerprint.digest,
+        caseUri: `chrono-case:sha256:${request.requestFingerprint.digest}`,
+      }),
+    run: () => {
       runs++;
-      throw new Error("transport may have dispatched");
+      return Promise.reject(new Error("transport may have dispatched"));
     },
-    readRun: async () => {
+    readRun: () => {
       reads++;
-      return { state: "absent" };
+      return Promise.resolve({ state: "absent" });
     },
-    readReceipt: async () => {
-      throw new Error("no provider receipt exists");
-    },
+    readReceipt: () => Promise.reject(new Error("no provider receipt exists")),
   };
   try {
     const first = new RunPrescribedKinematicsObservation({
@@ -95,20 +94,22 @@ Deno.test("prescribed-kinematics L3 reopens the sealed source and submits only t
       attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
       lowerer: new ChronoPrescribedKinematicsCaseLowerer(),
       observer: {
-        submitCase: async (submission) => {
+        submitCase: (submission) => {
           submittedText = submission.exactCaseText;
-          return {
+          return Promise.resolve({
             caseSha256: submission.requestFingerprint.digest,
             caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
-          };
+          });
         },
-        run: async () => ({ state: "rejected", code: "case_invalid" }),
-        readRun: async () => {
-          throw new Error("a definite pre-dispatch rejection must not read a run");
-        },
-        readReceipt: async () => {
-          throw new Error("a definite pre-dispatch rejection has no receipt");
-        },
+        run: () => Promise.resolve({ state: "rejected", code: "case_invalid" }),
+        readRun: () =>
+          Promise.reject(
+            new Error("a definite pre-dispatch rejection must not read a run"),
+          ),
+        readReceipt: () =>
+          Promise.reject(
+            new Error("a definite pre-dispatch rejection has no receipt"),
+          ),
       },
     });
     const internalCommand = command(sealedCase, text);
@@ -152,15 +153,15 @@ Deno.test("prescribed-kinematics L3 refuses a lowerer whose source fingerprint d
         },
       },
       observer: {
-        submitCase: async () => {
+        submitCase: () => {
           submitted = true;
-          throw new Error("mismatched lowering must fail before provider submission");
+          return Promise.reject(
+            new Error("mismatched lowering must fail before provider submission"),
+          );
         },
-        run: async () => ({ state: "absent" }),
-        readRun: async () => ({ state: "absent" }),
-        readReceipt: async () => {
-          throw new Error("unreachable");
-        },
+        run: () => Promise.resolve({ state: "absent" }),
+        readRun: () => Promise.resolve({ state: "absent" }),
+        readReceipt: () => Promise.reject(new Error("unreachable")),
       },
     });
     await assertRejects(
@@ -217,13 +218,14 @@ Deno.test("prescribed-kinematics L3 quarantines a receipt whose bounded fact pag
     const runner = new RunPrescribedKinematicsObservation({
       attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
       observer: {
-        submitCase: async (submission) => ({
-          caseSha256: submission.requestFingerprint.digest,
-          caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
-        }),
-        run: async () => ({ state: "recorded", record: malformed }),
-        readRun: async () => ({ state: "recorded", record: malformed }),
-        readReceipt: async () => malformed,
+        submitCase: (submission) =>
+          Promise.resolve({
+            caseSha256: submission.requestFingerprint.digest,
+            caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
+          }),
+        run: () => Promise.resolve({ state: "recorded", record: malformed }),
+        readRun: () => Promise.resolve({ state: "recorded", record: malformed }),
+        readReceipt: () => Promise.resolve(malformed),
       },
       lowerer: testLowerer,
     });
@@ -245,13 +247,14 @@ Deno.test("prescribed-kinematics L3 reads the same request after a post-intent o
     const runner = new RunPrescribedKinematicsObservation({
       attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
       observer: {
-        submitCase: async (submission) => ({
-          caseSha256: submission.requestFingerprint.digest,
-          caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
-        }),
-        run: async (request) => {
+        submitCase: (submission) =>
+          Promise.resolve({
+            caseSha256: submission.requestFingerprint.digest,
+            caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
+          }),
+        run: (request) => {
           runs++;
-          return { state: "uncertain", ...request };
+          return Promise.resolve({ state: "uncertain", ...request });
         },
         readRun: async (request) => {
           reads++;
@@ -264,9 +267,7 @@ Deno.test("prescribed-kinematics L3 reads the same request after a post-intent o
             )}`,
           };
         },
-        readReceipt: async () => {
-          throw new Error("not recorded");
-        },
+        readReceipt: () => Promise.reject(new Error("not recorded")),
       },
       lowerer: testLowerer,
     });
@@ -288,17 +289,16 @@ Deno.test("prescribed-kinematics L3 records a definite pre-dispatch rejection wi
     const runner = new RunPrescribedKinematicsObservation({
       attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
       observer: {
-        submitCase: async (submission) => ({
-          caseSha256: submission.requestFingerprint.digest,
-          caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
-        }),
-        run: async () => ({ state: "rejected", code: "case_not_found" }),
-        readRun: async () => {
-          throw new Error("definite rejection must not read a new run");
-        },
-        readReceipt: async () => {
-          throw new Error("definite rejection has no receipt");
-        },
+        submitCase: (submission) =>
+          Promise.resolve({
+            caseSha256: submission.requestFingerprint.digest,
+            caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
+          }),
+        run: () => Promise.resolve({ state: "rejected", code: "case_not_found" }),
+        readRun: () =>
+          Promise.reject(new Error("definite rejection must not read a new run")),
+        readReceipt: () =>
+          Promise.reject(new Error("definite rejection has no receipt")),
       },
       lowerer: testLowerer,
     });
@@ -321,15 +321,16 @@ Deno.test("prescribed-kinematics L3 reads every 64-sample receipt page before se
     const runner = new RunPrescribedKinematicsObservation({
       attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
       observer: {
-        submitCase: async (submission) => ({
-          caseSha256: submission.requestFingerprint.digest,
-          caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
-        }),
-        run: async () => ({ state: "recorded", record: page(0) }),
-        readRun: async () => ({ state: "recorded", record: page(0) }),
-        readReceipt: async (_receiptSha256, request) => {
+        submitCase: (submission) =>
+          Promise.resolve({
+            caseSha256: submission.requestFingerprint.digest,
+            caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
+          }),
+        run: () => Promise.resolve({ state: "recorded", record: page(0) }),
+        readRun: () => Promise.resolve({ state: "recorded", record: page(0) }),
+        readReceipt: (_receiptSha256, request) => {
           offsets.push(request?.sampleOffset ?? -1);
-          return page(request?.sampleOffset ?? 0);
+          return Promise.resolve(page(request?.sampleOffset ?? 0));
         },
       },
       lowerer: testLowerer,
@@ -396,20 +397,26 @@ Deno.test("prescribed-kinematics L3 recovery reads every receipt page without an
     const runner = new RunPrescribedKinematicsObservation({
       attempts,
       observer: {
-        submitCase: async () => {
-          throw new Error("a dispatching request must not submit a case again");
-        },
-        run: async () => {
+        submitCase: () =>
+          Promise.reject(
+            new Error("a dispatching request must not submit a case again"),
+          ),
+        run: () => {
           runs++;
-          throw new Error("a dispatching request must never call run again");
+          return Promise.reject(
+            new Error("a dispatching request must never call run again"),
+          );
         },
-        readRun: async () => ({
-          state: "recorded",
-          record: completeRecord(caseSha, 0, 65),
-        }),
-        readReceipt: async (_receiptSha256, request) => {
+        readRun: () =>
+          Promise.resolve({
+            state: "recorded",
+            record: completeRecord(caseSha, 0, 65),
+          }),
+        readReceipt: (_receiptSha256, request) => {
           offsets.push(request?.sampleOffset ?? -1);
-          return completeRecord(caseSha, request?.sampleOffset ?? 0, 65);
+          return Promise.resolve(
+            completeRecord(caseSha, request?.sampleOffset ?? 0, 65),
+          );
         },
       },
       lowerer: testLowerer,
@@ -431,22 +438,27 @@ Deno.test("prescribed-kinematics L3 quarantines missing, overlapping, duplicate,
       const runner = new RunPrescribedKinematicsObservation({
         attempts: new FilePrescribedKinematicsObservationAttemptStore(directory),
         observer: {
-          submitCase: async (submission) => ({
-            caseSha256: submission.requestFingerprint.digest,
-            caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
-          }),
-          run: async () => ({
-            state: "recorded",
-            record: completeRecord(caseSha, 0, 65),
-          }),
-          readRun: async () => ({
-            state: "recorded",
-            record: completeRecord(caseSha, 0, 65),
-          }),
-          readReceipt: async (_receiptSha256, request) =>
-            faultyRecord(
-              completeRecord(caseSha, request?.sampleOffset ?? 0, 65),
-              fault,
+          submitCase: (submission) =>
+            Promise.resolve({
+              caseSha256: submission.requestFingerprint.digest,
+              caseUri: `chrono-case:sha256:${submission.requestFingerprint.digest}`,
+            }),
+          run: () =>
+            Promise.resolve({
+              state: "recorded",
+              record: completeRecord(caseSha, 0, 65),
+            }),
+          readRun: () =>
+            Promise.resolve({
+              state: "recorded",
+              record: completeRecord(caseSha, 0, 65),
+            }),
+          readReceipt: (_receiptSha256, request) =>
+            Promise.resolve(
+              faultyRecord(
+                completeRecord(caseSha, request?.sampleOffset ?? 0, 65),
+                fault,
+              ),
             ),
         },
         lowerer: testLowerer,

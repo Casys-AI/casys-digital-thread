@@ -584,15 +584,17 @@ Deno.test("Compose host retries only read-only tools/list while a delayed MCP en
   let now = 0;
   const methods: string[] = [];
   const fixture = host(group, runner, {
-    readinessFetch: (async (_url, init) => {
+    readinessFetch: ((_url, init) => {
       const body = JSON.parse(String(init?.body)) as { method?: string };
       methods.push(body.method ?? "");
-      if (methods.length < 3) return new Response("not listening", { status: 503 });
-      return Response.json({
+      if (methods.length < 3) {
+        return Promise.resolve(new Response("not listening", { status: 503 }));
+      }
+      return Promise.resolve(Response.json({
         jsonrpc: "2.0",
         id: 1,
         result: { resultType: "complete", tools: [] },
-      });
+      }));
     }) as typeof fetch,
     monotonicNow: () => now,
     wait: (milliseconds) => {
@@ -799,25 +801,6 @@ Deno.test("Compose host reconciles a secret-bearing group through stdin without 
 
 async function sysonGroup(): Promise<CapabilityRuntimeLaunchGroup> {
   return (await createFirstPartyCapabilityRuntimeLaunchGroups())[0]!;
-}
-
-function composeCommand(
-  group: CapabilityRuntimeLaunchGroup,
-  operation: readonly string[],
-): string[] {
-  return [
-    "docker",
-    "compose",
-    "--env-file",
-    "/dev/null",
-    "--project-name",
-    group.acquisition.projectName,
-    "--project-directory",
-    "/canonical",
-    "--file",
-    "-",
-    ...operation,
-  ];
 }
 
 async function calculixGroup(): Promise<CapabilityRuntimeLaunchGroup> {

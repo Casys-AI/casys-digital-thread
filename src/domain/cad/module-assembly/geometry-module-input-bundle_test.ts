@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { fingerprintResourceBytes } from "../../compile/source/provider-resource-reader.ts";
 import { deterministicJson } from "../../kernel/deterministic-json.ts";
 import {

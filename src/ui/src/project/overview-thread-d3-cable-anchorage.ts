@@ -85,13 +85,10 @@ export interface OverviewThreadD3CableSidePair {
 /**
  * Chooses the sides two boxes exchange over.
  *
- * Cables leave and enter through the flanks only. A hull reads top-down — its
- * band, then its rows — and a cable crossing that edge would run over the
- * caption and through the list. Keeping every exchange lateral is what lets a
- * hull be read as a folder while it is wired like a rack.
- *
- * `preferred` breaks the tie for hulls that overlap horizontally; geometry
- * never moves a hull to resolve it.
+ * A clear horizontal corridor keeps the exchange on the facing flanks. A
+ * clear vertical corridor — two hulls stacked in one column — uses the
+ * facing top and bottom ports. Overlap on both axes falls back to the
+ * recorded horizontal preference; geometry never moves a hull to resolve it.
  */
 export function overviewThreadD3CableSidesForBoxes(
   source: OverviewThreadD3CableBox,
@@ -100,10 +97,17 @@ export function overviewThreadD3CableSidesForBoxes(
 ): OverviewThreadD3CableSidePair {
   const rightGap = target.x - (source.x + source.width);
   const leftGap = source.x - (target.x + target.width);
+  const bottomGap = target.y - (source.y + source.height);
+  const topGap = source.y - (target.y + target.height);
   if (rightGap >= 0 || leftGap >= 0) {
     return rightGap >= leftGap
       ? { source: "right", target: "left" }
       : { source: "left", target: "right" };
+  }
+  if (bottomGap >= 0 || topGap >= 0) {
+    return bottomGap >= topGap
+      ? { source: "bottom", target: "top" }
+      : { source: "top", target: "bottom" };
   }
 
   const centerDelta = (target.x + target.width / 2) -

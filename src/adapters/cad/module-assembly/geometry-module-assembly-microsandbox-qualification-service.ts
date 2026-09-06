@@ -40,6 +40,7 @@ import {
 } from "./geometry-module-assembly-microsandbox-qualification-capture.ts";
 import {
   assertExactGeometryModuleAssemblerQualificationCandidate,
+  createGeometryModuleAssemblerMicrosandboxQualificationCandidate,
   type GeometryModuleAssemblerMicrosandboxQualificationCandidate,
 } from "./geometry-module-assembly-microsandbox-qualification-candidate.ts";
 import {
@@ -59,6 +60,14 @@ export interface GeometryModuleAssemblerQualificationServiceOptions {
   readonly candidate: () => Promise<
     GeometryModuleAssemblerMicrosandboxQualificationCandidate
   >;
+  /**
+   * Independent server-created expected authority. Omit only for the active
+   * catalogue pin; imported-candidate qualification must pass the bound-record
+   * factory rather than trust the supplied candidate value.
+   */
+  readonly expectedCandidate?: () => Promise<
+    GeometryModuleAssemblerMicrosandboxQualificationCandidate
+  >;
   readonly observedHost: { read(): Promise<CapabilityRuntimeHostObservation> };
   readonly profiles: FixedGeometryModuleAssemblyProfileCatalog;
   readonly runner: IsolatedCodeRunner;
@@ -69,6 +78,11 @@ export interface GeometryModuleAssemblerQualificationServiceOptions {
   readonly attempts: CapabilityRuntimeQualificationAttemptStore;
   readonly attestations: CapabilityRuntimeQualificationAttestationStore;
   readonly captures: FileGeometryModuleAssemblerMicrosandboxQualificationStore;
+  /**
+   * Candidate-qualification successor only. The active-pin path never sets
+   * this; IsolatedCodeRunner generation stays 0 on the successor run identity.
+   */
+  readonly executionRunId?: string;
   /** Test-only seam; the durable recheck below remains the authority boundary. */
   readonly beforeDispatchClaim?: () => Promise<void> | void;
   readonly now?: () => string;
@@ -80,6 +94,7 @@ export interface GeometryModuleAssemblerQualificationResult {
   readonly runId: string;
   readonly capture: GeometryModuleAssemblerMicrosandboxQualificationReference | null;
   readonly attestationFingerprint: ContentFingerprint | null;
+  readonly receiptFingerprint: ContentFingerprint | null;
 }
 
 const QUALIFICATION_DISPATCH_DEADLINE_MS = 5 * 60 * 1_000;
@@ -105,6 +120,21 @@ export class GeometryModuleAssemblerQualificationService {
     private readonly options: GeometryModuleAssemblerQualificationServiceOptions,
   ) {
     this.#now = options.now ?? (() => new Date().toISOString());
+  }
+
+  async inspect(): Promise<{
+    readonly runId: string;
+    readonly identity: CapabilityRuntimeQualificationAttemptIdentity;
+    readonly attempt: CapabilityRuntimeQualificationAttempt | undefined;
+  }> {
+    const context = await this.#context();
+    return {
+      runId: context.runId,
+      identity: context.identity,
+      attempt: await this.options.attempts.read(
+        qualificationAttemptKeyFor(context.identity),
+      ),
+    };
   }
 
   async apply(): Promise<GeometryModuleAssemblerQualificationResult> {
@@ -159,13 +189,16 @@ export class GeometryModuleAssemblerQualificationService {
   }
 
   async #context(): Promise<GeometryModuleAssemblerQualificationContext> {
-    const [candidateValue, host, profile] = await Promise.all([
+    const [candidateValue, expectedCandidate, host, profile] = await Promise.all([
       this.options.candidate(),
+      this.options.expectedCandidate?.() ??
+        createGeometryModuleAssemblerMicrosandboxQualificationCandidate(),
       this.options.observedHost.read(),
       this.options.profiles.initial(),
     ]);
     const candidate = await assertExactGeometryModuleAssemblerQualificationCandidate(
       candidateValue,
+      expectedCandidate,
     );
     if (host.platform !== "linux/arm64") {
       throw new Error(
@@ -187,16 +220,18 @@ export class GeometryModuleAssemblerQualificationService {
       specification: candidate.specification.fingerprint,
       profile: profile.profileFingerprint,
     });
-    const runId = `geometry-module-assembler-qualification-${
-      (
-        await sha256Fingerprint({
-          schemaVersion: "geometry-module-assembler-microsandbox-qualification-run/1.0",
-          candidate: candidate.fingerprint,
-          observedHost: observedHost.fingerprint,
-          specification: candidate.specification.fingerprint,
-        })
-      ).digest
-    }`;
+    const runId = this.options.executionRunId ??
+      `geometry-module-assembler-qualification-${
+        (
+          await sha256Fingerprint({
+            schemaVersion:
+              "geometry-module-assembler-microsandbox-qualification-run/1.0",
+            candidate: candidate.fingerprint,
+            observedHost: observedHost.fingerprint,
+            specification: candidate.specification.fingerprint,
+          })
+        ).digest
+      }`;
     const identity: CapabilityRuntimeQualificationAttemptIdentity = {
       candidate: { id: candidate.id, fingerprint: candidate.fingerprint },
       observedHost,
@@ -734,6 +769,7 @@ export class GeometryModuleAssemblerQualificationService {
     const capture = await createGeometryModuleAssemblerMicrosandboxQualificationCapture(
       {
         candidate: context.candidate,
+        expectedCandidate: this.options.expectedCandidate,
         qualifiedAt: attempt.outcome.recordedAt,
         observedHost: context.host,
         receipt,
@@ -783,6 +819,12 @@ function resultOf(
     capture,
     attestationFingerprint: attempt.phase === "attested"
       ? attempt.attestationFingerprint
+      : null,
+    receiptFingerprint: status === "qualified" &&
+        (attempt.phase === "attested" || attempt.phase === "stopped") &&
+        attempt.outcome.status === "qualified" &&
+        attempt.outcome.basis === "recorded"
+      ? attempt.outcome.basisFingerprint
       : null,
   });
 }

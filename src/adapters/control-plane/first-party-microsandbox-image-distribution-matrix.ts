@@ -13,7 +13,10 @@
  */
 
 import type { CapabilityRuntimeCatalog } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
-import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Hex,
+} from "../../domain/kernel/deterministic-json.ts";
 import {
   createFirstPartyMicrosandboxImageBootstrapDescriptors,
   type FirstPartyMicrosandboxImageBootstrapDescriptor,
@@ -21,7 +24,20 @@ import {
 } from "./first-party-microsandbox-image-bootstrap.ts";
 
 export const FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA =
-  "first-party-microsandbox-image-distribution-matrix/1.0" as const;
+  "first-party-microsandbox-image-distribution-matrix/3.0" as const;
+
+/**
+ * This release surface is intentionally closed. The catalogue currently has
+ * five logical microVM workers and five physical OCI images. Modelica
+ * qualified-kit and admitted-source bindings share one installable atom and
+ * therefore one logical target. Keeping the cardinalities here makes a
+ * missing descriptor fail before a workflow can publish a partial candidate
+ * set, without duplicating a worker list in CI configuration.
+ */
+export const FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT = Object.freeze({
+  physicalImageCount: 5,
+  logicalTargetCount: 5,
+});
 
 const GHCR_REGISTRY = "ghcr.io/casys-ai" as const;
 const PACKAGE_PREFIX = "casys-digital-thread-" as const;
@@ -59,6 +75,7 @@ export interface FirstPartyMicrosandboxImageDistributionEntry {
 export interface FirstPartyMicrosandboxImageDistributionMatrix {
   readonly schemaVersion:
     typeof FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA;
+  readonly contract: typeof FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT;
   readonly platform: "linux/arm64";
   readonly images: readonly FirstPartyMicrosandboxImageDistributionEntry[];
 }
@@ -97,15 +114,92 @@ export function planFirstPartyMicrosandboxImageDistribution(
     assertSameQualificationTarget(existing[0]!, descriptor);
     existing.push(descriptor);
   }
-  return Object.freeze({
-    schemaVersion: FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA,
-    platform: "linux/arm64",
-    images: Object.freeze(
-      order.map((physicalImageId) =>
-        distributionEntry(physicalImageId, groups.get(physicalImageId)!)
-      ),
+  const images = Object.freeze(
+    order.map((physicalImageId) =>
+      distributionEntry(physicalImageId, groups.get(physicalImageId)!)
     ),
+  );
+  const matrix = Object.freeze({
+    schemaVersion: FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA,
+    contract: FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT,
+    platform: "linux/arm64",
+    images,
   });
+  assertFirstPartyMicrosandboxImageDistributionContract(matrix);
+  return matrix;
+}
+
+/** SHA-256 of the exact current distribution-matrix document. */
+export async function fingerprintFirstPartyMicrosandboxImageDistributionMatrix(
+  matrix: FirstPartyMicrosandboxImageDistributionMatrix,
+): Promise<string> {
+  assertFirstPartyMicrosandboxImageDistributionContract(matrix);
+  return `sha256:${await sha256Hex(
+    new TextEncoder().encode(deterministicJson(matrix)),
+  )}`;
+}
+
+/**
+ * Runtime guard shared by release adapters. It is deliberately cardinality
+ * and identity based: physical image IDs stay unique, and each logical
+ * target is unique. Grouping still allows distinct descriptors to share one
+ * physical publication only when they already pin the same image.
+ */
+export function assertFirstPartyMicrosandboxImageDistributionContract(
+  matrix: FirstPartyMicrosandboxImageDistributionMatrix,
+): void {
+  const { contract, images } = matrix;
+  if (
+    matrix.schemaVersion !==
+      FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA ||
+    matrix.platform !== "linux/arm64"
+  ) {
+    throw new TypeError(
+      "First-party Microsandbox image distribution declares an unsupported schema or platform.",
+    );
+  }
+  if (
+    contract.physicalImageCount !==
+      FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT.physicalImageCount ||
+    contract.logicalTargetCount !==
+      FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_CONTRACT.logicalTargetCount
+  ) {
+    throw new TypeError(
+      "First-party Microsandbox image distribution declares an unsupported contract.",
+    );
+  }
+  if (images.length !== contract.physicalImageCount) {
+    throw new TypeError(
+      `First-party Microsandbox image distribution requires exactly ${contract.physicalImageCount} physical images, received ${images.length}.`,
+    );
+  }
+  const physicalImageIds = new Set(images.map((image) => image.physicalImageId));
+  if (physicalImageIds.size !== images.length) {
+    throw new TypeError(
+      "First-party Microsandbox image distribution contains duplicate physical image ids.",
+    );
+  }
+  const logicalTargets = images.flatMap((image) => image.logicalTargets);
+  if (logicalTargets.length !== contract.logicalTargetCount) {
+    throw new TypeError(
+      `First-party Microsandbox image distribution requires exactly ${contract.logicalTargetCount} logical targets, received ${logicalTargets.length}.`,
+    );
+  }
+  const logicalTargetIds = new Set(
+    logicalTargets.map((target) =>
+      `${target.unitId}\u0000${target.materialId}\u0000${target.recipeId}`
+    ),
+  );
+  if (logicalTargetIds.size !== logicalTargets.length) {
+    throw new TypeError(
+      "First-party Microsandbox image distribution contains duplicate logical targets.",
+    );
+  }
+  if (images.some((image) => image.logicalTargets.length === 0)) {
+    throw new TypeError(
+      "Every first-party Microsandbox physical image must cover a logical target.",
+    );
+  }
 }
 
 function distributionEntry(

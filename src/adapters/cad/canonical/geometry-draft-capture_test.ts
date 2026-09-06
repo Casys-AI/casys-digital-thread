@@ -108,10 +108,10 @@ function fixtureResourceDependencies() {
   const issued = new WeakMap<Uint8Array, ExpectedProviderResource>();
   return {
     resourceReader: {
-      async read(expected: ExpectedProviderResource) {
+      read(expected: ExpectedProviderResource) {
         const bytes = new Uint8Array(expected.byteCount);
         issued.set(bytes, expected);
-        return {
+        return Promise.resolve({
           bytes: { byteLength: bytes.byteLength, copy: () => bytes },
           attestation: {
             schemaVersion: "provider-resource-read-attestation/1.0" as const,
@@ -121,19 +121,21 @@ function fixtureResourceDependencies() {
             byteCount: expected.byteCount,
             sha256: expected.sha256,
           },
-        };
+        });
       },
     },
     draftAssets: {
-      async persist(bytes: Uint8Array) {
+      persist(bytes: Uint8Array) {
         const expected = issued.get(bytes);
         if (!expected) {
-          throw new Error("test asset bytes were not read from a resource");
+          return Promise.reject(
+            new Error("test asset bytes were not read from a resource"),
+          );
         }
-        return {
+        return Promise.resolve({
           fingerprint: { algorithm: "sha256" as const, digest: expected.sha256 },
           byteCount: expected.byteCount,
-        };
+        });
       },
       read: () => Promise.resolve(undefined),
     },
@@ -687,7 +689,7 @@ function v2Manifest(): GeometryBundleManifest {
 }
 
 function exportResponse(
-  name: string,
+  _name: string,
   formats: readonly ("step" | "gltf" | "stl")[],
   digest = HEX64,
 ): McpToolResult {

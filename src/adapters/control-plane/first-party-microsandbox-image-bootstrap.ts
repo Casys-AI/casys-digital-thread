@@ -38,7 +38,7 @@ import {
 } from "../electrical/spice/admitted/local-image-references.ts";
 import { NGSPICE_ADMITTED_MICROSANDBOX_WORKER_CONTRACT } from "../electrical/spice/admitted/worker-contract.ts";
 import { CALCULIX_MICROSANDBOX_WORKER_CONTRACT } from "../fea/isolated-v3/calculix-static-proof-v1/worker-contract.ts";
-import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "../fea/isolated-v3/local-calculix-isolated-execution-options.ts";
+import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "../fea/isolated-v3/local-calculix-image-reference.ts";
 import { MODELICA_ADMITTED_MICROSANDBOX_WORKER_CONTRACT } from "../modelica/admitted/closed-subset-v2/worker-contract.ts";
 import { MODELICA_MICROSANDBOX_WORKER_CONTRACT } from "../modelica/qualified-kit/kit-v1/worker-contract.ts";
 import type { ExactMicrosandboxImageExpectation } from "../shared/execution/microsandbox-ephemeral-execution-backend.ts";
@@ -57,10 +57,7 @@ export const FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID =
 export const FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID =
   "cache.geometry-module" as const;
 export const FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID = "cache.calculix" as const;
-export const FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID =
-  "cache.modelica-qualified" as const;
-export const FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID =
-  "cache.modelica-admitted" as const;
+export const FIRST_PARTY_MODELICA_CACHE_RECIPE_ID = "cache.modelica" as const;
 export const FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID = "cache.ngspice" as const;
 
 const REPO_ROOT = resolveRepoRoot();
@@ -272,18 +269,9 @@ function closedFirstPartyBootstrapDescriptors(): readonly Omit<
       }),
     },
     {
-      unitId: "casys.modelica-qualified-worker",
-      materialId: "modelica-qualified-worker-image",
-      recipeId: FIRST_PARTY_MODELICA_QUALIFIED_CACHE_RECIPE_ID,
-      physicalImageId: MODELICA_PHYSICAL_IMAGE_ID,
-      targetImageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-      buildRecipe: modelicaBuildRecipe,
-      source: modelicaSource,
-    },
-    {
       unitId: "casys.modelica-worker",
-      materialId: "modelica-admitted-worker-image",
-      recipeId: FIRST_PARTY_MODELICA_ADMITTED_CACHE_RECIPE_ID,
+      materialId: "modelica-worker-image",
+      recipeId: FIRST_PARTY_MODELICA_CACHE_RECIPE_ID,
       physicalImageId: MODELICA_PHYSICAL_IMAGE_ID,
       targetImageReference: LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
       buildRecipe: modelicaBuildRecipe,
@@ -448,7 +436,7 @@ function assertFirstPartyBuildRecipe(
       `First-party Microsandbox bootstrap Dockerfile is missing: ${recipe.dockerfile}.`,
     );
   }
-  if (!Deno.statSync(context).isDirectory) {
+  if (recipe.context !== "." && !Deno.statSync(context).isDirectory) {
     throw new TypeError(
       `First-party Microsandbox bootstrap context is missing: ${recipe.context}.`,
     );

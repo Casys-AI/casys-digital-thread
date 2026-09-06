@@ -70,25 +70,13 @@ const HULL_LIST_MINIMUM_ROWS = 3;
  */
 const HULL_LIST_COLUMN_GAP = 7;
 /**
- * Band reserved inside every hull for its own caption and folder controls.
+ * Projected hull geometry for its caption and folder controls.
  *
- * The caption lives in the hull rather than on a pill outside it: a hull is a
- * folder, and its band is the handle you drag it by. Reserving the height here
- * — not in CSS — keeps cable geometry and hit areas in agreement.
+ * The caption/control band is projected hull geometry rather than a pill
+ * outside it. List and collapsed views reserve its height; the compact matrix
+ * keeps its exact coordinates and placements without an automatic offset.
  */
 const HULL_HEADER_HEIGHT = 20;
-/**
- * Hull width is a constant of its lane, not a function of its contents.
- *
- * A hull that narrows to fit two leaves cannot show its own name, and a hull
- * that widens to fit a long title moves every cable anchored to it. Fixing the
- * width per lane keeps both the caption readable and the layout still.
- */
-const HULL_MINIMUM_WIDTH = 58;
-/** Clearance kept between two hulls when they are pushed apart. */
-const HULL_SEPARATION_GAP = 6;
-/** Bounded relaxation: separation must never loop on a pathological board. */
-const HULL_SEPARATION_PASSES = 6;
 const DEFAULT_OBSTACLE_MARGIN = MINIMUM_OBSTACLE_MARGIN;
 const NODE_FAN_IN_OBSTACLE_MARGIN = 2;
 const ROUTE_CLEARANCE = 1;
@@ -246,8 +234,7 @@ type FlowCableTerminal = OverviewThreadD3CableTerminal<
   OverviewThreadD3FlowNodeLayout
 >;
 
-export interface OverviewThreadD3FlowNodeLayout
-  extends OverviewThreadD3FlowNodeInput {
+export interface OverviewThreadD3FlowNodeLayout extends OverviewThreadD3FlowNodeInput {
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -286,7 +273,7 @@ export interface OverviewThreadD3FlowGroupLayout {
   readonly title?: string;
   /** The leaf that name came from, so the band can select it. */
   readonly promotedKey?: string;
-  /** Height of the caption band reserved at the top of the hull. */
+  /** Caption/control geometry: list/collapsed reserve it; matrix stays exact. */
   readonly headerHeight: number;
   readonly collapsed: boolean;
   readonly view: OverviewThreadD3FlowHullView;
@@ -647,9 +634,7 @@ export function buildOverviewThreadD3FlowLayout(
         const node = outlineRow.node;
         // The list reads down a column then across, like a Finder column view.
         const listColumn = listed ? Math.floor(index / listCapacity) : 0;
-        const listRow = listed
-          ? index - listColumn * listCapacity - hull.scrollRow
-          : 0;
+        const listRow = listed ? index - listColumn * listCapacity - hull.scrollRow : 0;
         // A row scrolled out of the window keeps its identity and its cables;
         // it is not drawn, and its cable lands on the hull edge instead.
         const offWindow = listed &&
@@ -657,8 +642,7 @@ export function buildOverviewThreadD3FlowLayout(
         const column = index % hull.columns;
         const row = Math.floor(index / hull.columns);
         const matrixNodeX = groupLeft + column * (nodeSize + nodeGap);
-        const matrixNodeY = placedGroupTop + HULL_HEADER_HEIGHT +
-          row * (nodeSize + nodeGap);
+        const matrixNodeY = placedGroupTop + row * (nodeSize + nodeGap);
         const nodePlacement = ownPlacement(options.nodePlacements, node.key);
         const nodeWidth = listed ? listColumnWidth : nodeSize;
         const nodeHeight = listed ? HULL_LIST_ROW_HEIGHT : nodeSize;
@@ -679,7 +663,7 @@ export function buildOverviewThreadD3FlowLayout(
               HULL_LIST_ROW_HEIGHT
           : clamp(
             matrixNodeY + finiteOrZero(nodePlacement?.offsetY),
-            placedGroupTop + HULL_HEADER_HEIGHT,
+            placedGroupTop,
             placedGroupTop + hull.height - nodeSize,
           );
         const nodeCenterX = nodeX + nodeWidth / 2;
@@ -764,20 +748,8 @@ export function buildOverviewThreadD3FlowLayout(
     }
   }
 
-  const separation = hullSeparationOffsets(groupLayouts);
-  const orderedNodes = nodeLayouts
-    .map((node) =>
-      translateNodeLayout(
-        node,
-        separation.get(
-          overviewThreadD3FlowGroupIdentity(node.lane, node.groupKey),
-        ),
-      )
-    )
-    .toSorted(compareNodeLayout);
-  const orderedGroups = groupLayouts
-    .map((group) => translateGroupLayout(group, separation.get(group.key)))
-    .toSorted(compareGroupLayout);
+  const orderedNodes = nodeLayouts.toSorted(compareNodeLayout);
+  const orderedGroups = groupLayouts.toSorted(compareGroupLayout);
   const routingObstacles = buildRoutingObstacles(
     orderedGroups,
     obstacleMargin,
@@ -826,9 +798,7 @@ export function buildOverviewThreadD3FlowLayout(
     readonly targetNode: OverviewThreadD3FlowNodeLayout;
   }[] = [];
   for (
-    const edge of edges.toSorted((left, right) =>
-      left.key.localeCompare(right.key)
-    )
+    const edge of edges.toSorted((left, right) => left.key.localeCompare(right.key))
   ) {
     const sourceNode = nodeByKey.get(edge.fromKey);
     const targetNode = nodeByKey.get(edge.toKey);
@@ -957,9 +927,7 @@ export function buildOverviewThreadD3FlowLayout(
   }
 
   const cablePairs = [...edgesByPair.entries()]
-    .map(([pairKey, pairEdges]) =>
-      buildCablePair(pairKey, pairEdges, laneIndex)
-    )
+    .map(([pairKey, pairEdges]) => buildCablePair(pairKey, pairEdges, laneIndex))
     .toSorted((left, right) => left.key.localeCompare(right.key));
   const corridors = clusterCablePairs(
     cablePairs,
@@ -1104,9 +1072,7 @@ export function buildOverviewThreadD3FlowLayout(
     groups: orderedGroups,
     lanes,
     segments,
-    routes: routes.toSorted((left, right) =>
-      left.edgeKey.localeCompare(right.edgeKey)
-    ),
+    routes: routes.toSorted((left, right) => left.edgeKey.localeCompare(right.edgeKey)),
     unroutedEdgeKeys: [...unroutedEdgeKeys].toSorted(),
     nextRoutingState: {
       corridors: corridors.map((corridor) => ({
@@ -1165,8 +1131,7 @@ function buildLaneMatrixPlan(
   for (const groupPoint of laneRoot.children ?? []) {
     if (groupPoint.data.kind !== "group") continue;
     const groupNodes = groupPoint.leaves().flatMap(
-      (leaf: HierarchyNode<LaneTreeDatum>) =>
-        leaf.data.node ? [leaf.data.node] : [],
+      (leaf: HierarchyNode<LaneTreeDatum>) => leaf.data.node ? [leaf.data.node] : [],
     ).toSorted(compareNodeInput);
     if (groupNodes.length === 0) continue;
     const columns = Math.min(
@@ -1180,12 +1145,10 @@ function buildLaneMatrixPlan(
       columns,
       rows,
       width: columns * nodeSize + Math.max(0, columns - 1) * nodeGap,
-      height: HULL_HEADER_HEIGHT + rows * nodeSize +
-        Math.max(0, rows - 1) * nodeGap,
+      height: rows * nodeSize + Math.max(0, rows - 1) * nodeGap,
     });
   }
   const laneWidth = Math.max(
-    HULL_MINIMUM_WIDTH,
     ...groups.map((group) => group.width),
   );
   const uniform = groups.map((group) => ({ ...group, width: laneWidth }));
@@ -1303,12 +1266,10 @@ function cableDirection(
 /**
  * Sides for a relation whose hulls sit too close for facing hubs.
  *
- * Every side decision goes through the shared anchorage vocabulary, so a cable
- * always leaves through a flank: a hull is read top-down — band, then rows —
- * and a cable crossing that edge runs over its own caption. When two hulls are
- * so close that facing hubs would coincide, both ends take the same outer
- * flank for that frame rather than dropping the relation or reaching over the
- * top.
+ * When two freely moved hulls leave no corridor for facing hubs, both ends
+ * take the top port for that frame rather than dropping the relation or
+ * occupying the coinciding hub. A clear horizontal corridor still uses the
+ * shared anchorage vocabulary.
  */
 function crossLaneCableSides(
   source: FlowCableHull,
@@ -1331,13 +1292,7 @@ function crossLaneCableSides(
     horizontalGap <= branchClearance ||
     Math.abs(facingHubSpan) <= ROUTE_CLEARANCE
   ) {
-    // The shared outer flank is the one furthest from the other hull.
-    const sourceCenterX = source.x + source.width / 2;
-    const targetCenterX = target.x + target.width / 2;
-    const side: OverviewThreadD3FlowCableSide = sourceCenterX <= targetCenterX
-      ? "left"
-      : "right";
-    return { source: side, target: side };
+    return { source: "top", target: "top" };
   }
   return overviewThreadD3CableHullSides(
     source,
@@ -1351,124 +1306,6 @@ function directedPairKey(
   target: OverviewThreadD3FlowGroupLayout,
 ): string {
   return structuredKey("directed-pair", [source.key, target.key]);
-}
-
-/**
- * Nudges that stop hulls from covering one another.
- *
- * Resizing or moving a hull can leave it on top of its neighbours, which hides
- * their contents and walls in their cables. Hulls are pushed apart along the
- * axis where they overlap least, each taking half the correction, so the
- * arrangement stays close to what the operator laid out. This is presentation
- * only: nothing here is written back to the stored placements, so the board
- * still opens exactly where it was left.
- */
-function hullSeparationOffsets(
-  groups: readonly OverviewThreadD3FlowGroupLayout[],
-): ReadonlyMap<string, OverviewThreadD3FlowPoint> {
-  const offsets = new Map<string, OverviewThreadD3FlowPoint>(
-    groups.map((group) => [group.key, { x: 0, y: 0 }]),
-  );
-  if (groups.length < 2) return offsets;
-  const ordered = groups.toSorted((left, right) =>
-    left.key.localeCompare(right.key)
-  );
-  const box = (group: OverviewThreadD3FlowGroupLayout) => {
-    const offset = offsets.get(group.key)!;
-    return {
-      minimumX: group.x + offset.x - HULL_SEPARATION_GAP,
-      maximumX: group.x + group.width + offset.x + HULL_SEPARATION_GAP,
-      minimumY: group.y + offset.y - HULL_SEPARATION_GAP,
-      maximumY: group.y + group.height + offset.y + HULL_SEPARATION_GAP,
-    };
-  };
-  for (let pass = 0; pass < HULL_SEPARATION_PASSES; pass++) {
-    let moved = false;
-    for (let first = 0; first < ordered.length; first++) {
-      for (let second = first + 1; second < ordered.length; second++) {
-        const left = ordered[first]!;
-        const right = ordered[second]!;
-        const leftBox = box(left);
-        const rightBox = box(right);
-        const overlapX = Math.min(leftBox.maximumX, rightBox.maximumX) -
-          Math.max(leftBox.minimumX, rightBox.minimumX);
-        const overlapY = Math.min(leftBox.maximumY, rightBox.maximumY) -
-          Math.max(leftBox.minimumY, rightBox.minimumY);
-        if (overlapX <= 0 || overlapY <= 0) continue;
-        moved = true;
-        const leftOffset = offsets.get(left.key)!;
-        const rightOffset = offsets.get(right.key)!;
-        if (overlapX <= overlapY) {
-          const push = overlapX / 2;
-          const leftFirst = leftBox.minimumX <= rightBox.minimumX;
-          offsets.set(left.key, {
-            x: leftOffset.x + (leftFirst ? -push : push),
-            y: leftOffset.y,
-          });
-          offsets.set(right.key, {
-            x: rightOffset.x + (leftFirst ? push : -push),
-            y: rightOffset.y,
-          });
-          continue;
-        }
-        const push = overlapY / 2;
-        const leftAbove = leftBox.minimumY <= rightBox.minimumY;
-        offsets.set(left.key, {
-          x: leftOffset.x,
-          y: leftOffset.y + (leftAbove ? -push : push),
-        });
-        offsets.set(right.key, {
-          x: rightOffset.x,
-          y: rightOffset.y + (leftAbove ? push : -push),
-        });
-      }
-    }
-    if (!moved) break;
-  }
-  return offsets;
-}
-
-function translateGroupLayout(
-  group: OverviewThreadD3FlowGroupLayout,
-  offset: OverviewThreadD3FlowPoint | undefined,
-): OverviewThreadD3FlowGroupLayout {
-  if (!offset || (offset.x === 0 && offset.y === 0)) return group;
-  const shift = (point: OverviewThreadD3FlowPort) => ({
-    x: point.x + offset.x,
-    y: point.y + offset.y,
-  });
-  return {
-    ...group,
-    x: group.x + offset.x,
-    y: group.y + offset.y,
-    centerY: group.centerY + offset.y,
-    inHub: shift(group.inHub),
-    outHub: shift(group.outHub),
-    topHub: shift(group.topHub),
-    bottomHub: shift(group.bottomHub),
-  };
-}
-
-function translateNodeLayout(
-  node: OverviewThreadD3FlowNodeLayout,
-  offset: OverviewThreadD3FlowPoint | undefined,
-): OverviewThreadD3FlowNodeLayout {
-  if (!offset || (offset.x === 0 && offset.y === 0)) return node;
-  const shift = (point: OverviewThreadD3FlowPort) => ({
-    x: point.x + offset.x,
-    y: point.y + offset.y,
-  });
-  return {
-    ...node,
-    x: node.x + offset.x,
-    y: node.y + offset.y,
-    centerX: node.centerX + offset.x,
-    centerY: node.centerY + offset.y,
-    leftPort: shift(node.leftPort),
-    rightPort: shift(node.rightPort),
-    topPort: shift(node.topPort),
-    bottomPort: shift(node.bottomPort),
-  };
 }
 
 /** Hulls whose inflated box intersects `hull`, and so cannot bound it. */
@@ -1542,15 +1379,13 @@ export function overviewThreadD3FlowRoundedPath(
   if (simplified.length === 0) return "";
   const first = simplified[0]!;
   if (simplified.length === 1) {
-    return `M ${formatRoutedPathNumber(first.x)} ${
-      formatRoutedPathNumber(first.y)
-    }`;
+    return `M ${formatRoutedPathNumber(first.x)} ${formatRoutedPathNumber(first.y)}`;
   }
   if (simplified.length === 2) {
     const last = simplified[1]!;
-    return `M ${formatRoutedPathNumber(first.x)} ${
-      formatRoutedPathNumber(first.y)
-    } L ${formatRoutedPathNumber(last.x)} ${formatRoutedPathNumber(last.y)}`;
+    return `M ${formatRoutedPathNumber(first.x)} ${formatRoutedPathNumber(first.y)} L ${
+      formatRoutedPathNumber(last.x)
+    } ${formatRoutedPathNumber(last.y)}`;
   }
 
   const parts: string[] = [
@@ -1570,11 +1405,9 @@ export function overviewThreadD3FlowRoundedPath(
     }
     appendRoutedLinear(parts, cursor, fillet.start);
     parts.push(
-      `Q ${formatRoutedPathNumber(current.x)} ${
-        formatRoutedPathNumber(current.y)
-      } ${formatRoutedPathNumber(fillet.end.x)} ${
-        formatRoutedPathNumber(fillet.end.y)
-      }`,
+      `Q ${formatRoutedPathNumber(current.x)} ${formatRoutedPathNumber(current.y)} ${
+        formatRoutedPathNumber(fillet.end.x)
+      } ${formatRoutedPathNumber(fillet.end.y)}`,
     );
     cursor = fillet.end;
   }
@@ -1975,11 +1808,7 @@ function segmentWidth(
   kind: OverviewThreadD3FlowSegmentKind,
   pathCount: number,
 ): number {
-  const minimum = kind === "node-branch"
-    ? 0.72
-    : kind === "pair-feeder"
-    ? 0.84
-    : 0.95;
+  const minimum = kind === "node-branch" ? 0.72 : kind === "pair-feeder" ? 0.84 : 0.95;
   return minimum + Math.min(
     2.5,
     Math.log2(Math.max(0, pathCount) + 1) * 0.34,
@@ -1999,9 +1828,7 @@ function routeStepSigns(
 ): readonly string[] {
   return points.slice(1).map((point, index) => {
     const previous = points[index]!;
-    return `${Math.sign(point.x - previous.x)},${
-      Math.sign(point.y - previous.y)
-    }`;
+    return `${Math.sign(point.x - previous.x)},${Math.sign(point.y - previous.y)}`;
   });
 }
 
@@ -2073,9 +1900,7 @@ function largestOverviewGroupSize(
 }
 
 function structuredKey(prefix: string, values: readonly string[]): string {
-  return `${prefix}:${
-    values.map((value) => `${value.length}:${value}`).join("|")
-  }`;
+  return `${prefix}:${values.map((value) => `${value.length}:${value}`).join("|")}`;
 }
 
 function pushKey(target: string[], key: string): void {
@@ -2098,18 +1923,14 @@ function positiveOrDefault(
   value: number | undefined,
   fallback: number,
 ): number {
-  return value !== undefined && Number.isFinite(value) && value > 0
-    ? value
-    : fallback;
+  return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
 }
 
 function nonNegativeOrDefault(
   value: number | undefined,
   fallback: number,
 ): number {
-  return value !== undefined && Number.isFinite(value) && value >= 0
-    ? value
-    : fallback;
+  return value !== undefined && Number.isFinite(value) && value >= 0 ? value : fallback;
 }
 
 interface ResolvedHullBox {
@@ -2331,9 +2152,7 @@ function ownPlacement<T>(
   placements: Readonly<Record<string, T>> | undefined,
   key: string,
 ): T | undefined {
-  return placements && Object.hasOwn(placements, key)
-    ? placements[key]
-    : undefined;
+  return placements && Object.hasOwn(placements, key) ? placements[key] : undefined;
 }
 
 function finiteOrUndefined(value: number | undefined): number | undefined {

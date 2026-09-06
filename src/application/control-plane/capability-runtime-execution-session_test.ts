@@ -863,7 +863,7 @@ function spiceRuntimeMaterial(): CapabilityRuntimeMaterialIdentity {
 function modelicaRuntimeMaterial(): CapabilityRuntimeMaterialIdentity {
   return persistentMaterial(
     "casys.modelica-worker",
-    "modelica-admitted-worker-image",
+    "modelica-worker-image",
     "3".repeat(64),
   );
 }

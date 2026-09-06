@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertRejects, assertThrows } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import {
   createInternalMcpBearerCredential,
   StatelessMcpHttpTransport,

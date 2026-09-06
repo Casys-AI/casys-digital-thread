@@ -24,13 +24,21 @@ import {
   type AtomicCapabilityRuntimeMaterial,
   fingerprintAtomicCapabilityRuntimeUnit,
 } from "../../../domain/capability/runtime/capability-runtime-catalog.ts";
+import type { FirstPartyMicrosandboxImageCandidateImportRecord } from "../../control-plane/first-party-microsandbox-image-candidate-import-record.ts";
+import {
+  assertBoundCandidateImportPhysicalImageId,
+  GEOMETRY_MODULE_ASSEMBLER_WORKER_PHYSICAL_IMAGE_ID,
+} from "../../control-plane/first-party-microsandbox-image-candidate-qualification.ts";
 import {
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
 } from "../../control-plane/first-party-capability-runtime-identities.ts";
 import {
+  createGeometryModuleAssemblyServerOptionsForBoundCandidateImport,
   createLocalGeometryModuleAssemblyServerOptions,
+  geometryModuleAssemblyPolicyBody,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_POLICY_BODY,
 } from "./first-party-geometry-module-assembly.ts";
+import type { GeometryModuleAssemblyServerOptions } from "./geometry-module-assembly-composition.ts";
 import {
   GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE,
 } from "./fixed-geometry-module-assembly-execution.ts";
@@ -64,39 +72,40 @@ const QUALIFICATION_CONTRACT = Object.freeze({
   source: "src/adapters/cad/module-assembly/fixed-geometry-module-assembler.ts",
 });
 
-const QUALIFICATION_RUNTIME_MATERIAL = Object.freeze({
-  id: QUALIFICATION_MATERIAL_ID,
-  kind: "microvm-image" as const,
-  imageReference: pinnedOciImageReference(
-    LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
-    "$geometryModuleAssemblerQualification.runtimeImage",
-  ),
-  platforms: ["linux/arm64"] as const,
-  lifecycle: "ephemeral" as const,
-  launchGroup: null,
-  effects: Object.freeze({
-    downloadBytes: null,
-    storageBytes: null,
-    services: [{ id: QUALIFICATION_MATERIAL_ID, lifecycle: "ephemeral" as const }],
-    volumes: [],
-    network: "deny-all" as const,
-    loopbackPorts: [],
-    bindMounts: [],
-    privileged: false as const,
-    dockerSocket: false as const,
-    devices: [],
-    secretSlots: [],
-    licence: {
-      status: "reviewed" as const,
-      reference: "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md",
-    },
-    security: "reviewed" as const,
-  }),
-}) satisfies AtomicCapabilityRuntimeMaterial;
-
-const QUALIFICATION_MATERIALS = Object.freeze(
-  [QUALIFICATION_RUNTIME_MATERIAL] as const,
-);
+function qualificationRuntimeMaterial(
+  imageReference: string,
+): AtomicCapabilityRuntimeMaterial {
+  return Object.freeze({
+    id: QUALIFICATION_MATERIAL_ID,
+    kind: "microvm-image" as const,
+    imageReference: pinnedOciImageReference(
+      imageReference,
+      "$geometryModuleAssemblerQualification.runtimeImage",
+    ),
+    platforms: ["linux/arm64"] as const,
+    lifecycle: "ephemeral" as const,
+    launchGroup: null,
+    effects: Object.freeze({
+      downloadBytes: null,
+      storageBytes: null,
+      services: [{ id: QUALIFICATION_MATERIAL_ID, lifecycle: "ephemeral" as const }],
+      volumes: [],
+      network: "deny-all" as const,
+      loopbackPorts: [],
+      bindMounts: [],
+      privileged: false as const,
+      dockerSocket: false as const,
+      devices: [],
+      secretSlots: [],
+      licence: {
+        status: "reviewed" as const,
+        reference:
+          "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md",
+      },
+      security: "reviewed" as const,
+    }),
+  });
+}
 
 export interface GeometryModuleAssemblerMicrosandboxQualificationFixture {
   readonly id: typeof GEOMETRY_MODULE_ASSEMBLER_MICROSANDBOX_QUALIFICATION_FIXTURE_ID;
@@ -127,7 +136,7 @@ export interface GeometryModuleAssemblerMicrosandboxQualificationCandidate {
     readonly manifestFingerprint: ContentFingerprint;
   };
   /** Exact atomic manifest: the executable Microsandbox runtime worker. */
-  readonly materials: typeof QUALIFICATION_MATERIALS;
+  readonly materials: readonly [AtomicCapabilityRuntimeMaterial];
   /** The runtime worker is the only material carried by execution attestation. */
   readonly material: {
     readonly unitId: typeof QUALIFICATION_UNIT_ID;
@@ -163,12 +172,47 @@ export interface GeometryModuleAssemblerMicrosandboxQualificationCandidate {
 export async function createGeometryModuleAssemblerMicrosandboxQualificationCandidate(): Promise<
   GeometryModuleAssemblerMicrosandboxQualificationCandidate
 > {
-  const [options, fixture] = await Promise.all([
-    createLocalGeometryModuleAssemblyServerOptions(),
-    createGeometryModuleAssemblerMicrosandboxQualificationFixture(),
-  ]);
-  const profile = await new FixedGeometryModuleAssemblyProfileCatalog(options.profile)
-    .initial();
+  return await createGeometryModuleAssemblerQualificationCandidateFromAuthority({
+    options: await createLocalGeometryModuleAssemblyServerOptions(),
+    imageReference: LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
+    policyBody: LOCAL_GEOMETRY_MODULE_ASSEMBLY_POLICY_BODY,
+  });
+}
+
+export async function createGeometryModuleAssemblerMicrosandboxQualificationCandidateFromBoundImport(
+  record: FirstPartyMicrosandboxImageCandidateImportRecord,
+): Promise<GeometryModuleAssemblerMicrosandboxQualificationCandidate> {
+  assertBoundCandidateImportPhysicalImageId(
+    record,
+    GEOMETRY_MODULE_ASSEMBLER_WORKER_PHYSICAL_IMAGE_ID,
+  );
+  const candidate =
+    await createGeometryModuleAssemblerQualificationCandidateFromAuthority({
+      options: await createGeometryModuleAssemblyServerOptionsForBoundCandidateImport(
+        record,
+      ),
+      imageReference: record.candidate.microsandbox.candidateReference,
+      policyBody: geometryModuleAssemblyPolicyBody(
+        record.candidate.microsandbox.candidateReference,
+      ),
+    });
+  if (candidate.image.manifestDigest !== record.identities.microsandboxManifestDigest) {
+    throw new TypeError(
+      "The geometry-module imported-candidate authority did not retain the bound Microsandbox digest.",
+    );
+  }
+  return candidate;
+}
+
+async function createGeometryModuleAssemblerQualificationCandidateFromAuthority(input: {
+  readonly options: GeometryModuleAssemblyServerOptions;
+  readonly imageReference: string;
+  readonly policyBody: ReturnType<typeof geometryModuleAssemblyPolicyBody>;
+}): Promise<GeometryModuleAssemblerMicrosandboxQualificationCandidate> {
+  const fixture = await createGeometryModuleAssemblerMicrosandboxQualificationFixture();
+  const profile = await new FixedGeometryModuleAssemblyProfileCatalog(
+    input.options.profile,
+  ).initial();
   if (
     profile.executionProfile.id !== GEOMETRY_MODULE_ASSEMBLY_EXECUTION_PROFILE.id ||
     profile.executionProfile.version !==
@@ -176,6 +220,9 @@ export async function createGeometryModuleAssemblerMicrosandboxQualificationCand
   ) {
     throw new Error("The geometry-module qualification profile is not registered.");
   }
+  const materials = Object.freeze(
+    [qualificationRuntimeMaterial(input.imageReference)] as const,
+  );
   const imageDigest = profile.runtime.imageDigest.digest;
   const unit = {
     id: QUALIFICATION_UNIT_ID,
@@ -183,7 +230,7 @@ export async function createGeometryModuleAssemblerMicrosandboxQualificationCand
     manifestFingerprint: await fingerprintAtomicCapabilityRuntimeUnit({
       id: QUALIFICATION_UNIT_ID,
       version: GEOMETRY_MODULE_ASSEMBLER_QUALIFICATION_UNIT_VERSION,
-      materials: QUALIFICATION_MATERIALS,
+      materials,
     }),
   };
   const policy = {
@@ -207,7 +254,7 @@ export async function createGeometryModuleAssemblerMicrosandboxQualificationCand
       fingerprint: profile.profileFingerprint,
     },
     unit,
-    materials: QUALIFICATION_MATERIALS,
+    materials,
     material: {
       unitId: QUALIFICATION_UNIT_ID,
       materialId: QUALIFICATION_MATERIAL_ID,
@@ -249,7 +296,7 @@ export async function createGeometryModuleAssemblerMicrosandboxQualificationCand
             ...GEOMETRY_MODULE_ASSEMBLER_MICROSANDBOX_WORKER_CONTRACT.args,
           ],
         },
-        policy: LOCAL_GEOMETRY_MODULE_ASSEMBLY_POLICY_BODY,
+        policy: input.policyBody,
         fixture: {
           id: fixture.id,
           fingerprint: fixture.bundle.fingerprint,
@@ -319,8 +366,9 @@ export function candidateManifest(
 
 export async function assertExactGeometryModuleAssemblerQualificationCandidate(
   value: GeometryModuleAssemblerMicrosandboxQualificationCandidate,
+  expected?: GeometryModuleAssemblerMicrosandboxQualificationCandidate,
 ): Promise<GeometryModuleAssemblerMicrosandboxQualificationCandidate> {
-  const current =
+  const current = expected ??
     await createGeometryModuleAssemblerMicrosandboxQualificationCandidate();
   const expectedFingerprint = await sha256Fingerprint(candidateManifest(value));
   if (

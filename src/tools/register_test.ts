@@ -220,6 +220,16 @@ Deno.test("server injects the resolved Build123d execution profile into the exac
     block,
     "profileFingerprint: build123dCapability.localProfile.profileFingerprint",
   );
+  assertStringIncludes(block, "qualifiedModelicaExecutionProfile:");
+  assertStringIncludes(block, "admittedModelicaExecutionProfile:");
+  assertStringIncludes(
+    source,
+    "qualifiedModelica.isolatedExecution?.execution === undefined",
+  );
+  assertStringIncludes(
+    source,
+    "admittedModelica.execution?.execution === undefined",
+  );
   assertEquals(block.includes("Deno.env"), false);
   const cadStart = source.indexOf("const cadProject = createCadProject({");
   const cadEnd = source.indexOf("const assemblyIntegrityEvaluationCaptures");
@@ -284,6 +294,20 @@ Deno.test("future Modelica runtime binding factory is code-owned, digest pinned,
     mslVersion: "4.1.0",
   });
   assertEquals(first.runtime, {});
+
+  const admitted = await createLocalAdmittedModelicaExecutionServerOptions();
+  const admittedAgain = await createLocalAdmittedModelicaExecutionServerOptions();
+  assertEquals(admitted, admittedAgain);
+  assertEquals(
+    admitted.profile.imageReference,
+    LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
+  );
+  assertEquals(
+    admitted.profile.policy.id,
+    "modelica-admitted-microsandbox-deny-all-v1",
+  );
+  assertEquals(admitted.profile.policy.version, "1.0.0");
+  assertEquals(admitted.runtime, {});
 });
 
 Deno.test("future CalculiX runtime binding factory is code-owned, digest pinned, and SysON-gated", async () => {

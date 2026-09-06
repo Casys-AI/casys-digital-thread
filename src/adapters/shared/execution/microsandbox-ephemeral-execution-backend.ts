@@ -148,6 +148,18 @@ export interface MicrosandboxImageInspection {
 }
 
 /**
+ * Factual result of one `Image.load` reference. This deliberately exposes
+ * only immutable, immediately returned handle fields; callers still inspect
+ * a requested reference before treating an import as usable.
+ */
+export interface MicrosandboxImageImportHandle {
+  readonly reference: string;
+  readonly manifestDigest: string | null;
+  readonly architecture: string | null;
+  readonly os: string | null;
+}
+
+/**
  * Server-owned OCI image contract reused before a JIT lease and by the
  * execution backend itself. It attests only fields observable from an OCI
  * inspection; execution-profile provenance is a separate cache attestation.
@@ -376,6 +388,18 @@ export async function loadLocalMicrosandboxImageFromArchive(
   archivePath: string,
   tag: string,
 ): Promise<void> {
+  await loadLocalMicrosandboxImageImportHandlesFromArchive(archivePath, tag);
+}
+
+/**
+ * Lower-level archive import for maintainer workflows which must prove that
+ * Microsandbox applied their requested reference. The ordinary loader above
+ * intentionally preserves its existing void contract for runtime callers.
+ */
+export async function loadLocalMicrosandboxImageImportHandlesFromArchive(
+  archivePath: string,
+  tag: string,
+): Promise<readonly MicrosandboxImageImportHandle[]> {
   const sdk = await createLocalMicrosandboxSdk();
   sdk.assertLocalBackend();
   const module = localMicrosandboxModule;
@@ -391,6 +415,16 @@ export async function loadLocalMicrosandboxImageFromArchive(
       "Microsandbox imported no image from the docker save archive.",
     );
   }
+  return Object.freeze(
+    handles.map((handle) =>
+      Object.freeze({
+        reference: handle.reference,
+        manifestDigest: handle.manifestDigest,
+        architecture: handle.architecture,
+        os: handle.os,
+      })
+    ),
+  );
 }
 
 /** Guest architecture string Microsandbox inspectImage attests on this host. */

@@ -34,7 +34,6 @@ import {
 } from "../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-method-sheet.ts";
 import {
   parsePrescribedKinematicsObservation,
-  type PrescribedKinematicsObservation,
 } from "../../../domain/mechanism/prescribed-kinematics/prescribed-kinematics-observation.ts";
 import {
   type PrescribedKinematicsCase,
@@ -126,7 +125,7 @@ export class FilePrescribedKinematicsCaptureStore
     const capture = await this.#read(
       "prescribed-kinematics-observation",
       fingerprint,
-      async (raw) => raw,
+      (raw) => Promise.resolve(raw),
     );
     if (!capture) return undefined;
     return await validateObservationCapture(capture, sealedCase);

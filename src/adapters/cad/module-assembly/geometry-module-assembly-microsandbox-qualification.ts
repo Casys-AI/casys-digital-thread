@@ -6,7 +6,9 @@
  */
 
 export {
+  assertExactGeometryModuleAssemblerQualificationCandidate,
   createGeometryModuleAssemblerMicrosandboxQualificationCandidate,
+  createGeometryModuleAssemblerMicrosandboxQualificationCandidateFromBoundImport,
   createGeometryModuleAssemblerMicrosandboxQualificationFixture,
   GEOMETRY_MODULE_ASSEMBLER_MICROSANDBOX_QUALIFICATION_CANDIDATE_ID,
   GEOMETRY_MODULE_ASSEMBLER_MICROSANDBOX_QUALIFICATION_FIXTURE_ID,

@@ -1102,10 +1102,10 @@ export class CapabilityRuntimeQualificationService {
     });
   }
 
-  async #identityFromReview(
+  #identityFromReview(
     review: CapabilityRuntimeQualificationReview,
   ): Promise<CapabilityRuntimeQualificationAttemptIdentity> {
-    return {
+    return Promise.resolve({
       candidate: {
         id: review.candidate.id,
         fingerprint: review.candidate.fingerprint,
@@ -1118,7 +1118,7 @@ export class CapabilityRuntimeQualificationService {
       caseFingerprint: review.caseFingerprint,
       runRequestFingerprint: review.runRequestFingerprint,
       qualificationSpecFingerprint: review.qualificationSpec.fingerprint,
-    };
+    });
   }
 
   #candidate(candidateId: string): CapabilityRuntimeQualificationCandidate {
@@ -1149,9 +1149,20 @@ export class CapabilityRuntimeQualificationService {
     return matches[0];
   }
 
-  async #assertCatalogStillExact(
+  #assertCatalogStillExact(
     candidate: CapabilityRuntimeQualificationCandidate,
   ): Promise<void> {
+    try {
+      this.#assertCatalogStillExactValue(candidate);
+      return Promise.resolve();
+    } catch (error) {
+      return Promise.reject(error);
+    }
+  }
+
+  #assertCatalogStillExactValue(
+    candidate: CapabilityRuntimeQualificationCandidate,
+  ): void {
     const binding = this.options.catalog.bindings.find((item) =>
       item.id === candidate.binding.id && item.version === candidate.binding.version
     );
