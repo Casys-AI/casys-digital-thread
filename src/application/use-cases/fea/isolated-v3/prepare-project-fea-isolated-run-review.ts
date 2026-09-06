@@ -282,6 +282,7 @@ function compileAppendableRunReview(input: {
     operation: input.resolved.resolved.operation,
     bindings: input.resolved.resolved.bindings,
     next: feaReviewNext({
+      projectId: input.projectId,
       basis: input.basis,
       operation: input.resolved.resolved.operation,
       summary: successor?.summary ?? proposal.summary,

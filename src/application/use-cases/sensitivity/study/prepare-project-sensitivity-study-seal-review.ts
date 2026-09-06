@@ -261,6 +261,7 @@ export class PrepareProjectSensitivityStudySealReview
         selected,
         decisionParameters: compiled.decisionParameters,
         next: feaReviewNext({
+          projectId: command.projectId,
           basis,
           operation: sealSensitivityStudyWorkItemOperation(),
           summary,

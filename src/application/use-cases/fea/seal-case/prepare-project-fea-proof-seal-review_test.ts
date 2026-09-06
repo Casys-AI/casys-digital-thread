@@ -143,6 +143,18 @@ Deno.test("fea proof-case seal review compiles fea.proof.* from a captured sourc
       result.selected.workItemId,
       "wi-proof-seal-desk-lamp-dl06-arm-cantilever-r1",
     );
+    assertEquals(result.next.append.arguments.projectId, PROJECT_ID);
+    assertEquals(result.next.propose.arguments.projectId, PROJECT_ID);
+    assertEquals(
+      result.next.append.arguments.commandId,
+      `append-fea-${result.selected.workItemId}-r${result.next.append.arguments.expectedRevision}`,
+    );
+    assertEquals(
+      result.next.propose.arguments.expectedRevision,
+      result.next.append.arguments.expectedRevision + 1,
+    );
+    assertEquals(result.next.append.arguments.workItems[0]?.gateClaims, []);
+    assertEquals("queue" in result.next, false);
     assertEquals(result.sensitivityCatalog.status, "admission-absent");
   } finally {
     await Deno.remove(root, { recursive: true });

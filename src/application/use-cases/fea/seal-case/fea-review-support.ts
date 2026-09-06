@@ -188,7 +188,13 @@ export function threadSnapshotRefFromBasis(
   });
 }
 
+/**
+ * Display-only append/propose envelopes for FEA seal and isolated-run reviews.
+ * These are not approvals, queue commands, provider selections, or execution
+ * requests. Propose omits issuedAt so the caller can fill it on paste.
+ */
 export function feaReviewNext(input: {
+  readonly projectId: string;
   readonly operation: EngineeringOperationRef;
   readonly summary: string;
   readonly parameters: readonly EngineeringDecisionProposalParameter[];
@@ -210,6 +216,8 @@ export function feaReviewNext(input: {
   readonly append: {
     readonly tool: "project_change_append";
     readonly arguments: {
+      readonly commandId: string;
+      readonly projectId: string;
       readonly baseSnapshot: EngineeringThreadSnapshotRef;
       readonly expectedRevision: number;
       readonly phases: readonly {
@@ -225,6 +233,7 @@ export function feaReviewNext(input: {
         readonly decisionIds: readonly string[];
         readonly predecessorRevisionId?: string;
         readonly operation: EngineeringOperationRef;
+        readonly gateClaims: readonly [];
       }[];
       readonly requiredDecisions: readonly {
         readonly id: string;
@@ -237,6 +246,9 @@ export function feaReviewNext(input: {
   readonly propose: {
     readonly tool: "project_decision_propose";
     readonly arguments: {
+      readonly commandId: string;
+      readonly projectId: string;
+      readonly expectedRevision: number;
       readonly decisionId: string;
       readonly proposal: {
         readonly summary: string;
@@ -244,15 +256,18 @@ export function feaReviewNext(input: {
       };
     };
   };
-  readonly queue: {
-    readonly tool: "project_agent_run_queue";
-    readonly workItemId: string;
-  };
 } {
+  const token = `${input.workItemId}-r${input.expectedRevision}`;
+  // EngineeringProjectCommandService.apply persists current.revision + 1 after
+  // a successful (non-replay) mutation and refuses a mismatched head. Propose
+  // therefore targets the post-append revision.
+  const proposeExpectedRevision = input.expectedRevision + 1;
   return deepFreeze({
     append: {
       tool: "project_change_append",
       arguments: {
+        commandId: `append-fea-${token}`,
+        projectId: input.projectId,
         baseSnapshot: threadSnapshotRefFromBasis(input.basis),
         expectedRevision: input.expectedRevision,
         phases: input.reuseExistingPhase ? [] : [{
@@ -270,6 +285,7 @@ export function feaReviewNext(input: {
             ? { predecessorRevisionId: input.predecessorRevisionId }
             : {}),
           operation: input.operation,
+          gateClaims: [],
         }],
         requiredDecisions: [{
           id: input.decisionId,
@@ -282,16 +298,15 @@ export function feaReviewNext(input: {
     propose: {
       tool: "project_decision_propose",
       arguments: {
+        commandId: `propose-fea-${token}`,
+        projectId: input.projectId,
+        expectedRevision: proposeExpectedRevision,
         decisionId: input.decisionId,
         proposal: {
           summary: input.summary,
           parameters: input.parameters,
         },
       },
-    },
-    queue: {
-      tool: "project_agent_run_queue",
-      workItemId: input.workItemId,
     },
   });
 }

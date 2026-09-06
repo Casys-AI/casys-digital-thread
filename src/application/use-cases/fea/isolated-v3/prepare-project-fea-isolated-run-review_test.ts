@@ -94,7 +94,24 @@ Deno.test("isolated-run review selects the unique sealed proof when proofArtifac
     result.next.propose.arguments.decisionId,
     result.selected.decisionId,
   );
-  assertEquals(result.next.queue.workItemId, result.selected.workItemId);
+  assertEquals(result.next.append.arguments.projectId, PROJECT_ID);
+  assertEquals(result.next.propose.arguments.projectId, PROJECT_ID);
+  assertEquals(
+    result.next.append.arguments.commandId,
+    `append-fea-${result.selected.workItemId}-r${result.next.append.arguments.expectedRevision}`,
+  );
+  assertEquals(
+    result.next.propose.arguments.commandId,
+    `propose-fea-${result.selected.workItemId}-r${result.next.append.arguments.expectedRevision}`,
+  );
+  assertEquals(
+    result.next.propose.arguments.expectedRevision,
+    result.next.append.arguments.expectedRevision + 1,
+  );
+  assertEquals(result.next.append.arguments.workItems[0]?.gateClaims, []);
+  assertEquals("queue" in result.next, false);
+  assertEquals("issuedAt" in result.next.append.arguments, false);
+  assertEquals("issuedAt" in result.next.propose.arguments, false);
   assertEquals("predecessorWorkItemId" in result.selected, false);
   assertEquals("failedRunId" in result.selected, false);
   assertEquals(
@@ -137,6 +154,9 @@ Deno.test("isolated-run review selects the current Thread tip when basis is omit
   assertEquals(result.basis.revision, world.command.basis.revision);
   assertExists(result.bindings);
   assertEquals(result.next.append.arguments.expectedRevision, 12);
+  assertEquals(result.next.propose.arguments.expectedRevision, 13);
+  assertEquals(result.next.append.arguments.projectId, PROJECT_ID);
+  assertEquals("queue" in result.next, false);
 });
 
 Deno.test("isolated-run review refuses latest as an unresolved basis-latest", async () => {
@@ -415,10 +435,8 @@ Deno.test("isolated-run successor append matches the project_change_append gramm
     } as ProjectControlToolDependencies,
   );
   await app.handler("project_change_append")({
-    commandId: "fea-isolated-successor-append",
-    projectId: PROJECT_ID,
-    issuedAt: AT,
     ...result.next.append.arguments,
+    issuedAt: AT,
   }, { toolName: "project_change_append" });
   assertEquals(decoded.length, 1);
   const work = (decoded[0]!.workItems as Array<Record<string, unknown>>)[0];
