@@ -54,7 +54,12 @@ Deno.test("cockpit wayfinding keeps descriptions accessible without a second lab
     navigation.indexOf("export function ProjectNavigation"),
   );
 
-  assertStringIncludes(navigationBody, "aria-label={`${view.label}: ${");
+  assertStringIncludes(navigationBody, "const label = `${view.label}: ${");
+  assertStringIncludes(
+    navigationBody,
+    'unavailable ? "After technical work" : view.description',
+  );
+  assertStringIncludes(navigationBody, "aria-label={label}");
   assertEquals(navigationBody.includes("<small>"), false);
 });
 
