@@ -32,12 +32,13 @@ import type {
 import {
   ADMITTED_MODELICA_THERMAL_VERIFICATION_AUTHORITY,
   ADMITTED_SPICE_ELECTRICAL_VERIFICATION_AUTHORITY,
+  briefCapabilityIntentRouteTable,
   PRESCRIBED_KINEMATICS_VERIFICATION_AUTHORITY,
   STATIC_STRUCTURAL_FEA_SENSITIVITY_VERIFICATION_AUTHORITY,
   STATIC_STRUCTURAL_FEA_VERIFICATION_AUTHORITY,
 } from "../../orchestration/operations/brief-capability-intent-routes.ts";
 import { engineeringOperationRegistry } from "../../orchestration/operations/registry.ts";
-import type { RuntimePreparationPrerequisiteRegistryEntry } from "../../orchestration/operations/runtime-preparation-prerequisite-closure.ts";
+import type { RuntimePreparationPrerequisiteRegistryEntry } from "./runtime-preparation-prerequisite-closure.ts";
 
 const MODEL: CapabilityReference = { id: "model.author-system", version: "1" };
 const GEOMETRY: CapabilityReference = {
@@ -129,6 +130,7 @@ Deno.test("the closed assembly-integrity route resolves through its exact upstre
       ),
       operation("verify.observe-assembly-integrity", [qualified(GEOMETRY)]),
     ]),
+    briefCapabilityIntentRouteTable,
   );
 
   assertEquals(intent.status, "resolved");
@@ -283,6 +285,7 @@ Deno.test("the real route table and registry forecast the complete admitted lamp
       verification("verify-assembly", "Observe assembly integrity.", ASSEMBLY),
     ]),
     engineeringOperationRegistry,
+    briefCapabilityIntentRouteTable,
   );
 
   assertEquals(intent.status, "resolved");
@@ -349,6 +352,7 @@ Deno.test("assembly, prescribed kinematics, and admitted SPICE forecast only the
       ),
     ]),
     engineeringOperationRegistry,
+    briefCapabilityIntentRouteTable,
   );
 
   assertEquals(intent.status, "resolved");
@@ -381,6 +385,7 @@ Deno.test("sensitivity is an explicit brief authority and static FEA does not im
       ),
     ]),
     engineeringOperationRegistry,
+    briefCapabilityIntentRouteTable,
   );
   assertEquals(
     ordinaryStatic.capabilityRequirements.some((requirement) =>
@@ -398,6 +403,7 @@ Deno.test("sensitivity is an explicit brief authority and static FEA does not im
       ),
     ]),
     engineeringOperationRegistry,
+    briefCapabilityIntentRouteTable,
   );
   assertEquals(sensitivity.status, "resolved");
   assertEquals(
@@ -587,6 +593,7 @@ Deno.test("a SysML-only brief forecasts no CAD, FEA, Modelica, SPICE, or Chrono 
       dependsOnItemIds: [],
     }]),
     engineeringOperationRegistry,
+    briefCapabilityIntentRouteTable,
   );
 
   assertEquals(intent.status, "resolved");
@@ -604,6 +611,7 @@ Deno.test("a prescribed-kinematics brief authority proposes only the provider-ne
       ),
     ]),
     engineeringOperationRegistry,
+    briefCapabilityIntentRouteTable,
   );
 
   assertEquals(intent.status, "resolved");

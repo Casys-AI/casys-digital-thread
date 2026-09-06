@@ -17,14 +17,11 @@ import {
 } from "../../domain/kernel/case-validation.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type { ProjectBriefRevision } from "../../domain/project/project-brief.ts";
-import type {
-  BriefCapabilityIntentRouteTable,
-} from "../../orchestration/operations/brief-capability-intent-routes.ts";
-import { briefCapabilityIntentRouteTable } from "../../orchestration/operations/brief-capability-intent-routes.ts";
+import type { BriefCapabilityIntentRouteTable } from "./brief-capability-intent-route.ts";
 import {
   resolveRuntimePreparationPrerequisiteRegistry,
   type RuntimePreparationPrerequisiteRegistryView,
-} from "../../orchestration/operations/runtime-preparation-prerequisite-closure.ts";
+} from "./runtime-preparation-prerequisite-closure.ts";
 
 /**
  * Trusted server projection of the operation registry. The caller never
@@ -48,7 +45,7 @@ interface CanonicalRoute {
 export async function compileProjectCapabilityIntent(
   brief: ProjectBriefRevision,
   registry: BriefCapabilityIntentOperationRegistryView,
-  routes: BriefCapabilityIntentRouteTable = briefCapabilityIntentRouteTable,
+  routes: BriefCapabilityIntentRouteTable,
 ): Promise<ProjectCapabilityIntent> {
   const registryClosure = resolveRuntimePreparationPrerequisiteRegistry(registry);
   const routeEntries = canonicalRoutes(routes);

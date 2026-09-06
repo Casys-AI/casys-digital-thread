@@ -16,6 +16,7 @@ import type { EngineeringProjectSnapshot } from "../../domain/project/engineerin
 import type { CapabilityRuntimeCatalog } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import { FileEngineeringProjectRevisionStore } from "../../adapters/shared/stores/engineering-project-store.ts";
 import { ProjectBriefCommandService } from "../use-cases/project/project-brief-command-service.ts";
+import { briefCapabilityIntentRouteTable } from "../../orchestration/operations/brief-capability-intent-routes.ts";
 import { listRegisteredEngineeringOperations } from "../../orchestration/operations/registry.ts";
 import {
   ProjectCapabilityAuthorizationError,
@@ -64,6 +65,7 @@ Deno.test("brief capability authorization retains resolved candidates beside an 
     const authorization = new ProjectCapabilityAuthorizationService({
       ledgers,
       registry: { list: listRegisteredEngineeringOperations },
+      routes: briefCapabilityIntentRouteTable,
       recordedPlans: unusedRecordedPlans(),
       catalog,
       qualificationSpecs: [],
@@ -451,6 +453,7 @@ async function authorizationService(
   return new ProjectCapabilityAuthorizationService({
     ledgers,
     registry: { list: listRegisteredEngineeringOperations },
+    routes: briefCapabilityIntentRouteTable,
     recordedPlans: unusedRecordedPlans(),
     catalog: await createFirstPartyCapabilityRuntimeCatalog(),
     qualificationSpecs: [],
@@ -571,6 +574,7 @@ Deno.test("a brief without assembly integrity still requires a SysON amendment b
     const authorization = new ProjectCapabilityAuthorizationService({
       ledgers: new InMemoryProjectCapabilityLedgerStore(),
       registry: { list: listRegisteredEngineeringOperations },
+      routes: briefCapabilityIntentRouteTable,
       recordedPlans: unusedRecordedPlans(),
       catalog,
       qualificationSpecs: [],
@@ -974,6 +978,7 @@ function authorizationForCatalog(
   return new ProjectCapabilityAuthorizationService({
     ledgers,
     registry: { list: listRegisteredEngineeringOperations },
+    routes: briefCapabilityIntentRouteTable,
     recordedPlans,
     catalog,
     qualificationSpecs: [],

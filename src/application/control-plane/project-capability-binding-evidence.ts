@@ -26,7 +26,7 @@ import type {
 import type {
   EngineeringOperationRegistry,
   RegisteredEngineeringOperation,
-} from "../../orchestration/operations/operation-contract.ts";
+} from "./engineering-operation-registry.ts";
 import type { ProjectCapabilityBindingReplacement } from "../../domain/capability/project-capability-authorization.ts";
 import type { PlannedProjectCapabilityBinding } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import type { ResolvedCapabilityRuntimeBinding } from "../../domain/capability/runtime/capability-runtime-supervision.ts";

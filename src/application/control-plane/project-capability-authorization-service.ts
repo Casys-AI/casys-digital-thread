@@ -43,10 +43,10 @@ import type {
 } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import type { ProjectCapabilityLedgerStore } from "../ports/out/project-capability-ledger-store.ts";
 import type { CapabilityRuntimeHostMutationLock } from "../ports/out/capability/capability-runtime-supervisor.ts";
-import type { EngineeringOperationRegistry } from "../../orchestration/operations/operation-contract.ts";
+import type { EngineeringOperationRegistry } from "./engineering-operation-registry.ts";
 import type { ResolvedRunPlanReader } from "../../domain/project/resolved-run-plan-sealer.ts";
 import { evaluateProjectCapabilityBindingEvidence } from "./project-capability-binding-evidence.ts";
-import type { BriefCapabilityIntentRouteTable } from "../../orchestration/operations/brief-capability-intent-routes.ts";
+import type { BriefCapabilityIntentRouteTable } from "./brief-capability-intent-route.ts";
 import type { CapabilityRuntimePreloadScheduler } from "./capability-runtime-preload-scheduler.ts";
 import type { CapabilityRuntimeQualificationAttestationStore } from "../ports/out/capability/capability-runtime-qualification-attestation-store.ts";
 import {
@@ -67,7 +67,7 @@ export class ProjectCapabilityAuthorizationError extends Error {}
 export interface ProjectCapabilityAuthorizationServiceDependencies {
   readonly ledgers: ProjectCapabilityLedgerStore;
   readonly registry: Pick<EngineeringOperationRegistry, "list">;
-  readonly routes?: BriefCapabilityIntentRouteTable;
+  readonly routes: BriefCapabilityIntentRouteTable;
   readonly catalog: CapabilityRuntimeCatalog;
   /** Server-composed CAS reader; callers never select a plan or provider. */
   readonly recordedPlans: ResolvedRunPlanReader;

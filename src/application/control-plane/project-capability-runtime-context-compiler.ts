@@ -10,7 +10,7 @@ import { flattenEngineeringCapabilityRequirements } from "../../domain/capabilit
 import type { CapabilityRuntimeMaterialIdentity } from "../../domain/capability/runtime/capability-runtime-material.ts";
 import { deepFreeze } from "../../domain/kernel/case-validation.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
-import type { EngineeringOperationRegistry } from "../../orchestration/operations/operation-contract.ts";
+import type { EngineeringOperationRegistry } from "./engineering-operation-registry.ts";
 import { capabilityRuntimeCatalogMaterialsForRequirements } from "./capability-runtime-catalog-materials.ts";
 import { compileProjectCapabilityDemand } from "./compile-project-capability-demand.ts";
 import { planProjectCapability } from "./plan-project-capability.ts";

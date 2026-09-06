@@ -3,21 +3,15 @@ import {
   ASSEMBLY_INTEGRITY_VERIFICATION_AUTHORITY,
 } from "../../domain/cad/assembly-integrity/assembly-integrity-verification-authority.ts";
 import type { ProjectBriefVerificationAuthority } from "../../domain/project/project-brief.ts";
-import type { EngineeringOperationRef } from "../../domain/project/engineering-project.ts";
+import type {
+  BriefCapabilityIntentRoute,
+  BriefCapabilityIntentRouteTable,
+} from "../../application/control-plane/brief-capability-intent-route.ts";
 
-/**
- * Server-owned route from a semantic Brief verification authority to exact
- * registered operations. It names neither a provider nor a runtime.
- */
-export interface BriefCapabilityIntentRoute {
-  readonly authority: ProjectBriefVerificationAuthority;
-  readonly operations: readonly Pick<EngineeringOperationRef, "id" | "version">[];
-}
-
-/** Read-only server-composition seam; never request or agent-provided data. */
-export interface BriefCapabilityIntentRouteTable {
-  list(): readonly BriefCapabilityIntentRoute[];
-}
+export type {
+  BriefCapabilityIntentRoute,
+  BriefCapabilityIntentRouteTable,
+} from "../../application/control-plane/brief-capability-intent-route.ts";
 
 /** Semantic authority for the admitted canonical-geometry static FEA vertical. */
 export const STATIC_STRUCTURAL_FEA_VERIFICATION_AUTHORITY = deepFreeze(

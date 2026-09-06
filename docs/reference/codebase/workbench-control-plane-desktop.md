@@ -35,8 +35,13 @@ Workbench presentation contract.
 #### [`src/application/control-plane/`](../../../src/application/control-plane)
 
 Console application service (`console_*`), probe / container-observation ports, and the
-effect-free project capability-demand compiler. Not a human page; `preview:browser`
-refuses. HTTP probe lives in `adapters/shared/mcp/`; Docker observer is
+effect-free project capability-demand compiler. Owns the provider-neutral
+operation-registry contract, the pure runtime-preparation prerequisite compiler, and the
+brief-capability-intent route-table contract. Concrete operation descriptors and the
+authority→operation table stay in `src/orchestration/operations/` and are injected at
+composition. There are no orchestration compatibility re-exports: application consumers
+import these contracts directly. Not a human page; `preview:browser` refuses. HTTP probe
+lives in `adapters/shared/mcp/`; Docker observer is
 `adapters/shared/docker-observer.ts`. The retired `ObservedRunCatalog` /
 `ModelicaRunObserver` merge is gone. `CapabilityRuntimeQualificationService` is a
 private host-local Chrono probe (`review`/`apply`/`recover` only); it is not a

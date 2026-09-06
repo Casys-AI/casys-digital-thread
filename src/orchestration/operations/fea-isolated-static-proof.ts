@@ -1,4 +1,4 @@
-import type { RegisteredEngineeringOperation } from "./operation-contract.ts";
+import type { RegisteredEngineeringOperation } from "../../application/control-plane/engineering-operation-registry.ts";
 import {
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
   MODEL_EVALUATE_REQUIREMENT_CAPABILITY,

@@ -7,7 +7,7 @@ import { exactVersionToken, safeId } from "../../domain/kernel/case-validation.t
 import type {
   EngineeringOperationExecution,
   EngineeringOperationRuntimeDemand,
-} from "./operation-contract.ts";
+} from "./engineering-operation-registry.ts";
 
 /**
  * The code-owned registry projection needed to close preparation-only demand.

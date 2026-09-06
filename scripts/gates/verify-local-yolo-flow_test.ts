@@ -9,6 +9,7 @@ import { ProjectBriefCommandService } from "../../src/application/use-cases/proj
 import { SYSON_MODEL_SEED_OPERATION } from "../../src/domain/architecture/seed/syson-model-seed.ts";
 import { encodeSysonModelSeedProposalParameters } from "../../src/domain/architecture/seed/syson-model-seed-proposal.ts";
 import type { EngineeringProjectSnapshot } from "../../src/domain/project/engineering-project.ts";
+import { briefCapabilityIntentRouteTable } from "../../src/orchestration/operations/brief-capability-intent-routes.ts";
 import {
   listRegisteredEngineeringOperations,
   REGISTERED_ENGINEERING_OPERATION_REGISTRY,
@@ -158,6 +159,7 @@ async function localCapabilityAuthorization(
   return new ProjectCapabilityAuthorizationService({
     ledgers: new FileProjectCapabilityLedgerStore(`${directory}/capability-ledgers`),
     registry: { list: listRegisteredEngineeringOperations },
+    routes: briefCapabilityIntentRouteTable,
     recordedPlans: {
       read: () =>
         Promise.reject(

@@ -16,6 +16,7 @@ import type {
   RuntimeTurn,
 } from "../src/chat/runtime-port.ts";
 import { MemoryChatConversationStore } from "../src/chat/store.ts";
+import { briefCapabilityIntentRouteTable } from "../../src/orchestration/operations/brief-capability-intent-routes.ts";
 import {
   listRegisteredEngineeringOperations,
 } from "../../src/orchestration/operations/registry.ts";
@@ -158,6 +159,7 @@ async function localCapabilityAuthorization(
   return new ProjectCapabilityAuthorizationService({
     ledgers: new FileProjectCapabilityLedgerStore(`${directory}/capability-ledgers`),
     registry: { list: listRegisteredEngineeringOperations },
+    routes: briefCapabilityIntentRouteTable,
     recordedPlans: {
       read: () =>
         Promise.reject(

@@ -26,7 +26,7 @@ import {
 import {
   resolveRuntimePreparationPrerequisiteRegistry,
   runtimePreparationPrerequisiteRegistryFingerprintPayload,
-} from "./runtime-preparation-prerequisite-closure.ts";
+} from "../../application/control-plane/runtime-preparation-prerequisite-closure.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 
 const qualified = (

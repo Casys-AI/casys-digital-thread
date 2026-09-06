@@ -208,6 +208,7 @@ import {
   firstPartySysonLaunchGroupReference,
 } from "./src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import type { CapabilityRuntimeLaunchGroup } from "./src/domain/capability/runtime/capability-runtime-launch-group.ts";
+import { briefCapabilityIntentRouteTable } from "./src/orchestration/operations/brief-capability-intent-routes.ts";
 import {
   listRegisteredEngineeringOperations,
   REGISTERED_ENGINEERING_OPERATION_REGISTRY,
@@ -981,6 +982,7 @@ async function createProjectControl(
   const capabilityAuthorization = new ProjectCapabilityAuthorizationService({
     ledgers: capabilityRead.ledgers,
     registry: { list: listRegisteredEngineeringOperations },
+    routes: briefCapabilityIntentRouteTable,
     recordedPlans: recordedPlans.recordedRunPlans,
     catalog: capabilityRead.catalog,
     qualificationSpecs:

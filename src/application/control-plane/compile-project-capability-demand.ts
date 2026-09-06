@@ -28,7 +28,7 @@ import {
   resolveRuntimePreparationPrerequisiteRegistry,
   runtimePreparationPrerequisiteRegistryFingerprintPayload,
   type RuntimePreparationPrerequisiteRegistryView,
-} from "../../orchestration/operations/runtime-preparation-prerequisite-closure.ts";
+} from "./runtime-preparation-prerequisite-closure.ts";
 
 interface CanonicalOperationGroup {
   readonly operation: { readonly id: string; readonly version: string };
