@@ -24,6 +24,10 @@ Deno.test("active CalculiX policy builder stays digest-pinned and shared", async
   const first = await createLocalCalculixIsolatedExecutionServerOptions();
   const second = await createLocalCalculixIsolatedExecutionServerOptions();
   assertEquals(first, second);
+  assertEquals(
+    LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE,
+    "casys/calculix-microsandbox-worker@sha256:2dc7d17454833a2c17b5812eb1e5504c4a025ef3764fc771fda2938d49fa9771",
+  );
   assertEquals(first.profile.imageReference, LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE);
   assertEquals(first.profile.wrapperSha256, LOCAL_CALCULIX_WRAPPER_SHA256);
   assertEquals(first.profile.policy.id, "calculix-microsandbox-deny-all-v1");

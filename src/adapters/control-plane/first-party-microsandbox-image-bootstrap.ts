@@ -13,10 +13,10 @@
  * A `trusted-dockerfile` rebuild is not proof of a bit-reproducible
  * image. After import, the cached image must still be the exact target
  * digest; otherwise the capability stays unavailable. `oci-digest` is the
- * preferred immutable distribution source when a reviewed digest exists.
- * A moving APT repository does not promise that a later rebuild will
- * reproduce the pin. The catalogued Microsandbox runtime digest is never
- * the candidate publication identity.
+ * preferred immutable distribution source when an exact published digest
+ * exists; acquisition then never builds. A moving APT repository does not
+ * promise that a later rebuild will reproduce the pin. The catalogued
+ * Microsandbox runtime digest is never the candidate publication identity.
  *
  * Docker build context is internal acquisition material, not a second
  * recipe or project capability.
@@ -63,6 +63,8 @@ export const FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID = "cache.ngspice" as const;
 const REPO_ROOT = resolveRepoRoot();
 const MODELICA_PHYSICAL_IMAGE_ID = "modelica-microsandbox-worker" as const;
 const PHYSICAL_IMAGE_ID = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
+const CALCULIX_PUBLIC_ARM64_OCI_SOURCE =
+  "ghcr.io/casys-ai/casys-digital-thread-calculix-worker@sha256:0c96ae7f16c05aaa1b082740e1272ae6b4e35ac58866a4537f9d6e74cb236462" as const;
 
 /**
  * Repo-owned candidate build recipe. Paths stay below this repository.
@@ -91,9 +93,11 @@ export interface FirstPartyTrustedDockerfileSource {
 }
 
 /**
- * Preferred immutable distribution source when a reviewed digest exists.
- * No first-party descriptor uses this today. The recipe remains the way to
- * publish a later candidate; this source never replaces `buildRecipe`.
+ * Preferred immutable distribution source when an exact published digest
+ * exists. CalculiX currently acquires this way; other descriptors still
+ * rebuild from trusted Dockerfiles. The recipe remains the way to publish a
+ * later candidate; this source never replaces `buildRecipe`. Acquisition
+ * never builds when this source is selected.
  */
 export interface FirstPartyOciDigestSource {
   readonly kind: "oci-digest";
@@ -263,9 +267,8 @@ function closedFirstPartyBootstrapDescriptors(): readonly Omit<
         user: CALCULIX_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
         entrypoint: imageEntrypoint(CALCULIX_MICROSANDBOX_WORKER_CONTRACT),
       }),
-      source: trustedDockerfileSource({
-        dockerImageName: "casys/calculix-microsandbox-worker:local",
-        dockerSourceReference: "casys/calculix-microsandbox-worker:local",
+      source: ociDigestSource({
+        reference: CALCULIX_PUBLIC_ARM64_OCI_SOURCE,
       }),
     },
     {
@@ -384,6 +387,15 @@ function trustedDockerfileSource(
 ): FirstPartyTrustedDockerfileSource {
   return Object.freeze({
     kind: "trusted-dockerfile",
+    ...input,
+  });
+}
+
+function ociDigestSource(
+  input: Omit<FirstPartyOciDigestSource, "kind">,
+): FirstPartyOciDigestSource {
+  return Object.freeze({
+    kind: "oci-digest",
     ...input,
   });
 }

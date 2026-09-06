@@ -44,11 +44,12 @@ launch groups after operational authorization, and those groups collide with roo
 Compose on the same loopback ports. A root `docker compose up` remains a manual
 maintainer probe only and must not run concurrently with H1-managed groups.
 
-This path assumes that the published provider images are accessible and that the exact
-code-owned CalculiX microVM worker image has already been prepared and qualified. The
-local Microsandbox config file is deliberately empty; worker pins live in the
-server-owned profiles. Missing images remain `unavailable`. ERPNext is not part of this
-Behave path.
+This path assumes that the published provider images are accessible. Server-owned
+CalculiX cache preparation acquires the exact public GHCR `linux/arm64` bytes and loads
+the catalogued Microsandbox target; it does not rebuild that worker and is not a
+production promotion. The local Microsandbox config file is deliberately empty; worker
+pins live in the server-owned profiles. Missing images remain `unavailable`. ERPNext is
+not part of this Behave path.
 
 ```bash
 npm --prefix src/ui ci
@@ -169,9 +170,9 @@ separate facts. `parser.status: passed` is not admission. A constructor photo is
 `{ projectId, sourceRefs: [capture.result.reference] }` to
 `project_technical_compilation_preview`. If the preview receives multiple locators, all
 must resolve to one shared ProjectSourceWorkspace basis. The server joins the current
-Thread tip and unique SysML names. Unresolved previews name those joins in `gaps`. It does not invent a
-lever or an AttributeUsage. `design.write-geometry@1` refuses a draft that was not
-exported from a parameterized `compile.seal-admission@3`.
+Thread tip and unique SysML names. Unresolved previews name those joins in `gaps`. It
+does not invent a lever or an AttributeUsage. `design.write-geometry@1` refuses a draft
+that was not exported from a parameterized `compile.seal-admission@3`.
 
 Oracle `pass` or publishable `fail` stay literal. Human L5 over that exact `@3` branch
 is a separate walk:

@@ -15,16 +15,16 @@ The fields below remain separate even when two systems happen to return the same
 text. Equality does not turn an OCI build identity into a Microsandbox runtime
 observation.
 
-| Identity                         | Meaning                                                                                       | Must not be treated as                                                                   |
-| -------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Logical catalogued microvm-image | One unit/material/cache recipe in the first-party catalogue                                   | A distinct physical OCI image                                                            |
-| `physicalImageId`                | Stable descriptor-level identity of one physical worker image                                 | A field of the mutable build recipe or of the acquisition source                         |
-| `buildRecipe`                    | Repo-owned Dockerfile, context, `linux/arm64`, expected user/entrypoint/labels                | Proof of a bit-reproducible image or a runtime pin                                       |
-| Acquisition `source`             | How local cache preparation obtains bytes today (`trusted-dockerfile` or future `oci-digest`) | The GHCR candidate name or the Microsandbox runtime digest                               |
-| Candidate OCI index              | Buildx output digest with requested SBOM/provenance and a unique commit-and-workflow-run tag  | The `linux/arm64` image manifest or a Microsandbox runtime pin                           |
-| Candidate arm64 manifest         | Exact `linux/arm64` child selected from the raw OCI index                                     | The index digest, a qualification result, or a runtime pin                               |
-| Candidate Microsandbox digest    | Manifest digest observed after `docker save` + Microsandbox `Image.load` of that arm64 image  | A replacement for the separately recorded OCI index, platform-manifest, or catalogue pin |
-| Qualification target             | The current catalogued Microsandbox runtime pin the candidate may later be compared against   | An output image identity or an automatic pin update                                      |
+| Identity                         | Meaning                                                                                      | Must not be treated as                                                                   |
+| -------------------------------- | -------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Logical catalogued microvm-image | One unit/material/cache recipe in the first-party catalogue                                  | A distinct physical OCI image                                                            |
+| `physicalImageId`                | Stable descriptor-level identity of one physical worker image                                | A field of the mutable build recipe or of the acquisition source                         |
+| `buildRecipe`                    | Repo-owned Dockerfile, context, `linux/arm64`, expected user/entrypoint/labels               | Proof of a bit-reproducible image or a runtime pin                                       |
+| Acquisition `source`             | How local cache preparation obtains bytes today (`trusted-dockerfile` or `oci-digest`)       | The GHCR candidate name or the Microsandbox runtime digest                               |
+| Candidate OCI index              | Buildx output digest with requested SBOM/provenance and a unique commit-and-workflow-run tag | The `linux/arm64` image manifest or a Microsandbox runtime pin                           |
+| Candidate arm64 manifest         | Exact `linux/arm64` child selected from the raw OCI index                                    | The index digest, a qualification result, or a runtime pin                               |
+| Candidate Microsandbox digest    | Manifest digest observed after `docker save` + Microsandbox `Image.load` of that arm64 image | A replacement for the separately recorded OCI index, platform-manifest, or catalogue pin |
+| Qualification target             | The current catalogued Microsandbox runtime pin the candidate may later be compared against  | An output image identity or an automatic pin update                                      |
 
 Five logical bootstrap descriptors currently map one-to-one to five physical images.
 Modelica qualified-kit and admitted-source bindings share one installable atom, so they
@@ -51,9 +51,10 @@ under a non-catalog Microsandbox candidate identity. That path still does not:
 - grant redistribution clearance.
 
 A successful GHCR push creates only a candidate. Publication leaves the current
-capability and qualification state unchanged; the candidate is not an acquisition source
-until a separate review qualifies its exact arm64 manifest on the target ARM Mac and
-promotes its exact OCI digest.
+capability and qualification state unchanged. A later candidate is not an acquisition
+source until a separate review selects its exact arm64 digest as the local-developer
+source. That selection is not a release promotion and does not set
+`eligibleForPromotion`.
 
 Every candidate receipt carries the complete input matrix, its fingerprint, the index
 and arm64-manifest references, exact Buildx metadata, and the existing qualification
@@ -61,6 +62,21 @@ target. It deliberately records `licence: unresolved`, `anonymousPull: not-run`,
 `runtimeQualification: not-run`, `eligibleForPromotion: false`, and SBOM/provenance as
 `requested`. These literal states prevent a successful build from being mistaken for
 distribution clearance, anonymous availability, or runtime evidence.
+
+Four descriptors currently acquire by `trusted-dockerfile`. The CalculiX descriptor
+acquires by `source.kind: "oci-digest"` from the exact public `linux/arm64` GHCR digest
+`ghcr.io/casys-ai/casys-digital-thread-calculix-worker@sha256:0c96ae7f16c05aaa1b082740e1272ae6b4e35ac58866a4537f9d6e74cb236462`.
+Its `buildRecipe` remains publication metadata for a later candidate; cache preparation
+never builds when this source is selected. The catalogued Microsandbox target stays the
+stable product logical repository `casys/calculix-microsandbox-worker` at
+`sha256:2dc7d17454833a2c17b5812eb1e5504c4a025ef3764fc771fda2938d49fa9771`. The
+corresponding OCI index
+`sha256:8b5aaa8c7b3f88ac2cf4d759cc7a827f70291e1badc5d8173b6ad5947bdf5225` is provenance
+only; it is not the acquisition source and not the runtime pin. Do not use a candidate
+alias as the product pin. This local-developer baseline does not rewrite those receipt
+states. A separate metadata-only census observed anonymous manifest access, and a prior
+host record passed the exact worker qualification; neither upgrades `anonymousPull`,
+licence, or promotion.
 
 ## Non-reproducibility and notices
 

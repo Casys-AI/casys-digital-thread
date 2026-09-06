@@ -101,6 +101,24 @@ Deno.test("first-party cache registry enrolls one recipe per catalogued microvm-
   assertEquals(modelica[0]?.materialId, "modelica-worker-image");
   assertEquals(modelica[0]?.physicalImageId, "modelica-microsandbox-worker");
 
+  const calculix = descriptors.find((descriptor) =>
+    descriptor.recipeId === FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID
+  );
+  if (!calculix || calculix.source.kind !== "oci-digest") {
+    throw new Error("CalculiX bootstrap must acquire by oci-digest");
+  }
+  assertEquals(
+    calculix.source.reference,
+    "ghcr.io/casys-ai/casys-digital-thread-calculix-worker@sha256:0c96ae7f16c05aaa1b082740e1272ae6b4e35ac58866a4537f9d6e74cb236462",
+  );
+  assertEquals(
+    calculix.source.reference === calculix.targetImageReference,
+    false,
+  );
+  const calculixProfile = firstPartyMicrosandboxBootstrapCacheProfileBody(calculix);
+  assertEquals("buildRecipe" in calculixProfile.bootstrap, false);
+  assertEquals(calculixProfile.bootstrap.source, calculix.source);
+
   const plan = await registry.plan(requested(recipes));
   assertEquals(plan.recipes.map((recipe) => recipe.id), [
     FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,

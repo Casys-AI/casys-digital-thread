@@ -318,7 +318,7 @@ Deno.test("future CalculiX runtime binding factory is code-owned, digest pinned,
   assertEquals(first.profile.imageReference, LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE);
   assertEquals(
     first.profile.imageReference,
-    "casys/calculix-microsandbox-worker@sha256:9b3a7468bfbc3f0fe27f7a9ac17c0eb72f1925968173e5a01d985cfa19cbc0a2",
+    "casys/calculix-microsandbox-worker@sha256:2dc7d17454833a2c17b5812eb1e5504c4a025ef3764fc771fda2938d49fa9771",
   );
   assertEquals(
     first.profile.wrapperSha256,
@@ -329,7 +329,7 @@ Deno.test("future CalculiX runtime binding factory is code-owned, digest pinned,
     version: "1.0.0",
     fingerprint: {
       algorithm: "sha256",
-      digest: "1ccc37fbbd56b7a873f6450882038d0b5ca859e792f2b93bfdbd9efa23072834",
+      digest: "46d92b3f0c77084d6ef06015b88d72be26b3f0293aca23d20b221ae3bc2e9e31",
     },
   });
   assertEquals(first.runtime, {});
