@@ -41,10 +41,17 @@ export interface SensitivityStudySealReviewSelection {
   readonly authority: SensitivityStudySealAuthorityKind;
 }
 
+/**
+ * A pasteable route to the existing append/propose commands. It is not an
+ * approval, queue command, operation, verdict, or execution request.
+ * Propose omits issuedAt so the caller can fill it on paste.
+ */
 export interface SensitivityStudySealReviewNext {
   readonly append: {
     readonly tool: "project_change_append";
     readonly arguments: {
+      readonly commandId: string;
+      readonly projectId: string;
       readonly baseSnapshot: EngineeringThreadSnapshotRef;
       readonly expectedRevision: number;
       readonly phases: readonly {
@@ -59,6 +66,7 @@ export interface SensitivityStudySealReviewNext {
         readonly dependsOnWorkItemIds: readonly string[];
         readonly decisionIds: readonly string[];
         readonly operation: EngineeringOperationRef;
+        readonly gateClaims: readonly [];
       }[];
       readonly requiredDecisions: readonly {
         readonly id: string;
@@ -71,16 +79,15 @@ export interface SensitivityStudySealReviewNext {
   readonly propose: {
     readonly tool: "project_decision_propose";
     readonly arguments: {
+      readonly commandId: string;
+      readonly projectId: string;
+      readonly expectedRevision: number;
       readonly decisionId: string;
       readonly proposal: {
         readonly summary: string;
         readonly parameters: readonly EngineeringDecisionProposalParameter[];
       };
     };
-  };
-  readonly queue: {
-    readonly tool: "project_agent_run_queue";
-    readonly workItemId: string;
   };
 }
 

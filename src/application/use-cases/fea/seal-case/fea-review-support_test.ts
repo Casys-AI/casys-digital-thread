@@ -14,6 +14,7 @@ Deno.test("fea review next names the two MCP hops and strips kind from the appen
     subjectId: "project:desk-lamp-dl06",
   };
   const next = feaReviewNext({
+    projectId: "desk-lamp-dl06",
     basis,
     expectedRevision: 9,
     phaseId: "verification",
@@ -37,18 +38,23 @@ Deno.test("fea review next names the two MCP hops and strips kind from the appen
   });
   assertEquals(next.append.tool, "project_change_append");
   assertEquals(next.propose.tool, "project_decision_propose");
+  assertEquals(next.append.arguments.commandId, "append-fea-wi-proof-r9");
+  assertEquals(next.append.arguments.projectId, "desk-lamp-dl06");
+  assertEquals(next.propose.arguments.commandId, "propose-fea-wi-proof-r9");
+  assertEquals(next.propose.arguments.projectId, "desk-lamp-dl06");
   assertEquals(
     next.append.arguments.baseSnapshot,
     threadSnapshotRefFromBasis(basis),
   );
   assertEquals("kind" in next.append.arguments.baseSnapshot, false);
   assertEquals(next.append.arguments.expectedRevision, 9);
+  assertEquals(next.propose.arguments.expectedRevision, 10);
   assertEquals(next.append.arguments.workItems[0]?.id, "wi-proof");
+  assertEquals(next.append.arguments.workItems[0]?.gateClaims, []);
   assertEquals(next.propose.arguments.decisionId, "dec-proof");
-  assertEquals(next.queue, {
-    tool: "project_agent_run_queue",
-    workItemId: "wi-proof",
-  });
+  assertEquals("queue" in next, false);
+  assertEquals("issuedAt" in next.append.arguments, false);
+  assertEquals("issuedAt" in next.propose.arguments, false);
   assertEquals(
     "predecessorRevisionId" in (next.append.arguments.workItems[0] ?? {}),
     false,
@@ -58,6 +64,7 @@ Deno.test("fea review next names the two MCP hops and strips kind from the appen
 
 Deno.test("fea review next can reuse an existing phase and name a predecessor revision", () => {
   const next = feaReviewNext({
+    projectId: "desk-lamp-dl06",
     basis: {
       kind: "thread-snapshot",
       snapshotId: "snap-r7",
@@ -100,6 +107,18 @@ Deno.test("fea review next can reuse an existing phase and name a predecessor re
     next.append.arguments.requiredDecisions[0]?.id,
     "decision-fea-isolated-r15-2",
   );
+  assertEquals(
+    next.append.arguments.commandId,
+    "append-fea-work-fea-isolated-r15-2-r14",
+  );
+  assertEquals(
+    next.propose.arguments.commandId,
+    "propose-fea-work-fea-isolated-r15-2-r14",
+  );
+  assertEquals(next.append.arguments.projectId, "desk-lamp-dl06");
+  assertEquals(next.propose.arguments.expectedRevision, 15);
+  assertEquals(next.append.arguments.workItems[0]?.gateClaims, []);
+  assertEquals("queue" in next, false);
 });
 
 Deno.test("FEA review next-state guard rejects historical bases and conflicting catalog identities", () => {

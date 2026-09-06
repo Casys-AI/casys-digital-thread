@@ -266,6 +266,7 @@ export class PrepareProjectFeaProofSealReview
         decisionParameters: compiled.decisionParameters,
         sensitivityCatalog,
         next: feaReviewNext({
+          projectId: command.projectId,
           basis,
           operation: sealProofCaseWorkItemOperation(),
           summary,
