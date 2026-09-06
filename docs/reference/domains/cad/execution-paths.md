@@ -13,17 +13,21 @@ bytes but produce different authority. They are not substitutes.
 ## Admitted source identity
 
 The same paths accept either an authored root or the active Build123d 3.0 direct
-workspace closure. For a closure, capture derives one
-`technical-unit:<closure sha256>` from the exact `project-source-closure/1.0`; that unit
-is distinct from every workspace `fileId`. The V4 capture keeps the authored closure and
-attachment as evidence and persists the complete lowering manifest. Preview uses
-`technical-compilation/2.0`; admission and its Thread capture use V4, while the
-registered operation remains `compile.seal-admission@3`.
+workspace closure. For a closure, capture derives one `technical-unit:<closure sha256>`
+from the exact `project-source-closure/1.0`; that unit is distinct from every workspace
+`fileId`. The V4 capture keeps the authored closure and attachment as evidence and
+persists the complete lowering manifest. Preview uses `technical-compilation/2.0`;
+admission and its Thread capture use V4, while the registered operation remains
+`compile.seal-admission@3`.
 
 No caller may choose a lowerer, provider, tool, path, image, runtime or output. A
-lowered closure has code-test evidence for capture, reopening and admission mechanics;
-a real private MCP execution of that multi-file form is still pending. This changes
-neither canonical nor isolated authority.
+lowered closure has code-test evidence for capture, reopening and admission mechanics.
+One live two-file root plus a direct scalar-leaf parameter file was exercised through
+canonical export and `design.write-geometry@1` on
+[Verify a new wall hook from source](../../../how-to/verify-design/verify-a-new-wall-hook-from-source.md).
+That is not a Python import environment, not isolated-CAD authority, and not a claim
+that arbitrary multi-file Build123d executes. This changes neither canonical nor
+isolated authority.
 
 ## Canonical admitted export
 
@@ -52,8 +56,8 @@ than a fresh provider dispatch.
 If an interruption occurs while only `prepared` exists, the server may resume the same
 exact preparation reservation after cold validation; an expired reservation gains an
 immutable linked successor rather than overwriting history. If `recorded` exists but the
-success-path cleanup did not run, replay returns the captured result and releases only the
-exact residual lease without activating Build123d or calling the provider.
+success-path cleanup did not run, replay returns the captured result and releases only
+the exact residual lease without activating Build123d or calling the provider.
 
 For a lowered closure, every reopen and replay recrosses the sealed closure, reopens all
 named file bytes, re-lowers them, compares the full manifest and effective script, and
@@ -151,9 +155,9 @@ The shared reopen is the profile-free
 [exact static assembly basis](static-assembly-basis.md): one exact
 `geometry-module-capture/1.0` and its authoritative assembly STEP. The
 assembly-integrity consumer then adds its method, bounds, and server-owned profile. The
-current adapter lowers that request to the raw
-`build123d_observe_assembly_integrity` capability on `mcp-build123d` and seals the
-facts as `assembly-integrity-observation/1.0`. Callers do not choose that provider.
+current adapter lowers that request to the raw `build123d_observe_assembly_integrity`
+capability on `mcp-build123d` and seals the facts as
+`assembly-integrity-observation/1.0`. Callers do not choose that provider.
 
 The observer has no local OCCT worker, no sandbox or local-execution fallback, and no
 verdict. It records import/topology, recross and pairwise geometry facts with their

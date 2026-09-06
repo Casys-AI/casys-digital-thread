@@ -25,7 +25,9 @@ Start with
 [Walk through an engineering project](verify-design/walk-through-an-engineering-project.md)
 to inspect an existing dated path, or
 [Verify a new design from scratch](verify-design/verify-a-new-design-from-scratch.md)
-when the stated prerequisites are already satisfied.
+when the stated prerequisites are already satisfied. A new Behave-only wall hook from
+this checkout is
+[Verify a new wall hook from source](verify-design/verify-a-new-wall-hook-from-source.md).
 
 For the bounded mechanism path, use
 [Verify prescribed kinematics](verify-design/verify-prescribed-kinematics.md). If its

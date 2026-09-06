@@ -109,6 +109,7 @@ and
 | `probes/capture-build123d-api-inventory.ts`    | (direct `deno run`)                  | write |
 | `probes/capture-syson-model-inventory.ts`      | `thread:capture-syson-inventory`     | write |
 | `probes/mcp-call.ts`                           | `mcp:call`                           | write |
+| `probes/load-wall-hook-wh01-source.ts`         | `probe:wall-hook-wh01-source`        | write |
 | `probes/probe-constraint-solver.ts`            | `probe:constraint-solver`            | read  |
 | `probes/probe-build123d-contract.ts`           | `probe:build123d-contract`           | read  |
 | `probes/probe-calculix-contract.ts`            | `probe:calculix-contract`            | read  |
