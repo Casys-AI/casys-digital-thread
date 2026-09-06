@@ -53,7 +53,7 @@ export function McpAppFrame({
     let blankLoadObserved = false;
     let controller: ReturnType<typeof createMcpAppReadOnlyHost> | undefined;
     let loadedDocument: LoadedMcpAppDocument | undefined;
-    let stopPresentationObservation: (() => void) | undefined;
+    const stopPresentationObservation: Array<() => void> = [];
     let active = true;
     const abort = new AbortController();
 
@@ -65,7 +65,9 @@ export function McpAppFrame({
     const invalidate = (): void => {
       if (!active) return;
       active = false;
-      stopPresentationObservation?.();
+      for (const stop of stopPresentationObservation.splice(0)) {
+        stop();
+      }
       abort.abort();
       revokeLoadedDocument();
       controller?.invalidate();
@@ -144,11 +146,11 @@ export function McpAppFrame({
     );
     themePreference?.addEventListener("change", updatePresentation);
     globalThis.addEventListener("languagechange", updatePresentation);
-    stopPresentationObservation = () => {
+    stopPresentationObservation.push(() => {
       presentationObserver.disconnect();
       themePreference?.removeEventListener("change", updatePresentation);
       globalThis.removeEventListener("languagechange", updatePresentation);
-    };
+    });
     const onMessage = (event: MessageEvent<unknown>): void => {
       controller?.handleMessage(event);
     };
