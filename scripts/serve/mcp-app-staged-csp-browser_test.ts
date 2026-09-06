@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import {
   materializeMcpAppDocument,
   planMcpAppDocument,
@@ -90,7 +90,7 @@ Deno.test({
         try {
           await server.shutdown();
         } finally {
-          await Deno.remove(profile, { recursive: true });
+          await removeChromeProfile(profile);
         }
       }
     }
@@ -415,6 +415,30 @@ async function stopChrome(
   if (!(await settlesWithin(status, 2_000))) {
     throw new Error("The test Chrome process did not terminate.");
   }
+}
+
+Deno.test("Chrome profile cleanup removes only its temporary profile", async () => {
+  const profile = await Deno.makeTempDir({ prefix: "casys-mcp-app-chrome-" });
+  await Deno.writeTextFile(`${profile}/marker`, "test");
+  await removeChromeProfile(profile);
+  await assertRejects(() => Deno.stat(profile), Deno.errors.NotFound);
+});
+
+async function removeChromeProfile(profile: string): Promise<void> {
+  let lastDirectoryNotEmpty: Error | undefined;
+  for (let attempt = 0; attempt < 80; attempt++) {
+    try {
+      await Deno.remove(profile, { recursive: true });
+      return;
+    } catch (error) {
+      if (!(error instanceof Error) || !error.message.includes("Directory not empty")) {
+        throw error;
+      }
+      lastDirectoryNotEmpty = error;
+      await delay(25);
+    }
+  }
+  throw lastDirectoryNotEmpty;
 }
 
 async function settlesWithin<T>(
