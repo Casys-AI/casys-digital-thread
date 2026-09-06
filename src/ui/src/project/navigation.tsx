@@ -152,35 +152,49 @@ export function ProjectNavigation({
   const utilityViews = PROJECT_VIEWS.filter((view) => view.id === "operations");
   const renderView = (view: (typeof PROJECT_VIEWS)[number]) => {
     const unavailable = disabledViews.includes(view.id);
+    const label = `${view.label}: ${
+      unavailable ? "After technical work" : view.description
+    }`;
+    const className = cn(
+      "group relative flex h-10 items-center gap-2 rounded-md px-2.5 text-[13px] font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
+      activeView !== view.id && "text-muted-foreground",
+      activeView === view.id &&
+        "bg-accent text-accent-foreground before:absolute before:inset-x-2 before:bottom-0 before:h-0.5 before:rounded-full before:bg-brand",
+      unavailable && "opacity-50",
+    );
+    const contents = (
+      <>
+        <ViewIcon view={view.id} />
+        <span>{view.label}</span>
+      </>
+    );
     return (
       <div key={view.id} className="project-navigation-item shrink-0">
-        <a
-          href={`#${view.id}`}
-          aria-current={activeView === view.id ? "page" : undefined}
-          aria-disabled={unavailable || undefined}
-          aria-label={`${view.label}: ${
-            unavailable ? "After technical work" : view.description
-          }`}
-          className={cn(
-            "group relative flex h-10 items-center gap-2 rounded-md px-2.5 text-[13px] font-medium transition-colors hover:bg-accent hover:text-accent-foreground",
-            activeView !== view.id && "text-muted-foreground",
-            activeView === view.id &&
-              "bg-accent text-accent-foreground before:absolute before:inset-x-2 before:bottom-0 before:h-0.5 before:rounded-full before:bg-brand",
-            unavailable && "opacity-50",
+        {unavailable
+          ? (
+            <span
+              aria-disabled="true"
+              aria-label={label}
+              className={className}
+            >
+              {contents}
+            </span>
+          )
+          : (
+            <a
+              href={`#${view.id}`}
+              aria-current={activeView === view.id ? "page" : undefined}
+              aria-label={label}
+              className={className}
+              onClick={(event) => {
+                if (event.metaKey || event.ctrlKey || event.shiftKey) return;
+                event.preventDefault();
+                onChange(view.id);
+              }}
+            >
+              {contents}
+            </a>
           )}
-          onClick={(event) => {
-            if (unavailable) {
-              event.preventDefault();
-              return;
-            }
-            if (event.metaKey || event.ctrlKey || event.shiftKey) return;
-            event.preventDefault();
-            onChange(view.id);
-          }}
-        >
-          <ViewIcon view={view.id} />
-          <span>{view.label}</span>
-        </a>
       </div>
     );
   };

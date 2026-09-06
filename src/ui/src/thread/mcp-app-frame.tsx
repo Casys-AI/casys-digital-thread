@@ -139,7 +139,9 @@ export function McpAppFrame({
       attributes: true,
       attributeFilter: ["data-theme", "class", "style", "lang"],
     });
-    const themePreference = globalThis.matchMedia?.("(prefers-color-scheme: dark)");
+    const themePreference = globalThis.matchMedia?.(
+      "(prefers-color-scheme: dark)",
+    );
     themePreference?.addEventListener("change", updatePresentation);
     globalThis.addEventListener("languagechange", updatePresentation);
     stopPresentationObservation = () => {
@@ -180,7 +182,8 @@ export function McpAppFrame({
 }
 
 function resolvedPresentationContext(): McpAppHostPresentationContext {
-  const locale = document.documentElement.lang.trim() || globalThis.navigator?.language;
+  const locale = document.documentElement.lang.trim() ||
+    globalThis.navigator?.language;
   return {
     theme: resolvedTheme(),
     ...(locale ? { locale } : {}),

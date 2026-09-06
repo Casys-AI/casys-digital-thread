@@ -234,7 +234,8 @@ type FlowCableTerminal = OverviewThreadD3CableTerminal<
   OverviewThreadD3FlowNodeLayout
 >;
 
-export interface OverviewThreadD3FlowNodeLayout extends OverviewThreadD3FlowNodeInput {
+export interface OverviewThreadD3FlowNodeLayout
+  extends OverviewThreadD3FlowNodeInput {
   readonly x: number;
   readonly y: number;
   readonly width: number;
@@ -634,7 +635,9 @@ export function buildOverviewThreadD3FlowLayout(
         const node = outlineRow.node;
         // The list reads down a column then across, like a Finder column view.
         const listColumn = listed ? Math.floor(index / listCapacity) : 0;
-        const listRow = listed ? index - listColumn * listCapacity - hull.scrollRow : 0;
+        const listRow = listed
+          ? index - listColumn * listCapacity - hull.scrollRow
+          : 0;
         // A row scrolled out of the window keeps its identity and its cables;
         // it is not drawn, and its cable lands on the hull edge instead.
         const offWindow = listed &&
@@ -798,7 +801,9 @@ export function buildOverviewThreadD3FlowLayout(
     readonly targetNode: OverviewThreadD3FlowNodeLayout;
   }[] = [];
   for (
-    const edge of edges.toSorted((left, right) => left.key.localeCompare(right.key))
+    const edge of edges.toSorted((left, right) =>
+      left.key.localeCompare(right.key)
+    )
   ) {
     const sourceNode = nodeByKey.get(edge.fromKey);
     const targetNode = nodeByKey.get(edge.toKey);
@@ -927,7 +932,9 @@ export function buildOverviewThreadD3FlowLayout(
   }
 
   const cablePairs = [...edgesByPair.entries()]
-    .map(([pairKey, pairEdges]) => buildCablePair(pairKey, pairEdges, laneIndex))
+    .map(([pairKey, pairEdges]) =>
+      buildCablePair(pairKey, pairEdges, laneIndex)
+    )
     .toSorted((left, right) => left.key.localeCompare(right.key));
   const corridors = clusterCablePairs(
     cablePairs,
@@ -1072,7 +1079,9 @@ export function buildOverviewThreadD3FlowLayout(
     groups: orderedGroups,
     lanes,
     segments,
-    routes: routes.toSorted((left, right) => left.edgeKey.localeCompare(right.edgeKey)),
+    routes: routes.toSorted((left, right) =>
+      left.edgeKey.localeCompare(right.edgeKey)
+    ),
     unroutedEdgeKeys: [...unroutedEdgeKeys].toSorted(),
     nextRoutingState: {
       corridors: corridors.map((corridor) => ({
@@ -1131,7 +1140,8 @@ function buildLaneMatrixPlan(
   for (const groupPoint of laneRoot.children ?? []) {
     if (groupPoint.data.kind !== "group") continue;
     const groupNodes = groupPoint.leaves().flatMap(
-      (leaf: HierarchyNode<LaneTreeDatum>) => leaf.data.node ? [leaf.data.node] : [],
+      (leaf: HierarchyNode<LaneTreeDatum>) =>
+        leaf.data.node ? [leaf.data.node] : [],
     ).toSorted(compareNodeInput);
     if (groupNodes.length === 0) continue;
     const columns = Math.min(
@@ -1379,13 +1389,15 @@ export function overviewThreadD3FlowRoundedPath(
   if (simplified.length === 0) return "";
   const first = simplified[0]!;
   if (simplified.length === 1) {
-    return `M ${formatRoutedPathNumber(first.x)} ${formatRoutedPathNumber(first.y)}`;
+    return `M ${formatRoutedPathNumber(first.x)} ${
+      formatRoutedPathNumber(first.y)
+    }`;
   }
   if (simplified.length === 2) {
     const last = simplified[1]!;
-    return `M ${formatRoutedPathNumber(first.x)} ${formatRoutedPathNumber(first.y)} L ${
-      formatRoutedPathNumber(last.x)
-    } ${formatRoutedPathNumber(last.y)}`;
+    return `M ${formatRoutedPathNumber(first.x)} ${
+      formatRoutedPathNumber(first.y)
+    } L ${formatRoutedPathNumber(last.x)} ${formatRoutedPathNumber(last.y)}`;
   }
 
   const parts: string[] = [
@@ -1405,9 +1417,11 @@ export function overviewThreadD3FlowRoundedPath(
     }
     appendRoutedLinear(parts, cursor, fillet.start);
     parts.push(
-      `Q ${formatRoutedPathNumber(current.x)} ${formatRoutedPathNumber(current.y)} ${
-        formatRoutedPathNumber(fillet.end.x)
-      } ${formatRoutedPathNumber(fillet.end.y)}`,
+      `Q ${formatRoutedPathNumber(current.x)} ${
+        formatRoutedPathNumber(current.y)
+      } ${formatRoutedPathNumber(fillet.end.x)} ${
+        formatRoutedPathNumber(fillet.end.y)
+      }`,
     );
     cursor = fillet.end;
   }
@@ -1808,7 +1822,11 @@ function segmentWidth(
   kind: OverviewThreadD3FlowSegmentKind,
   pathCount: number,
 ): number {
-  const minimum = kind === "node-branch" ? 0.72 : kind === "pair-feeder" ? 0.84 : 0.95;
+  const minimum = kind === "node-branch"
+    ? 0.72
+    : kind === "pair-feeder"
+    ? 0.84
+    : 0.95;
   return minimum + Math.min(
     2.5,
     Math.log2(Math.max(0, pathCount) + 1) * 0.34,
@@ -1828,7 +1846,9 @@ function routeStepSigns(
 ): readonly string[] {
   return points.slice(1).map((point, index) => {
     const previous = points[index]!;
-    return `${Math.sign(point.x - previous.x)},${Math.sign(point.y - previous.y)}`;
+    return `${Math.sign(point.x - previous.x)},${
+      Math.sign(point.y - previous.y)
+    }`;
   });
 }
 
@@ -1900,7 +1920,9 @@ function largestOverviewGroupSize(
 }
 
 function structuredKey(prefix: string, values: readonly string[]): string {
-  return `${prefix}:${values.map((value) => `${value.length}:${value}`).join("|")}`;
+  return `${prefix}:${
+    values.map((value) => `${value.length}:${value}`).join("|")
+  }`;
 }
 
 function pushKey(target: string[], key: string): void {
@@ -1923,14 +1945,18 @@ function positiveOrDefault(
   value: number | undefined,
   fallback: number,
 ): number {
-  return value !== undefined && Number.isFinite(value) && value > 0 ? value : fallback;
+  return value !== undefined && Number.isFinite(value) && value > 0
+    ? value
+    : fallback;
 }
 
 function nonNegativeOrDefault(
   value: number | undefined,
   fallback: number,
 ): number {
-  return value !== undefined && Number.isFinite(value) && value >= 0 ? value : fallback;
+  return value !== undefined && Number.isFinite(value) && value >= 0
+    ? value
+    : fallback;
 }
 
 interface ResolvedHullBox {
@@ -2152,7 +2178,9 @@ function ownPlacement<T>(
   placements: Readonly<Record<string, T>> | undefined,
   key: string,
 ): T | undefined {
-  return placements && Object.hasOwn(placements, key) ? placements[key] : undefined;
+  return placements && Object.hasOwn(placements, key)
+    ? placements[key]
+    : undefined;
 }
 
 function finiteOrUndefined(value: number | undefined): number | undefined {

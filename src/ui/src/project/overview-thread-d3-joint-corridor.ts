@@ -45,7 +45,8 @@ export interface OverviewThreadD3JointCorridorTrajectoryInput {
 }
 
 export interface OverviewThreadD3JointCorridorInput {
-  readonly trajectories: readonly OverviewThreadD3JointCorridorTrajectoryInput[];
+  readonly trajectories:
+    readonly OverviewThreadD3JointCorridorTrajectoryInput[];
   /** Immutable, already-inflated hulls. */
   readonly obstacles?: readonly OverviewThreadD3CableObstacle[];
   /** Fixed manual D3 ticks; no simulation timer is started. */
@@ -322,7 +323,9 @@ export function buildOverviewThreadD3JointCorridor(
         arrivalTangent: copyPoint(route.input.targetTangent),
         topologySignature: `${route.initialTopology}|joint-corridor:v2|bundle:${
           encodeURIComponent(route.input.bundleKey)
-        }|particles:${PARTICLES_PER_ROUTE}|mode:${bundled ? "magnetic" : "individual"}`,
+        }|particles:${PARTICLES_PER_ROUTE}|mode:${
+          bundled ? "magnetic" : "individual"
+        }`,
       }),
     );
   }
@@ -736,7 +739,9 @@ function normalizeTrajectories(
         input.targetTangent,
         `${key} targetTangent`,
       ),
-      weight: Number.isFinite(input.weight) && input.weight! > 0 ? input.weight! : 1,
+      weight: Number.isFinite(input.weight) && input.weight! > 0
+        ? input.weight!
+        : 1,
       obstacles: obstacles.filter((obstacle) => !excluded.has(obstacle.key)),
     };
   }).toSorted((left, right) => left.key.localeCompare(right.key));
@@ -789,7 +794,9 @@ function resamplePolyline(
     ) segment++;
     const startOffset = cumulative[segment - 1]!;
     const segmentLength = cumulative[segment]! - startOffset;
-    const ratio = segmentLength <= EPSILON ? 0 : (offset - startOffset) / segmentLength;
+    const ratio = segmentLength <= EPSILON
+      ? 0
+      : (offset - startOffset) / segmentLength;
     const source = points[segment - 1]!;
     const target = points[segment]!;
     return {
