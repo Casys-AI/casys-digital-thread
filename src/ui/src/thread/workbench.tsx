@@ -270,6 +270,23 @@ export function ThreadWorkbench({
     };
   }, []);
 
+  // Planning has no technical record to inspect. A technical deep link must
+  // therefore resolve to the planning overview in both rendered state and the
+  // browser URL, without adding a synthetic navigation-history entry.
+  useEffect(() => {
+    if (workbench?.surface !== "planning") return;
+    if (activeView !== "overview") setActiveView("overview");
+    if (activeDeepLink !== undefined) setActiveDeepLink(undefined);
+    const overviewHash = projectViewHash("overview");
+    if (
+      globalThis.location &&
+      globalThis.history &&
+      globalThis.location.hash !== overviewHash
+    ) {
+      globalThis.history.replaceState(null, "", overviewHash);
+    }
+  }, [activeDeepLink, activeView, workbench?.surface]);
+
   // Declared fleet topology is static workspace config: one read at mount,
   // no polling. Absence keeps `fleet` undefined and Operations degrades to
   // thread-observed systems.
@@ -815,12 +832,15 @@ export function ThreadWorkbench({
   }
 
   if (workbench.surface === "planning") {
+    // The effect above also normalizes state and URL; this keeps the first
+    // planning render correct before that effect has run.
+    const planningActiveView: ProjectWorkspaceView = "overview";
     return (
       <PlanningWorkbench
         workbench={workbench}
         viewerSessions={viewerSessions}
         streamStatus={streamStatus}
-        activeView={activeView}
+        activeView={planningActiveView}
         onChangeView={changeView}
       />
     );

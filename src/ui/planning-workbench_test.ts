@@ -21,6 +21,28 @@ Deno.test("planning Workbench is a native project-path surface, not an empty evi
     new URL("./src/thread/workbench.tsx", import.meta.url),
   );
   assertStringIncludes(threadWorkbench, "shouldAcceptPlanningActivityUpdate");
+  assertStringIncludes(
+    threadWorkbench,
+    'if (workbench?.surface !== "planning") return;',
+  );
+  assertStringIncludes(threadWorkbench, 'setActiveView("overview")');
+  assertStringIncludes(threadWorkbench, "setActiveDeepLink(undefined)");
+  assertStringIncludes(
+    threadWorkbench,
+    'globalThis.history.replaceState(null, "", overviewHash);',
+  );
+  assertStringIncludes(threadWorkbench, "activeView={planningActiveView}");
+
+  const navigation = await Deno.readTextFile(
+    new URL("./src/project/navigation.tsx", import.meta.url),
+  );
+  const unavailableNavigation = navigation.slice(
+    navigation.indexOf("{unavailable"),
+    navigation.indexOf("\n          : (", navigation.indexOf("{unavailable")),
+  );
+  assertStringIncludes(unavailableNavigation, 'aria-disabled="true"');
+  assertEquals(unavailableNavigation.includes("href="), false);
+  assertEquals(unavailableNavigation.includes("onClick="), false);
 
   const activity = await Deno.readTextFile(
     new URL("./src/project/baseline-run-activity.tsx", import.meta.url),
