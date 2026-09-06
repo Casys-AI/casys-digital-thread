@@ -6,8 +6,8 @@ Census of the LED-driver human-fiche slice present in the map, plus the circuit-
 admitted SPICE isolated-execution adapters needed to operate the ngspice-worker
 imported-candidate gate. LED-driver and admitted SPICE are not substitutes.
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
 
 ## Source map
 
@@ -67,5 +67,5 @@ It is not the Docker smoke, not cache preparation, and not product admitted-SPIC
 #### [`scripts/gates/verify-ngspice-microsandbox-worker.ts`](../../../scripts/gates/verify-ngspice-microsandbox-worker.ts)
 
 Docker deny-all ngspice worker preflight. Useful worker-contract evidence but not a
-substitute for imported-candidate Microsandbox qualification or product IsolatedCodeRunner
-wiring
+substitute for imported-candidate Microsandbox qualification or product
+IsolatedCodeRunner wiring

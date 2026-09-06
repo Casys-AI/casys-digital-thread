@@ -129,6 +129,91 @@ Deno.test("read-only App host source-locks the exact opaque App identity", () =>
   );
 });
 
+Deno.test("host presentation keeps the latest handshake state and sends only live deltas", () => {
+  const target = new FakeTarget();
+  const host = createHost(target);
+  host.updateHostContext({ theme: "light", locale: "en" });
+  assertEquals(target.posts, []);
+
+  host.handleMessage(event(target, initialize("init")));
+  assertEquals(
+    (target.posts[0]?.message as {
+      result: { hostContext: unknown };
+    }).result.hostContext,
+    {
+      theme: "light",
+      locale: "en",
+      displayMode: "inline",
+      availableDisplayModes: ["inline"],
+    },
+  );
+
+  host.updateHostContext({ theme: "dark", locale: "fr" });
+  assertEquals(target.posts.length, 1);
+  host.handleMessage(event(target, initialized()));
+  assertEquals(target.posts[1]?.message, {
+    jsonrpc: "2.0",
+    method: "ui/notifications/host-context-changed",
+    params: { theme: "dark", locale: "fr" },
+  });
+  assertEquals(methodOf(target.posts[2]?.message), "ui/compose/event");
+
+  host.updateHostContext({ theme: "dark", locale: "fr" });
+  assertEquals(target.posts.length, 3);
+  host.updateHostContext({ theme: "light" });
+  assertEquals(target.posts[3]?.message, {
+    jsonrpc: "2.0",
+    method: "ui/notifications/host-context-changed",
+    params: { theme: "light" },
+  });
+  host.updateHostContext({ locale: "en" });
+  assertEquals(target.posts[4]?.message, {
+    jsonrpc: "2.0",
+    method: "ui/notifications/host-context-changed",
+    params: { locale: "en" },
+  });
+  host.handleMessage(event(target, initialized()));
+  assertEquals(target.posts.length, 5);
+  host.invalidate();
+  host.updateHostContext({ theme: "dark", locale: "fr" });
+  assertEquals(target.posts.length, 5);
+});
+
+Deno.test("host presentation updates cannot carry authority or replace the recorded session", () => {
+  const target = new FakeTarget();
+  const host = createHost(target);
+  host.handleMessage(event(target, initialize("init")));
+  host.handleMessage(event(target, initialized()));
+  target.posts.length = 0;
+
+  const extraFields = {
+    theme: "light" as const,
+    locale: "fr",
+    displayMode: "fullscreen",
+    hostCapabilities: { serverTools: {} },
+    session: { action: "replace-session" },
+    styles: { css: { fonts: "untrusted CSS" } },
+  };
+  host.updateHostContext(extraFields);
+  assertEquals(target.posts.map((post) => post.message), [{
+    jsonrpc: "2.0",
+    method: "ui/notifications/host-context-changed",
+    params: { theme: "light", locale: "fr" },
+  }]);
+
+  assertEquals(
+    host.handleMessage(event(target, {
+      jsonrpc: "2.0",
+      method: "ui/notifications/host-context-changed",
+      params: { theme: "dark", hostCapabilities: { serverTools: {} } },
+    })),
+    false,
+  );
+  host.updateHostContext({ theme: "light", locale: "fr" });
+  assertEquals(target.posts.length, 1);
+  host.invalidate();
+});
+
 Deno.test("read-only App host rejects every non-pinned protocol version", async () => {
   let fetches = 0;
   const target = new FakeTarget();
@@ -321,6 +406,7 @@ Deno.test("read-only App host binds only the first App-created resource port", a
   host.handleMessage(event(target, initialize("init")));
   host.handleMessage(event(target, initialized()));
 
+  host.updateHostContext({ theme: "light", locale: "fr" });
   const request = {
     schemaVersion: MCP_APP_HOST_RESOURCE_READ_SCHEMA,
     type: MCP_APP_HOST_RESOURCE_READ_REQUEST,
@@ -333,6 +419,10 @@ Deno.test("read-only App host binds only the first App-created resource port", a
   first.port1.postMessage(request);
   await new Promise((resolve) => setTimeout(resolve, 0));
   assertEquals(fetches, 1);
+  assertEquals(
+    target.posts.filter((post) => methodOf(post.message) === "ui/compose/event").length,
+    1,
+  );
 
   host.invalidate();
   first.port1.close();

@@ -984,11 +984,11 @@ Deno.test("Modelica successor aggregate stays incomplete unless both new proofs 
           stateRoot: directory,
           composeQualifiedKit: async (options, paths) =>
             await fakeKitComposition(options.profile, paths, { imageRemove: 0 }),
-          composeAdmitted: async (options, paths) => {
+          composeAdmitted: (options, paths) => {
             const composition = fakeAdmittedComposition(options.profile, paths, {
               imageRemove: 0,
             });
-            return {
+            return Promise.resolve({
               ...composition,
               execution: {
                 ...composition.execution!,
@@ -999,7 +999,7 @@ Deno.test("Modelica successor aggregate stays incomplete unless both new proofs 
                   },
                 },
               },
-            };
+            });
           },
         },
       );
@@ -1184,17 +1184,17 @@ function trackingPorts(
   return {
     observedHost: { read: () => Promise.resolve(observedHost()) },
     stateRoot,
-    composeQualifiedKit: async (options, paths) => {
+    composeQualifiedKit: (options, paths) => {
       const composition = fakeKitComposition(options.profile, paths, {
         imageRemove: 0,
       });
-      return withTrackedRun(composition, runIds);
+      return Promise.resolve(withTrackedRun(composition, runIds));
     },
-    composeAdmitted: async (options, paths) => {
+    composeAdmitted: (options, paths) => {
       const composition = fakeAdmittedComposition(options.profile, paths, {
         imageRemove: 0,
       });
-      return withTrackedRun(composition, runIds);
+      return Promise.resolve(withTrackedRun(composition, runIds));
     },
   };
 }

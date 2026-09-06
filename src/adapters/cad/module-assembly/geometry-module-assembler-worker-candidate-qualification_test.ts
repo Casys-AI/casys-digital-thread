@@ -286,8 +286,8 @@ Deno.test("geometry successor dispatches a distinct run from a dispatched not-pu
         {
           observedHost: { read: () => Promise.resolve(observedHost()) },
           stateRoot: `${directory}/candidate`,
-          compose: async (options, paths) =>
-            fakeComposition(options.profile, paths, calls),
+          compose: (options, paths) =>
+            Promise.resolve(fakeComposition(options.profile, paths, calls)),
         },
       );
     assertEquals(result.eligibleForPromotion, false);
@@ -319,8 +319,8 @@ Deno.test("geometry successor dispatches a distinct run from a dispatched not-pu
           {
             observedHost: { read: () => Promise.resolve(observedHost()) },
             stateRoot: `${directory}/candidate`,
-            compose: async (options, paths) =>
-              fakeComposition(options.profile, paths, calls),
+            compose: (options, paths) =>
+              Promise.resolve(fakeComposition(options.profile, paths, calls)),
           },
         ),
       Error,
@@ -345,8 +345,8 @@ Deno.test("geometry successor refuses missing, prepared, published and unknown p
           {
             observedHost: { read: () => Promise.resolve(observedHost()) },
             stateRoot: `${directory}/missing`,
-            compose: async (options, paths) =>
-              fakeComposition(options.profile, paths, calls),
+            compose: (options, paths) =>
+              Promise.resolve(fakeComposition(options.profile, paths, calls)),
           },
         ),
       Error,
@@ -362,8 +362,8 @@ Deno.test("geometry successor refuses missing, prepared, published and unknown p
           {
             observedHost: { read: () => Promise.resolve(observedHost()) },
             stateRoot: `${directory}/prepared`,
-            compose: async (options, paths) =>
-              fakeComposition(options.profile, paths, calls),
+            compose: (options, paths) =>
+              Promise.resolve(fakeComposition(options.profile, paths, calls)),
           },
         ),
       Error,
@@ -373,7 +373,8 @@ Deno.test("geometry successor refuses missing, prepared, published and unknown p
     await applyGeometryModuleAssemblerWorkerCandidateQualification(geometry, {
       observedHost: { read: () => Promise.resolve(observedHost()) },
       stateRoot: `${directory}/published`,
-      compose: async (options, paths) => fakeComposition(options.profile, paths, calls),
+      compose: (options, paths) =>
+        Promise.resolve(fakeComposition(options.profile, paths, calls)),
     });
     await assertRejects(
       () =>
@@ -382,8 +383,8 @@ Deno.test("geometry successor refuses missing, prepared, published and unknown p
           {
             observedHost: { read: () => Promise.resolve(observedHost()) },
             stateRoot: `${directory}/published`,
-            compose: async (options, paths) =>
-              fakeComposition(options.profile, paths, calls),
+            compose: (options, paths) =>
+              Promise.resolve(fakeComposition(options.profile, paths, calls)),
           },
         ),
       Error,
@@ -398,9 +399,9 @@ Deno.test("geometry successor refuses missing, prepared, published and unknown p
           {
             observedHost: { read: () => Promise.resolve(observedHost()) },
             stateRoot: `${directory}/unknown`,
-            compose: async (options, paths) => {
+            compose: (options, paths) => {
               const composition = fakeComposition(options.profile, paths, calls);
-              return {
+              return Promise.resolve({
                 ...composition,
                 execution: {
                   ...composition.execution!,
@@ -418,7 +419,7 @@ Deno.test("geometry successor refuses missing, prepared, published and unknown p
                     readPublishedObject: () => Promise.resolve(undefined),
                   },
                 },
-              };
+              });
             },
           },
         ),
@@ -454,8 +455,8 @@ async function seedDispatching(
       applyGeometryModuleAssemblerWorkerCandidateQualification(record, {
         observedHost: { read: () => Promise.resolve(observedHost()) },
         stateRoot,
-        compose: async (options, paths) =>
-          fakeComposition(options.profile, paths, calls, {
+        compose: (options, paths) =>
+          Promise.resolve(fakeComposition(options.profile, paths, calls, {
             run: async (_request, publish) => {
               if (fail) {
                 fail = false;
@@ -463,7 +464,7 @@ async function seedDispatching(
               }
               return await publish();
             },
-          }),
+          })),
       }),
     Error,
     "The registered geometry-module assembler failed closed.",
