@@ -47,7 +47,7 @@ import {
   type CapabilityRuntimeBoundMcpClient,
   CapabilityRuntimeConnectionError,
 } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
-import { requiredQualifiedPersistentComposePublication } from "../../../application/control-plane/capability-runtime-persistent-compose-publication.ts";
+import { openLeaseBoundCapabilityRuntimeMcpClient } from "../../../application/control-plane/capability-runtime-bound-mcp-client.ts";
 import type { EngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
 import {
   FileSysonModelSeedAttemptStore,
@@ -512,15 +512,11 @@ export class SysonModelSeedRunExecutor {
     operationalCapability: ResolvedCapabilityRuntimeOperation,
   ): Promise<McpToolClient> {
     try {
-      const publication = requiredQualifiedPersistentComposePublication(
+      return await openLeaseBoundCapabilityRuntimeMcpClient({
+        connection: this.#capabilityRuntimeConnection,
+        session,
         operationalCapability,
-      );
-      const handle = await this.#capabilityRuntimeConnection.broker.connect({
-        lease: session.lease,
-        binding: publication.binding,
-        launchGroup: publication.launchGroup,
       });
-      return await this.#capabilityRuntimeConnection.openMcpClient(handle);
     } catch (error) {
       if (error instanceof CapabilityRuntimeSessionUnavailableError) {
         throw new EngineeringProjectCommandError(

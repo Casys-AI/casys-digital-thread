@@ -19,7 +19,8 @@
  * through the executor (step 23 of the sequence).
  */
 
-import { assertEquals, assertExists, assertRejects } from "@std/assert";
+import { assertEquals, assertExists, assertRejects, assertThrows } from "@std/assert";
+import { CapabilityRuntimeConnectionError } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
 import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../../orchestration/operations/registry.ts";
 import {
@@ -4126,6 +4127,223 @@ Deno.test(
         )?.status,
         "queued",
       );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-requirements refuses both a test SysON client and a bound connection",
+  () => {
+    assertThrows(
+      () =>
+        new ModelWriteRequirementsRunExecutor({
+          syson: new InitialReqsSyson(),
+          capabilityRuntimeConnection: passthroughCapabilityRuntimeConnection(
+            new InitialReqsSyson(),
+          ),
+        } as never),
+      Error,
+      "exactly one",
+    );
+    assertThrows(
+      () => new ModelWriteRequirementsRunExecutor({} as never),
+      Error,
+      "exactly one",
+    );
+  },
+);
+
+Deno.test(
+  "model.write-requirements opens the bound SysON client after JIT and before claim",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-bound-client-order-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const events: string[] = [];
+      const lease = { id: "capability-jit-reqs" } as never;
+      const session = recordingCapabilityRuntimeSession(async (input) => {
+        events.push("begin");
+        await input.recheck();
+        return {
+          lease,
+          releaseTerminal: () => Promise.resolve(),
+          retainForRecovery: () => undefined,
+        };
+      });
+      const syson = new InitialReqsSyson();
+      const originalInsert = syson.callTool.bind(syson);
+      syson.callTool = (call) => {
+        events.push(`provider:${call.name}`);
+        return originalInsert(call);
+      };
+      const commands = Object.create(
+        fixture.commands,
+      ) as typeof fixture.commands;
+      commands.claimRun = (origin, command) => {
+        events.push("claim");
+        return fixture.commands.claimRun(origin, command);
+      };
+      const connection = passthroughCapabilityRuntimeConnection(syson, events);
+      const executor = new ModelWriteRequirementsRunExecutor({
+        projects: fixture.projects,
+        commands,
+        snapshots: fixture.snapshots,
+        seedCaptures: fixture.seedCaptures,
+        architectureCaptures: fixture.archCaptures,
+        sysmlSourceAnalysis: fixture.sysmlSourceAnalysis,
+        captures: fixture.reqsCaptures,
+        attempts: fixture.reqsAttempts,
+        capabilityRuntimeConnection: connection,
+        lease: new FileEngineeringProjectRunLease(`${directory}/reqs-leases`),
+        ...successfulCapabilityRuntimeFor(
+          PROJECT_ID,
+          MODEL_WRITE_REQUIREMENTS_OPERATION,
+          "model.author-system",
+        ),
+        capabilityRuntimeSession: session,
+        now: () => "2026-08-08T12:20:00.000Z",
+      });
+      await executor.execute(AGENT, executionCommand(fixture));
+      assertEquals(events[0], "begin");
+      assertEquals(events.indexOf("begin") < events.indexOf("connect"), true);
+      assertEquals(events.indexOf("connect") < events.indexOf("open"), true);
+      assertEquals(events.indexOf("open") < events.indexOf("claim"), true);
+      assertEquals(
+        events.indexOf("claim") <
+          events.findIndex((event) => event.startsWith("provider:")),
+        true,
+      );
+      assertEquals(connection.opens, 1);
+      assertEquals(connection.requests[0]?.lease, lease);
+      assertEquals(connection.requests[0]?.binding, {
+        id: "model.author-system-binding",
+        version: "1",
+      });
+      assertEquals(connection.requests[0]?.launchGroup.id, "casys-syson");
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "a failed requirements runtime connection after JIT begin does not claim or call SysON",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-connection-failed-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const syson = new InitialReqsSyson();
+      const session = recordingCapabilityRuntimeSession();
+      const connection = {
+        ...passthroughCapabilityRuntimeConnection(syson),
+        broker: {
+          connect: () =>
+            Promise.reject(
+              new CapabilityRuntimeConnectionError(
+                "exact SysON publication is unavailable",
+              ),
+            ),
+        },
+      };
+      await assertRejects(
+        () =>
+          new ModelWriteRequirementsRunExecutor({
+            projects: fixture.projects,
+            commands: fixture.commands,
+            snapshots: fixture.snapshots,
+            seedCaptures: fixture.seedCaptures,
+            architectureCaptures: fixture.archCaptures,
+            sysmlSourceAnalysis: fixture.sysmlSourceAnalysis,
+            captures: fixture.reqsCaptures,
+            attempts: fixture.reqsAttempts,
+            capabilityRuntimeConnection: connection,
+            lease: new FileEngineeringProjectRunLease(
+              `${directory}/reqs-leases`,
+            ),
+            ...successfulCapabilityRuntimeFor(
+              PROJECT_ID,
+              MODEL_WRITE_REQUIREMENTS_OPERATION,
+              "model.author-system",
+            ),
+            capabilityRuntimeSession: session,
+            now: () => "2026-08-08T12:20:00.000Z",
+          }).execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "publication is unavailable",
+      );
+      assertEquals(session.events, ["begin"]);
+      assertEquals(session.releases, 1);
+      assertEquals(session.retains, 0);
+      assertEquals(connection.opens, 0);
+      assertEquals(syson.calls, []);
+      assertEquals(
+        (await fixture.projects.get(PROJECT_ID))?.agentRuns.find((run) =>
+          run.id === fixture.queued.runId
+        )?.status,
+        "queued",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-requirements dispatched WAL never connects the SysON broker",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-reqs-wal-no-broker-",
+    });
+    try {
+      const fixture = await queuedRequirementsFixture(directory);
+      const dispatchedAttempts = new FileRequirementsAttemptStore(
+        `${directory}/dispatched-attempts`,
+      );
+      await dispatchedAttempts.begin({
+        projectId: PROJECT_ID,
+        runId: "run:requirements",
+        planDigest: "pre-seeded-plan-digest",
+        dispatchedAt: "2026-08-08T12:10:00.000Z",
+      });
+      const session = recordingCapabilityRuntimeSession();
+      const syson = new InitialReqsSyson();
+      const connection = passthroughCapabilityRuntimeConnection(syson);
+      await assertRejects(
+        () =>
+          new ModelWriteRequirementsRunExecutor({
+            projects: fixture.projects,
+            commands: fixture.commands,
+            snapshots: fixture.snapshots,
+            seedCaptures: fixture.seedCaptures,
+            architectureCaptures: fixture.archCaptures,
+            sysmlSourceAnalysis: fixture.sysmlSourceAnalysis,
+            captures: fixture.reqsCaptures,
+            attempts: dispatchedAttempts,
+            capabilityRuntimeConnection: connection,
+            lease: new FileEngineeringProjectRunLease(
+              `${directory}/dispatched-leases`,
+            ),
+            ...successfulCapabilityRuntimeFor(
+              PROJECT_ID,
+              MODEL_WRITE_REQUIREMENTS_OPERATION,
+              "model.author-system",
+            ),
+            capabilityRuntimeSession: session,
+            now: () => "2026-08-08T12:20:00.000Z",
+          }).execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "outcome is unknown",
+      );
+      assertEquals(session.events, []);
+      assertEquals(connection.opens, 0);
+      assertEquals(connection.requests, []);
+      assertEquals(syson.calls, []);
     } finally {
       await Deno.remove(directory, { recursive: true });
     }

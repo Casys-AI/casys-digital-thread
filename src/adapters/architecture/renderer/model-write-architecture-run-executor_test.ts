@@ -15,7 +15,8 @@
  * through the executor (and asserted via the returned project's resultSnapshot).
  */
 
-import { assertEquals, assertExists, assertRejects } from "@std/assert";
+import { assertEquals, assertExists, assertRejects, assertThrows } from "@std/assert";
+import { CapabilityRuntimeConnectionError } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
 import {
   deterministicJson,
   sha256Fingerprint,
@@ -3703,6 +3704,215 @@ Deno.test(
         )?.status,
         "queued",
       );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture refuses both a test SysON client and a bound connection",
+  () => {
+    assertThrows(
+      () =>
+        new ModelWriteArchitectureRunExecutor({
+          syson: new InitialArchSyson(),
+          capabilityRuntimeConnection: passthroughCapabilityRuntimeConnection(
+            new InitialArchSyson(),
+          ),
+        } as never),
+      Error,
+      "exactly one",
+    );
+    assertThrows(
+      () => new ModelWriteArchitectureRunExecutor({} as never),
+      Error,
+      "exactly one",
+    );
+  },
+);
+
+Deno.test(
+  "model.write-architecture opens the bound SysON client after JIT and before claim",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-bound-client-order-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const events: string[] = [];
+      const lease = { id: "capability-jit-arch" } as never;
+      const session = recordingCapabilityRuntimeSession(async (input) => {
+        events.push("begin");
+        await input.recheck();
+        return {
+          lease,
+          releaseTerminal: () => Promise.resolve(),
+          retainForRecovery: () => undefined,
+        };
+      });
+      const syson = new InitialArchSyson();
+      const originalInsert = syson.callTool.bind(syson);
+      syson.callTool = (call) => {
+        events.push(`provider:${call.name}`);
+        return originalInsert(call);
+      };
+      const commands = Object.create(
+        fixture.commands,
+      ) as typeof fixture.commands;
+      commands.claimRun = (origin, command) => {
+        events.push("claim");
+        return fixture.commands.claimRun(origin, command);
+      };
+      const connection = passthroughCapabilityRuntimeConnection(syson, events);
+      const executor = new ModelWriteArchitectureRunExecutor({
+        projects: fixture.projects,
+        commands,
+        snapshots: fixture.snapshots,
+        seedCaptures: fixture.seedCaptures,
+        captures: fixture.archCaptures,
+        sysmlSourceAnalysis: fixture.sysmlSourceAnalysis,
+        attempts: fixture.archAttempts,
+        capabilityRuntimeConnection: connection,
+        lease: new FileEngineeringProjectRunLease(`${directory}/arch-leases`),
+        ...successfulCapabilityRuntimeFor(
+          PROJECT_ID,
+          MODEL_WRITE_ARCHITECTURE_OPERATION,
+          "model.author-system",
+        ),
+        capabilityRuntimeSession: session,
+        now: () => "2026-08-08T12:15:00.000Z",
+      });
+      await executor.execute(AGENT, executionCommand(fixture));
+      assertEquals(events[0], "begin");
+      assertEquals(events.indexOf("begin") < events.indexOf("connect"), true);
+      assertEquals(events.indexOf("connect") < events.indexOf("open"), true);
+      assertEquals(events.indexOf("open") < events.indexOf("claim"), true);
+      assertEquals(
+        events.indexOf("claim") <
+          events.findIndex((event) => event.startsWith("provider:")),
+        true,
+      );
+      assertEquals(connection.opens, 1);
+      assertEquals(connection.requests[0]?.lease, lease);
+      assertEquals(connection.requests[0]?.binding, {
+        id: "model.author-system-binding",
+        version: "1",
+      });
+      assertEquals(connection.requests[0]?.launchGroup.id, "casys-syson");
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "a failed architecture runtime connection after JIT begin does not claim or call SysON",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-connection-failed-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      const syson = new InitialArchSyson();
+      const session = recordingCapabilityRuntimeSession();
+      const connection = {
+        ...passthroughCapabilityRuntimeConnection(syson),
+        broker: {
+          connect: () =>
+            Promise.reject(
+              new CapabilityRuntimeConnectionError(
+                "exact SysON publication is unavailable",
+              ),
+            ),
+        },
+      };
+      const executor = new ModelWriteArchitectureRunExecutor({
+        projects: fixture.projects,
+        commands: fixture.commands,
+        snapshots: fixture.snapshots,
+        seedCaptures: fixture.seedCaptures,
+        captures: fixture.archCaptures,
+        sysmlSourceAnalysis: fixture.sysmlSourceAnalysis,
+        attempts: fixture.archAttempts,
+        capabilityRuntimeConnection: connection,
+        lease: new FileEngineeringProjectRunLease(`${directory}/arch-leases`),
+        ...successfulCapabilityRuntimeFor(
+          PROJECT_ID,
+          MODEL_WRITE_ARCHITECTURE_OPERATION,
+          "model.author-system",
+        ),
+        capabilityRuntimeSession: session,
+        now: () => "2026-08-08T12:15:00.000Z",
+      });
+      await assertRejects(
+        () => executor.execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "publication is unavailable",
+      );
+      assertEquals(session.events, ["begin"]);
+      assertEquals(session.releases, 1);
+      assertEquals(session.retains, 0);
+      assertEquals(connection.opens, 0);
+      assertEquals(syson.calls.length, 0);
+      assertEquals(
+        (await fixture.projects.get(PROJECT_ID))?.agentRuns.find((run) =>
+          run.id === fixture.queued.runId
+        )?.status,
+        "queued",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "model.write-architecture dispatched WAL never connects the SysON broker",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-arch-wal-no-broker-",
+    });
+    try {
+      const fixture = await queuedArchitectureFixture(directory);
+      await fixture.archAttempts.begin(
+        await currentWalInput(fixture, {
+          runId: fixture.queued.runId,
+          dispatchedAt: "2026-08-08T12:15:00.000Z",
+        }),
+      );
+      const session = recordingCapabilityRuntimeSession();
+      const syson = new InitialArchSyson();
+      const connection = passthroughCapabilityRuntimeConnection(syson);
+      await assertRejects(
+        () =>
+          new ModelWriteArchitectureRunExecutor({
+            projects: fixture.projects,
+            commands: fixture.commands,
+            snapshots: fixture.snapshots,
+            seedCaptures: fixture.seedCaptures,
+            captures: fixture.archCaptures,
+            sysmlSourceAnalysis: fixture.sysmlSourceAnalysis,
+            attempts: fixture.archAttempts,
+            capabilityRuntimeConnection: connection,
+            lease: new FileEngineeringProjectRunLease(
+              `${directory}/arch-leases`,
+            ),
+            ...successfulCapabilityRuntimeFor(
+              PROJECT_ID,
+              MODEL_WRITE_ARCHITECTURE_OPERATION,
+              "model.author-system",
+            ),
+            capabilityRuntimeSession: session,
+            now: () => "2026-08-08T12:15:00.000Z",
+          }).execute(AGENT, executionCommand(fixture)),
+        EngineeringProjectCommandError,
+        "outcome is unknown",
+      );
+      assertEquals(session.events, []);
+      assertEquals(connection.opens, 0);
+      assertEquals(connection.requests, []);
+      assertEquals(syson.calls.length, 0);
     } finally {
       await Deno.remove(directory, { recursive: true });
     }

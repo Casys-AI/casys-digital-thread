@@ -106,6 +106,9 @@ import {
   ThreadSnapshotLineageIntegrityError,
 } from "../../shared/stores/thread-snapshot-lineage.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
+import type { CapabilityRuntimeBoundMcpClient } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import { CapabilityRuntimeConnectionError } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import { openLeaseBoundCapabilityRuntimeMcpClient } from "../../../application/control-plane/capability-runtime-bound-mcp-client.ts";
 import type { LiveThreadUpdateMilestoneJournal } from "../../shared/stores/live-thread-update-store.ts";
 import {
   ArchitectureStructureExtractionError,
@@ -129,11 +132,19 @@ import {
   requireConfiguredOperationalCapability,
   settleCapabilityRuntimeSession,
 } from "../../../application/control-plane/capability-runtime-execution-admission.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import {
   type CapabilityRuntimeExecutionSession,
   type CapabilityRuntimeExecutionSessionCoordinator,
   CapabilityRuntimeSessionUnavailableError,
 } from "../../../application/control-plane/capability-runtime-execution-session.ts";
+
+type ExclusiveSysonRuntimeClient =
+  | { readonly kind: "injected"; readonly syson: McpToolClient }
+  | {
+    readonly kind: "bound";
+    readonly connection: CapabilityRuntimeBoundMcpClient;
+  };
 
 // ── Public re-exports ────────────────────────────────────────────────────────
 
@@ -183,8 +194,12 @@ export interface ModelWriteArchitectureRunExecutorDependencies {
   /** Server-rendered source capture → analysis boundary before every SysON write. */
   readonly sysmlSourceAnalysis: SysmlSourceAnalysisCaptureService;
   readonly attempts: FileArchitectureAttemptStore;
-  /** Fixed server-owned MCP client. No agent value reaches this boundary. */
-  readonly syson: McpToolClient;
+  /**
+   * Production supplies the lease-bound publication. Focused tests may inject
+   * `syson` instead. Exactly one mode is required.
+   */
+  readonly syson?: McpToolClient;
+  readonly capabilityRuntimeConnection?: CapabilityRuntimeBoundMcpClient;
   readonly lease: EngineeringProjectRunLease;
   readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
   readonly capabilityRuntimeSession?: Pick<
@@ -385,7 +400,7 @@ export class ModelWriteArchitectureRunExecutor {
   readonly #captures: FileCaptureStore<"architecture-capture">;
   readonly #sysmlSourceAnalysis: SysmlSourceAnalysisCaptureService;
   readonly #attempts: FileArchitectureAttemptStore;
-  readonly #syson: McpToolClient;
+  readonly #sysonClient: ExclusiveSysonRuntimeClient;
   readonly #lease: EngineeringProjectRunLease;
   readonly #capabilityRuntime: CapabilityRuntimeExecutionEligibility | undefined;
   readonly #capabilityRuntimeSession:
@@ -402,7 +417,11 @@ export class ModelWriteArchitectureRunExecutor {
     this.#captures = dependencies.captures;
     this.#sysmlSourceAnalysis = dependencies.sysmlSourceAnalysis;
     this.#attempts = dependencies.attempts;
-    this.#syson = dependencies.syson;
+    this.#sysonClient = exclusiveSysonRuntimeClient(
+      dependencies.syson,
+      dependencies.capabilityRuntimeConnection,
+      "Generic architecture write",
+    );
     this.#lease = dependencies.lease;
     this.#capabilityRuntime = dependencies.capabilityRuntime;
     this.#capabilityRuntimeSession = dependencies.capabilityRuntimeSession;
@@ -507,6 +526,26 @@ export class ModelWriteArchitectureRunExecutor {
           return await this.#requireOperationalCapability(fresh, run);
         },
       });
+      let syson: McpToolClient;
+      try {
+        syson = await this.#openSysonClient(
+          capabilitySession,
+          operationalCapability,
+        );
+      } catch (error) {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
+        capabilitySession = undefined;
+        if (error instanceof CapabilityRuntimeConnectionError) {
+          throw new EngineeringProjectCommandError(
+            "invalid_transition",
+            error.message,
+          );
+        }
+        throw error;
+      }
 
       await this.#commands.claimRun(origin, {
         ...command,
@@ -582,7 +621,7 @@ export class ModelWriteArchitectureRunExecutor {
           architectureProposal,
         );
         const existingForResume = await extractArchitectureStructure(
-          this.#syson,
+          syson,
           editingContextId,
           rootPackageId,
           architectureProposal.packageName,
@@ -604,7 +643,7 @@ export class ModelWriteArchitectureRunExecutor {
       } else {
         // Step 8: preflight re-extraction → insertion plan.
         const existing = await extractArchitectureStructure(
-          this.#syson,
+          syson,
           editingContextId,
           rootPackageId,
           architectureProposal.packageName,
@@ -679,7 +718,7 @@ export class ModelWriteArchitectureRunExecutor {
               architectureProposal,
             );
             const existingForResume = await extractArchitectureStructure(
-              this.#syson,
+              syson,
               editingContextId,
               rootPackageId,
               architectureProposal.packageName,
@@ -706,7 +745,7 @@ export class ModelWriteArchitectureRunExecutor {
                   kind: "full-package",
                   packageName: architectureProposal.packageName,
                 });
-                const result = await this.#syson.callTool({
+                const result = await syson.callTool({
                   name: "syson_element_insert_sysml",
                   arguments: {
                     editing_context_id: editingContextId,
@@ -724,6 +763,7 @@ export class ModelWriteArchitectureRunExecutor {
                 // Enrichment: insert per-item using the architecture package as root.
                 const packageId = existing!.packageId;
                 await this.#insertEnrichmentItems(
+                  syson,
                   editingContextId,
                   packageId,
                   plan.toInsert,
@@ -753,7 +793,7 @@ export class ModelWriteArchitectureRunExecutor {
               // extraction failure after a valid ACK is a quarantined
               // structural failure, not an unknown provider outcome.
               const initialReadback = await extractArchitectureStructure(
-                this.#syson,
+                syson,
                 editingContextId,
                 rootPackageId,
                 architectureProposal.packageName,
@@ -781,6 +821,7 @@ export class ModelWriteArchitectureRunExecutor {
               );
               if (fallbackPlan.toInsert.length > 0) {
                 await this.#insertEnrichmentItems(
+                  syson,
                   editingContextId,
                   initialReadback.packageId,
                   fallbackPlan.toInsert,
@@ -795,7 +836,7 @@ export class ModelWriteArchitectureRunExecutor {
             // the WAL from dispatched to completed. An ACK alone proves only that
             // a mutation may have occurred; it must never authorize publication.
             const postInsert = await extractArchitectureStructure(
-              this.#syson,
+              syson,
               editingContextId,
               rootPackageId,
               architectureProposal.packageName,
@@ -856,7 +897,7 @@ export class ModelWriteArchitectureRunExecutor {
 
       // Step 12: verification re-extraction.
       const verified = await extractArchitectureStructure(
-        this.#syson,
+        syson,
         editingContextId,
         rootPackageId,
         architectureProposal.packageName,
@@ -1136,6 +1177,28 @@ export class ModelWriteArchitectureRunExecutor {
     }
   }
 
+  async #openSysonClient(
+    session: CapabilityRuntimeExecutionSession,
+    operationalCapability: ResolvedCapabilityRuntimeOperation,
+  ): Promise<McpToolClient> {
+    if (this.#sysonClient.kind === "injected") return this.#sysonClient.syson;
+    try {
+      return await openLeaseBoundCapabilityRuntimeMcpClient({
+        connection: this.#sysonClient.connection,
+        session,
+        operationalCapability,
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
   async #requireOperationalCapability(
     project: EngineeringProjectSnapshot,
     run: EngineeringAgentRun,
@@ -1348,6 +1411,7 @@ export class ModelWriteArchitectureRunExecutor {
   }
 
   async #insertEnrichmentItems(
+    syson: McpToolClient,
     editingContextId: string,
     architecturePackageId: string,
     items: ReturnType<typeof planArchitectureInsertion>["toInsert"],
@@ -1362,7 +1426,7 @@ export class ModelWriteArchitectureRunExecutor {
         packageName: sources[0]?.reference.selector.packageName ?? "",
         componentName: item.componentName,
       });
-      const result = await this.#syson.callTool({
+      const result = await syson.callTool({
         name: "syson_element_insert_sysml",
         arguments: {
           editing_context_id: editingContextId,
@@ -1377,7 +1441,7 @@ export class ModelWriteArchitectureRunExecutor {
     }
 
     // Phase B: re-extract package to get IDs for newly inserted part-defs.
-    const postPartDef = await this.#syson.callTool({
+    const postPartDef = await syson.callTool({
       name: "syson_element_children",
       arguments: {
         editing_context_id: editingContextId,
@@ -1453,7 +1517,7 @@ export class ModelWriteArchitectureRunExecutor {
         ),
       );
       await writeSysonTypedPartUsage({
-        syson: this.#syson,
+        syson,
         editingContextId,
         parentPartDefinitionId: parentId,
         targetPartDefinitionId: targetId,
@@ -1481,7 +1545,7 @@ export class ModelWriteArchitectureRunExecutor {
           sources[0]?.reference.selector.packageName ?? "",
         ),
       );
-      const result = await this.#syson.callTool({
+      const result = await syson.callTool({
         name: "syson_element_insert_sysml",
         arguments: {
           editing_context_id: editingContextId,
@@ -2651,6 +2715,22 @@ function assertInitialFallbackWasSealed(
       "The initial SysON readback requires an architecture statement that was not sealed before dispatch.",
     );
   }
+}
+
+function exclusiveSysonRuntimeClient(
+  syson: McpToolClient | undefined,
+  connection: CapabilityRuntimeBoundMcpClient | undefined,
+  operationLabel: string,
+): ExclusiveSysonRuntimeClient {
+  if (syson !== undefined && connection === undefined) {
+    return { kind: "injected", syson };
+  }
+  if (syson === undefined && connection !== undefined) {
+    return { kind: "bound", connection };
+  }
+  throw new Error(
+    `${operationLabel} requires exactly one of a test SysON client or the lease-bound runtime connection.`,
+  );
 }
 
 function verifyInsertionAck(value: unknown, expectedParentId: string): void {

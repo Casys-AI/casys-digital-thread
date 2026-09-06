@@ -7,6 +7,7 @@ import type { CapabilityRuntimeExecutionEligibility } from "../application/ports
 import type {
   CapabilityRuntimeBoundMcpClient,
   CapabilityRuntimeConnectionHandle,
+  CapabilityRuntimeConnectionRequest,
 } from "../application/ports/out/capability/capability-runtime-connection.ts";
 import type { McpToolClient } from "../application/ports/out/mcp-tool-client.ts";
 import type { CapabilityRuntimeLaunchGroupReference } from "../domain/capability/runtime/capability-runtime-launch-group.ts";
@@ -151,16 +152,22 @@ export function passthroughCapabilityRuntimeConnection(
   events?: string[],
 ): CapabilityRuntimeBoundMcpClient & {
   readonly opens: number;
+  readonly requests: readonly CapabilityRuntimeConnectionRequest[];
 } {
   const handles = new WeakSet<object>();
   const state = { opens: 0 };
+  const requests: CapabilityRuntimeConnectionRequest[] = [];
   return {
     get opens() {
       return state.opens;
     },
+    get requests() {
+      return requests;
+    },
     broker: {
-      connect: () => {
+      connect: (request) => {
         events?.push("connect");
+        requests.push(request);
         const handle = Object.freeze({}) as CapabilityRuntimeConnectionHandle;
         handles.add(handle);
         return Promise.resolve(handle);

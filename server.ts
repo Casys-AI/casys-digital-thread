@@ -1040,7 +1040,6 @@ async function createProjectControl(
     snapshots: activeThreadSnapshots,
     lease,
     liveUpdates,
-    sysonMcpUrl,
     sysonRuntimeConnection,
     foundation: architectureFoundation,
     capabilityRuntime,
