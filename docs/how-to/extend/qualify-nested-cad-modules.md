@@ -7,11 +7,9 @@ composition of canonical leaf parts into child modules, then canonical child mod
 into one parent. Establishing this route does not itself promote coverage.
 
 The authority remains
-[provider-neutral module assembly](../../reference/domains/cad/module-assembly.md) and
-the
-[part/module build contract](../../rfcs/project-source-workspace/cad-part-and-module-builds.md).
-This route does not create a new operation, CAD language, provider selection surface,
-runtime qualification attestation, or assembly verdict.
+[provider-neutral module assembly](../../reference/domains/cad/module-assembly.md). This
+route does not create a new operation, CAD language, provider selection surface, runtime
+qualification attestation, or assembly verdict.
 
 ## Scope and sealed meaning
 
