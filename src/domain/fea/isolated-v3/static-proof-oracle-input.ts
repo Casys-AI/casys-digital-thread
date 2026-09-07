@@ -13,6 +13,7 @@ import {
 } from "../../kernel/proof-case.ts";
 import type { MechanicalRequirement } from "../seal-case/mechanical-proof-case.ts";
 import { requirementEvaluationIdentity } from "../../thread/requirement-evaluation-identity.ts";
+import { staticProofPublicationIdentity } from "./static-proof-publication-identity.ts";
 import type {
   RequirementEvaluation,
   RequirementEvaluationStatus,
@@ -60,6 +61,8 @@ export interface StaticProofEvaluationContext {
   readonly observationIds: readonly string[];
   readonly threadRequirementIds: ReadonlyMap<string, string>;
   readonly evaluator: ThreadOperationRef;
+  /** Exact local run id when the publication layout is run-scoped; omit for legacy ids. */
+  readonly identityScope?: string;
 }
 
 const RESULT_FIELD = Object.freeze(
@@ -158,10 +161,13 @@ export function evaluationsFromStaticProofOracle(
           ` requirement id "${requirement.id}".`,
       );
     }
-    const id = requirementEvaluationIdentity({
-      requirementId: threadRequirementId,
-      evidenceFingerprint: { algorithm: "sha256", digest: verdictCaptureFp },
-    }).id;
+    const id = staticProofPublicationIdentity(
+      requirementEvaluationIdentity({
+        requirementId: threadRequirementId,
+        evidenceFingerprint: { algorithm: "sha256", digest: verdictCaptureFp },
+      }).id,
+      context.identityScope,
+    );
 
     const status = oracleResult.status as RequirementEvaluationStatus;
     const base: RequirementEvaluation = {

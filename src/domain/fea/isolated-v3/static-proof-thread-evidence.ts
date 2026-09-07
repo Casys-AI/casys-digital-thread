@@ -12,6 +12,16 @@ import {
   evaluationsFromStaticProofOracle,
   type StaticProofOracleOutcome,
 } from "./static-proof-oracle-input.ts";
+import {
+  requireExactStaticProofPublicationLayout,
+  staticProofCasRereadConsumptionLegacyId,
+  staticProofEvaluationCaptureArtifactLegacyId,
+  staticProofEvidenceArtifactLegacyId,
+  staticProofInputConsumptionLegacyId,
+  staticProofObservationLegacyId,
+  staticProofOutputArtifactLegacyId,
+  staticProofPublicationIdentity,
+} from "./static-proof-publication-identity.ts";
 import type { MechanicalRequirement } from "../seal-case/mechanical-proof-case.ts";
 import { deterministicJson } from "../../kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
@@ -95,6 +105,24 @@ export function buildStaticProofSuccessor(input: {
   readonly evidence: StaticProofEvidenceProjection;
   readonly evaluation: StaticProofEvaluationProjection;
 }): ThreadSnapshot {
+  const legacy = composeStaticProofExtension(input);
+  const identityScope = publicationIdentitiesConflict(input.basis, legacy)
+    ? input.localOperation.runId
+    : undefined;
+  const extension = identityScope === undefined
+    ? legacy
+    : composeStaticProofExtension(input, identityScope);
+  return applyThreadSnapshotExtensionIfNew(
+    input.basis,
+    extension,
+    { appliedAt: input.capturedAt },
+  ).snapshot;
+}
+
+function composeStaticProofExtension(
+  input: Parameters<typeof buildStaticProofSuccessor>[0],
+  identityScope?: string,
+): ThreadSnapshotExtension {
   const capturedAt = input.capturedAt;
   const freshness: ThreadFreshness = {
     status: "fresh",
@@ -102,8 +130,16 @@ export function buildStaticProofSuccessor(input: {
     invalidatedByChangeIds: [],
   };
   const localOperation = input.localOperation;
+  const publishedId = (legacyId: string) =>
+    staticProofPublicationIdentity(legacyId, identityScope);
+  const inputStepId = publishedId(
+    staticProofOutputArtifactLegacyId(
+      "input.step",
+      requiredOutput(input.evidence.outputs, "input.step").sha256,
+    ),
+  );
   const outputArtifacts = input.evidence.outputs.map((output) => ({
-    id: outputArtifactId(output.role, output.sha256),
+    id: publishedId(staticProofOutputArtifactLegacyId(output.role, output.sha256)),
     name: `Local CalculiX ${output.role}`,
     kind: outputArtifactKind(output.role),
     version: output.sha256,
@@ -112,10 +148,7 @@ export function buildStaticProofSuccessor(input: {
     mediaType: output.mediaType,
     producer: localOperation,
     inputArtifactIds: output.role === "input.step" ? [input.geometryArtifact.id] : [
-      outputArtifactId(
-        "input.step",
-        requiredOutput(input.evidence.outputs, "input.step").sha256,
-      ),
+      inputStepId,
       input.proofArtifact.id,
     ],
     freshness,
@@ -125,9 +158,15 @@ export function buildStaticProofSuccessor(input: {
       "The local CalculiX Thread branch requires exactly nine outputs.",
     );
   }
-  const resultArtifact = requiredOutputArtifact(outputArtifacts, "result.json");
+  const resultArtifact = requiredOutputArtifact(
+    outputArtifacts,
+    "result.json",
+    identityScope,
+  );
   const evidenceArtifact: ThreadArtifact = {
-    id: `calculix-isolated-evidence-${input.evidence.fingerprint.digest}`,
+    id: publishedId(
+      staticProofEvidenceArtifactLegacyId(input.evidence.fingerprint.digest),
+    ),
     name: "Isolated local CalculiX execution evidence",
     kind: "evidence",
     version: input.evidence.fingerprint.digest,
@@ -142,7 +181,9 @@ export function buildStaticProofSuccessor(input: {
     freshness,
   };
   const evaluationArtifact: ThreadArtifact = {
-    id: `calculix-isolated-syson-evaluation-${input.evaluation.sha256}`,
+    id: publishedId(
+      staticProofEvaluationCaptureArtifactLegacyId(input.evaluation.sha256),
+    ),
     name: "SysON evaluation of isolated CalculiX evidence",
     kind: "evidence",
     version: input.evaluation.sha256,
@@ -164,7 +205,7 @@ export function buildStaticProofSuccessor(input: {
     input.requirementsArtifact,
   ].map((artifact) =>
     consumption(
-      `calculix-isolated-input-${artifact.id}`,
+      publishedId(staticProofInputConsumptionLegacyId(artifact.id)),
       artifact.id,
       localOperation,
       artifact.fingerprint,
@@ -173,7 +214,7 @@ export function buildStaticProofSuccessor(input: {
   );
   const outputConsumptions = outputArtifacts.map((artifact) =>
     consumption(
-      `calculix-isolated-cas-reread-${artifact.id}`,
+      staticProofCasRereadConsumptionLegacyId(artifact.id),
       artifact.id,
       localOperation,
       artifact.fingerprint,
@@ -181,7 +222,7 @@ export function buildStaticProofSuccessor(input: {
     )
   );
   const evidenceConsumption = consumption(
-    `calculix-isolated-cas-reread-${evidenceArtifact.id}`,
+    staticProofCasRereadConsumptionLegacyId(evidenceArtifact.id),
     evidenceArtifact.id,
     localOperation,
     evidenceArtifact.fingerprint,
@@ -193,8 +234,12 @@ export function buildStaticProofSuccessor(input: {
         ? input.evidence.metrics.maximumDisplacement
         : input.evidence.metrics.maximumVonMises;
       return {
-        id:
-          `calculix-isolated-observation-${resultArtifact.fingerprint.digest}-${requirement.id}`,
+        id: publishedId(
+          staticProofObservationLegacyId(
+            resultArtifact.fingerprint.digest,
+            requirement.id,
+          ),
+        ),
         name: `${requirement.name} measured by local CalculiX`,
         metric: requirement.feature,
         quantity: { value: metric.value, unit: metric.unit },
@@ -222,6 +267,7 @@ export function buildStaticProofSuccessor(input: {
       observationIds: observations.map((observation) => observation.id),
       threadRequirementIds: requirementIds,
       evaluator: input.oracleOperation,
+      identityScope,
     },
   );
   const violations: ThreadViolation[] = evaluations.flatMap((item) =>
@@ -333,7 +379,7 @@ export function buildStaticProofSuccessor(input: {
       }))
     ),
   ];
-  const extension: ThreadSnapshotExtension = {
+  return {
     id: `calculix-isolated-${localOperation.runId}`,
     name: "Isolated local CalculiX static proof",
     subjectId: input.basis.subject.id,
@@ -347,11 +393,6 @@ export function buildStaticProofSuccessor(input: {
     provenance,
     proposedActions: actions,
   };
-  return applyThreadSnapshotExtensionIfNew(
-    input.basis,
-    extension,
-    { appliedAt: capturedAt },
-  ).snapshot;
 }
 
 export function assertExactStaticProofLocalArtifacts(
@@ -378,6 +419,7 @@ export function assertExactStaticProofLocalArtifacts(
       "The isolated CalculiX completion requires exactly nine outputs, execution evidence and SysON evidence.",
     );
   }
+  requireExactStaticProofPublicationLayout(artifacts, localOperation.runId);
   return artifacts;
 }
 
@@ -414,10 +456,6 @@ export function assertExactCompletedStaticProofProjectBinding(
   }
 }
 
-function outputArtifactId(role: string, digest: string): string {
-  return `calculix-isolated-${role.replaceAll(".", "-")}-${digest}`;
-}
-
 function outputArtifactKind(role: string): ThreadArtifact["kind"] {
   if (role === "input.step" || role === "request.json") return "solver-input";
   if (role.startsWith("mesh.")) return "mesh";
@@ -441,15 +479,49 @@ function requiredOutput(
 function requiredOutputArtifact(
   artifacts: readonly ThreadArtifact[],
   role: string,
+  identityScope?: string,
 ): ThreadArtifact {
-  const prefix = `calculix-isolated-${role.replaceAll(".", "-")}-`;
-  const matches = artifacts.filter((artifact) => artifact.id.startsWith(prefix));
+  const digest = artifacts.find((artifact) =>
+    artifact.name === `Local CalculiX ${role}`
+  )?.fingerprint.digest;
+  const id = digest === undefined ? undefined : staticProofPublicationIdentity(
+    staticProofOutputArtifactLegacyId(role, digest),
+    identityScope,
+  );
+  const matches = artifacts.filter((artifact) => artifact.id === id);
   if (matches.length !== 1) {
     throw new TypeError(
       `The local CalculiX Thread branch has no unique ${role} artifact.`,
     );
   }
   return matches[0]!;
+}
+
+function publicationIdentitiesConflict(
+  basis: ThreadSnapshot,
+  extension: ThreadSnapshotExtension,
+): boolean {
+  return conflicts(basis.artifacts, extension.artifacts) ||
+    conflicts(basis.consumptions, extension.consumptions) ||
+    conflicts(basis.observations, extension.observations) ||
+    conflicts(basis.evaluations, extension.evaluations) ||
+    conflicts(basis.violations, extension.violations) ||
+    conflicts(basis.proposedActions, extension.proposedActions) ||
+    conflicts(basis.provenance, extension.provenance);
+}
+
+function conflicts(
+  existing: readonly { readonly id: string }[],
+  incoming: readonly { readonly id: string }[],
+): boolean {
+  const known = new Map(existing.map((item) => [item.id, item]));
+  for (const item of incoming) {
+    const found = known.get(item.id);
+    if (found && deterministicJson(found) !== deterministicJson(item)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function consumption(

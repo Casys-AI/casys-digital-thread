@@ -23,10 +23,12 @@ import { FixedCalculixIsolatedExecutionProfileCatalog } from "./fixed-calculix-i
 import { FileByteStore } from "../../shared/cas/file-byte-store.ts";
 import { FileEngineeringProjectRunLease } from "../../shared/stores/file-engineering-project-run-lease.ts";
 import { FileCalculixIsolatedProductAttemptStore } from "./file-calculix-isolated-product-attempt-store.ts";
+import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import {
   createHistoricalFeaStaticProofV2Fixture,
   createIsolatedCalculixV3Fixture,
   ISOLATED_CALCULIX_FIXTURE_AGENT,
+  ISOLATED_CALCULIX_FIXTURE_HUMAN,
 } from "../../../testing/isolated-calculix-v3-fixture.ts";
 import { EngineeringProjectCommandError } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import {
@@ -94,6 +96,94 @@ Deno.test("isolated CalculiX @3 publishes nine local outputs and two evidence ar
     );
     assertEquals(runtime.counts.execute, 1);
     assertEquals(runtime.counts.syson, 1);
+  });
+});
+
+Deno.test("isolated CalculiX @3 resumes a colliding evaluation-captured second run without another solve or oracle", async () => {
+  await withRuntime(async (runtime) => {
+    await runtime.executor.execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      runtime.fixture.command,
+    );
+    const secondRunId = "run:recorded-calculix-v3-repeat";
+    const second = await queueSecondIsolatedCalculixRun(runtime, secondRunId);
+    let failPublication = true;
+    const snapshots: ThreadSnapshotStore = {
+      get: (id) => runtime.fixture.snapshots.get(id),
+      latest: (subjectId) => runtime.fixture.snapshots.latest(subjectId),
+      save: async (snapshot) => {
+        if (failPublication) {
+          failPublication = false;
+          throw new Error("fixture second-run Thread publication interrupted");
+        }
+        await runtime.fixture.snapshots.save(snapshot);
+      },
+    };
+    await assertRejects(
+      () =>
+        runtime.executorWith({ snapshots }).execute(
+          ISOLATED_CALCULIX_FIXTURE_AGENT,
+          second.command,
+        ),
+      Error,
+      "publication interrupted",
+    );
+    assertEquals(runtime.counts.execute, 2);
+    assertEquals(runtime.counts.syson, 2);
+    const attempts = new FileCalculixIsolatedProductAttemptStore(
+      `${runtime.directory}/attempts`,
+    );
+    assertEquals(
+      (await attempts.read(runtime.fixture.projectId, secondRunId))?.status,
+      "evaluation-captured",
+    );
+
+    const completed = await runtime.executor.execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      second.command,
+    );
+    assertEquals(runtime.counts.execute, 2);
+    assertEquals(runtime.counts.syson, 2);
+    assertEquals(
+      completed.agentRuns.find((run) => run.id === secondRunId)?.status,
+      "completed",
+    );
+    assertEquals(
+      (await attempts.read(runtime.fixture.projectId, secondRunId))?.status,
+      "completed",
+    );
+    const result = completed.agentRuns.find((run) => run.id === secondRunId)
+      ?.resultSnapshot;
+    const snapshot = result === undefined
+      ? undefined
+      : await runtime.fixture.snapshots.get(result.snapshotId);
+    const localArtifacts = snapshot?.artifacts.filter((artifact) =>
+      artifact.producer.runId === secondRunId
+    ) ?? [];
+    assertEquals(localArtifacts.length, 11);
+    assertEquals(
+      localArtifacts.every((artifact) =>
+        artifact.id.endsWith(`-run-${secondRunId}`)
+      ),
+      true,
+    );
+
+    const replayed = await runtime.executor.execute(
+      ISOLATED_CALCULIX_FIXTURE_AGENT,
+      second.command,
+    );
+    assertEquals(runtime.counts.execute, 2);
+    assertEquals(runtime.counts.syson, 2);
+    const completedRun = completed.agentRuns.find((run) => run.id === secondRunId)!;
+    const replayedRun = replayed.agentRuns.find((run) => run.id === secondRunId)!;
+    assertEquals(
+      deterministicJson(replayedRun.resultSnapshot),
+      deterministicJson(completedRun.resultSnapshot),
+    );
+    assertEquals(
+      deterministicJson(replayedRun.evidenceRefs),
+      deterministicJson(completedRun.evidenceRefs),
+    );
   });
 });
 
@@ -1306,6 +1396,123 @@ function monotonicNow() {
   return () =>
     new Date(Date.parse("2026-08-14T06:00:00.000Z") + tick++ * 1_000)
       .toISOString();
+}
+
+async function queueSecondIsolatedCalculixRun(
+  runtime: Runtime,
+  runId: string,
+): Promise<{
+  readonly command: {
+    readonly commandId: string;
+    readonly projectId: string;
+    readonly expectedRevision: number;
+    readonly issuedAt: string;
+    readonly runId: string;
+  };
+}> {
+  let project = (await runtime.fixture.projects.get(runtime.fixture.projectId))!;
+  const head = project.threadSnapshots.at(-1)!;
+  const snapshot = await runtime.fixture.snapshots.get(head.snapshotId);
+  const step = snapshot!.artifacts.find((artifact) => artifact.kind === "step")!;
+  const issuedAt = "2026-08-15T00:00:00.000Z";
+  const context = (commandId: string) => ({
+    commandId,
+    projectId: runtime.fixture.projectId,
+    expectedRevision: project.revision,
+    issuedAt,
+  });
+  const binding = (name: string, artifactId: string) => ({
+    name,
+    source: {
+      kind: "thread-entity" as const,
+      reference: {
+        snapshotId: head.snapshotId,
+        snapshotRevision: head.revision,
+        kind: "artifact" as const,
+        id: artifactId,
+      },
+    },
+  });
+  project = await runtime.fixture.commands.appendChange(
+    ISOLATED_CALCULIX_FIXTURE_AGENT,
+    {
+      ...context("fixture:append-recorded-repeat"),
+      baseSnapshot: head,
+      phases: [{
+        id: "recorded-fea-repeat",
+        name: "Recorded FEA repeat",
+        description: "Run the sealed static proof a second time.",
+      }],
+      workItems: [{
+        id: "recorded-fea-repeat-item",
+        phaseId: "recorded-fea-repeat",
+        owner: "agent",
+        dependsOnWorkItemIds: ["recorded-fea-item"],
+        decisionIds: ["recorded-fea-repeat-decision"],
+        operation: {
+          id: "verify.run-fea-static-proof",
+          version: "3",
+          bindings: [
+            binding("proofCase", runtime.fixture.proofArtifact.id),
+            binding("geometry", step.id),
+          ],
+        },
+      }],
+      requiredDecisions: [{
+        id: "recorded-fea-repeat-decision",
+        phaseId: "recorded-fea-repeat",
+        title: "Approve repeated static proof",
+        question: "Approve the exact sealed proof and STEP for this second run?",
+      }],
+    },
+  );
+  project = await runtime.fixture.commands.proposeDecision(
+    ISOLATED_CALCULIX_FIXTURE_AGENT,
+    {
+      ...context("fixture:propose-recorded-repeat"),
+      decisionId: "recorded-fea-repeat-decision",
+      baseSnapshot: head,
+      proposal: {
+        summary: "Execute exactly the persisted proof capture and STEP again.",
+        parameters: [{
+          key: "request",
+          label: "Recorded request",
+          value: "calculix",
+        }],
+      },
+    },
+  );
+  const decision = project.decisions.find((item) =>
+    item.id === "recorded-fea-repeat-decision"
+  )!;
+  project = await runtime.fixture.commands.approveDecision(
+    ISOLATED_CALCULIX_FIXTURE_HUMAN,
+    {
+      ...context("fixture:approve-recorded-repeat"),
+      decisionId: decision.id,
+      rationale: "The exact repeated ROP inputs and method are approved.",
+      inputFingerprint: decision.inputFingerprint!,
+    },
+  );
+  project = await runtime.fixture.commands.queueRun(
+    ISOLATED_CALCULIX_FIXTURE_AGENT,
+    {
+      ...context("fixture:queue-recorded-repeat"),
+      runId,
+      workItemId: "recorded-fea-repeat-item",
+      summary: "Execute the sealed CalculiX static proof a second time.",
+      basis: { kind: "thread-snapshot", ...head },
+    },
+  );
+  return {
+    command: {
+      commandId: "fixture:execute-recorded-repeat",
+      projectId: runtime.fixture.projectId,
+      expectedRevision: project.revision,
+      issuedAt,
+      runId,
+    },
+  };
 }
 
 function projectStoreWithMutation(

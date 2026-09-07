@@ -12,6 +12,7 @@ import {
   buildCalculixViewerBinding,
   type CalculixExecutionEvidenceReader,
 } from "./calculix-viewer-binding.ts";
+import { staticProofPublicationIdentity } from "../../domain/fea/isolated-v3/static-proof-publication-identity.ts";
 import type { InstalledThreadViewerAppPackage } from "./thread-viewer-app-packages.ts";
 import { CALCULIX_VIEWER_EVIDENCE_DIRECTORY } from "./thread-viewer-app-registrar.ts";
 
@@ -81,6 +82,50 @@ Deno.test("CalculiX viewer binding rejects a tampered evidence fingerprint", asy
     );
   } finally {
     await Deno.remove(fixture.root, { recursive: true });
+  }
+});
+
+Deno.test("CalculiX viewer binding accepts the exact run-scoped publication layout", async () => {
+  const fixture = await calculixFixture();
+  try {
+    fixture.thread = withCalculixLayout(fixture.thread, "run-scoped");
+    fixture.artifactId = fixture.thread.artifacts.find((artifact) =>
+      artifact.kind === "solver-result"
+    )!.id;
+    const binding = await buildCalculixViewerBinding(fixture);
+    assertEquals(
+      binding?.session.schema,
+      "io.casys.mcp-calculix.recorded-static-proof-session/1.0",
+    );
+    assertEquals(binding?.anchor.id, fixture.artifactId);
+  } finally {
+    await Deno.remove(fixture.root, { recursive: true });
+  }
+});
+
+Deno.test("CalculiX viewer binding rejects mixed or cross-run publication identities", async () => {
+  const mixed = await calculixFixture();
+  try {
+    mixed.thread = withCalculixLayout(mixed.thread, "mixed-evidence");
+    await assertRejects(
+      () => buildCalculixViewerBinding(mixed),
+      TypeError,
+      "execution-evidence",
+    );
+  } finally {
+    await Deno.remove(mixed.root, { recursive: true });
+  }
+
+  const crossRun = await calculixFixture();
+  try {
+    crossRun.thread = withCalculixLayout(crossRun.thread, "cross-run");
+    crossRun.artifactId = crossRun.thread.artifacts.find((artifact) =>
+      artifact.kind === "solver-result"
+    )!.id;
+    const binding = await buildCalculixViewerBinding(crossRun);
+    assertEquals(binding, undefined);
+  } finally {
+    await Deno.remove(crossRun.root, { recursive: true });
   }
 });
 
@@ -289,6 +334,60 @@ async function calculixFixture(): Promise<{
         acceptedActions: ["viewer.session.apply"],
       }],
     }],
+  };
+}
+
+function withCalculixLayout(
+  thread: ThreadSnapshot,
+  layout: "run-scoped" | "mixed-evidence" | "cross-run",
+): ThreadSnapshot {
+  const runId =
+    thread.artifacts.find((artifact) => artifact.kind === "solver-result")!.producer
+      .runId;
+  const nextId = (artifact: ThreadArtifact): string => {
+    if (layout === "cross-run" && artifact.kind === "solver-result") {
+      return staticProofPublicationIdentity(artifact.id, "run:other");
+    }
+    if (layout === "mixed-evidence") {
+      return artifact.kind === "evidence"
+        ? staticProofPublicationIdentity(artifact.id, runId)
+        : artifact.id;
+    }
+    if (
+      artifact.kind === "solver-result" || artifact.kind === "solver-input" ||
+      artifact.kind === "evidence"
+    ) {
+      return staticProofPublicationIdentity(artifact.id, runId);
+    }
+    return artifact.id;
+  };
+  const idMap = new Map(
+    thread.artifacts.map((artifact) => [artifact.id, nextId(artifact)]),
+  );
+  const mapped = (id: string) => idMap.get(id) ?? id;
+  const mapRef = <T extends { readonly kind: string; readonly id: string }>(
+    ref: T,
+  ): T => (ref.kind === "artifact" ? { ...ref, id: mapped(ref.id) } : ref);
+  return {
+    ...thread,
+    subject: {
+      ...thread.subject,
+      modelArtifactId: mapped(thread.subject.modelArtifactId),
+    },
+    artifacts: thread.artifacts.map((artifact) => ({
+      ...artifact,
+      id: mapped(artifact.id),
+      inputArtifactIds: artifact.inputArtifactIds.map(mapped),
+    })),
+    consumptions: thread.consumptions.map((consumption) => ({
+      ...consumption,
+      artifactId: mapped(consumption.artifactId),
+    })),
+    provenance: thread.provenance.map((link) => ({
+      ...link,
+      from: mapRef(link.from),
+      to: mapRef(link.to),
+    })),
   };
 }
 

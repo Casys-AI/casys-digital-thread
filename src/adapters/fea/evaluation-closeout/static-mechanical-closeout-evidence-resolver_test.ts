@@ -9,6 +9,44 @@ import {
   staticMechanicalCloseoutAdmission,
   StaticMechanicalCloseoutResolutionError,
 } from "./static-mechanical-closeout-evidence-resolver.ts";
+import { requireExactStaticProofPublicationLayout } from "../../../domain/fea/isolated-v3/static-proof-publication-identity.ts";
+import { assertExactStaticProofLocalArtifacts } from "../../../domain/fea/isolated-v3/static-proof-thread-evidence.ts";
+
+Deno.test(
+  "static-mechanical closeout resolver accepts a run-scoped colliding FEA @3 layout",
+  async () => {
+    const fixture = await createCompletedStaticMechanicalCloseoutFixture({
+      historicalCollisionRunId: "run:historical-identical-fea",
+    });
+    try {
+      const local = assertExactStaticProofLocalArtifacts(fixture.snapshot, {
+        serverId: "digital-thread",
+        tool: "verify.run-fea-static-proof@3",
+        runId: fixture.fea.runId,
+      });
+      assertEquals(
+        requireExactStaticProofPublicationLayout(local, fixture.fea.runId),
+        "run-scoped",
+      );
+      const resolved = await resolveStaticMechanicalCloseoutEvidence(
+        fixture.dependencies,
+        {
+          project: fixture.project,
+          basis: fixture.basis,
+          snapshot: fixture.snapshot,
+        },
+      );
+      assertEquals(resolved.acceptanceEligible, true);
+      assertEquals(resolved.feaRun.id, fixture.fea.runId);
+      assertEquals(
+        resolved.executionEvidence.producer.runId,
+        fixture.fea.runId,
+      );
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
 
 Deno.test(
   "static-mechanical closeout resolver accepts only canonical model/step and exact fresh FEA @3 evidence",

@@ -48,6 +48,7 @@ import {
   buildCalculixViewerBinding,
   CALCULIX_VIEWER_SESSION_SCHEMA,
 } from "./calculix-viewer-binding.ts";
+import { isExactStaticProofOutputArtifactId } from "../../domain/fea/isolated-v3/static-proof-publication-identity.ts";
 import { FileCalculixIsolatedExecutionEvidenceStore } from "../fea/isolated-v3/calculix-isolated-execution-evidence.ts";
 import { FileByteStore } from "../shared/cas/file-byte-store.ts";
 import {
@@ -408,7 +409,12 @@ function supportedRegistrationArtifact(artifact: ThreadArtifact): boolean {
     (artifact.producer.serverId === "digital-thread" &&
       artifact.producer.tool === "verify.run-fea-static-proof@3" &&
       artifact.kind === "solver-result" &&
-      artifact.id === `calculix-isolated-result-json-${artifact.fingerprint.digest}`) ||
+      isExactStaticProofOutputArtifactId(
+        artifact.id,
+        "result.json",
+        artifact.fingerprint.digest,
+        artifact.producer.runId,
+      )) ||
     (artifact.producer.serverId === "digital-thread" &&
       artifact.producer.tool === "simulate.run-admitted-modelica@1" &&
       artifact.kind === "solver-result" &&

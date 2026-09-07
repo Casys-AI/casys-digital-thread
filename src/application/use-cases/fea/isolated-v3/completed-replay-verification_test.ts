@@ -29,6 +29,12 @@ import {
   requireCompletedIsolatedStaticProofWal,
   requireIsolatedStaticStructuralAction,
 } from "./completed-replay-verification.ts";
+import { CALCULIX_ISOLATED_OUTPUT_MANIFEST } from "../../../../domain/fea/isolated-v3/calculix-isolated-execution.ts";
+import {
+  staticProofEvaluationCaptureArtifactLegacyId,
+  staticProofEvidenceArtifactLegacyId,
+  staticProofOutputArtifactLegacyId,
+} from "../../../../domain/fea/isolated-v3/static-proof-publication-identity.ts";
 
 const PROJECT_ID = "desk-lamp-dl04";
 const SUBJECT_ID = "project:desk-lamp-dl04";
@@ -160,33 +166,32 @@ function evidence(
 }
 
 function localArtifacts(runId: string) {
+  const producer = {
+    serverId: "digital-thread",
+    tool: "verify.run-fea-static-proof@3",
+    runId,
+  };
   return [
-    ...Array.from({ length: 9 }, (_, index) => ({
-      id: `out-${index}`,
-      name: `Local CalculiX role.${index}`,
-      producer: {
-        serverId: "digital-thread",
-        tool: "verify.run-fea-static-proof@3",
-        runId,
-      },
-    })),
+    ...CALCULIX_ISOLATED_OUTPUT_MANIFEST.map((declaration, index) => {
+      const digest = index.toString().repeat(64).slice(0, 64);
+      return {
+        id: staticProofOutputArtifactLegacyId(declaration.role, digest),
+        name: `Local CalculiX ${declaration.role}`,
+        fingerprint: { algorithm: "sha256" as const, digest },
+        producer,
+      };
+    }),
     {
-      id: "evidence-a",
+      id: staticProofEvidenceArtifactLegacyId("d".repeat(64)),
       name: "Isolated local CalculiX execution evidence",
-      producer: {
-        serverId: "digital-thread",
-        tool: "verify.run-fea-static-proof@3",
-        runId,
-      },
+      fingerprint: { algorithm: "sha256" as const, digest: "d".repeat(64) },
+      producer,
     },
     {
-      id: "eval-a",
+      id: staticProofEvaluationCaptureArtifactLegacyId("e".repeat(64)),
       name: "SysON evaluation of isolated CalculiX evidence",
-      producer: {
-        serverId: "digital-thread",
-        tool: "verify.run-fea-static-proof@3",
-        runId,
-      },
+      fingerprint: { algorithm: "sha256" as const, digest: "e".repeat(64) },
+      producer,
     },
   ];
 }

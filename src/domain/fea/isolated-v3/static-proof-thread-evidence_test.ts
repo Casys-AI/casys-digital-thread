@@ -13,6 +13,12 @@ import {
   buildStaticProofSuccessor,
   exactStaticProofEvidenceRefs,
 } from "./static-proof-thread-evidence.ts";
+import {
+  requireExactStaticProofPublicationLayout,
+  staticProofEvidenceArtifactLegacyId,
+  staticProofOutputArtifactLegacyId,
+  staticProofPublicationIdentity,
+} from "./static-proof-publication-identity.ts";
 
 const AT = "2026-08-16T00:00:00.000Z";
 const RUN_ID = "run-fea-3";
@@ -248,6 +254,18 @@ Deno.test("static proof successor publishes nine closed roles as eleven artifact
   const local = assertExactStaticProofLocalArtifacts(snapshot, LOCAL);
   assertEquals(CALCULIX_ISOLATED_OUTPUT_MANIFEST.length, 9);
   assertEquals(local.length, 11);
+  assertEquals(requireExactStaticProofPublicationLayout(local, RUN_ID), "legacy");
+  const inputStep = outputs().find((item) => item.role === "input.step")!;
+  assertEquals(
+    local.find((artifact) => artifact.name === "Local CalculiX input.step")?.id,
+    staticProofOutputArtifactLegacyId("input.step", inputStep.sha256),
+  );
+  assertEquals(
+    local.find((artifact) =>
+      artifact.name === "Isolated local CalculiX execution evidence"
+    )?.id,
+    staticProofEvidenceArtifactLegacyId("d".repeat(64)),
+  );
   assertEquals(
     local.filter((artifact) => artifact.name.startsWith("Local CalculiX ")).map(
       (artifact) => artifact.name,
@@ -484,4 +502,99 @@ Deno.test("static proof successor replay is byte-identical including evidence re
     },
     expectedEvidenceRefs: refs,
   });
+});
+
+Deno.test("static proof successor publishes a colliding second identical-receipts run as a scoped coexisting branch and rematerializes it from captured receipts", async () => {
+  const requirements = await catalogRequirements();
+  const basis = basisSnapshot(
+    requirements.map((requirement) =>
+      traced(`thread-${requirement.id}`, requirement.feature, "req-a")
+    ),
+  );
+  const firstInput = successorInput(basis, requirements, passOutcomes(requirements));
+  const first = buildStaticProofSuccessor(firstInput);
+  assertEquals(
+    requireExactStaticProofPublicationLayout(
+      assertExactStaticProofLocalArtifacts(first, LOCAL),
+      RUN_ID,
+    ),
+    "legacy",
+  );
+
+  const secondLocal = { ...LOCAL, runId: "run-fea-4" };
+  const secondInput = {
+    ...firstInput,
+    basis: first,
+    capturedAt: "2026-08-17T00:00:00.000Z",
+    localOperation: secondLocal,
+  };
+  const second = buildStaticProofSuccessor(secondInput);
+  validateThreadSnapshot(second);
+  const firstLocal = assertExactStaticProofLocalArtifacts(second, LOCAL);
+  const secondLocalArtifacts = assertExactStaticProofLocalArtifacts(
+    second,
+    secondLocal,
+  );
+  assertEquals(requireExactStaticProofPublicationLayout(firstLocal, RUN_ID), "legacy");
+  assertEquals(
+    requireExactStaticProofPublicationLayout(secondLocalArtifacts, secondLocal.runId),
+    "run-scoped",
+  );
+  const inputStep = outputs().find((item) => item.role === "input.step")!;
+  const legacyInputId = staticProofOutputArtifactLegacyId(
+    "input.step",
+    inputStep.sha256,
+  );
+  assertEquals(
+    firstLocal.find((artifact) => artifact.name === "Local CalculiX input.step")?.id,
+    legacyInputId,
+  );
+  assertEquals(
+    secondLocalArtifacts.find((artifact) =>
+      artifact.name === "Local CalculiX input.step"
+    )?.id,
+    staticProofPublicationIdentity(legacyInputId, secondLocal.runId),
+  );
+  const ids = second.artifacts.map((artifact) => artifact.id);
+  assertEquals(ids.length, new Set(ids).size);
+  const evaluationIds = second.evaluations.map((item) => item.id);
+  assertEquals(evaluationIds.length, new Set(evaluationIds).size);
+  assertEquals(second.evaluations.length, first.evaluations.length * 2);
+  const rematerializedFirst = buildStaticProofSuccessor(firstInput);
+  assertEquals(deterministicJson(rematerializedFirst), deterministicJson(first));
+  const occupiedFirst = buildStaticProofSuccessor({
+    ...firstInput,
+    basis: first,
+  });
+  assertEquals(deterministicJson(occupiedFirst), deterministicJson(first));
+  const rematerializedSecond = buildStaticProofSuccessor(secondInput);
+  assertEquals(deterministicJson(rematerializedSecond), deterministicJson(second));
+});
+
+Deno.test("static proof local artifact assertion refuses a mixed publication layout", async () => {
+  const requirements = await catalogRequirements();
+  const basis = basisSnapshot(
+    requirements.map((requirement) =>
+      traced(`thread-${requirement.id}`, requirement.feature, "req-a")
+    ),
+  );
+  const snapshot = buildStaticProofSuccessor(
+    successorInput(basis, requirements, passOutcomes(requirements)),
+  );
+  const mixed = {
+    ...snapshot,
+    artifacts: snapshot.artifacts.map((artifact) =>
+      artifact.name === "Local CalculiX result.json"
+        ? {
+          ...artifact,
+          id: staticProofPublicationIdentity(artifact.id, RUN_ID),
+        }
+        : artifact
+    ),
+  };
+  assertThrows(
+    () => assertExactStaticProofLocalArtifacts(mixed, LOCAL),
+    TypeError,
+    "publication layout",
+  );
 });

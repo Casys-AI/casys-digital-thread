@@ -74,6 +74,7 @@ export interface StaticMechanicalCloseoutFixture {
  */
 export async function createCompletedStaticMechanicalCloseoutFixture(options: {
   readonly status?: "pass" | "fail" | "unresolved" | "error";
+  readonly historicalCollisionRunId?: string;
 } = {}): Promise<StaticMechanicalCloseoutFixture> {
   const directory = await Deno.makeTempDir({ prefix: "static-mechanical-closeout-" });
   try {
@@ -208,8 +209,7 @@ export async function createCompletedStaticMechanicalCloseoutFixture(options: {
       tool: "verify.run-fea-static-proof@3",
       runId: fea.runId,
     } as const;
-    const snapshot = buildStaticProofSuccessor({
-      basis: fea.basis,
+    const successorInput = {
       capturedAt: claimed.startedAt,
       localOperation,
       oracleOperation: {
@@ -233,7 +233,25 @@ export async function createCompletedStaticMechanicalCloseoutFixture(options: {
         uri: evaluationStore.uriFor(evaluationFingerprint),
         outcomes,
       },
+    };
+    const historicalBasis = options.historicalCollisionRunId === undefined
+      ? fea.basis
+      : buildStaticProofSuccessor({
+        ...successorInput,
+        basis: fea.basis,
+        capturedAt: "2026-08-21T00:00:00.000Z",
+        localOperation: {
+          ...localOperation,
+          runId: options.historicalCollisionRunId,
+        },
+      });
+    const snapshot = buildStaticProofSuccessor({
+      ...successorInput,
+      basis: historicalBasis,
     });
+    if (historicalBasis.id !== fea.basis.id) {
+      await fea.snapshots.save(historicalBasis);
+    }
     await fea.snapshots.save(snapshot);
     project = await requiredProject(fea);
     project = await fea.commands.publishRun(ISOLATED_CALCULIX_FIXTURE_AGENT, {

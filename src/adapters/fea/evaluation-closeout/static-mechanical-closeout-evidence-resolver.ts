@@ -46,6 +46,15 @@ import {
 } from "../../../domain/fea/isolated-v3/static-proof-thread-evidence.ts";
 import { evaluationsFromStaticProofOracle } from "../../../domain/fea/isolated-v3/static-proof-oracle-input.ts";
 import {
+  isExactStaticProofEvaluationCaptureArtifactId,
+  isExactStaticProofEvidenceArtifactId,
+  isExactStaticProofOutputArtifactId,
+  requireExactStaticProofPublicationLayout,
+  staticProofObservationLegacyId,
+  staticProofPublicationIdentity,
+  staticProofPublicationScope,
+} from "../../../domain/fea/isolated-v3/static-proof-publication-identity.ts";
+import {
   buildOracleValues,
   parseCapturedFeaConstraintOracleOutcome,
   prepareFeaConstraintOracleCall,
@@ -171,6 +180,10 @@ export async function resolveStaticMechanicalCloseoutEvidence(
     runId: run.id,
   };
   const localArtifacts = assertArtifacts(snapshot, localOperation);
+  const identityScope = staticProofPublicationScope(
+    requireExactStaticProofPublicationLayout(localArtifacts, run.id),
+    run.id,
+  );
   const executionArtifact = uniqueArtifact(
     localArtifacts,
     (artifact) => artifact.name === "Isolated local CalculiX execution evidence",
@@ -183,16 +196,29 @@ export async function resolveStaticMechanicalCloseoutEvidence(
   );
   const resultArtifact = uniqueArtifact(
     localArtifacts,
-    (artifact) => artifact.id.startsWith("calculix-isolated-result-json-"),
+    (artifact) =>
+      artifact.kind === "solver-result" &&
+      isExactStaticProofOutputArtifactId(
+        artifact.id,
+        "result.json",
+        artifact.fingerprint.digest,
+        run.id,
+      ),
     "CalculiX result",
   );
   assertFresh(executionArtifact, "execution evidence");
   assertFresh(evaluationArtifact, "L4 evaluation capture");
   if (
-    executionArtifact.id !==
-      `calculix-isolated-evidence-${executionArtifact.fingerprint.digest}` ||
-    evaluationArtifact.id !==
-      `calculix-isolated-syson-evaluation-${evaluationArtifact.fingerprint.digest}` ||
+    !isExactStaticProofEvidenceArtifactId(
+      executionArtifact.id,
+      executionArtifact.fingerprint.digest,
+      run.id,
+    ) ||
+    !isExactStaticProofEvaluationCaptureArtifactId(
+      evaluationArtifact.id,
+      evaluationArtifact.fingerprint.digest,
+      run.id,
+    ) ||
     executionArtifact.uri !==
       dependencies.executionEvidence.uriFor(executionArtifact.fingerprint) ||
     evaluationArtifact.uri !==
@@ -284,7 +310,13 @@ export async function resolveStaticMechanicalCloseoutEvidence(
       evaluatedAt: evaluationArtifact.freshness.changedAt,
       evidenceArtifactId: evaluationArtifact.id,
       observationIds: proof.case.requirements.map((requirement) =>
-        `calculix-isolated-observation-${resultArtifact.fingerprint.digest}-${requirement.id}`
+        staticProofPublicationIdentity(
+          staticProofObservationLegacyId(
+            resultArtifact.fingerprint.digest,
+            requirement.id,
+          ),
+          identityScope,
+        )
       ),
       threadRequirementIds: requirementIds,
       evaluator: {
@@ -292,6 +324,7 @@ export async function resolveStaticMechanicalCloseoutEvidence(
         tool: "syson_constraint_evaluate",
         runId: `capture:${evaluationArtifact.fingerprint.digest}`,
       },
+      identityScope,
     },
   );
   const criteria = exactCriteria(
@@ -300,6 +333,7 @@ export async function resolveStaticMechanicalCloseoutEvidence(
     expected,
     evaluationArtifact,
     requirementIds,
+    identityScope,
   );
   const basisFingerprint = await sha256Fingerprint(snapshot);
   const acceptanceEligible = criteria.every((criterion) => criterion.status === "pass");
@@ -602,6 +636,7 @@ function exactCriteria(
   expected: readonly RequirementEvaluation[],
   evaluationArtifact: ThreadArtifact,
   threadRequirementIds: ReadonlyMap<string, string>,
+  identityScope?: string,
 ): StaticMechanicalCloseoutCriterion[] {
   if (expected.length !== proof.case.requirements.length) {
     throw integrity(
@@ -616,10 +651,13 @@ function exactCriteria(
         `Proof requirement ${requirement.id} has no unique Thread requirement.`,
       );
     }
-    const expectedId = requirementEvaluationIdentity({
-      requirementId: threadRequirementId,
-      evidenceFingerprint: evaluationArtifact.fingerprint,
-    }).id;
+    const expectedId = staticProofPublicationIdentity(
+      requirementEvaluationIdentity({
+        requirementId: threadRequirementId,
+        evidenceFingerprint: evaluationArtifact.fingerprint,
+      }).id,
+      identityScope,
+    );
     if (!evaluated || evaluated.id !== expectedId) {
       throw integrity("The L4 evaluation criteria are not in sealed-proof order.");
     }

@@ -14,6 +14,14 @@ import type {
 } from "../../domain/thread/thread-snapshot.ts";
 import { archivedRefKeys } from "../../domain/thread/thread-snapshot.ts";
 import type { CalculixIsolatedExecutionEvidence } from "../../domain/fea/isolated-v3/calculix-isolated-execution.ts";
+import {
+  isExactStaticProofEvidenceArtifactId,
+  isExactStaticProofOutputArtifactId,
+  staticProofEvidenceArtifactLegacyId,
+  staticProofOutputArtifactLegacyId,
+  type StaticProofPublicationLayout,
+  staticProofPublicationLayout,
+} from "../../domain/fea/isolated-v3/static-proof-publication-identity.ts";
 import type { ThreadViewerAppMaterializationCatalogBinding } from "./thread-viewer-app-materializer.ts";
 import type { InstalledThreadViewerAppPackage } from "./thread-viewer-app-packages.ts";
 import {
@@ -53,13 +61,14 @@ export async function buildCalculixViewerBinding(request: {
   );
   if (!installed) return undefined;
 
+  const layout = calculixResultPublicationLayout(resultArtifact);
+  if (layout === undefined) return undefined;
   const evidenceArtifact = unique(
     request.thread.artifacts.filter((artifact) =>
-      artifact.id.startsWith("calculix-isolated-evidence-") &&
       artifact.kind === "evidence" &&
       sameProducer(artifact, resultArtifact) &&
       artifact.inputArtifactIds.includes(resultArtifact.id) &&
-      exactEvidenceArtifactIdentity(artifact) &&
+      exactEvidenceArtifactIdentity(artifact, resultArtifact.producer.runId, layout) &&
       !archivedRefKeys(request.thread).has(`artifact:${artifact.id}`)
     ),
     "CalculiX viewer requires one exact unarchived execution-evidence artifact.",
@@ -87,7 +96,17 @@ export async function buildCalculixViewerBinding(request: {
     result.sha256 !== resultArtifact.fingerprint.digest ||
     result.casUri !== resultArtifact.uri ||
     result.mediaType !== resultArtifact.mediaType ||
-    resultArtifact.id !== `calculix-isolated-result-json-${result.sha256}`
+    !isExactStaticProofOutputArtifactId(
+      resultArtifact.id,
+      "result.json",
+      result.sha256,
+      resultArtifact.producer.runId,
+    ) ||
+    staticProofPublicationLayout(
+        resultArtifact.id,
+        staticProofOutputArtifactLegacyId("result.json", result.sha256),
+        resultArtifact.producer.runId,
+      ) !== layout
   ) {
     throw new TypeError(
       "The CalculiX result artifact is not the evidence's exact result.json.",
@@ -95,13 +114,17 @@ export async function buildCalculixViewerBinding(request: {
   }
   const inputArtifact = unique(
     request.thread.artifacts.filter((artifact) =>
-      artifact.id === `calculix-isolated-input-step-${input.sha256}` &&
       artifact.kind === "solver-input" &&
       sameProducer(artifact, resultArtifact) &&
       artifact.fingerprint.digest === input.sha256 &&
       artifact.uri === input.casUri && artifact.mediaType === "model/step" &&
       artifact.version === input.sha256 &&
       artifact.freshness.status === "fresh" &&
+      staticProofPublicationLayout(
+          artifact.id,
+          staticProofOutputArtifactLegacyId("input.step", input.sha256),
+          resultArtifact.producer.runId,
+        ) === layout &&
       !archivedRefKeys(request.thread).has(`artifact:${artifact.id}`)
     ),
     "The CalculiX evidence has no exact input.step Thread artifact.",
@@ -157,8 +180,7 @@ export async function buildCalculixViewerBinding(request: {
 }
 
 function isCalculixResultArtifact(artifact: ThreadArtifact): boolean {
-  return artifact.id ===
-      `calculix-isolated-result-json-${artifact.fingerprint.digest}` &&
+  return calculixResultPublicationLayout(artifact) !== undefined &&
     artifact.kind === "solver-result" &&
     artifact.version === artifact.fingerprint.digest &&
     artifact.producer.serverId === "digital-thread" &&
@@ -167,8 +189,31 @@ function isCalculixResultArtifact(artifact: ThreadArtifact): boolean {
     artifact.mediaType === "application/json" && artifact.freshness.status === "fresh";
 }
 
-function exactEvidenceArtifactIdentity(artifact: ThreadArtifact): boolean {
-  return artifact.id === `calculix-isolated-evidence-${artifact.fingerprint.digest}` &&
+function calculixResultPublicationLayout(
+  artifact: ThreadArtifact,
+): StaticProofPublicationLayout | undefined {
+  return staticProofPublicationLayout(
+    artifact.id,
+    staticProofOutputArtifactLegacyId("result.json", artifact.fingerprint.digest),
+    artifact.producer.runId,
+  );
+}
+
+function exactEvidenceArtifactIdentity(
+  artifact: ThreadArtifact,
+  runId: string,
+  layout: StaticProofPublicationLayout,
+): boolean {
+  return isExactStaticProofEvidenceArtifactId(
+    artifact.id,
+    artifact.fingerprint.digest,
+    runId,
+  ) &&
+    staticProofPublicationLayout(
+        artifact.id,
+        staticProofEvidenceArtifactLegacyId(artifact.fingerprint.digest),
+        runId,
+      ) === layout &&
     artifact.version === artifact.fingerprint.digest &&
     artifact.uri ===
       `casys://calculix-isolated-execution-evidence/sha256/${artifact.fingerprint.digest}` &&

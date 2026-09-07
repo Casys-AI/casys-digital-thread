@@ -37,6 +37,13 @@ imports.
 
 Closed oracle payload and evaluation mapping. `error`/`unresolved` have no comparison.
 
+#### [`src/domain/fea/isolated-v3/static-proof-publication-identity.ts`](../../../src/domain/fea/isolated-v3/static-proof-publication-identity.ts)
+
+Exact legacy and run-scoped Thread identity layouts for repeated `@3` publications. The
+historical layout remains byte-identical when it does not conflict; a conflicting
+successor is scoped by the exact producer run id, and cross-run or mixed layouts are
+refused.
+
 #### [`src/domain/fea/isolated-v3/static-proof-thread-evidence.ts`](../../../src/domain/fea/isolated-v3/static-proof-thread-evidence.ts)
 
 Deterministic isolated static-proof Thread successor. A `fail` publishes `caused_by` /

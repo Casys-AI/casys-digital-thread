@@ -120,4 +120,24 @@ Deno.test("static proof oracle evaluations keep pass/fail comparison and omit un
   assertEquals(closed[0]?.comparison, undefined);
   assertEquals(closed[1]?.status, "unresolved");
   assertEquals(closed[1]?.comparison, undefined);
+
+  const scoped = evaluationsFromStaticProofOracle(
+    new Map([[DISP.id, {
+      status: "pass",
+      computedValue: 0.42,
+      threshold: 1.5,
+      margin: 1.08,
+      unit: "mm",
+    }], [STRESS.id, { status: "unresolved" }]]),
+    [DISP, STRESS],
+    { ...context, identityScope: "run-fea-4" },
+  );
+  assertEquals(scoped[0]?.id, `thread-disp-evaluation-${VERDICT_FP}-run-run-fea-4`);
+  assertEquals(scoped[1]?.id, `thread-stress-evaluation-${VERDICT_FP}-run-run-fea-4`);
+  const omitted = evaluationsFromStaticProofOracle(
+    new Map([[DISP.id, { status: "unresolved" }]]),
+    [DISP],
+    { ...context, observationIds: ["obs-disp"] },
+  );
+  assertEquals(omitted[0]?.id, `thread-disp-evaluation-${VERDICT_FP}`);
 });

@@ -81,6 +81,27 @@ corresponding criteria; only declared criteria become Thread observations.
 A completed operation publishes eleven artifacts: the nine files, one isolated-execution
 evidence artifact and one immutable SysON evaluation-capture artifact.
 
+### Repeated publication identity
+
+The historical Thread identities are digest-derived (`calculix-isolated-<role>-<sha256>`
+plus the matching capture, consumption, observation and evaluation forms). That layout
+remains the default, so a completed historical run rematerialized from its immutable
+basis stays byte-identical.
+
+Those IDs identify one publication, not ownership of the CAS bytes. A later `@3`
+execution may reuse the same STEP and solver outputs while having a different producer
+and consumption time. The successor is first composed in the historical layout and
+compared exactly with its immutable run basis. If any candidate entity ID already names
+different content, the entire branch is recomposed as
+`<legacy-id>-run-<localOperation.runId>`: outputs, captures, consumptions, observations,
+evaluations, violations, actions and their derived provenance stay in one homogeneous
+layout.
+
+Thread conflict validation remains fail-closed. The CalculiX viewer, registrar and L5
+closeout accept only the exact historical form or the exact run-scoped form matching the
+producer; malformed, mixed and cross-run identities are refused. Solver evidence and WAL
+schemas are unchanged.
+
 ## Evaluation is separate from solving
 
 A zero CalculiX exit code is not a requirement verdict. After local evidence is durable,
