@@ -57,13 +57,16 @@ purchase, supplier qualification or electrical/aerodynamic compatibility is impl
 | CompanionComputerEnvelope | 65 x 30 footprint; 10 vertical reserve | Raspberry Pi Zero 2 W [official mechanical drawing](https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-mechanical-drawing.pdf) gives 65 x 30. **10 mm is an Astra packaging hypothesis, NOT manufacturer board/connector height** | Actual assembled height, mounting-hole diameter, cable and cooling reserves |
 | MotorEnvelope | radius 8.95; total height 16.6 | T-HOBBY F1404, [LIGPOWER manufacturer storefront](https://www.ligpower.com/product/f1404-kv4600-fpv-motor.html), mechanical dimensions diameter 17.9 x 16.6. Radius is diameter / 2. The cylinder bounds the full reported extent, without separate shaft geometry | Variant selection, mounting integration, propeller interface, ESC, voltage/current/thrust/thermal operation and suitability for this airframe |
 
-The motor technical drawing reports four M2 holes on a diameter-9 bolt circle. This is
-not a 9 x 9 Cartesian pattern and is not yet incorporated into the arm source. The
-current motor envelope does not assert a hole or shaft-interface proof. No motor
-thrust table is used here. StaticPropellerEnvelope remains unmodeled pending its own
-explicit source or provisional geometric proposal; an envelope is never an aerodynamic
-blade design. CameraMountBracket keeps its separately recorded source and limitations;
-the camera envelope and its exact placement still need to be recorded.
+The manufacturer page confirms only the overall motor dimensions in the accessible
+text. Its drawing is image-only here, and the available descriptions do not establish
+whether the four M2 positions form a diameter-9 bolt circle or a 9 x 9 Cartesian
+pattern. The mounting topology, phase, tolerances and hole treatment therefore remain
+`unresolved` and are not incorporated into the arm source. The current motor envelope
+does not assert a hole or shaft-interface proof. No motor thrust table is used here.
+StaticPropellerEnvelope remains unmodeled pending its own explicit source or provisional
+geometric proposal; an envelope is never an aerodynamic blade design.
+CameraMountBracket keeps its separately recorded source and limitations; the camera
+envelope and its exact placement still need to be recorded.
 
 ## Required path from this draft
 

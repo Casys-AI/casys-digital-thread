@@ -186,15 +186,18 @@ nested root have exact executed static checks. The camera/deck source successor 
 canonical, with explicit Airframe/root rebuilds and fresh L3/L4/L5. The requirement-
 linked bench r3 branch is now also sealed, executed, evaluated and accepted within its
 camera-weight-only limits; F10 and F11 are closed. The next useful engineering boundary
-is an actual physical interface outside that bracket-only proof. Current evidence makes
-the four-hole motor-to-`RadialArm` datum a bounded candidate, but selecting that datum
-is a consequential human design decision and has not been recorded. The
+is an actual physical interface outside that bracket-only proof. The motor-to-
+`RadialArm` interface remains a bounded candidate, but its exact four-hole topology is
+not proven by the current primary evidence. A question proposed too precisely at project
+r613 was immediately answered `unknown` at r614; it records no human choice and
+authorizes no geometry. A manufacturer-confirmed mechanical drawing or supplier
+clarification is required before framing the consequential datum decision. The
 [remaining-boundary record](remaining-integration-boundaries.md) stays a preserved r70
 capture. Its F08 blocker is closed and the deck holes are canonical, but its unmodeled
 physical interfaces remain unresolved. Electrical, aerodynamic and flight-safety
 evidence remains outside these proof meanings; the pilot is not declared complete.
 
-The read-only BFF now serves project r612 / Thread r86. The latest separate-profile
+The read-only BFF now serves project r614 / Thread r86. The latest separate-profile
 browser interaction audit remains project r591 / Thread r83; no later visual audit is
 claimed here. The earlier project r583 / Thread r82 presentation established seven exact
 whole-App bindings for the six modules and updated root while preserving all twenty-five

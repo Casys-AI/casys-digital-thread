@@ -320,6 +320,23 @@ L4 `pass`. The exact bounded L5 closeout then completed at project r612 / Thread
 provider image, physics input, source byte, proof criterion or captured numeric result
 changed. F11 is closed without broadening the meaning of the accepted bench case.
 
+## F12 — motor-mount topology was stated more precisely than the evidence (closed)
+
+The integration provenance initially interpreted the T-HOBBY F1404 mounting drawing as
+four M2 holes on a diameter-9 bolt circle. Before that interpretation changed any source
+or Thread geometry, a project question at r613 repeated the proposed datum. A source
+recross found that the manufacturer page's accessible text confirms only the overall
+17.9 x 16.6 mm envelope; the drawing is image-only in this evidence path, while
+available descriptions conflict between a diameter-9 circle and a 9 x 9 pattern.
+
+The project recorded an agent-sourced `unknown` answer at r614. It explicitly leaves
+topology, phase, hole diameter, tolerances and attachment `unresolved`; no human
+decision, SysML update, source revision, geometry export or Thread mutation followed.
+The source dossier now states the narrower evidence boundary. F12 is closed as an
+authority-hygiene correction, not as a resolved motor interface. The ordinary bounded
+CAD path can encode four explicit cutters once an exact datum is proven, but geometry
+capability does not supply the missing supplier fact.
+
 ## Expected states, not defects
 
 - The old preview was explicitly pinned to TPS03. It correctly ignored the new durable
