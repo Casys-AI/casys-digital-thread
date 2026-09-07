@@ -114,9 +114,28 @@ Deno.test("Overview hierarchy integrates stage progress and semantic activity st
   assertStringIncludes(renderer, "notableActivityStatuses.length > 0");
   assertStringIncludes(renderer, 'status !== "planned"');
   assertStringIncludes(renderer, 'data-status={item.kind === "activity"');
-  assertStringIncludes(renderer, 'return "IN PROGRESS"');
-  assertStringIncludes(renderer, 'return "PENDING"');
-  assertStringIncludes(renderer, 'return "BLOCKED"');
+  const captions = await Deno.readTextFile(
+    new URL(
+      "./src/project/overview/activity-status-caption.ts",
+      import.meta.url,
+    ),
+  );
+  assertStringIncludes(captions, 'return "IN PROGRESS"');
+  assertStringIncludes(captions, 'return "Planned"');
+  assertEquals(captions.includes('return "PENDING"'), false);
+  assertStringIncludes(captions, 'return "BLOCKED"');
+  assertStringIncludes(renderer, "overviewActivityStatusCaption");
+  assertEquals(renderer.includes('return "PENDING"'), false);
+  assertStringIncludes(
+    renderer,
+    "`Activity \\u00b7 ${flowStatusCaption(item.activity.status)}`",
+  );
+  assertStringIncludes(
+    renderer,
+    "Inspect activity ${item.activity.title}",
+  );
+  assertEquals(renderer.includes("Inspect current activity"), false);
+  assertEquals(renderer.includes("Current activity"), false);
 
   assertStringIncludes(styles, '[data-status="planned"]');
   assertStringIncludes(styles, '[data-status="active"]');
@@ -691,9 +710,9 @@ Deno.test("Overview activity markers stay distinct from recorded Verification na
   assertStringIncludes(marker, 'status === "blocked"');
   assertStringIncludes(marker, "var(--thread-muted)");
   assertStringIncludes(marker, "var(--ui-destructive)");
-  assertStringIncludes(source, "PENDING");
-  assertStringIncludes(source, "IN PROGRESS");
-  assertStringIncludes(source, "BLOCKED");
+  assertStringIncludes(source, "overviewActivityStatusCaption");
+  assertEquals(source.includes("PENDING"), false);
+  assertEquals(source.includes("Inspect current activity"), false);
   assertStringIncludes(
     source,
     "A static D3 hierarchical edge-bundling view of recorded",
@@ -717,6 +736,36 @@ Deno.test("Overview destinations keep Evidence and Activity without a Product ta
   assertStringIncludes(source, 'onClick={() => onNavigate("work")}');
   assertStringIncludes(source, 'data-surface="digital-thread-whiteboard"');
   assertStringIncludes(source, "<OverviewThreadHero");
+});
+
+Deno.test("Overview keeps current revisions and existing record access without extra hull controls", async () => {
+  const hero = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
+  );
+  const flow = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-d3-flow.tsx", import.meta.url),
+  );
+  const helper = await Deno.readTextFile(
+    new URL("./src/project/overview/hulls/version-history.ts", import.meta.url),
+  );
+
+  assertStringIncludes(hero, "buildOverviewVersionHistory");
+  assertStringIncludes(hero, "recordView");
+  assertStringIncludes(hero, "thread.graph.edges");
+  assertStringIncludes(hero, "versionHistory.displayedGraph");
+  assertStringIncludes(hero, "recordHullContents");
+  assertStringIncludes(hero, "recordNodesByKey");
+  assertEquals(hero.includes("graphWithoutAnalysisOverlay"), false);
+  assertEquals(flow.includes("onToggleGroupHistory"), false);
+  assertEquals(flow.includes('data-history="true"'), false);
+  assertEquals(flow.includes("Preuves de"), false);
+  assertStringIncludes(flow, "onMouseEnter");
+  assertStringIncludes(flow, "hoveredGraphKeys");
+  assertStringIncludes(flow, "navigation-parent");
+  assertStringIncludes(helper, "buildVersionedProvenanceProjection");
+  assertEquals(helper.includes("graphWithoutAnalysisOverlay"), false);
+  assertEquals(helper.includes("producer"), false);
+  assertEquals(helper.includes("recordedAt"), false);
 });
 
 function cssRule(source: string, selector: string): string {

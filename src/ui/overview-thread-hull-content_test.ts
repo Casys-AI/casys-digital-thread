@@ -1,10 +1,25 @@
 import { assert, assertEquals } from "@std/assert";
-import { buildOverviewHullContents } from "./src/project/overview-thread-hull-content.ts";
+import {
+  buildOverviewHullContents,
+  overviewAnalysisBasisGroupKey,
+  overviewBriefSnapshotGroupKey,
+} from "./src/project/overview/hulls/content.ts";
+import {
+  activateOverviewHullRow,
+  overviewHullRowActions,
+  overviewHullRowPresentation,
+} from "./src/project/overview/hulls/row.ts";
 import {
   buildOverviewThreadD3FlowLayout,
   overviewThreadD3FlowGroupIdentity as groupId,
 } from "./src/project/overview-thread-d3-flow-layout.ts";
+import {
+  type OverviewBriefSourceHeroNode,
+  overviewBriefSourceKey,
+} from "./src/project/overview-thread-brief-correspondence.ts";
 import type { OverviewRecordedHeroNode } from "./src/project/overview-thread-hero-model.ts";
+import { OVERVIEW_DOMAIN_GROUP_KEYS } from "./src/project/overview/hulls/domain-groups.ts";
+import { overviewRequirementSourceViewerAliases } from "./src/project/overview-thread-viewer-discovery.ts";
 import type { ThreadViewerHierarchyProjection } from "../presentation/workbench/thread/viewer-hierarchy.ts";
 import type { ThreadViewerSession } from "./src/thread/viewer-sessions-client.ts";
 
@@ -39,8 +54,8 @@ function record(
 const nodes = [
   record("architecture-current", "system-model", "syson"),
   record("architecture-old", "system-model", "syson"),
-  record("geometry", "geometry", "canonical"),
-  record("geometry-step", "geometry", "build123d"),
+  record("geometry", "geometry", "domain:geometry"),
+  record("geometry-step", "geometry", "domain:geometry"),
   record("brief", "requirements", "brief"),
   record("brief-child", "requirements", "brief", "brief"),
   record("proof", "physics", "proof"),
@@ -120,12 +135,21 @@ Deno.test("architecture and geometry hulls share the occurrence tree but never b
     hierarchy,
   );
   const syson = contents.get(groupId("system-model", "syson"))!;
-  const canonical = contents.get(groupId("geometry", "canonical"))!;
-  const build = contents.get(groupId("geometry", "build123d"))!;
-  assert(canonical.rows === build.rows);
+  const canonical = contents.get(groupId("geometry", "domain:geometry"))!;
+  assertEquals(canonical.records.length, 2);
   assertEquals(
-    syson.rows.map(({ sessionIds: _sessions, ...row }) => row),
-    canonical.rows.map(({ sessionIds: _sessions, ...row }) => row),
+    [...contents.values()].filter((content) =>
+      content.groupKey === groupId("geometry", "domain:geometry")
+    ).length,
+    1,
+  );
+  assertEquals(
+    syson.rows.map((
+      { sessionIds: _sessions, viewerNodeKey: _viewer, ...row },
+    ) => row),
+    canonical.rows.map((
+      { sessionIds: _sessions, viewerNodeKey: _viewer, ...row },
+    ) => row),
   );
   assertEquals(
     syson.rows.map((row) => [row.key, row.label, row.depth, row.sessionIds]),
@@ -151,7 +175,7 @@ Deno.test("a SysON hull without an exact architecture App stays non-actionable e
     [],
   );
   assertEquals(
-    contents.get(groupId("geometry", "canonical"))!.rows[0]!.sessionIds,
+    contents.get(groupId("geometry", "domain:geometry"))!.rows[0]!.sessionIds,
     ["app"],
   );
 });
@@ -165,7 +189,7 @@ Deno.test("geometry navigation refuses session IDs anchored to unrelated records
     })),
   });
   assertEquals(
-    contents.get(groupId("geometry", "canonical"))!.rows.flatMap((row) =>
+    contents.get(groupId("geometry", "domain:geometry"))!.rows.flatMap((row) =>
       row.sessionIds
     ),
     [],
@@ -214,6 +238,407 @@ Deno.test("missing current anchors and unavailable hierarchy fail closed while m
   );
 });
 
+function briefSource(
+  snapshotId: string,
+  briefId: string,
+  revision: number,
+  sourceItemId: string,
+  extras: {
+    readonly statement?: string;
+    readonly dependsOnItemIds?: readonly string[];
+  } = {},
+): OverviewBriefSourceHeroNode {
+  return {
+    kind: "brief-source",
+    key: overviewBriefSourceKey(snapshotId, sourceItemId),
+    lane: "requirements",
+    groupKey: "brief",
+    label: `${sourceItemId} · brief r${revision}`,
+    color: "#7c3aed",
+    emphasis: false,
+    brief: { briefId, snapshotId, revision },
+    sourceItem: {
+      id: sourceItemId,
+      kind: "success-criterion",
+      statement: extras.statement ?? "Exact approved clause.",
+      sourceRefs: [{ kind: "intent", reference: "conversation:fixture" }],
+      ...(extras.dependsOnItemIds ? { dependsOnItemIds: extras.dependsOnItemIds } : {}),
+    },
+    correspondences: [{
+      trace: {
+        artifactId: "claim",
+        status: "available",
+        threadRequirementIds: ["REQ-1"],
+        originalBrief: { briefId, snapshotId, revision },
+        currentBrief: { briefId, snapshotId, revision },
+        container: {
+          sourceItemId,
+          originalSourceItem: {
+            id: sourceItemId,
+            kind: "success-criterion",
+            statement: extras.statement ?? "Exact approved clause.",
+            sourceRefs: [{ kind: "intent", reference: "conversation:fixture" }],
+          },
+          state: "unchanged",
+        },
+        requirements: [],
+      },
+      requirementId: "metric",
+      threadRequirementId: "REQ-1",
+      sourceItemId,
+    }],
+  };
+}
+
+const BRIEF_ANALYSIS_BASIS =
+  "903b6e7f4a890d3ba29c01a9e89db922a9fce6a4978a36340079854d50b07829";
+
+function analysisRecord(
+  id: string,
+  semantic: {
+    readonly domain:
+      | "brief"
+      | "sysml"
+      | "cad"
+      | "modelica"
+      | "calculix"
+      | "thread";
+    readonly kind: string;
+    readonly id: string;
+    readonly basisFingerprint?: string;
+  },
+  extras: { readonly parentKey?: string } = {},
+): OverviewRecordedHeroNode {
+  const key = `analysis-node:${id}`;
+  return {
+    key,
+    lane: "requirements",
+    groupKey: "brief",
+    label: semantic.id,
+    kind: "recorded",
+    color: "black",
+    emphasis: false,
+    ...(extras.parentKey ? { parentKey: extras.parentKey } : {}),
+    node: {
+      id: key,
+      ref: { kind: "analysis-node", id },
+      entityKind: "analysis-node",
+      label: semantic.id,
+      freshness: "fresh",
+      system: semantic.domain,
+      summary: `${semantic.kind} · ${semantic.domain}`,
+      analysis: { semanticRef: semantic },
+    },
+  };
+}
+
+Deno.test("brief hull groups exact source notes by snapshot identity without parenting the baseline record", () => {
+  const baseline = record(
+    "approved-brief-document-r1",
+    "requirements",
+    "brief",
+  );
+  const source = briefSource(
+    "inspection-drone-id01:brief:r3:bca2a461299be869",
+    "inspection-drone-id01:brief",
+    3,
+    "camera-bracket-bench-stress",
+  );
+  const contents = buildOverviewHullContents([baseline, source], []);
+  const brief = contents.get(groupId("requirements", "brief"))!;
+  const groupKey = overviewBriefSnapshotGroupKey(source.brief);
+  assertEquals(brief.mode, "tree");
+  assertEquals(
+    brief.rows.map((row) => [
+      row.key,
+      row.kind,
+      row.depth,
+      row.parentKey,
+      row.nodeKey,
+      row.endpoint,
+    ]),
+    [[
+      baseline.key,
+      "record",
+      0,
+      undefined,
+      baseline.key,
+      true,
+    ], [
+      groupKey,
+      "navigation",
+      0,
+      undefined,
+      undefined,
+      false,
+    ], [
+      source.key,
+      "source",
+      1,
+      groupKey,
+      source.key,
+      true,
+    ]],
+  );
+  assertEquals(
+    brief.records.map((row) => [row.key, row.kind, row.nodeKey]),
+    [[baseline.key, "record", baseline.key]],
+  );
+  assertEquals(
+    brief.rows.some((row) => row.parentKey === baseline.key),
+    false,
+  );
+});
+
+Deno.test("the same sourceItemId in two snapshots stays distinct and never invents an r3-to-r1 parent", () => {
+  const r1 = briefSource(
+    "fixture:brief:r1:historic",
+    "fixture:brief",
+    1,
+    "clause",
+  );
+  const r3 = briefSource(
+    "fixture:brief:r3:exact",
+    "fixture:brief",
+    3,
+    "clause",
+  );
+  const contents = buildOverviewHullContents([r1, r3], []);
+  const brief = contents.get(groupId("requirements", "brief"))!;
+  const groupR1 = overviewBriefSnapshotGroupKey(r1.brief);
+  const groupR3 = overviewBriefSnapshotGroupKey(r3.brief);
+  assertEquals(r1.key === r3.key, false);
+  assertEquals(
+    brief.rows.map((row) => [row.key, row.parentKey, row.nodeKey]),
+    [
+      [groupR1, undefined, undefined],
+      [r1.key, groupR1, r1.key],
+      [groupR3, undefined, undefined],
+      [r3.key, groupR3, r3.key],
+    ],
+  );
+  assertEquals(
+    brief.rows.some((row) => row.parentKey === groupR1 && row.nodeKey === r3.key),
+    false,
+  );
+});
+
+Deno.test("multiple requirements sharing one exact clause keep a single source row", () => {
+  const source = briefSource(
+    "fixture:brief:r3:exact",
+    "fixture:brief",
+    3,
+    "clause",
+  );
+  const contents = buildOverviewHullContents([source, { ...source }], []);
+  const brief = contents.get(groupId("requirements", "brief"))!;
+  assertEquals(
+    brief.rows.filter((row) => row.kind === "source").map((row) => row.key),
+    [source.key],
+  );
+});
+
+Deno.test("conflicting or dangling brief identity fails closed instead of inventing a snapshot tree", () => {
+  const dangling = briefSource(" ", "fixture:brief", 3, "dangling");
+  const conflictA = briefSource("same-snapshot", "brief-a", 3, "clause-a");
+  const conflictB = briefSource("same-snapshot", "brief-b", 3, "clause-b");
+  const contents = buildOverviewHullContents(
+    [dangling, conflictA, conflictB],
+    [],
+  );
+  const brief = contents.get(groupId("requirements", "brief"))!;
+  assertEquals(brief.mode, "tree");
+  assertEquals(
+    brief.rows.map((row) => [row.key, row.kind, row.depth, row.parentKey]),
+    [
+      [dangling.key, "source", 0, undefined],
+      [conflictA.key, "source", 0, undefined],
+      [conflictB.key, "source", 0, undefined],
+    ],
+  );
+  assertEquals(brief.rows.every((row) => row.kind !== "navigation"), true);
+});
+
+Deno.test("dependsOnItemIds never become brief tree containment", () => {
+  const parent = briefSource(
+    "fixture:brief:r3:exact",
+    "fixture:brief",
+    3,
+    "parent-clause",
+  );
+  const child = briefSource(
+    "fixture:brief:r3:exact",
+    "fixture:brief",
+    3,
+    "child-clause",
+    { dependsOnItemIds: ["parent-clause"] },
+  );
+  const contents = buildOverviewHullContents([parent, child], []);
+  const brief = contents.get(groupId("requirements", "brief"))!;
+  const groupKey = overviewBriefSnapshotGroupKey(parent.brief);
+  assertEquals(
+    brief.rows.filter((row) => row.kind === "source").map((row) => [
+      row.key,
+      row.parentKey,
+      row.depth,
+    ]),
+    [
+      [child.key, groupKey, 1],
+      [parent.key, groupKey, 1],
+    ],
+  );
+});
+
+Deno.test("product hierarchy stays a navigation tree with App actions separated from the brief hull", () => {
+  const source = briefSource(
+    "fixture:brief:r3:exact",
+    "fixture:brief",
+    3,
+    "clause",
+  );
+  const contents = buildOverviewHullContents(
+    [...nodes, source],
+    [session, modelSession],
+    hierarchy,
+  );
+  const syson = contents.get(groupId("system-model", "syson"))!;
+  const brief = contents.get(groupId("requirements", "brief"))!;
+  assertEquals(syson.mode, "tree");
+  assertEquals(brief.mode, "tree");
+  assertEquals(
+    syson.rows.map((row) => [row.kind, row.endpoint, row.sessionIds]),
+    [
+      ["navigation", false, ["model-app"]],
+      ["navigation", false, []],
+      ["navigation", false, []],
+    ],
+  );
+  assertEquals(brief.rows.every((row) => row.sessionIds.length === 0), true);
+  assertEquals(
+    brief.records.map((row) => row.key),
+    ["artifact:brief", "artifact:brief-child"],
+  );
+});
+
+Deno.test("canvas and contextual menu share one hull row action model", () => {
+  const source = briefSource(
+    "fixture:brief:r3:exact",
+    "fixture:brief",
+    3,
+    "clause",
+  );
+  const contents = buildOverviewHullContents(
+    [...nodes, source],
+    [session, modelSession],
+    hierarchy,
+  );
+  const syson = contents.get(groupId("system-model", "syson"))!;
+  const brief = contents.get(groupId("requirements", "brief"))!;
+  const root = syson.rows[0]!;
+  const group = brief.rows.find((row) => row.kind === "navigation")!;
+  const clause = brief.rows.find((row) => row.kind === "source")!;
+  assertEquals(overviewHullRowActions(root), [{
+    kind: "open-session",
+    sessionId: "model-app",
+    nodeKey: "artifact:architecture-current",
+  }]);
+  assertEquals(overviewHullRowActions(group), []);
+  assertEquals(overviewHullRowActions(clause), [{
+    kind: "select-node",
+    nodeKey: source.key,
+  }]);
+  assertEquals(
+    overviewHullRowPresentation(group).caption.includes("Navigation"),
+    true,
+  );
+  assertEquals(root.kind === "record", false);
+  const selected: string[] = [];
+  const opened: string[] = [];
+  activateOverviewHullRow(clause, {
+    selectNode: (key) => selected.push(key),
+    openSession: (sessionId, nodeKey) => opened.push(`${sessionId}:${nodeKey}`),
+  });
+  activateOverviewHullRow(root, {
+    selectNode: (key) => selected.push(key),
+    openSession: (sessionId, nodeKey) => opened.push(`${sessionId}:${nodeKey}`),
+  });
+  activateOverviewHullRow(group, {
+    selectNode: (key) => selected.push(key),
+    openSession: (sessionId, nodeKey) => opened.push(`${sessionId}:${nodeKey}`),
+  });
+  assertEquals(selected, [source.key]);
+  assertEquals(opened, ["model-app:artifact:architecture-current"]);
+});
+
+Deno.test("brief tree overlay keeps exact source endpoints and does not fabricate graph nodes", () => {
+  const baseline = record(
+    "approved-brief-document-r1",
+    "requirements",
+    "brief",
+  );
+  const source = briefSource(
+    "fixture:brief:r3:exact",
+    "fixture:brief",
+    3,
+    "clause",
+  );
+  const requirement = record("REQ-MECH-014", "requirements", "requirements");
+  const graphNodes = [baseline, source, requirement].map((node) => ({
+    key: node.key,
+    label: node.label,
+    lane: node.lane,
+    groupKey: node.groupKey,
+  }));
+  const contents = buildOverviewHullContents(
+    [baseline, source, requirement],
+    [],
+  );
+  const briefKey = groupId("requirements", "brief");
+  const brief = contents.get(briefKey)!;
+  const edges = [{
+    key: "brief-correspondence",
+    fromKey: source.key,
+    toKey: requirement.key,
+    pathCount: 1,
+    pathKeys: ["brief-correspondence"],
+    emphasis: false,
+  }];
+  const tree = buildOverviewThreadD3FlowLayout(graphNodes, edges, {
+    avoidGroupOverlap: true,
+    groupStructureRowCounts: { [briefKey]: brief.rows.length },
+    groupPlacements: { [briefKey]: { view: "tree" } },
+  });
+  const hull = tree.groups.find((group) => group.key === briefKey)!;
+  assertEquals(hull.rowCount, brief.rows.length);
+  assertEquals(
+    tree.nodes.map((node) => node.key).sort(),
+    graphNodes.map((node) => node.key).sort(),
+  );
+  assertEquals(
+    tree.nodes.some((node) => node.key === overviewBriefSnapshotGroupKey(source.brief)),
+    false,
+  );
+  assertEquals(tree.unroutedEdgeKeys, []);
+  assertEquals(tree.routes.map((route) => [route.fromKey, route.toKey]), [[
+    source.key,
+    requirement.key,
+  ]]);
+  const listed = buildOverviewThreadD3FlowLayout(graphNodes, edges, {
+    groupPlacements: { [briefKey]: { view: "list" } },
+  });
+  assertEquals(
+    listed.groups.find((group) => group.key === briefKey)!.rowCount,
+    2,
+  );
+  const points = buildOverviewThreadD3FlowLayout(graphNodes, edges, {
+    groupPlacements: { [briefKey]: { view: "matrix" } },
+  });
+  assertEquals(
+    points.groups.find((group) => group.key === briefKey)!.view,
+    "matrix",
+  );
+});
+
 Deno.test("navigation tree capacity never manufactures graph nodes or sends provenance cables to occurrences", () => {
   const groupKey = groupId("system-model", "syson");
   const graphNodes = nodes.map((node) => ({
@@ -252,5 +677,543 @@ Deno.test("navigation tree capacity never manufactures graph nodes or sends prov
     groupStructureRowCounts: { [groupKey]: 29 },
     groupPlacements: { [groupKey]: { view: "list" } },
   });
-  assertEquals(listed.groups.find((g) => g.key === groupKey)!.rowCount, 2);
+  assertEquals(listed.groups.find((g) => g.key === groupKey)!.rowCount, 29);
+  assertEquals(listed.nodes.length, graphNodes.length);
+});
+
+Deno.test("brief tree retains recorded analysis, baseline, and exact r3 sources together", () => {
+  const baseline = record(
+    "approved-brief-document-e098fa2f286b770b02292d7f46752a3eecae363f03d10cab3e7c8f1267804bb1",
+    "requirements",
+    "brief",
+  );
+  const camera = analysisRecord("subsystem-camera", {
+    domain: "brief",
+    kind: "brief-item",
+    id: "subsystem-camera",
+    basisFingerprint: BRIEF_ANALYSIS_BASIS,
+  });
+  const airframe = analysisRecord("subsystem-airframe", {
+    domain: "brief",
+    kind: "brief-item",
+    id: "subsystem-airframe",
+    basisFingerprint: BRIEF_ANALYSIS_BASIS,
+  });
+  const cameraSource = briefSource(
+    "inspection-drone-id01:brief:r3:bca2a461299be869",
+    "inspection-drone-id01:brief",
+    3,
+    "camera-bracket-bench-stress",
+  );
+  const enduranceSource = briefSource(
+    "inspection-drone-id01:brief:r3:bca2a461299be869",
+    "inspection-drone-id01:brief",
+    3,
+    "endurance-hover-minutes",
+  );
+  const members = [
+    baseline,
+    camera,
+    airframe,
+    cameraSource,
+    enduranceSource,
+  ];
+  const contents = buildOverviewHullContents(members, []);
+  const brief = contents.get(groupId("requirements", "brief"))!;
+  const analysisGroup = overviewAnalysisBasisGroupKey({
+    domain: "brief",
+    kind: "brief-item",
+    basisFingerprint: BRIEF_ANALYSIS_BASIS,
+  });
+  const snapshotGroup = overviewBriefSnapshotGroupKey(cameraSource.brief);
+  const memberKeys = members.map((member) => member.key);
+  assertEquals(brief.mode, "tree");
+  assertEquals(
+    brief.rows.map((row) => [
+      row.key,
+      row.kind,
+      row.depth,
+      row.parentKey,
+      row.nodeKey,
+      row.endpoint,
+      row.label,
+      row.detail,
+    ]),
+    [
+      [
+        baseline.key,
+        "record",
+        0,
+        undefined,
+        baseline.key,
+        true,
+        baseline.label,
+        baseline.node.recordedAt,
+      ],
+      [
+        analysisGroup,
+        "navigation",
+        0,
+        undefined,
+        undefined,
+        false,
+        "Brief analysis",
+        BRIEF_ANALYSIS_BASIS,
+      ],
+      [
+        airframe.key,
+        "record",
+        1,
+        analysisGroup,
+        airframe.key,
+        true,
+        airframe.label,
+        undefined,
+      ],
+      [
+        camera.key,
+        "record",
+        1,
+        analysisGroup,
+        camera.key,
+        true,
+        camera.label,
+        undefined,
+      ],
+      [
+        snapshotGroup,
+        "navigation",
+        0,
+        undefined,
+        undefined,
+        false,
+        "Clauses sources · brief r3",
+        cameraSource.brief.snapshotId,
+      ],
+      [
+        cameraSource.key,
+        "source",
+        1,
+        snapshotGroup,
+        cameraSource.key,
+        true,
+        cameraSource.sourceItem.id,
+        cameraSource.sourceItem.kind,
+      ],
+      [
+        enduranceSource.key,
+        "source",
+        1,
+        snapshotGroup,
+        enduranceSource.key,
+        true,
+        enduranceSource.sourceItem.id,
+        enduranceSource.sourceItem.kind,
+      ],
+    ],
+  );
+  assertEquals(
+    brief.rows.flatMap((row) => row.nodeKey ? [row.nodeKey] : []).sort(),
+    [...memberKeys].sort(),
+  );
+  assertEquals(
+    brief.rows.some((row) =>
+      row.nodeKey !== undefined && !memberKeys.includes(row.nodeKey)
+    ),
+    false,
+  );
+  assertEquals(
+    brief.rows.filter((row) => row.kind === "navigation").every((row) =>
+      !memberKeys.includes(row.key) && row.endpoint === false
+    ),
+    true,
+  );
+  assertEquals(
+    brief.rows.some((row) =>
+      row.parentKey === baseline.key ||
+      row.key === baseline.key && row.parentKey === snapshotGroup
+    ),
+    false,
+  );
+  assertEquals(
+    brief.records.map((row) => row.nodeKey).sort(),
+    [airframe.key, baseline.key, camera.key].sort(),
+  );
+});
+
+Deno.test("distinct analysis bases stay separate and never invent an r1/r3 join", () => {
+  const baseline = record(
+    "approved-brief-document-r1",
+    "requirements",
+    "brief",
+  );
+  const otherBasis = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const camera = analysisRecord("subsystem-camera", {
+    domain: "brief",
+    kind: "brief-item",
+    id: "subsystem-camera",
+    basisFingerprint: BRIEF_ANALYSIS_BASIS,
+  });
+  const later = analysisRecord("subsystem-camera-r3", {
+    domain: "brief",
+    kind: "brief-item",
+    id: "subsystem-camera",
+    basisFingerprint: otherBasis,
+  });
+  const source = briefSource(
+    "inspection-drone-id01:brief:r3:bca2a461299be869",
+    "inspection-drone-id01:brief",
+    3,
+    "camera-bracket-bench-stress",
+  );
+  const brief = buildOverviewHullContents(
+    [baseline, camera, later, source],
+    [],
+  ).get(groupId("requirements", "brief"))!;
+  const first = overviewAnalysisBasisGroupKey({
+    domain: "brief",
+    kind: "brief-item",
+    basisFingerprint: BRIEF_ANALYSIS_BASIS,
+  });
+  const second = overviewAnalysisBasisGroupKey({
+    domain: "brief",
+    kind: "brief-item",
+    basisFingerprint: otherBasis,
+  });
+  const snapshot = overviewBriefSnapshotGroupKey(source.brief);
+  assertEquals(first === second, false);
+  assertEquals(
+    brief.rows.filter((row) => row.kind === "navigation").map((row) => [
+      row.key,
+      row.detail,
+    ]),
+    [
+      [first, BRIEF_ANALYSIS_BASIS],
+      [second, otherBasis],
+      [snapshot, source.brief.snapshotId],
+    ],
+  );
+  assertEquals(
+    brief.rows.find((row) => row.nodeKey === camera.key)?.parentKey,
+    first,
+  );
+  assertEquals(
+    brief.rows.find((row) => row.nodeKey === later.key)?.parentKey,
+    second,
+  );
+  assertEquals(
+    brief.rows.find((row) => row.nodeKey === source.key)?.parentKey,
+    snapshot,
+  );
+  assertEquals(
+    brief.rows.some((row) =>
+      row.parentKey === baseline.key ||
+      (row.nodeKey === source.key && row.parentKey === first) ||
+      (row.nodeKey === camera.key && row.parentKey === snapshot)
+    ),
+    false,
+  );
+});
+
+Deno.test("exact App action on the brief baseline stays only on that baseline row", () => {
+  const baseline = record(
+    "approved-brief-document-r1",
+    "requirements",
+    "brief",
+  );
+  const camera = analysisRecord("subsystem-camera", {
+    domain: "brief",
+    kind: "brief-item",
+    id: "subsystem-camera",
+    basisFingerprint: BRIEF_ANALYSIS_BASIS,
+  });
+  const source = briefSource(
+    "inspection-drone-id01:brief:r3:bca2a461299be869",
+    "inspection-drone-id01:brief",
+    3,
+    "camera-bracket-bench-stress",
+  );
+  const briefSession: ThreadViewerSession = {
+    ...session,
+    id: "brief-app",
+    anchor: { kind: "artifact", id: "approved-brief-document-r1" },
+  };
+  const brief = buildOverviewHullContents(
+    [baseline, camera, source],
+    [briefSession],
+  ).get(groupId("requirements", "brief"))!;
+  const baselineRow = brief.rows.find((row) => row.key === baseline.key)!;
+  const analysisRow = brief.rows.find((row) => row.nodeKey === camera.key)!;
+  const analysisGroup = brief.rows.find((row) =>
+    row.kind === "navigation" && row.label === "Brief analysis"
+  )!;
+  const sourceRow = brief.rows.find((row) => row.nodeKey === source.key)!;
+  assertEquals(baselineRow.sessionIds, ["brief-app"]);
+  assertEquals(baselineRow.viewerNodeKey, baseline.key);
+  assertEquals(overviewHullRowActions(baselineRow), [{
+    kind: "open-session",
+    sessionId: "brief-app",
+    nodeKey: baseline.key,
+  }]);
+  assertEquals(analysisRow.sessionIds, []);
+  assertEquals(sourceRow.sessionIds, []);
+  assertEquals(analysisGroup.sessionIds, []);
+  assertEquals(overviewHullRowActions(analysisRow), [{
+    kind: "select-node",
+    nodeKey: camera.key,
+  }]);
+  assertEquals(overviewHullRowActions(analysisGroup), []);
+});
+
+Deno.test("declared-dependency parentKey is not analysis containment and unknown identity stays visible", () => {
+  const baseline = record(
+    "approved-brief-document-r1",
+    "requirements",
+    "brief",
+  );
+  const camera = analysisRecord("subsystem-camera", {
+    domain: "brief",
+    kind: "brief-item",
+    id: "subsystem-camera",
+    basisFingerprint: BRIEF_ANALYSIS_BASIS,
+  }, { parentKey: baseline.key });
+  const dependent = analysisRecord("payload-camera", {
+    domain: "brief",
+    kind: "brief-item",
+    id: "payload-camera",
+    basisFingerprint: BRIEF_ANALYSIS_BASIS,
+  }, { parentKey: camera.key });
+  const unknown = analysisRecord("unresolved-item", {
+    domain: "brief",
+    kind: "brief-item",
+    id: "unresolved-item",
+  }, { parentKey: baseline.key });
+  const source = briefSource(
+    "inspection-drone-id01:brief:r3:bca2a461299be869",
+    "inspection-drone-id01:brief",
+    3,
+    "camera-bracket-bench-stress",
+  );
+  const brief = buildOverviewHullContents(
+    [baseline, camera, dependent, unknown, source],
+    [],
+  ).get(groupId("requirements", "brief"))!;
+  const analysisGroup = overviewAnalysisBasisGroupKey({
+    domain: "brief",
+    kind: "brief-item",
+    basisFingerprint: BRIEF_ANALYSIS_BASIS,
+  });
+  assertEquals(
+    brief.rows.find((row) => row.nodeKey === camera.key)?.parentKey,
+    analysisGroup,
+  );
+  assertEquals(
+    brief.rows.find((row) => row.nodeKey === dependent.key)?.parentKey,
+    analysisGroup,
+  );
+  const unknownRow = brief.rows.find((row) => row.nodeKey === unknown.key)!;
+  assertEquals(unknownRow.kind, "record");
+  assertEquals(unknownRow.depth, 0);
+  assertEquals(unknownRow.parentKey, undefined);
+  assertEquals(unknownRow.endpoint, true);
+  assertEquals(
+    brief.rows.some((row) =>
+      row.parentKey === camera.key || row.parentKey === baseline.key
+    ),
+    false,
+  );
+  assertEquals(
+    brief.rows.flatMap((row) => row.nodeKey ? [row.nodeKey] : []).sort(),
+    [baseline.key, camera.key, dependent.key, source.key, unknown.key].sort(),
+  );
+});
+
+function sysmlRecord(
+  kind: OverviewRecordedHeroNode["node"]["entityKind"],
+  id: string,
+  extras: {
+    readonly label?: string;
+    readonly isRequirementsCapture?: boolean;
+  } = {},
+): OverviewRecordedHeroNode {
+  const key = `${kind}:${id}`;
+  return {
+    key,
+    lane: "system-model",
+    groupKey: OVERVIEW_DOMAIN_GROUP_KEYS.sysmlModel,
+    label: extras.label ?? id,
+    kind: "recorded",
+    color: "#2563eb",
+    emphasis: false,
+    ...(extras.isRequirementsCapture === true ? { isRequirementsCapture: true } : {}),
+    node: {
+      id: key,
+      ref: { kind, id },
+      entityKind: kind,
+      label: extras.label ?? id,
+      freshness: "fresh",
+      system: "syson",
+      summary: extras.label ?? id,
+      recordedAt: "2026-09-07T00:00:00Z",
+    },
+  };
+}
+
+const SYSML_HULL = groupId(
+  "system-model",
+  OVERVIEW_DOMAIN_GROUP_KEYS.sysmlModel,
+);
+
+function occurrenceHierarchy(
+  architectureId: string,
+): ThreadViewerHierarchyProjection {
+  const nodes = Array.from({ length: 29 }, (_, index) => ({
+    id: index === 0 ? "root" : `occ-${index}`,
+    ...(index === 0 ? {} : { parentId: "root" }),
+    label: index === 4
+      ? "CameraMountBracket"
+      : index === 0
+      ? "Assembly"
+      : `Part ${index}`,
+    partDefinitionElementId: `def-${index}`,
+    sessionIds: [] as string[],
+  }));
+  return {
+    schemaVersion: "thread-viewer-hierarchy/1.0",
+    status: "available",
+    architectureArtifactId: architectureId,
+    rootIds: ["root"],
+    nodes,
+  };
+}
+
+Deno.test("architecture tree keeps 29 occurrences and appends one root Requirements section", () => {
+  const architecture = sysmlRecord("artifact", "architecture-current");
+  const unknown = sysmlRecord("part-definition", "housing-def");
+  const requirement = sysmlRecord("requirement", "REQ-MASS", {
+    label: "CameraMountBracket must remain rigid",
+  });
+  const capture = sysmlRecord("artifact", "requirements-current", {
+    label: "Requirements capture",
+    isRequirementsCapture: true,
+  });
+  const members = [architecture, unknown, requirement, capture];
+  const hierarchy = occurrenceHierarchy("architecture-current");
+  const before = JSON.stringify({ members, hierarchy });
+  const captureSession: ThreadViewerSession = {
+    ...modelSession,
+    id: "requirements-app",
+    anchor: { kind: "artifact", id: "requirements-current" },
+  };
+  const aliases = overviewRequirementSourceViewerAliases(
+    members.map((node) => ({
+      key: node.key,
+      groupKey: node.groupKey,
+      ref: node.node.ref,
+      ...(node.isRequirementsCapture === true ? { isRequirementsCapture: true } : {}),
+    })),
+    [{
+      from: { kind: "artifact", id: "requirements-current" },
+      to: { kind: "requirement", id: "REQ-MASS" },
+      relation: "traces_to",
+    }],
+    [modelSession, captureSession],
+  );
+  const contents = buildOverviewHullContents(
+    members,
+    [modelSession, captureSession, session],
+    hierarchy,
+    {},
+    aliases,
+  );
+  const hull = contents.get(SYSML_HULL)!;
+  const geometry = contents.get(groupId("geometry", "domain:geometry"));
+  const section = hull.rows.find((row) =>
+    row.kind === "navigation" && row.label === "Requirements"
+  )!;
+  const requirementRows = hull.rows.filter((row) => row.nodeKey === requirement.key);
+  const occurrenceRows = hull.rows.filter((row) => row.kind === "navigation");
+  assertEquals(hull.mode, "tree");
+  assertEquals(
+    hull.rows.filter((row) => row.kind === "navigation" && row.label !== "Requirements")
+      .length,
+    29,
+  );
+  assertEquals(occurrenceRows.length, 30);
+  assertEquals(section.depth, 0);
+  assertEquals(section.parentKey, undefined);
+  assertEquals(section.nodeKey, undefined);
+  assertEquals(section.endpoint, false);
+  assertEquals(section.sessionIds, []);
+  assertEquals(requirementRows, [{
+    key: requirement.key,
+    kind: "record",
+    label: requirement.label,
+    detail: requirement.node.recordedAt,
+    depth: 1,
+    parentKey: section.key,
+    nodeKey: requirement.key,
+    viewerNodeKey: capture.key,
+    sessionIds: ["requirements-app"],
+    endpoint: true,
+  }]);
+  assertEquals(requirementRows[0]!.parentKey === "occ-4", false);
+  assertEquals(requirementRows[0]!.parentKey === "root", false);
+  assertEquals(
+    hull.rows.some((row) => row.nodeKey === capture.key),
+    false,
+  );
+  assertEquals(
+    hull.records.map((row) => row.nodeKey).sort(),
+    members.map((member) => member.key).sort(),
+  );
+  assertEquals(hull.rows[0]!.sessionIds, ["model-app"]);
+  assertEquals(
+    hull.rows.slice(1, 29).every((row) => row.sessionIds.length === 0),
+    true,
+  );
+  assertEquals(
+    hull.rows.some((row) => row.sessionIds.includes("app")),
+    false,
+  );
+  assertEquals(geometry, undefined);
+  assertEquals(JSON.stringify({ members, hierarchy }), before);
+});
+
+Deno.test("a SYSML hull without hierarchy still shows the requirement and keeps captures in records", () => {
+  const architecture = sysmlRecord("artifact", "architecture-current");
+  const unknown = sysmlRecord("attribute-usage", "wall-attr");
+  const requirement = sysmlRecord("requirement", "REQ-MASS");
+  const capture = sysmlRecord("artifact", "requirements-current", {
+    isRequirementsCapture: true,
+  });
+  const contents = buildOverviewHullContents(
+    [architecture, unknown, requirement, capture],
+    [],
+  );
+  const hull = contents.get(SYSML_HULL)!;
+  const section = hull.rows.find((row) =>
+    row.kind === "navigation" && row.label === "Requirements"
+  )!;
+  assertEquals(hull.mode, "tree");
+  assertEquals(
+    hull.rows.filter((row) => row.nodeKey === requirement.key).map((row) => [
+      row.parentKey,
+      row.depth,
+      row.endpoint,
+    ]),
+    [[section.key, 1, true]],
+  );
+  assertEquals(
+    hull.rows.map((row) => row.nodeKey).filter(Boolean).sort(),
+    [architecture.key, unknown.key, requirement.key].sort(),
+  );
+  assertEquals(
+    hull.rows.some((row) => row.nodeKey === capture.key),
+    false,
+  );
+  assertEquals(
+    hull.records.map((row) => row.nodeKey).sort(),
+    [architecture.key, capture.key, requirement.key, unknown.key].sort(),
+  );
 });

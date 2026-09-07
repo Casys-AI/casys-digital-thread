@@ -345,7 +345,8 @@
   fill: color-mix(in srgb, var(--ui-lane-req) 4%, #fff);
 }
 
-.overview-thread-flow-groups rect[data-lane="system-model"] {
+.overview-thread-flow-groups rect[data-lane="system-model"],
+.overview-thread-flow-groups rect[data-group-key="domain:requirements"] {
   fill: color-mix(in srgb, var(--ui-lane-model) 4%, #fff);
 }
 
@@ -592,7 +593,8 @@
   overflow: hidden;
   cursor: context-menu;
 }
-.overview-thread-flow-structure-row[data-has-viewer="true"] {
+.overview-thread-flow-structure-row[data-has-viewer="true"],
+.overview-thread-flow-structure-row[data-hull-row-kind="source"] {
   cursor: pointer;
 }
 .overview-thread-flow-structure-row:hover,
@@ -615,6 +617,40 @@
   white-space: nowrap;
   font-size: 0.5625rem;
   margin-left: auto;
+}
+
+.overview-thread-flow-structure-row[data-hull-row-view="matrix"] {
+  justify-content: center;
+  padding: 0;
+}
+.overview-thread-flow-structure-row[data-hull-row-view="list"] {
+  border-bottom: 1px solid rgb(39 54 61 / 6%);
+}
+.overview-thread-flow-structure-row[data-hull-row-view="matrix"]::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border: 1px solid var(--flow-color);
+  border-radius: 50%;
+  background: var(--flow-color);
+}
+.overview-thread-flow-structure-row[data-hull-row-view="matrix"] > * {
+  display: none;
+}
+.overview-thread-flow-hierarchy-links path {
+  fill: none;
+  stroke: var(--flow-color);
+  stroke-width: 1;
+  opacity: 0.4;
+  pointer-events: none;
+}
+.overview-thread-flow-hierarchy-links path[data-state="incoming"],
+.overview-thread-flow-hierarchy-links path[data-state="outgoing"] {
+  opacity: 1;
+  stroke-width: 1.8;
+}
+.overview-thread-flow-hierarchy-links path[data-state="muted"] {
+  opacity: 0.08;
 }
 
 .overview-thread-hero .overview-thread-flow-node {

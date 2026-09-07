@@ -15,7 +15,7 @@ import {
   type OverviewThreadD3CableBox,
   overviewThreadD3CableDepartureTangent,
   type OverviewThreadD3CableSide,
-  overviewThreadD3CableSidesForBoxes,
+  type OverviewThreadD3CableSidePair,
   type OverviewThreadD3CableVector,
 } from "./overview-thread-d3-cable-anchorage.ts";
 import {
@@ -26,6 +26,9 @@ import {
 import type { OverviewThreadD3CableObstacle } from "./overview-thread-d3-cable-field.ts";
 
 export type OverviewThreadD3CableRole = "source" | "target";
+
+/** Shared stand-off for recorded cables and navigation fans on a hull. */
+export const OVERVIEW_THREAD_D3_HULL_HUB_MARGIN = 20;
 
 /** A hull a cable can leave or enter: one group's immutable rectangle. */
 export interface OverviewThreadD3CableHull extends OverviewThreadD3CableBox {
@@ -119,16 +122,79 @@ function nonNegative(value: number | undefined): number {
   return Number.isFinite(value) && value! > 0 ? value! : 0;
 }
 
-/** Sides two hulls exchange over, from where they actually sit on the board. */
+/**
+ * Sides two hulls exchange over. Hull cables stay on left/right for every
+ * placement — stacked, overlapped, close, or dragged. Facing flanks are used
+ * only when both hubs fit in the horizontal gap; otherwise both ends share
+ * one external lateral face so the hubs cannot coincide. When that face
+ * would plant a hub inside the neighbour, the cable returns on the outer
+ * lateral faces. Never top/bottom.
+ */
 export function overviewThreadD3CableHullSides(
   source: OverviewThreadD3CableHull,
   target: OverviewThreadD3CableHull,
   preferred: "left-to-right" | "right-to-left" = "left-to-right",
-): {
-  readonly source: OverviewThreadD3CableSide;
-  readonly target: OverviewThreadD3CableSide;
-} {
-  return overviewThreadD3CableSidesForBoxes(source, target, preferred);
+): OverviewThreadD3CableSidePair {
+  const rightGap = target.x - (source.x + source.width);
+  const leftGap = source.x - (target.x + target.width);
+  const facingRoom = source.hubMargin + target.hubMargin + HUB_SEPARATION;
+  if (rightGap > facingRoom) {
+    return { source: "right", target: "left" };
+  }
+  if (leftGap > facingRoom) {
+    return { source: "left", target: "right" };
+  }
+
+  const centerDelta = (target.x + target.width / 2) -
+    (source.x + source.width / 2);
+  const preferredSame: OverviewThreadD3CableSide = centerDelta > 0
+    ? "left"
+    : centerDelta < 0
+    ? "right"
+    : preferred === "left-to-right"
+    ? "right"
+    : "left";
+  const otherSame: OverviewThreadD3CableSide = preferredSame === "right"
+    ? "left"
+    : "right";
+  for (const side of [preferredSame, otherSame]) {
+    if (lateralSameSideViable(source, target, side)) {
+      return { source: side, target: side };
+    }
+  }
+
+  if (centerDelta > 0) return { source: "left", target: "right" };
+  if (centerDelta < 0) return { source: "right", target: "left" };
+  return preferred === "left-to-right"
+    ? { source: "right", target: "left" }
+    : { source: "left", target: "right" };
+}
+
+const HUB_SEPARATION = 1;
+
+function lateralSameSideViable(
+  source: OverviewThreadD3CableHull,
+  target: OverviewThreadD3CableHull,
+  side: "left" | "right",
+): boolean {
+  const sourceHub = overviewThreadD3CableHub(source, side);
+  const targetHub = overviewThreadD3CableHub(target, side);
+  if (
+    Math.hypot(sourceHub.x - targetHub.x, sourceHub.y - targetHub.y) <=
+      HUB_SEPARATION
+  ) {
+    return false;
+  }
+  return !pointInsideBox(sourceHub, target) &&
+    !pointInsideBox(targetHub, source);
+}
+
+function pointInsideBox(
+  point: OverviewThreadD3CableVector,
+  box: OverviewThreadD3CableBox,
+): boolean {
+  return point.x > box.x && point.x < box.x + box.width &&
+    point.y > box.y && point.y < box.y + box.height;
 }
 
 interface FanInFieldDemand {

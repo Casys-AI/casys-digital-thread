@@ -285,6 +285,7 @@ export function ProjectOverview({
           <OverviewThreadHero
             thread={thread}
             projectId={project.project.id}
+            currentBrief={project.framing?.currentBrief}
             viewerSessions={viewerSessions}
             viewerSessionsReady={viewerSessionsReady}
             requirementsBriefTraces={requirementsBriefTraces}

@@ -41,7 +41,8 @@ Deno.test("compact hulls reserve a readable header above every node", () => {
       assertEquals(
         group.inHub.y,
         group.y + group.headerHeight +
-          Math.max(0, group.height - group.headerHeight - group.footerHeight) / 2,
+          Math.max(0, group.height - group.headerHeight - group.footerHeight) /
+            2,
       );
       for (const node of layout.nodes) {
         assert(node.y >= group.y + group.headerHeight);
@@ -665,38 +666,118 @@ Deno.test(
     }
     assertEquals(moved, movedReversed);
 
-    const movedRoutePoints = collectRoutePoints(moved, "trace:same-lane");
-    const movedSource = moved.nodes.find((node) => node.key === "cad:source");
-    const movedTarget = moved.nodes.find((node) => node.key === "cad:target");
-    assert(movedSource);
-    assert(movedTarget);
-    assertSamePoint(
-      movedRoutePoints[0]!,
-      movedSource.topPort,
-      "A source moved below its target must leave through its top port",
+    const movedSides = assertLateralRoutePorts(moved, "trace:same-lane");
+    assertEquals(
+      movedSides.source,
+      movedSides.target,
+      "Stacked same-lane hulls must share one external lateral face",
     );
-    assertSamePoint(
-      movedRoutePoints.at(-1)!,
-      movedTarget.bottomPort,
-      "The upper target must receive the cable through its bottom port",
-    );
-    const baselineSource = baseline.nodes.find((node) => node.key === "cad:source");
-    const baselineTarget = baseline.nodes.find((node) => node.key === "cad:target");
-    assert(baselineSource);
-    assert(baselineTarget);
-    const baselineRoutePoints = collectRoutePoints(baseline, "trace:same-lane");
-    assertSamePoint(
-      baselineRoutePoints[0]!,
-      baselineSource.bottomPort,
-      "baseline source",
-    );
-    assertSamePoint(
-      baselineRoutePoints.at(-1)!,
-      baselineTarget.topPort,
-      "baseline target",
+    const baselineSides = assertLateralRoutePorts(baseline, "trace:same-lane");
+    assertEquals(
+      baselineSides.source,
+      baselineSides.target,
+      "Unmoved stacked same-lane hulls must also share one lateral face",
     );
     assertRouteJoinsC1(baseline, "trace:same-lane", 0.97);
     assertRouteJoinsC1(moved, "trace:same-lane", 0.97);
+  },
+);
+
+Deno.test(
+  "D3 hull cables stay lateral for stacked, overlapped, close, and dragged hulls",
+  () => {
+    const nodes: readonly OverviewThreadD3FlowNodeInput[] = [
+      {
+        key: "cad:source",
+        lane: "geometry",
+        groupKey: "assembly:a",
+        label: "Source assembly",
+      },
+      {
+        key: "cad:target",
+        lane: "geometry",
+        groupKey: "assembly:b",
+        label: "Target assembly",
+      },
+    ];
+    const edges: readonly OverviewThreadD3FlowEdgeInput[] = [{
+      key: "trace:same-lane",
+      fromKey: "cad:source",
+      toKey: "cad:target",
+      pathCount: 1,
+      pathKeys: ["trace:same-lane"],
+      emphasis: false,
+    }];
+    const sourceId = overviewThreadD3FlowGroupIdentity(
+      "geometry",
+      "assembly:a",
+    );
+    const targetId = overviewThreadD3FlowGroupIdentity(
+      "geometry",
+      "assembly:b",
+    );
+    const nodesBefore = JSON.stringify(nodes);
+    const edgesBefore = JSON.stringify(edges);
+    const placements = [
+      {},
+      { [sourceId]: { y: 320 } },
+      { [sourceId]: { x: 400, y: 120 }, [targetId]: { x: 400, y: 280 } },
+      { [sourceId]: { x: 390, y: 110 }, [targetId]: { x: 410, y: 130 } },
+      { [sourceId]: { x: 200, y: 80 }, [targetId]: { x: 210, y: 90 } },
+      { [sourceId]: { x: 240, y: 100 }, [targetId]: { x: 248, y: 108 } },
+    ];
+
+    for (const [index, groupPlacements] of placements.entries()) {
+      const layout = buildOverviewThreadD3FlowLayout(nodes, edges, {
+        groupPlacements,
+      });
+      const reversed = buildOverviewThreadD3FlowLayout(
+        nodes.toReversed(),
+        edges.toReversed(),
+        { groupPlacements },
+      );
+      assertEquals(
+        layout,
+        reversed,
+        `placement ${index} must be identity-stable`,
+      );
+      assertEquals(
+        layout.unroutedEdgeKeys,
+        [],
+        `placement ${index} must keep a continuous route`,
+      );
+      assertEquals(layout.routes.length, 1);
+      assertEquals(layout.routes[0]!.fromKey, "cad:source");
+      assertEquals(layout.routes[0]!.toKey, "cad:target");
+      assertEquals(layout.nodes.map((node) => node.key).toSorted(), [
+        "cad:source",
+        "cad:target",
+      ]);
+      const sides = assertLateralRoutePorts(layout, "trace:same-lane");
+      const sourceGroup = layout.groups.find((group) => group.key === sourceId);
+      const targetGroup = layout.groups.find((group) => group.key === targetId);
+      assert(sourceGroup);
+      assert(targetGroup);
+      const sourceHub = sides.source === "right"
+        ? sourceGroup.outHub
+        : sourceGroup.inHub;
+      const targetHub = sides.target === "right"
+        ? targetGroup.outHub
+        : targetGroup.inHub;
+      assert(
+        Math.hypot(
+          sourceHub.x - targetHub.x,
+          sourceHub.y - targetHub.y,
+        ) > EPSILON,
+        `placement ${index} hubs must not coincide`,
+      );
+      assertRouteJoinsC1(layout, "trace:same-lane", 0.97);
+      const trunk = layout.segments.find((segment) => segment.kind === "bundle-trunk");
+      assert(trunk);
+      assert(trunk.d.includes("C") && !/[LQAS]/.test(trunk.d));
+    }
+    assertEquals(JSON.stringify(nodes), nodesBefore);
+    assertEquals(JSON.stringify(edges), edgesBefore);
   },
 );
 
@@ -992,21 +1073,20 @@ Deno.test(
         ),
         ["node-branch", "bundle-trunk", "node-branch"],
       );
-      const sourceNode = layout.nodes.find((node) => node.key === "req:movable");
-      const targetNode = layout.nodes.find((node) => node.key === "cad:fixed");
-      assert(sourceNode);
-      assert(targetNode);
-      const routePoints = assertConnectedRoute(layout, route.edgeKey);
-      assertSamePoint(
-        routePoints[0]!,
-        sourceNode.topPort,
-        `delta ${delta} source`,
-      );
-      assertSamePoint(
-        routePoints.at(-1)!,
-        targetNode.topPort,
-        `delta ${delta} target`,
-      );
+      const sides = assertLateralRoutePorts(layout, route.edgeKey);
+      if (delta === 36) {
+        assertEquals(
+          { source: sides.source, target: sides.target },
+          { source: "left", target: "right" },
+          "A too-tight facing gap must return on the outer lateral faces",
+        );
+      } else {
+        assertEquals(
+          sides.source,
+          sides.target,
+          `delta ${delta} must share one external lateral face`,
+        );
+      }
       assertRouteJoinsC1(layout, route.edgeKey, 0.97);
       assertEquals(
         layout,
@@ -1504,6 +1584,161 @@ Deno.test(
 );
 
 Deno.test(
+  "D3 pair trunk stays outside both owner bodies on the live Geometry→FEA list placement",
+  () => {
+    const sourceNode: OverviewThreadD3FlowNodeInput = {
+      key: "artifact:cad-glb",
+      lane: "geometry",
+      groupKey: "domain:geometry",
+      label: "CAD GLB asset",
+    };
+    const targetNode: OverviewThreadD3FlowNodeInput = {
+      key: "observation:calculix",
+      lane: "physics",
+      groupKey: "domain:fea",
+      label: "Isolated CalculiX result",
+    };
+    const edge: OverviewThreadD3FlowEdgeInput = {
+      key: "trace:cad>fea",
+      fromKey: sourceNode.key,
+      toKey: targetNode.key,
+      pathCount: 1,
+      pathKeys: ["trace:cad>fea"],
+      emphasis: false,
+    };
+    const sourceId = overviewThreadD3FlowGroupIdentity(
+      "geometry",
+      "domain:geometry",
+    );
+    const targetId = overviewThreadD3FlowGroupIdentity("physics", "domain:fea");
+    const listBox = {
+      width: 190,
+      height: 105,
+      view: "list" as const,
+    };
+    const nodesBefore = JSON.stringify([sourceNode, targetNode]);
+    const edgesBefore = JSON.stringify([edge]);
+
+    const assertOwnerClearTrunk = (
+      layout: ReturnType<typeof buildOverviewThreadD3FlowLayout>,
+      groupPlacements: Record<string, {
+        readonly x: number;
+        readonly y: number;
+        readonly width: number;
+        readonly height: number;
+        readonly view: "list";
+      }>,
+      label: string,
+    ) => {
+      assertEquals(layout.unroutedEdgeKeys, [], `${label} must keep the route`);
+      assertEquals(layout.routes.length, 1);
+      assertEquals(layout.routes[0]!.fromKey, sourceNode.key);
+      assertEquals(layout.routes[0]!.toKey, targetNode.key);
+      assertEquals(layout.routes[0]!.pathCount, 1);
+      const sourceGroup = layout.groups.find((group) => group.key === sourceId);
+      const targetGroup = layout.groups.find((group) => group.key === targetId);
+      assert(sourceGroup, `${label} source hull`);
+      assert(targetGroup, `${label} target hull`);
+      const trunk = layout.segments.find((segment) => segment.kind === "bundle-trunk");
+      assert(trunk, `${label} trunk`);
+      assert(trunk.d.includes("C") && !/[LQAS]/.test(trunk.d));
+      const owners = [sourceGroup, targetGroup].map((group) => ({
+        key: group.key,
+        minimumX: group.x,
+        maximumX: group.x + group.width,
+        minimumY: group.y,
+        maximumY: group.y + group.height,
+      }));
+      assert(
+        overviewThreadD3CableSvgPathClear(trunk.d, owners),
+        `${label} cubic must stay outside both owner bodies`,
+      );
+      assertLateralRoutePorts(layout, edge.key);
+      assertRouteJoinsC1(layout, edge.key, 0.97);
+      assertEquals(
+        layout,
+        buildOverviewThreadD3FlowLayout(
+          [targetNode, sourceNode],
+          [edge],
+          { groupPlacements },
+        ),
+        `${label} must be identity-stable`,
+      );
+    };
+
+    const offsetPlacements = {
+      [sourceId]: { x: 508, y: 101, ...listBox },
+      [targetId]: { x: 644, y: 254, ...listBox },
+    };
+    const layout = buildOverviewThreadD3FlowLayout(
+      [sourceNode, targetNode],
+      [edge],
+      { groupPlacements: offsetPlacements },
+    );
+    const sourceGroup = layout.groups.find((group) => group.key === sourceId)!;
+    const targetGroup = layout.groups.find((group) => group.key === targetId)!;
+    assertEquals(
+      {
+        x: sourceGroup.x,
+        y: sourceGroup.y,
+        width: sourceGroup.width,
+        height: sourceGroup.height,
+      },
+      { x: 508, y: 101, width: 190, height: 105 },
+    );
+    assertEquals(
+      {
+        x: targetGroup.x,
+        y: targetGroup.y,
+        width: targetGroup.width,
+        height: targetGroup.height,
+      },
+      { x: 644, y: 254, width: 190, height: 105 },
+    );
+    assertEquals(sourceGroup.inHub, { x: 488, y: 159 });
+    assertEquals(
+      hullBodiesOverlapForTest(sourceGroup, targetGroup),
+      false,
+      "The live fixture must stay non-overlapping",
+    );
+    assertOwnerClearTrunk(layout, offsetPlacements, "offset Geometry→FEA");
+
+    const stackedPlacements = {
+      [sourceId]: { x: 508, y: 101, ...listBox },
+      [targetId]: { x: 508, y: 210, ...listBox },
+    };
+    const stacked = buildOverviewThreadD3FlowLayout(
+      [sourceNode, targetNode],
+      [edge],
+      { groupPlacements: stackedPlacements },
+    );
+    assertOwnerClearTrunk(stacked, stackedPlacements, "close stacked list hulls");
+    assertEquals(JSON.stringify([sourceNode, targetNode]), nodesBefore);
+    assertEquals(JSON.stringify([edge]), edgesBefore);
+  },
+);
+
+function hullBodiesOverlapForTest(
+  left: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  },
+  right: {
+    readonly x: number;
+    readonly y: number;
+    readonly width: number;
+    readonly height: number;
+  },
+): boolean {
+  return left.x < right.x + right.width &&
+    left.x + left.width > right.x &&
+    left.y < right.y + right.height &&
+    left.y + left.height > right.y;
+}
+
+Deno.test(
   "D3 flow layout keeps hulls unbounded while clamping node offsets inside their hull",
   () => {
     const nodes = compactGeometryGroupFixture(4);
@@ -1916,12 +2151,12 @@ Deno.test(
     const sameB = sameLane.nodes.find((node) => node.key === "same:b");
     assert(sameA);
     assert(sameB);
-    const sameForward = assertConnectedRoute(sameLane, "same:a>b");
-    const sameReverse = assertConnectedRoute(sameLane, "same:b>a");
-    assertSamePoint(sameForward[0]!, sameA.bottomPort, "same A→B source");
-    assertSamePoint(sameForward.at(-1)!, sameB.topPort, "same A→B target");
-    assertSamePoint(sameReverse[0]!, sameB.topPort, "same B→A source");
-    assertSamePoint(sameReverse.at(-1)!, sameA.bottomPort, "same B→A target");
+    const sameForwardSides = assertLateralRoutePorts(sameLane, "same:a>b");
+    const sameReverseSides = assertLateralRoutePorts(sameLane, "same:b>a");
+    assertEquals(sameForwardSides.source, sameForwardSides.target);
+    assertEquals(sameReverseSides.source, sameReverseSides.target);
+    assert(sameA);
+    assert(sameB);
     assertRouteJoinsC1(sameLane, "same:a>b", 0.97);
     assertRouteJoinsC1(sameLane, "same:b>a", 0.97);
   },
@@ -2249,7 +2484,7 @@ Deno.test(
     );
     assert(
       Math.max(...localTrunk.points.map((point) => point.x)) <=
-        endpointMaximumX + 24,
+        endpointMaximumX + 40,
       "An unobstructed same-lane cable must stay local instead of creating a page-wide right bus",
     );
     assert(
@@ -2927,6 +3162,46 @@ function polylineLength(
     );
   }
   return length;
+}
+
+function assertLateralRoutePorts(
+  layout: ReturnType<typeof buildOverviewThreadD3FlowLayout>,
+  edgeKey: string,
+): { source: "left" | "right"; target: "left" | "right" } {
+  const points = collectRoutePoints(layout, edgeKey);
+  const route = layout.routes.find((candidate) => candidate.edgeKey === edgeKey);
+  assert(route, `Missing route ${edgeKey}`);
+  const source = layout.nodes.find((node) => node.key === route.fromKey);
+  const target = layout.nodes.find((node) => node.key === route.toKey);
+  assert(source, `Missing source ${route.fromKey}`);
+  assert(target, `Missing target ${route.toKey}`);
+  return {
+    source: lateralPortOf(points[0]!, source, `${edgeKey} source`),
+    target: lateralPortOf(points.at(-1)!, target, `${edgeKey} target`),
+  };
+}
+
+function lateralPortOf(
+  point: OverviewThreadD3FlowPoint,
+  node: {
+    readonly leftPort: OverviewThreadD3FlowPoint;
+    readonly rightPort: OverviewThreadD3FlowPoint;
+  },
+  label: string,
+): "left" | "right" {
+  if (
+    Math.abs(point.x - node.leftPort.x) <= EPSILON &&
+    Math.abs(point.y - node.leftPort.y) <= EPSILON
+  ) {
+    return "left";
+  }
+  if (
+    Math.abs(point.x - node.rightPort.x) <= EPSILON &&
+    Math.abs(point.y - node.rightPort.y) <= EPSILON
+  ) {
+    return "right";
+  }
+  throw new Error(`${label} must use a left or right port`);
 }
 
 function assertSamePoint(

@@ -10,6 +10,7 @@ import {
   type OverviewHeroNode,
   overviewLaneFor,
 } from "./src/project/overview-thread-hero-model.ts";
+import { overviewActivityStatusCaption } from "./src/project/overview/activity-status-caption.ts";
 import type { ProjectPathActivityView } from "./src/project/model.ts";
 import type {
   ThreadArtifact,
@@ -46,7 +47,7 @@ Deno.test("overview hero places recorded nodes in 2a lanes and never invents ids
   );
   assertEquals(
     hero.nodes.find((item) => recordedId(item) === "REQ-MECH-014")?.lane,
-    "requirements",
+    "system-model",
   );
   assertEquals(
     hero.nodes.find((item) => recordedId(item) === "ART-CAD-018")?.lane,
@@ -102,6 +103,10 @@ Deno.test("recorded solver results stay addressable in the physics lane", () => 
 });
 
 Deno.test("overview hulls use exact producer families rather than recorder labels", () => {
+  assertEquals(
+    OVERVIEW_SEMANTIC_GROUP_KEYS.canonicalGeometry,
+    "domain:geometry",
+  );
   const node: ThreadGraphNode = {
     id: "graph:artifact:semantic-record",
     ref: { kind: "artifact", id: "semantic-record" },
@@ -151,8 +156,19 @@ Deno.test("overview hulls use exact producer families rather than recorder label
   );
   assertEquals(
     overviewGroupCaption(OVERVIEW_SEMANTIC_GROUP_KEYS.canonicalGeometry),
-    "Canonical geometry",
+    "Geometry",
   );
+});
+
+Deno.test("overview activity hull caption stays neutral for planned work", () => {
+  assertEquals(overviewGroupCaption("project-activity"), "Project activities");
+  assertEquals(
+    overviewGroupCaption("project-activity").toLowerCase().includes("current"),
+    false,
+  );
+  assertEquals(overviewActivityStatusCaption("planned"), "Planned");
+  assertEquals(overviewActivityStatusCaption("active"), "IN PROGRESS");
+  assertEquals(overviewActivityStatusCaption("blocked"), "BLOCKED");
 });
 
 Deno.test("overview hulls keep exact containment after a one-to-one SysML usage is folded", () => {
@@ -357,6 +373,7 @@ Deno.test("overview lane assignment projects reviewed SysML structure into the s
       "system-model",
     );
   }
+  assertEquals(overviewLaneFor(requirement), "system-model");
 });
 
 Deno.test("overview hero retains every recorded semantic point instead of truncating a lane", () => {
@@ -385,7 +402,7 @@ Deno.test("overview hero retains every recorded semantic point instead of trunca
   assertEquals(
     hero.nodes.filter((item) =>
       item.kind === "recorded" &&
-      item.lane === "requirements" &&
+      item.lane === "system-model" &&
       item.node.ref.id.startsWith("wrap-requirement-")
     ).length,
     6,

@@ -45,6 +45,16 @@ import {
 } from "./geometry-viewer-binding.ts";
 import { buildApprovedBriefViewerBinding } from "./approved-brief-viewer-binding.ts";
 import {
+  buildCalculixViewerBinding,
+  CALCULIX_VIEWER_SESSION_SCHEMA,
+} from "./calculix-viewer-binding.ts";
+import { FileCalculixIsolatedExecutionEvidenceStore } from "../fea/isolated-v3/calculix-isolated-execution-evidence.ts";
+import { FileByteStore } from "../shared/cas/file-byte-store.ts";
+import {
+  buildModelicaViewerBinding,
+  MODELICA_VIEWER_SESSION_SCHEMA,
+} from "./modelica-viewer-binding.ts";
+import {
   PROJECT_RECORDS_APP_ID,
   PROJECT_RECORDS_SESSION_SCHEMA,
   PROJECT_RECORDS_WHOLE_VIEW_URI,
@@ -59,7 +69,13 @@ const MANAGED_SESSION_SCHEMAS = new Set([
   PROJECT_RECORDS_SESSION_SCHEMA,
   "io.casys.mcp-syson.recorded-model-children-session/1.0",
   "io.casys.mcp-syson.recorded-authored-requirements-session/1.0",
+  CALCULIX_VIEWER_SESSION_SCHEMA,
+  MODELICA_VIEWER_SESSION_SCHEMA,
 ]);
+
+/** Must track the server composition, not the legacy standalone store default. */
+export const CALCULIX_VIEWER_EVIDENCE_DIRECTORY =
+  "state/local/recorded-analysis/calculix/isolated-execution/evidence" as const;
 
 export interface ThreadViewerRegistrationDiagnostic {
   readonly projectId: string;
@@ -306,6 +322,24 @@ export class FileThreadViewerAppRegistrar {
     artifact: ThreadArtifact,
     packages: readonly InstalledThreadViewerAppPackage[],
   ): Promise<ThreadViewerAppMaterializationCatalogBinding | undefined> {
+    if (artifact.producer.tool === "verify.run-fea-static-proof@3") {
+      return await buildCalculixViewerBinding({
+        project,
+        thread,
+        artifactId: artifact.id,
+        packages,
+        evidence: this.#captures.calculix,
+      });
+    }
+    if (artifact.producer.tool === "simulate.run-admitted-modelica@1") {
+      return await buildModelicaViewerBinding({
+        project,
+        thread,
+        artifactId: artifact.id,
+        packages,
+        captures: this.#captures.modelica,
+      });
+    }
     if (artifact.producer.tool === "design.write-geometry@1") {
       return await buildGeometryViewerBinding({
         project,
@@ -371,6 +405,14 @@ function supportedRegistrationArtifact(artifact: ThreadArtifact): boolean {
         "casys://part-definitions-capture/",
         "casys://requirements-capture/",
       ].some((prefix) => artifact.uri?.startsWith(prefix))) ||
+    (artifact.producer.serverId === "digital-thread" &&
+      artifact.producer.tool === "verify.run-fea-static-proof@3" &&
+      artifact.kind === "solver-result" &&
+      artifact.id === `calculix-isolated-result-json-${artifact.fingerprint.digest}`) ||
+    (artifact.producer.serverId === "digital-thread" &&
+      artifact.producer.tool === "simulate.run-admitted-modelica@1" &&
+      artifact.kind === "solver-result" &&
+      artifact.id === `modelica-admitted-result-${artifact.fingerprint.digest}`) ||
     (artifact.producer.serverId === "casys-digital-thread" &&
       artifact.producer.tool === "baseline_from_approved_brief" &&
       artifact.kind === "document");
@@ -388,6 +430,22 @@ function registrationCaptureStores(root: string) {
     partDefinitions: at(PART_DEFINITIONS_CAPTURE_DESCRIPTOR),
     requirements: at(REQUIREMENTS_CAPTURE_DESCRIPTOR),
     geometry: at(GEOMETRY_CAPTURE_DESCRIPTOR),
+    calculix: new FileCalculixIsolatedExecutionEvidenceStore(
+      rooted(
+        root,
+        CALCULIX_VIEWER_EVIDENCE_DIRECTORY,
+      ),
+      rooted(root, "state/local/recorded-analysis"),
+    ),
+    modelica: new FileByteStore({
+      kind: "modelica-admitted-execution-capture",
+      directory: rooted(
+        root,
+        "state/local/recorded-analysis/modelica/admitted/captures",
+      ),
+      uriNamespace: "modelica-admitted-execution-capture",
+      label: "Admitted Modelica execution capture",
+    }),
   };
 }
 

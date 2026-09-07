@@ -4,6 +4,7 @@ import type {
   ThreadGraphEdge,
   ThreadGraphNode,
   ThreadGraphRef,
+  ThreadObservation,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
 import type { EngineeringPathLaneId } from "../../../domain/project/engineering-path-lane.ts";
@@ -16,59 +17,25 @@ import {
   isRequirementsBriefClaimArtifact,
   type OverviewBriefSourceHeroNode,
 } from "./overview-thread-brief-correspondence.ts";
+import {
+  isOverviewBriefRecord,
+  isOverviewRequirementsCapture,
+  OVERVIEW_DOMAIN_GROUP_KEYS,
+  overviewDomainGroupCaption,
+  overviewDomainGroupColor,
+  overviewDomainGroupKeyFor,
+} from "./overview/hulls/domain-groups.ts";
 export type {
   OverviewBriefSourceHeroNode,
   OverviewBriefTrace,
 } from "./overview-thread-brief-correspondence.ts";
+export {
+  OVERVIEW_DOMAIN_GROUP_KEYS,
+  OVERVIEW_SEMANTIC_GROUP_KEYS,
+} from "./overview/hulls/domain-groups.ts";
 
 export type OverviewLaneId = EngineeringPathLaneId;
 export { OVERVIEW_LANES } from "./overview-lanes.ts";
-
-export const OVERVIEW_SEMANTIC_GROUP_KEYS = {
-  canonicalGeometry: "family:canonical-geometry",
-  assemblyIntegrity: "family:assembly-integrity",
-  prescribedKinematics: "family:prescribed-kinematics",
-} as const;
-
-const OVERVIEW_GROUP_BY_EXACT_PRODUCER = new Map<string, string>([
-  ["design.write-geometry@1", OVERVIEW_SEMANTIC_GROUP_KEYS.canonicalGeometry],
-  [
-    "geometry.module.immediate-compound@1.0",
-    OVERVIEW_SEMANTIC_GROUP_KEYS.canonicalGeometry,
-  ],
-  [
-    "verify.observe-assembly-integrity@1",
-    OVERVIEW_SEMANTIC_GROUP_KEYS.assemblyIntegrity,
-  ],
-  [
-    "verify.evaluate-assembly-integrity@1",
-    OVERVIEW_SEMANTIC_GROUP_KEYS.assemblyIntegrity,
-  ],
-  [
-    "decide.accept-assembly-integrity-evaluation@1",
-    OVERVIEW_SEMANTIC_GROUP_KEYS.assemblyIntegrity,
-  ],
-  [
-    "decide.reject-assembly-integrity-evaluation@1",
-    OVERVIEW_SEMANTIC_GROUP_KEYS.assemblyIntegrity,
-  ],
-  [
-    "verify.seal-prescribed-kinematics-case@1",
-    OVERVIEW_SEMANTIC_GROUP_KEYS.prescribedKinematics,
-  ],
-  [
-    "verify.run-prescribed-kinematics@1",
-    OVERVIEW_SEMANTIC_GROUP_KEYS.prescribedKinematics,
-  ],
-  [
-    "verify.seal-prescribed-kinematics-method@1",
-    OVERVIEW_SEMANTIC_GROUP_KEYS.prescribedKinematics,
-  ],
-  [
-    "verify.evaluate-prescribed-kinematics@1",
-    OVERVIEW_SEMANTIC_GROUP_KEYS.prescribedKinematics,
-  ],
-]);
 
 interface OverviewHeroIdentity {
   readonly key: string;
@@ -84,6 +51,11 @@ export interface OverviewRecordedHeroNode extends OverviewHeroIdentity {
   readonly emphasis: boolean;
   /** The unique recorded parent inside this hull, when one exists. */
   readonly parentKey?: string;
+  /**
+   * Exact requirements-capture identity for viewer aliases.
+   * Display group and labels never authorize this.
+   */
+  readonly isRequirementsCapture?: boolean;
 }
 
 export interface OverviewActivityHeroNode extends OverviewHeroIdentity {
@@ -121,8 +93,9 @@ export interface OverviewThreadHeroView {
 
 /**
  * Project recorded facts and open activities into the whiteboard. Exact
- * producer identities form semantic hulls; recorded structure supplies their
- * optional folder tree. Geometry remains the layout module's responsibility.
+ * operations and typed kinds form domain hulls; recorded structure supplies
+ * their optional folder tree. Geometry remains the layout module's
+ * responsibility.
  */
 export function buildOverviewThreadHero(
   thread: ThreadWorkbenchSnapshot,
@@ -132,6 +105,9 @@ export function buildOverviewThreadHero(
 ): OverviewThreadHeroView {
   const artifactsById = new Map(
     thread.artifacts.map((artifact) => [artifact.id, artifact]),
+  );
+  const observationsById = new Map(
+    thread.observations.map((observation) => [observation.id, observation]),
   );
   const activityEvidenceLanes = overviewActivityEvidenceLanes(
     activities,
@@ -153,24 +129,32 @@ export function buildOverviewThreadHero(
     const artifact = node.ref.kind === "artifact"
       ? artifactsById.get(node.ref.id)
       : undefined;
+    const observation = node.ref.kind === "observation"
+      ? observationsById.get(node.ref.id)
+      : undefined;
+    const sourceArtifact = observation
+      ? artifactsById.get(observation.sourceArtifactId)
+      : undefined;
     const lane = activityEvidenceLanes.get(key) ??
       overviewLaneFor(node, artifact);
     if (!lane) continue;
     const column = OVERVIEW_LANES.find((item) => item.id === lane)!;
+    const groupKey = overviewGroupKeyFor(node, artifact, {
+      observation,
+      sourceArtifact,
+    });
     placed.push({
       kind: "recorded",
       key,
-      groupKey: overviewGroupKeyFor(
-        node,
-        node.ref.kind === "artifact"
-          ? artifactsById.get(node.ref.id)
-          : undefined,
-      ),
+      groupKey,
       label: node.label,
       node,
       lane,
-      color: column.color,
+      color: overviewDomainGroupColor(groupKey, column.color),
       emphasis: node.freshness === "failed" || node.freshness === "stale",
+      ...(isOverviewRequirementsCapture(node, artifact)
+        ? { isRequirementsCapture: true }
+        : {}),
     });
   }
 
@@ -179,7 +163,7 @@ export function buildOverviewThreadHero(
     placed.push({
       kind: "activity",
       key: `project-activity:${activity.id}`,
-      groupKey: "project-activity",
+      groupKey: OVERVIEW_DOMAIN_GROUP_KEYS.projectActivity,
       label: activity.title,
       activity,
       lane: activity.lane,
@@ -302,19 +286,12 @@ export function overviewLaneFor(
   node: ThreadGraphNode,
   artifact?: ThreadArtifact,
 ): OverviewLaneId | undefined {
-  if (isApprovedBriefDocument(node, artifact)) return "requirements";
-  if (
-    node.entityKind === "analysis-node" && node.system === "brief" &&
-    node.analysis?.semanticRef.domain === "brief" &&
-    node.analysis.semanticRef.kind === "brief-item"
-  ) {
-    return "requirements";
-  }
-  if (node.entityKind === "requirement") return "requirements";
+  if (isOverviewBriefRecord(node, artifact)) return "requirements";
   if (
     node.entityKind === "part-definition" ||
     node.entityKind === "part-usage" ||
-    node.entityKind === "attribute-usage"
+    node.entityKind === "attribute-usage" ||
+    node.entityKind === "requirement"
   ) {
     return "system-model";
   }
@@ -332,30 +309,21 @@ export function overviewLaneFor(
   return undefined;
 }
 
-/** Exact recorded producer identity decides semantic hull membership. */
+/** Exact operations and typed kinds decide domain hull membership. */
 export function overviewGroupKeyFor(
   node: ThreadGraphNode,
   artifact?: ThreadArtifact,
+  observationContext?: {
+    readonly observation?: ThreadObservation;
+    readonly sourceArtifact?: ThreadArtifact;
+  },
 ): string {
-  if (isApprovedBriefDocument(node, artifact)) return "brief";
-  if (artifact?.id === node.ref.id) {
-    const operation = artifact.producer?.tool ?? artifact.producedBy;
-    const semanticGroup = operation
-      ? OVERVIEW_GROUP_BY_EXACT_PRODUCER.get(operation)
-      : undefined;
-    if (semanticGroup) return semanticGroup;
-  }
-  return node.system || "unassigned";
-}
-
-function isApprovedBriefDocument(
-  node: ThreadGraphNode,
-  artifact?: ThreadArtifact,
-): boolean {
-  return node.ref.kind === "artifact" && artifact?.id === node.ref.id &&
-    artifact.kind === "document" &&
-    artifact.producer?.serverId === "casys-digital-thread" &&
-    artifact.producer.tool === "baseline_from_approved_brief";
+  return overviewDomainGroupKeyFor({
+    node,
+    artifact,
+    observation: observationContext?.observation,
+    sourceArtifact: observationContext?.sourceArtifact,
+  });
 }
 
 /** Presentation-only caption for a recorded group identity. */
@@ -363,41 +331,7 @@ export function overviewGroupCaption(
   groupKey: string,
   lane?: OverviewLaneId,
 ): string {
-  const normalized = groupKey.trim();
-  if (
-    !normalized || normalized === "__ungrouped__" ||
-    normalized === "unassigned"
-  ) {
-    return "Recorded items";
-  }
-  if (normalized === "project-activity") return "Current activity";
-  if (
-    normalized === OVERVIEW_SEMANTIC_GROUP_KEYS.canonicalGeometry ||
-    normalized === "canonical-geometry"
-  ) {
-    return "Canonical geometry";
-  }
-  if (
-    normalized === OVERVIEW_SEMANTIC_GROUP_KEYS.assemblyIntegrity ||
-    normalized === "assembly-integrity"
-  ) {
-    return lane === "verdicts"
-      ? "Assembly integrity verdict"
-      : "Assembly integrity";
-  }
-  if (
-    normalized === OVERVIEW_SEMANTIC_GROUP_KEYS.prescribedKinematics ||
-    normalized === "prescribed-kinematics"
-  ) {
-    return lane === "verdicts"
-      ? "Prescribed kinematics verdict"
-      : "Prescribed kinematics";
-  }
-  if (normalized.toLowerCase() === "syson") {
-    return lane === "requirements" ? "SysON requirements" : "SysON model";
-  }
-  const leaf = normalized.split(/[/:]/).filter(Boolean).at(-1) ?? normalized;
-  return leaf.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
+  return overviewDomainGroupCaption(groupKey, lane);
 }
 
 function overviewActivityEvidenceLanes(

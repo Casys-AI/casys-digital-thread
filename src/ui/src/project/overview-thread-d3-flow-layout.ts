@@ -2,11 +2,16 @@ import { hierarchy, type HierarchyNode } from "d3-hierarchy";
 import { curveBumpX, line } from "d3-shape";
 import type { EngineeringPathLaneId } from "../../../domain/project/engineering-path-lane.ts";
 import {
+  layoutOverviewHullRowCells,
+  overviewHullRowCableSurface,
+} from "./overview/hulls/row-layout.ts";
+import {
   buildOverviewThreadD3CableFieldRoute,
   type OverviewThreadD3CableObstacle,
   overviewThreadD3CableSvgPathClear,
 } from "./overview-thread-d3-cable-field.ts";
 import {
+  OVERVIEW_THREAD_D3_HULL_HUB_MARGIN as GROUP_HUB_MARGIN,
   OverviewThreadD3CableFanInFields,
   overviewThreadD3CableHub,
   overviewThreadD3CableHullSides,
@@ -45,12 +50,6 @@ const DEFAULT_CORRIDOR_CAPTURE_MIN = 30;
 const DEFAULT_CORRIDOR_CAPTURE_MAX = 44;
 const DEFAULT_CORRIDOR_RELEASE_RATIO = 1.5;
 const MINIMUM_OBSTACLE_MARGIN = 12;
-/**
- * Cable hubs hang off the moved hull itself, not off the lane column. On a
- * freely placed whiteboard a lane-width offset leaves stubs in empty space and
- * inverts hub order between neighbouring groups, which reads as a hairpin.
- */
-const GROUP_HUB_MARGIN = 20;
 /** Lateral bow of a cable between two leaves stacked in the same column. */
 const INTRA_GROUP_BOW = 9;
 /** One listed row, in viewBox units. */
@@ -163,6 +162,10 @@ export interface OverviewThreadD3FlowLayoutOptions {
   readonly fixedGroupKey?: string;
   /** Read-only navigation rows; these never become graph nodes or cable endpoints. */
   readonly groupStructureRowCounts?: Readonly<Record<string, number>>;
+  /** Exact existing node keys docked beside a content row, never new graph refs. */
+  readonly groupRowAnchors?: Readonly<
+    Record<string, Readonly<Record<string, number>>>
+  >;
   /** Node placements are keyed by the exact input node key. */
   readonly nodePlacements?: Readonly<
     Record<string, OverviewThreadD3FlowNodePlacement>
@@ -234,9 +237,8 @@ export interface OverviewThreadD3FlowPoint {
 export interface OverviewThreadD3FlowPort extends OverviewThreadD3FlowPoint {}
 
 /**
- * Physical side a cable leaves or enters. Hulls placed in the same column
- * exchange over the vertical axis; a lane-only left/right vocabulary forces
- * that exchange into a lateral hook around both hulls.
+ * Physical side a cable leaves or enters. Hull selection is left/right only;
+ * stacked or overlapping hulls share one external lateral face.
  */
 export type OverviewThreadD3FlowCableSide = OverviewThreadD3CableSide;
 
@@ -267,6 +269,8 @@ export interface OverviewThreadD3FlowNodeLayout
    * leaf keeps its identity and its relations either way.
    */
   readonly folded: boolean;
+  /** An existing record docked to separately rendered content, not another card. */
+  readonly rowAnchored?: boolean;
   /** Drawn as a named row rather than a point. */
   readonly listed: boolean;
   /** Exact parent-first presentation depth; zero outside tree mode. */
@@ -673,13 +677,64 @@ export function buildOverviewThreadD3FlowLayout(
         nodeGap,
         requestedStructureRows,
       );
-      const structureRowCount = hull.view === "tree" && requestedStructureRows
-        ? requestedStructureRows
-        : undefined;
+      // Content identity is independent of layout. The same occurrences/source
+      // rows are shown in tree, list and points; raw records keep cable anchors.
+      const structureRowCount = requestedStructureRows;
+      const rowCells = new Map(
+        layoutOverviewHullRowCells(
+          structureRowCount ?? 0,
+          {
+            ...hull,
+            x: groupLeft,
+            y: placedGroupTop,
+            headerHeight: HULL_HEADER_HEIGHT,
+            footerHeight: hull.view !== "matrix" && !hull.collapsed
+              ? HULL_LIST_FOOTER_HEIGHT
+              : 0,
+          },
+        ).map((cell) => [cell.index, cell]),
+      );
+      const keysByRow = new Map<number, string[]>();
+      for (
+        const [nodeKey, rowIndex] of Object.entries(
+          options.groupRowAnchors?.[groupIdentity] ?? {},
+        )
+      ) {
+        if (
+          !rowCells.has(rowIndex) ||
+          !group.nodes.some((node) => node.key === nodeKey)
+        ) continue;
+        keysByRow.set(rowIndex, [...keysByRow.get(rowIndex) ?? [], nodeKey]);
+      }
+      const docks = new Map<
+        string,
+        OverviewThreadD3FlowPoint & {
+          readonly width: number;
+          readonly height: number;
+        }
+      >();
+      for (const [rowIndex, keys] of keysByRow) {
+        const cell = rowCells.get(rowIndex)!;
+        keys.sort();
+        // The row owns one visible surface, possibly backed by several exact
+        // records. Give them disjoint subslots, not overlapping node glyphs.
+        // Listed ports span the row; Points docks stay on its centered dot.
+        const surface = overviewHullRowCableSurface(cell, hull.view, nodeSize);
+        const pitch = surface.height / (keys.length + 1);
+        const dockHeight = Math.min(nodeSize, pitch / 2);
+        for (const [slot, key] of keys.entries()) {
+          docks.set(key, {
+            x: surface.x,
+            y: surface.y + pitch * (slot + 1) - dockHeight / 2,
+            width: surface.width,
+            height: dockHeight,
+          });
+        }
+      }
       const outline = hullOutlineRows(
         group.nodes,
         groupPlacement?.sort,
-        hull.view === "tree",
+        hull.view === "tree" && !structureRowCount,
       );
       const centerY = placedGroupTop + hull.height / 2;
       const listed = hull.view !== "matrix" && !hull.collapsed;
@@ -692,6 +747,7 @@ export function buildOverviewThreadD3FlowLayout(
         : 0;
       for (const [index, outlineRow] of outline.rows.entries()) {
         const node = outlineRow.node;
+        const dock = docks.get(node.key);
         // The list reads down a column then across, like a Finder column view.
         const listColumn = listed ? Math.floor(index / listCapacity) : 0;
         const listRow = listed
@@ -710,40 +766,45 @@ export function buildOverviewThreadD3FlowLayout(
         const indentation = listed && hull.view === "tree"
           ? Math.min(outlineRow.depth * HULL_TREE_INDENT, listColumnWidth - 80)
           : 0;
-        const nodeWidth = listed && !offWindow && !structureRowCount
-          ? listColumnWidth - indentation
-          : nodeSize;
-        const nodeHeight = listed && !offWindow && !structureRowCount
-          ? HULL_LIST_ROW_HEIGHT
-          : nodeSize;
-        const nodeX = hull.collapsed || structureRowCount
-          ? groupLeft + hull.width / 2 - nodeSize / 2
-          : offWindow
-          ? groupLeft + hull.width - nodeSize
-          : listed
-          ? groupLeft + listColumn * (listColumnWidth + HULL_LIST_COLUMN_GAP) +
-            indentation
-          : clamp(
-            matrixNodeX + finiteOrZero(nodePlacement?.offsetX),
-            groupLeft,
-            groupLeft + hull.width - nodeSize,
-          );
-        const nodeY = hull.collapsed || structureRowCount
-          ? placedGroupTop + HULL_HEADER_HEIGHT / 2 - nodeSize / 2
-          : offWindow
-          ? listRow < 0
+        const nodeWidth = dock?.width ??
+          (listed && !offWindow && !structureRowCount
+            ? listColumnWidth - indentation
+            : nodeSize);
+        const nodeHeight = dock?.height ??
+          (listed && !offWindow && !structureRowCount
+            ? HULL_LIST_ROW_HEIGHT
+            : nodeSize);
+        const nodeX = dock?.x ??
+          (hull.collapsed || structureRowCount
+            ? groupLeft + hull.width / 2 - nodeSize / 2
+            : offWindow
+            ? groupLeft + hull.width - nodeSize
+            : listed
+            ? groupLeft +
+              listColumn * (listColumnWidth + HULL_LIST_COLUMN_GAP) +
+              indentation
+            : clamp(
+              matrixNodeX + finiteOrZero(nodePlacement?.offsetX),
+              groupLeft,
+              groupLeft + hull.width - nodeSize,
+            ));
+        const nodeY = dock?.y ??
+          (hull.collapsed || structureRowCount
             ? placedGroupTop + HULL_HEADER_HEIGHT / 2 - nodeSize / 2
-            : placedGroupTop + hull.height - HULL_LIST_FOOTER_HEIGHT / 2 -
-              nodeSize / 2
-          : listed
-          ? placedGroupTop + HULL_HEADER_HEIGHT +
-            clamp(listRow, 0, Math.max(0, hull.visibleRows - 1)) *
-              HULL_LIST_ROW_HEIGHT
-          : clamp(
-            matrixNodeY + finiteOrZero(nodePlacement?.offsetY),
-            placedGroupTop + HULL_HEADER_HEIGHT,
-            placedGroupTop + hull.height - nodeSize,
-          );
+            : offWindow
+            ? listRow < 0
+              ? placedGroupTop + HULL_HEADER_HEIGHT / 2 - nodeSize / 2
+              : placedGroupTop + hull.height - HULL_LIST_FOOTER_HEIGHT / 2 -
+                nodeSize / 2
+            : listed
+            ? placedGroupTop + HULL_HEADER_HEIGHT +
+              clamp(listRow, 0, Math.max(0, hull.visibleRows - 1)) *
+                HULL_LIST_ROW_HEIGHT
+            : clamp(
+              matrixNodeY + finiteOrZero(nodePlacement?.offsetY),
+              placedGroupTop + HULL_HEADER_HEIGHT,
+              placedGroupTop + hull.height - nodeSize,
+            ));
         const nodeCenterX = nodeX + nodeWidth / 2;
         const nodeCenterY = nodeY + nodeHeight / 2;
         nodeLayouts.push({
@@ -758,7 +819,8 @@ export function buildOverviewThreadD3FlowLayout(
           rightPort: { x: nodeX + nodeWidth, y: nodeCenterY },
           topPort: { x: nodeCenterX, y: nodeY },
           bottomPort: { x: nodeCenterX, y: nodeY + nodeHeight },
-          folded: hull.collapsed || offWindow || Boolean(structureRowCount),
+          folded: hull.collapsed || (structureRowCount ? !dock : offWindow),
+          ...(dock ? { rowAnchored: true } : {}),
           listed,
           depth: hull.view === "tree" ? outlineRow.depth : 0,
         });
@@ -944,9 +1006,11 @@ export function buildOverviewThreadD3FlowLayout(
       continue;
     }
     const direction = cableDirection(sourceNode, targetNode, laneIndex);
-    const sides = direction === "same-lane"
-      ? overviewThreadD3CableHullSides(sourceHull, targetHull)
-      : crossLaneCableSides(sourceHull, targetHull, direction);
+    const sides = overviewThreadD3CableHullSides(
+      sourceHull,
+      targetHull,
+      direction === "reverse" ? "right-to-left" : "left-to-right",
+    );
     const source = overviewThreadD3CableTerminal(
       sourceHull,
       sourceNode,
@@ -1030,6 +1094,42 @@ export function buildOverviewThreadD3FlowLayout(
       unroutedEdgeKeys.add(edge.key);
       continue;
     }
+    if (hull.structureRowCount && (sourceNode.folded || targetNode.folded)) {
+      // Ordinary listed hulls keep their existing obstacle-aware rack routing;
+      // this aggregate dock is only for the separately rendered content rows.
+      // Hidden local leaves attach to the hull, never to an invisible header
+      // placeholder. The two hull-side docks are distinct even when both
+      // records are hidden, so the aggregate route cannot become zero-length.
+      const sideX = hull.x + hull.width;
+      const bandY = hull.y + hull.headerHeight / 2;
+      const start = sourceNode.folded
+        ? { x: sideX, y: bandY - 3 }
+        : sourceNode.rightPort;
+      const end = targetNode.folded
+        ? { x: sideX, y: bandY + 3 }
+        : targetNode.rightPort;
+      const outsideX = sideX + GROUP_HUB_MARGIN;
+      const segmentKey = addSegment({
+        key: structuredKey("same-hull-folded-stub", [
+          hull.key,
+          sourceNode.folded ? "hull" : sourceNode.key,
+          targetNode.folded ? "hull" : targetNode.key,
+        ]),
+        kind: "node-branch",
+        role: "shared",
+        direction: "same-lane",
+        curve: "rounded",
+        points: [
+          start,
+          { x: outsideX, y: start.y },
+          { x: outsideX, y: end.y },
+          end,
+        ],
+      }, edge);
+      if (segmentKey) routes.push(exactRoute(edge, [segmentKey]));
+      else unroutedEdgeKeys.add(edge.key);
+      continue;
+    }
     const routed = addIntraGroupRoute(
       edge,
       sourceNode,
@@ -1080,17 +1180,11 @@ export function buildOverviewThreadD3FlowLayout(
           targetAnchor: pair.targetHub,
           targetTangent: overviewThreadD3CableArrivalTangent(pair.targetSide),
           weight: pair.pathCount,
-          // A hull the operator resized can end up covering its neighbours.
-          // Treating those neighbours as walls would strand every relation
-          // crossing them, so a hull that overlaps an endpoint hull stops
-          // being an obstacle for that trunk: the cable is drawn, and the
-          // overlap stays the operator's to resolve.
-          excludedObstacleKeys: [
-            pair.sourceGroup.key,
-            pair.targetGroup.key,
-            ...overlappingObstacleKeys(pair.sourceGroup, routingObstacles),
-            ...overlappingObstacleKeys(pair.targetGroup, routingObstacles),
-          ],
+          excludedObstacleKeys: trunkExcludedObstacleKeys(
+            pair.sourceGroup,
+            pair.targetGroup,
+            routingObstacles,
+          ),
         })),
         obstacles: routingObstacles,
       });
@@ -1390,53 +1484,6 @@ function cableDirection(
   return sourceLaneIndex < targetLaneIndex ? "forward" : "reverse";
 }
 
-/**
- * Relations between engineering lanes keep a horizontal, hierarchical flow.
- *
- * Selecting top/bottom only because two freely moved hulls are far apart on
- * Y can place a hub inside a neighbouring hull in the same lane stack. It
- * also makes the recorded left-to-right process read as a vertical cable.
- * The actual X order still owns the physical side, so moving a hull through
- * another one flips its anchors without rewriting relation direction.
- */
-/**
- * Sides for a relation whose hulls sit too close for facing hubs.
- *
- * When two freely moved hulls leave no corridor for facing hubs, both ends
- * take the top port for that frame rather than dropping the relation or
- * occupying the coinciding hub. A clear horizontal corridor still uses the
- * shared anchorage vocabulary.
- */
-function crossLaneCableSides(
-  source: FlowCableHull,
-  target: FlowCableHull,
-  direction: Exclude<OverviewThreadD3FlowRouteDirection, "same-lane">,
-): {
-  readonly source: OverviewThreadD3FlowCableSide;
-  readonly target: OverviewThreadD3FlowCableSide;
-} {
-  const deltaX = (target.x + target.width / 2) -
-    (source.x + source.width / 2);
-  const horizontalGap = deltaX >= 0
-    ? target.x - (source.x + source.width)
-    : source.x - (target.x + target.width);
-  const facingHubSpan = horizontalGap - source.hubMargin - target.hubMargin;
-  const branchClearance = Math.min(source.hubMargin, target.hubMargin) +
-    NODE_FAN_IN_OBSTACLE_MARGIN;
-
-  if (
-    horizontalGap <= branchClearance ||
-    Math.abs(facingHubSpan) <= ROUTE_CLEARANCE
-  ) {
-    return { source: "top", target: "top" };
-  }
-  return overviewThreadD3CableHullSides(
-    source,
-    target,
-    direction === "reverse" ? "right-to-left" : "left-to-right",
-  );
-}
-
 function directedPairKey(
   source: OverviewThreadD3FlowGroupLayout,
   target: OverviewThreadD3FlowGroupLayout,
@@ -1456,6 +1503,53 @@ function overlappingObstacleKeys(
     obstacle.minimumY < hull.y + hull.height &&
     obstacle.maximumY > hull.y
   ).map((obstacle) => obstacle.key);
+}
+
+/**
+ * Trunks travel outside both owner bodies. Fan-in still uses the owner
+ * interior.
+ *
+ * Overlapping owners are the operator's collision: those two hulls stop
+ * being walls so the recorded relation still has a cable. Inflated foreign
+ * hulls that cover an owner stay excluded. Non-overlapping owners remain
+ * obstacles; hubs sit in the hub margin, outside the default inflated box.
+ */
+function trunkExcludedObstacleKeys(
+  source: OverviewThreadD3FlowGroupLayout,
+  target: OverviewThreadD3FlowGroupLayout,
+  obstacles: readonly RoutingObstacle[],
+): readonly string[] {
+  const excluded = new Set<string>();
+  for (
+    const key of [
+      ...overlappingObstacleKeys(source, obstacles),
+      ...overlappingObstacleKeys(target, obstacles),
+    ]
+  ) {
+    if (key === source.key || key === target.key) continue;
+    excluded.add(key);
+  }
+  if (hullBodiesOverlap(source, target)) {
+    excluded.add(source.key);
+    excluded.add(target.key);
+  }
+  return [...excluded].toSorted((left, right) => left.localeCompare(right));
+}
+
+function hullBodiesOverlap(
+  left: Pick<
+    OverviewThreadD3FlowGroupLayout,
+    "x" | "y" | "width" | "height"
+  >,
+  right: Pick<
+    OverviewThreadD3FlowGroupLayout,
+    "x" | "y" | "width" | "height"
+  >,
+): boolean {
+  return left.x < right.x + right.width &&
+    left.x + left.width > right.x &&
+    left.y < right.y + right.height &&
+    left.y + left.height > right.y;
 }
 
 function buildRoutingObstacles(
@@ -1921,13 +2015,18 @@ function addIntraGroupRoute(
       .y((point: OverviewThreadD3FlowPoint) => point.y).curve(curveBumpX)(
         points,
       );
-  const obstacles = otherLeaves.map((node) => ({
-    key: node.key,
-    minimumX: node.x - 0.6,
-    maximumX: node.x + node.width + 0.6,
-    minimumY: node.y - 0.6,
-    maximumY: node.y + node.height + 0.6,
-  }));
+  const obstacles = otherLeaves.map((node) => {
+    // Exact co-docks remain obstacles, with clearance proportionate to their
+    // subslot. Inflating every tiny dock as a full glyph recreates overlaps.
+    const margin = node.rowAnchored ? Math.min(0.6, node.height / 4) : 0.6;
+    return {
+      key: node.key,
+      minimumX: node.x - margin,
+      maximumX: node.x + node.width + margin,
+      minimumY: node.y - margin,
+      maximumY: node.y + node.height + margin,
+    };
+  });
   // The compact matrix used to draw its local bows through neighbouring
   // leaves. Reuse the cable field's validated guides with lateral guards;
   // neither the ports nor the recorded edge identity can move to make room.
@@ -2363,7 +2462,7 @@ function resolveHullBox(
     const capacity = Math.max(
       1,
       Math.ceil(
-        (view === "tree" && structureRows
+        (structureRows
           ? structureRows
           : hullOutlineRows(group.nodes, placement?.sort, view === "tree").rows
             .length) /
@@ -2392,7 +2491,10 @@ function resolveHullBox(
       visibleRows,
     };
   }
-  if (requestedWidth === undefined && requestedHeight === undefined) {
+  if (
+    !structureRows && requestedWidth === undefined &&
+    requestedHeight === undefined
+  ) {
     return {
       width: group.width,
       height: group.height,
@@ -2409,7 +2511,7 @@ function resolveHullBox(
     1,
     Math.floor((width + nodeGap) / (nodeSize + nodeGap)),
   );
-  const rows = Math.ceil(group.nodes.length / columns);
+  const rows = Math.ceil((structureRows ?? group.nodes.length) / columns);
   const contentHeight = HULL_HEADER_HEIGHT + rows * nodeSize +
     Math.max(0, rows - 1) * nodeGap;
   return {
