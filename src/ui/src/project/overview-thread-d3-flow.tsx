@@ -48,11 +48,24 @@ import {
 import {
   type OverviewHullContent,
   type OverviewHullContentRow,
+  overviewHullGraphKeysByPresentationRow,
+  overviewHullHierarchyLinkState,
+  overviewHullPresentationRowKey,
   OverviewHullRowBody,
   overviewHullRowPresentation,
+  overviewHullRowTooltip,
+  parseOverviewHullPresentationRowKey,
 } from "./overview/hulls/index.ts";
 import { overviewActivityStatusCaption } from "./overview/activity-status-caption.ts";
 import { overviewDomainGroupColor } from "./overview/hulls/domain-groups.ts";
+import {
+  flowSegmentPaintRank,
+  flowSegmentState,
+} from "./overview-thread-d3-flow-highlight.ts";
+import {
+  overviewEffectiveInspection,
+  overviewInspectionIsVisualTarget,
+} from "./overview-thread-inspection.ts";
 
 export type OverviewThreadD3FlowMoveDirection =
   | "ArrowUp"
@@ -75,11 +88,16 @@ export interface OverviewThreadD3FlowProps {
   readonly rowAnchors?: Readonly<
     Record<string, Readonly<Record<string, number>>>
   >;
-  readonly onActivateHullRow?: (row: OverviewHullContentRow) => void;
+  readonly onActivateHullRow?: (
+    row: OverviewHullContentRow,
+    groupKey: string,
+  ) => void;
+  readonly selectedRowKey?: string;
   readonly stages?: readonly OverviewThreadStageSummary[];
   readonly showLaneStrip?: boolean;
   readonly activeKey?: string;
   readonly selectedKey?: string;
+  readonly hoveredKey?: string;
   readonly focusedKey?: string;
   readonly onHover: (key: string | undefined) => void;
   readonly onFocus: (key: string) => void;
@@ -780,10 +798,11 @@ export function OverviewThreadD3Flow({
   hullContents,
   rowAnchors,
   onActivateHullRow,
+  selectedRowKey,
   stages = [],
   showLaneStrip = true,
-  activeKey,
   selectedKey,
+  hoveredKey,
   focusedKey,
   onHover,
   onFocus,
@@ -801,21 +820,18 @@ export function OverviewThreadD3Flow({
 }: OverviewThreadD3FlowProps): JSX.Element {
   const titleId = useId();
   const [hoveredRowKey, setHoveredRowKey] = useState<string>();
-  const graphKeysByRowKey = useMemo(() => {
-    const result = new Map<string, string[]>();
-    for (const [groupKey, anchors] of Object.entries(rowAnchors ?? {})) {
-      const rows = hullContents?.get(groupKey)?.rows;
-      for (const [nodeKey, index] of Object.entries(anchors)) {
-        const row = rows?.[index];
-        if (row) result.set(row.key, [...result.get(row.key) ?? [], nodeKey]);
-      }
-    }
-    return result;
-  }, [rowAnchors, hullContents]);
-  const hoveredGraphKeys = useMemo(
-    () => hoveredRowKey ? graphKeysByRowKey.get(hoveredRowKey) ?? [] : [],
-    [hoveredRowKey, graphKeysByRowKey],
+  const graphKeysByPresentationRow = useMemo(
+    () => overviewHullGraphKeysByPresentationRow(hullContents, rowAnchors),
+    [rowAnchors, hullContents],
   );
+  const inspection = overviewEffectiveInspection({
+    hoveredPresentationRowKey: hoveredRowKey,
+    selectedPresentationRowKey: selectedRowKey,
+    hoveredGraphKey: hoveredKey,
+    selectedGraphKey: selectedKey,
+    graphKeysByPresentationRow,
+  });
+  const litRowKey = inspection.presentationRowKey;
   const descriptionId = useId();
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<OverviewFlowDragState>();
@@ -831,8 +847,8 @@ export function OverviewThreadD3Flow({
   /** A band narrower than this has room for its name or its controls, not both. */
   const bandFitsControls = (width: number) => width >= 240;
   const relatedKeys = useMemo(
-    () => flowRelatedNodeKeys(layout, activeKey),
-    [activeKey, layout],
+    () => flowRelatedNodeKeys(layout, inspection.graphKeys),
+    [inspection.graphKeys, layout],
   );
   const laneColorById = useMemo(
     () => new Map(layout.lanes.map((lane) => [lane.lane, lane.color])),
@@ -843,6 +859,24 @@ export function OverviewThreadD3Flow({
       group.groupKey,
       laneColorById.get(group.lane) ?? "currentColor",
     );
+  const inspectionColor = (() => {
+    const parsed = inspection.presentationRowKey
+      ? parseOverviewHullPresentationRowKey(inspection.presentationRowKey)
+      : undefined;
+    const group = parsed
+      ? layout.groups.find((candidate) => candidate.key === parsed.groupKey)
+      : undefined;
+    if (group) return groupColor(group);
+    const graphKey = inspection.graphKeys[0];
+    const item = graphKey ? nodesByKey.get(graphKey) : undefined;
+    if (item) {
+      return overviewDomainGroupColor(
+        item.groupKey,
+        laneColorById.get(item.lane) ?? "currentColor",
+      );
+    }
+    return undefined;
+  })();
   const stageByLane = useMemo(
     () => new Map(stages.map((stage) => [stage.lane, stage])),
     [stages],
@@ -1084,8 +1118,11 @@ export function OverviewThreadD3Flow({
       className="overview-thread-flow"
       role="group"
       aria-labelledby={`${titleId} ${descriptionId}`}
-      data-inspection={selectedKey ? "selected" : activeKey ? "hover" : "idle"}
+      data-inspection={inspection.mode}
       data-dragging={dragging ? "true" : "false"}
+      style={inspectionColor
+        ? { "--overview-inspection-color": inspectionColor } as CSSProperties
+        : undefined}
     >
       <h3 id={titleId} className="overview-thread-flow-sr-only">
         Project digital thread
@@ -1242,6 +1279,7 @@ export function OverviewThreadD3Flow({
           </g>
           <g className="overview-thread-flow-hierarchy-links">
             {layout.groups.flatMap((group) => {
+              if (!group.structureRowCount || group.collapsed) return [];
               const rows = hullContents?.get(group.key)?.rows ?? [];
               const pointSize = group.view === "matrix"
                 ? layout.nodes.find((node) => node.key === group.nodeKeys[0])
@@ -1255,18 +1293,14 @@ export function OverviewThreadD3Flow({
                     key={`${group.key}:${link.fromKey}>${link.toKey}`}
                     data-from-row={link.fromKey}
                     data-to-row={link.toKey}
-                    data-relation-kind="navigation-parent"
-                    data-state={!hoveredRowKey
-                      ? "default"
-                      : link.fromKey === hoveredRowKey
-                      ? "outgoing"
-                      : link.toKey === hoveredRowKey
-                      ? "incoming"
-                      : "muted"}
+                    data-relation-kind={link.relationKind}
+                    data-state={overviewHullHierarchyLinkState(
+                      group.key,
+                      link.fromKey,
+                      link.toKey,
+                      litRowKey,
+                    )}
                     d={link.d}
-                    style={{
-                      "--flow-color": groupColor(group),
-                    } as CSSProperties}
                     vectorEffect="non-scaling-stroke"
                   />
                 ));
@@ -1274,8 +1308,9 @@ export function OverviewThreadD3Flow({
           </g>
           <FlowSegmentLayer
             layout={layout}
-            activeKey={activeKey}
-            activeKeys={hoveredGraphKeys}
+            activeKey={inspection.graphKeys[0]}
+            activeKeys={inspection.graphKeys.slice(1)}
+            muteUnmatched={inspection.mode !== "idle"}
             movingNodeKeys={movingNodeKeys}
             dragging={Boolean(dragging)}
             reducedMotion={reducedMotion}
@@ -1573,10 +1608,32 @@ export function OverviewThreadD3Flow({
                 (position) => {
                   const { row } = position;
                   const presentation = overviewHullRowPresentation(row);
+                  const presentationKey = overviewHullPresentationRowKey(
+                    group.key,
+                    row.key,
+                  );
+                  const graphKey = row.nodeKey ??
+                    graphKeysByPresentationRow.get(presentationKey)?.[0];
+                  const contextKey = row.viewerNodeKey ?? row.nodeKey;
+                  const boundItem = graphKey
+                    ? nodesByKey.get(graphKey)
+                    : undefined;
+                  const tooltip = structureRowTooltip(
+                    row,
+                    boundItem,
+                    group.view,
+                  );
+                  const selected = presentationKey === selectedRowKey;
+                  const inspectionActive = inspection.mode === "selected" &&
+                    overviewInspectionIsVisualTarget(inspection, {
+                      presentationRowKey: presentationKey,
+                    });
                   return (
                     <DropdownMenuContextTrigger
                       key={`${group.key}:${row.key}`}
-                      value={overviewThreadGroupContextValue(group.key)}
+                      value={contextKey
+                        ? overviewThreadNodeContextValue(contextKey)
+                        : overviewThreadGroupContextValue(group.key)}
                       asChild
                     >
                       <button
@@ -1585,14 +1642,17 @@ export function OverviewThreadD3Flow({
                         data-hull-row-key={row.key}
                         data-hull-row-kind={row.kind}
                         data-hull-group-key={group.key}
+                        data-overview-presentation-row={presentationKey}
                         data-hull-row-view={group.view}
                         data-has-viewer={presentation.hasViewer
                           ? "true"
                           : "false"}
+                        data-selected={selected ? "true" : "false"}
+                        data-inspection-active={inspectionActive
+                          ? "true"
+                          : "false"}
                         aria-label={presentation.ariaLabel}
-                        title={`${presentation.label}${
-                          presentation.detail ? ` · ${presentation.detail}` : ""
-                        }\n${row.key}`}
+                        aria-pressed={selected}
                         style={{
                           left: flowXPercent(position.x, layout.viewBox),
                           top: flowYPercent(position.y, layout.viewBox),
@@ -1607,30 +1667,31 @@ export function OverviewThreadD3Flow({
                           "--structure-depth": position.depth,
                           "--flow-color": groupColor(group),
                         } as CSSProperties}
-                        onClick={() => onActivateHullRow?.(row)}
+                        onClick={() => onActivateHullRow?.(row, group.key)}
+                        onContextMenu={() => {
+                          if (!selected) {
+                            onActivateHullRow?.(row, group.key);
+                          }
+                        }}
                         onMouseEnter={() => {
-                          setHoveredRowKey(row.key);
-                          onHover(
-                            row.nodeKey ?? graphKeysByRowKey.get(row.key)?.[0],
-                          );
+                          setHoveredRowKey(presentationKey);
+                          onHover(graphKey);
                         }}
                         onMouseLeave={() => {
                           setHoveredRowKey(undefined);
                           onHover(undefined);
                         }}
                         onFocus={() => {
-                          setHoveredRowKey(row.key);
-                          const nodeKey = row.nodeKey ??
-                            graphKeysByRowKey.get(row.key)?.[0];
-                          if (nodeKey) onFocus(nodeKey);
-                          onHover(nodeKey);
+                          setHoveredRowKey(presentationKey);
+                          if (graphKey) onFocus(graphKey);
+                          onHover(graphKey);
                         }}
                         onBlur={() => {
                           setHoveredRowKey(undefined);
                           onHover(undefined);
                         }}
                         ref={(element) => {
-                          if (row.nodeKey) refNode(row.nodeKey, element);
+                          refNode(presentationKey, element);
                         }}
                         onWheel={group.view !== "matrix" &&
                             group.rowCount >
@@ -1647,6 +1708,13 @@ export function OverviewThreadD3Flow({
                           row={row}
                           hierarchical={group.view === "tree"}
                         />
+                        <span
+                          className="overview-thread-flow-node-tooltip"
+                          aria-hidden="true"
+                        >
+                          <strong>{tooltip.title}</strong>
+                          <span>{tooltip.body}</span>
+                        </span>
                       </button>
                     </DropdownMenuContextTrigger>
                   );
@@ -1668,8 +1736,12 @@ export function OverviewThreadD3Flow({
                   laneColorById.get(position.lane) ?? "currentColor",
                 )}
                 selected={position.key === selectedKey}
+                inspectionActive={inspection.mode === "selected" &&
+                  overviewInspectionIsVisualTarget(inspection, {
+                    graphKey: position.key,
+                  })}
                 focused={position.key === focusedKey}
-                related={activeKey === undefined ||
+                related={inspection.mode === "idle" ||
                   relatedKeys.has(position.key)}
                 tabIndex={position.key === focusedKey ? 0 : -1}
                 draggable={Boolean(onMoveNode)}
@@ -1758,6 +1830,7 @@ function FlowNode({
   viewBox,
   color,
   selected,
+  inspectionActive,
   focused,
   related,
   tabIndex,
@@ -1778,6 +1851,7 @@ function FlowNode({
   readonly viewBox: readonly [number, number, number, number];
   readonly color: string;
   readonly selected: boolean;
+  readonly inspectionActive: boolean;
   readonly focused: boolean;
   readonly related: boolean;
   readonly tabIndex: number;
@@ -1814,7 +1888,11 @@ function FlowNode({
           ? item.activity.status
           : undefined}
         data-lane={position.lane}
-        data-state={selected ? "selected" : related ? "related" : "muted"}
+        data-state={inspectionActive
+          ? "selected"
+          : related
+          ? "related"
+          : "muted"}
         data-focused={focused ? "true" : "false"}
         data-draggable={draggable ? "true" : "false"}
         data-emphasis={item.kind !== "activity" && item.emphasis
@@ -1892,7 +1970,8 @@ function FlowNode({
   );
 }
 
-type OverviewFlowSegmentState = ReturnType<typeof flowSegmentState>;
+type OverviewFlowSegmentState =
+  import("./overview-thread-d3-flow-highlight.ts").OverviewFlowSegmentHighlightState;
 
 interface OverviewFlowSegmentPresentation {
   readonly segment: OverviewThreadD3FlowSegmentLayout;
@@ -1912,6 +1991,7 @@ function FlowSegmentLayer({
   layout,
   activeKey,
   activeKeys,
+  muteUnmatched = false,
   movingNodeKeys,
   dragging,
   reducedMotion,
@@ -1919,6 +1999,7 @@ function FlowSegmentLayer({
   readonly layout: OverviewThreadD3FlowLayout;
   readonly activeKey: string | undefined;
   readonly activeKeys: readonly string[];
+  readonly muteUnmatched?: boolean;
   readonly movingNodeKeys: ReadonlySet<string>;
   readonly dragging: boolean;
   readonly reducedMotion: boolean;
@@ -1986,6 +2067,13 @@ function FlowSegmentLayer({
       element.path.remove();
       elementsRef.current.delete(id);
     }
+    const painted = [...elementsRef.current.values()].toSorted((left, right) =>
+      flowSegmentPaintRank(left.presentation?.state ?? "default") -
+        flowSegmentPaintRank(right.presentation?.state ?? "default") ||
+      left.path.dataset.kind?.localeCompare(right.path.dataset.kind ?? "") ||
+      0
+    );
+    for (const element of painted) layer.appendChild(element.path);
   };
 
   const requestMotionFrame = () => {
@@ -2020,6 +2108,7 @@ function FlowSegmentLayer({
       movingNodeKeys,
       dragging,
       activeKeys,
+      muteUnmatched,
     );
     presentationByKeyRef.current = new Map(
       presentations.map((presentation) => [
@@ -2058,7 +2147,15 @@ function FlowSegmentLayer({
     } else {
       requestMotionFrame();
     }
-  }, [activeKey, activeKeys, dragging, layout, movingNodeKeys, reducedMotion]);
+  }, [
+    activeKey,
+    activeKeys,
+    dragging,
+    layout,
+    movingNodeKeys,
+    muteUnmatched,
+    reducedMotion,
+  ]);
 
   useEffect(() => {
     return () => {
@@ -2079,12 +2176,22 @@ function overviewFlowSegmentPresentations(
   movingNodeKeys: ReadonlySet<string>,
   dragging: boolean,
   activeKeys: readonly string[] = [],
+  muteUnmatched = false,
 ): readonly OverviewFlowSegmentPresentation[] {
   return overviewFlowVisualSegments(layout).map((segment) => ({
     segment,
-    state: flowSegmentState(segment, activeKey, activeKeys),
+    state: flowSegmentState(
+      segment,
+      activeKey,
+      activeKeys,
+      layout.routes,
+      muteUnmatched,
+    ),
     connectedToDrag: dragging && segmentTouchesKeys(segment, movingNodeKeys),
-  }));
+  })).toSorted((left, right) =>
+    flowSegmentPaintRank(left.state) - flowSegmentPaintRank(right.state) ||
+    left.segment.key.localeCompare(right.segment.key)
+  );
 }
 
 function overviewFlowVisualSegments(
@@ -2144,6 +2251,11 @@ function applyOverviewFlowSegmentPresentation(
   path.dataset.direction = presentation.segment.direction;
   path.dataset.state = presentation.state;
   path.dataset.dragRoute = presentation.connectedToDrag ? "connected" : "idle";
+  if (presentation.segment.dock) {
+    path.dataset.dock = presentation.segment.dock;
+  } else {
+    delete path.dataset.dock;
+  }
 }
 
 function formatOverviewFlowMotionNumber(value: number): string {
@@ -2159,31 +2271,21 @@ function segmentTouchesKeys(
     segment.toKeys.some((key) => keys.has(key));
 }
 
-function flowSegmentState(
-  segment: OverviewThreadD3FlowSegmentLayout,
-  activeKey: string | undefined,
-  activeKeys: readonly string[] = [],
-): "default" | "emphasis" | "incoming" | "outgoing" | "muted" {
-  const keys = activeKey ? [activeKey, ...activeKeys] : activeKeys;
-  if (keys.length === 0) return segment.emphasis ? "emphasis" : "default";
-  if (segment.fromKeys.some((key) => keys.includes(key))) return "outgoing";
-  if (segment.toKeys.some((key) => keys.includes(key))) return "incoming";
-  return "muted";
-}
-
 function flowSegmentWidth(segment: OverviewThreadD3FlowSegmentLayout): number {
   return nonNegativeFinite(segment.width);
 }
 
 function flowRelatedNodeKeys(
   layout: OverviewThreadD3FlowLayout,
-  activeKey: string | undefined,
+  activeKeys: readonly string[],
 ): ReadonlySet<string> {
-  if (!activeKey) return new Set();
-  const keys = new Set([activeKey]);
+  if (activeKeys.length === 0) return new Set();
+  const keys = new Set(activeKeys);
   for (const route of layout.routes) {
-    if (route.fromKey === activeKey) keys.add(route.toKey);
-    if (route.toKey === activeKey) keys.add(route.fromKey);
+    if (keys.has(route.fromKey) || keys.has(route.toKey)) {
+      keys.add(route.fromKey);
+      keys.add(route.toKey);
+    }
   }
   return keys;
 }
@@ -2220,6 +2322,18 @@ export function flowGroupCaption(
   group: OverviewThreadD3FlowGroupLayout,
 ): string {
   return overviewGroupCaption(group.groupKey, group.lane);
+}
+
+function structureRowTooltip(
+  row: OverviewHullContentRow,
+  item: OverviewHeroNode | undefined,
+  view: "tree" | "list" | "matrix",
+): { readonly title: string; readonly body: string } {
+  if (view === "matrix") return overviewHullRowTooltip(row, view);
+  if (item && item.kind !== "activity") {
+    return { title: item.label, body: flowNodeDescription(item) };
+  }
+  return overviewHullRowTooltip(row, view);
 }
 
 function flowNodeDescription(item: OverviewHeroNode): string {

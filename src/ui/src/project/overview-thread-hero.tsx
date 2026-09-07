@@ -53,6 +53,12 @@ import {
   withOverviewCurrentBrief,
   withOverviewCurrentBriefContent,
 } from "./overview/hulls/current-brief.ts";
+import { OverviewCurrentBriefDocument } from "./overview-thread-current-brief.tsx";
+import {
+  overviewCurrentBriefMatches,
+  overviewCurrentBriefViewerId,
+  overviewCurrentBriefViewerTitle,
+} from "./overview-thread-current-brief.ts";
 import {
   overviewCanonicalViewerNodeKey,
   overviewDefaultViewerSessions,
@@ -60,12 +66,18 @@ import {
   type OverviewViewerOpenTarget,
 } from "./overview-thread-viewer-discovery.ts";
 import {
-  activateOverviewHullRow,
   buildOverviewHullContents,
   buildOverviewVersionHistory,
+  nextOverviewHullPresentationRowKey,
+  overviewContextActionPresentationRowKey,
   type OverviewHullContent,
+  overviewHullMappedGraphKey,
   OverviewHullMenuRowBody,
+  overviewHullPresentationRowKey,
+  overviewHullPresentationRowLookup,
+  parseOverviewHullPresentationRowKey,
 } from "./overview/hulls/index.ts";
+import { layoutOverviewHullRows } from "./overview/hulls/row-layout.ts";
 import { overviewActivityStatusCaption } from "./overview/activity-status-caption.ts";
 import {
   DropdownMenu,
@@ -139,6 +151,10 @@ type OverviewNodeContextAction =
   | {
     readonly kind: "open-activity";
     readonly label: string;
+  }
+  | {
+    readonly kind: "open-current-brief";
+    readonly label: string;
   };
 
 type OverviewOpenSessionContextAction = Extract<
@@ -146,7 +162,9 @@ type OverviewOpenSessionContextAction = Extract<
   { readonly kind: "open-session" }
 >;
 
-type OverviewViewerState = OverviewSessionViewerState;
+type OverviewViewerState =
+  | OverviewSessionViewerState
+  | OverviewCurrentBriefViewerState;
 
 interface OverviewViewerBase {
   readonly id: string;
@@ -163,6 +181,14 @@ interface OverviewSessionViewerState extends OverviewViewerBase {
   readonly nodeKey: string;
   /** Stable descriptor key; URL and runtime state are never persisted. */
   readonly sessionId: string;
+  /** Visible hull row that opened this viewer; never a Thread identity. */
+  readonly presentationRowKey?: string;
+}
+
+interface OverviewCurrentBriefViewerState extends OverviewViewerBase {
+  readonly kind: "current-brief";
+  readonly briefSnapshotId: string;
+  readonly presentationRowKey?: string;
 }
 
 interface OverviewViewerDragState {
@@ -562,11 +588,15 @@ export function OverviewThreadHero({
     persistenceViewerCapabilities,
   ]);
   const [selectedKey, setSelectedKey] = useState<string>();
+  const [selectedRowKey, setSelectedRowKey] = useState<string>();
   const [hoveredKey, setHoveredKey] = useState<string>();
   const [focusedKey, setFocusedKey] = useState<string>();
   const [contextTriggerValue, setContextTriggerValue] = useState<
     string | null
   >(null);
+  const [contextPresentationRowKey, setContextPresentationRowKey] = useState<
+    string
+  >();
   const [layoutMode, setLayoutMode] = useState<OverviewLayoutMode>("hierarchy");
   const [viewers, setViewers] = useState<readonly OverviewViewerState[]>([]);
   const [autoShownNodeKeys, setAutoShownNodeKeys] = useState<readonly string[]>(
@@ -715,10 +745,16 @@ export function OverviewThreadHero({
       current && displayedKeys.has(current) ? current : firstKey
     );
     setViewers((current) =>
-      current.filter((viewer) =>
-        recordedKeys.has(viewer.nodeKey) &&
-        (availableSessionIds?.has(viewer.sessionId) ?? true)
-      )
+      current.filter((viewer) => {
+        if (viewer.kind === "current-brief") {
+          return overviewCurrentBriefMatches(
+            currentBrief,
+            viewer.briefSnapshotId,
+          );
+        }
+        return recordedKeys.has(viewer.nodeKey) &&
+          (availableSessionIds?.has(viewer.sessionId) ?? true);
+      })
     );
   }, [
     flowLayout.nodes,
@@ -727,6 +763,7 @@ export function OverviewThreadHero({
     recordView.nodes,
     view.nodes,
     viewerSessions,
+    currentBrief,
   ]);
   useEffect(() => {
     if (
@@ -846,8 +883,20 @@ export function OverviewThreadHero({
       flush();
     };
   }, []);
-  const activeKey = selectedKey ?? hoveredKey;
+  const activeKey = hoveredKey ?? selectedKey;
   const selectedItem = selectedKey ? nodesByKey.get(selectedKey) : undefined;
+  const selectedPresentation = selectedRowKey
+    ? parseOverviewHullPresentationRowKey(selectedRowKey)
+    : undefined;
+  const selectedHullRow = selectedPresentation
+    ? hullContents.get(selectedPresentation.groupKey)?.rows.find((row) =>
+      row.key === selectedPresentation.rowKey
+    )
+    : undefined;
+  const selectedBriefSection =
+    selectedHullRow?.nativeAction === "open-current-brief"
+      ? selectedHullRow
+      : undefined;
   const selectedConnections = useMemo(
     () =>
       selectedKey
@@ -860,20 +909,7 @@ export function OverviewThreadHero({
     [view.edges, activeKey],
   );
   const toggleSelection = (item: OverviewHeroNode) => {
-    const session = viewerSessionsByNodeKey.get(item.key)?.[0];
-    if (session) {
-      openViewer({ kind: "session", nodeKey: item.key, sessionId: session.id });
-      return;
-    }
-    const alias = viewerAliases.get(item.key)?.[0];
-    if (alias) {
-      openViewer({
-        kind: "session",
-        nodeKey: alias.nodeKey,
-        sessionId: alias.sessionId,
-      });
-      return;
-    }
+    setSelectedRowKey(undefined);
     setSelectedKey((current) => nextOverviewHeroSelection(current, item.key));
   };
   const bringViewerFront = (viewerId: string) => {
@@ -889,6 +925,7 @@ export function OverviewThreadHero({
       readonly kind: "session";
       readonly nodeKey: string;
       readonly sessionId: string;
+      readonly presentationRowKey?: string;
     },
     automatic = false,
   ) => {
@@ -913,7 +950,10 @@ export function OverviewThreadHero({
       }
       const world = worldRef.current;
       const viewport = viewportRef.current;
-      const anchor = nodeRefs.current.get(resolved.nodeKey);
+      const anchor = (request.presentationRowKey
+        ? nodeRefs.current.get(request.presentationRowKey)
+        : undefined) ??
+        nodeRefs.current.get(resolved.nodeKey);
       const viewportBounds = viewport?.getBoundingClientRect();
       const anchorBounds = anchor?.getBoundingClientRect();
       const worldWidth = world?.offsetWidth ?? whiteboardWorldSize.width;
@@ -950,6 +990,9 @@ export function OverviewThreadHero({
       return separateOverviewThreadViewers([...current, {
         ...resolved,
         id,
+        ...(request.presentationRowKey
+          ? { presentationRowKey: request.presentationRowKey }
+          : {}),
         ...(automatic
           ? separateOverviewThreadInitialViewer(geometry, current, worldWidth)
           : geometry),
@@ -961,13 +1004,92 @@ export function OverviewThreadHero({
     setFocusedKey(undefined);
     requestAnimationFrame(() => viewerRefs.current.get(id)?.focus());
   };
-  const runContextAction = (action: OverviewNodeContextAction) => {
+  const openCurrentBriefViewer = (presentationRowKey?: string) => {
+    if (!currentBrief) return;
+    const id = overviewCurrentBriefViewerId(currentBrief.id);
+    setViewers((current) => {
+      const top = Math.max(0, ...current.map((viewer) => viewer.z)) + 1;
+      const existing = current.find((viewer) => viewer.id === id);
+      if (existing) {
+        return current.map((viewer) =>
+          viewer.id === id
+            ? {
+              ...viewer,
+              z: top,
+              ...(presentationRowKey ? { presentationRowKey } : {}),
+            }
+            : viewer
+        );
+      }
+      const world = worldRef.current;
+      const viewport = viewportRef.current;
+      const anchor = presentationRowKey
+        ? nodeRefs.current.get(presentationRowKey)
+        : undefined;
+      const viewportBounds = viewport?.getBoundingClientRect();
+      const anchorBounds = anchor?.getBoundingClientRect();
+      const worldWidth = world?.offsetWidth ?? whiteboardWorldSize.width;
+      const worldHeight = world?.offsetHeight ?? whiteboardWorldSize.height;
+      const anchorPoint = viewportBounds && anchorBounds
+        ? overviewThreadViewerScreenPointToWorld(
+          {
+            x: anchorBounds.left + anchorBounds.width / 2 -
+              viewportBounds.left,
+            y: anchorBounds.top + anchorBounds.height / 2 -
+              viewportBounds.top,
+          },
+          whiteboardTransform,
+        )
+        : { x: worldWidth / 2, y: worldHeight / 2 };
+      const geometry = normalizeOverviewThreadViewerGeometry(
+        initialOverviewViewerGeometry(
+          anchorPoint,
+          {
+            width: Math.min(
+              OVERVIEW_VIEWER_DEFAULT_WIDTH,
+              Math.max(180, worldWidth - OVERVIEW_VIEWER_PADDING * 2),
+            ),
+            height: Math.min(
+              OVERVIEW_VIEWER_DEFAULT_HEIGHT,
+              Math.max(160, worldHeight - OVERVIEW_VIEWER_PADDING * 2),
+            ),
+          },
+          { width: worldWidth, height: worldHeight },
+          current.length % 6,
+        ),
+        overviewViewerGeometryConstraints(),
+      );
+      return separateOverviewThreadViewers([...current, {
+        kind: "current-brief",
+        id,
+        briefSnapshotId: currentBrief.id,
+        ...(presentationRowKey ? { presentationRowKey } : {}),
+        ...geometry,
+        z: top,
+      }], id);
+    });
+    requestAnimationFrame(() => viewerRefs.current.get(id)?.focus());
+  };
+  const runContextAction = (
+    action: OverviewNodeContextAction,
+    presentationRowKey?: string,
+  ) => {
     if (action.kind === "open-session") {
+      const openingRowKey = overviewContextActionPresentationRowKey(
+        presentationRowKey,
+      );
       openViewer({
         kind: "session",
         nodeKey: action.nodeKey,
         sessionId: action.sessionId,
+        ...(openingRowKey ? { presentationRowKey: openingRowKey } : {}),
       });
+      return;
+    }
+    if (action.kind === "open-current-brief") {
+      openCurrentBriefViewer(
+        overviewContextActionPresentationRowKey(presentationRowKey),
+      );
       return;
     }
     if (action.kind === "open-evidence") {
@@ -1036,7 +1158,7 @@ export function OverviewThreadHero({
   const closeViewer = (viewerId: string) => {
     const viewer = viewers.find((candidate) => candidate.id === viewerId);
     setViewers((current) => current.filter((viewer) => viewer.id !== viewerId));
-    if (viewer) {
+    if (viewer?.kind === "session") {
       setFocusedKey(viewer.nodeKey);
       requestAnimationFrame(() =>
         nodeRefs.current.get(viewer.nodeKey)?.focus()
@@ -1539,20 +1661,7 @@ export function OverviewThreadHero({
     : [];
   const selectNode = (key: string) => {
     if (!nodesByKey.has(key)) return;
-    const session = viewerSessionsByNodeKey.get(key)?.[0];
-    if (session) {
-      openViewer({ kind: "session", nodeKey: key, sessionId: session.id });
-      return;
-    }
-    const alias = viewerAliases.get(key)?.[0];
-    if (alias) {
-      openViewer({
-        kind: "session",
-        nodeKey: alias.nodeKey,
-        sessionId: alias.sessionId,
-      });
-      return;
-    }
+    setSelectedRowKey(undefined);
     setSelectedKey(key);
     setHoveredKey(key);
     setFocusedKey(key);
@@ -1563,6 +1672,21 @@ export function OverviewThreadHero({
   ) => {
     if (!parseOverviewThreadContextTarget(value)) return;
     flushSync(() => setContextTriggerValue(value!));
+  };
+  const rememberContextPresentationRow = (
+    target: Element | null | undefined,
+  ) => {
+    const fromRow = overviewPresentationRowKeyFromTarget(target);
+    if (fromRow) {
+      setContextPresentationRowKey(fromRow);
+      return;
+    }
+    if (
+      target?.closest(
+        ".overview-thread-context-menu, .overview-thread-selection-note, .overview-thread-hull-monitor",
+      )
+    ) return;
+    setContextPresentationRowKey(undefined);
   };
   const monitoredGroup = hullMonitor
     ? flowLayout.groups.find((group) => group.key === hullMonitor.groupKey)
@@ -1603,6 +1727,7 @@ export function OverviewThreadHero({
             "[data-overview-context-target]",
           );
           const value = target?.getAttribute("data-overview-context-target");
+          rememberContextPresentationRow(event.target as Element);
           commitContextTargetBeforeOpen(value);
         }}
         onKeyDownCapture={(event) => {
@@ -1614,6 +1739,7 @@ export function OverviewThreadHero({
             "[data-overview-context-target]",
           );
           if (!target) return;
+          rememberContextPresentationRow(target);
           // Chromium on macOS does not synthesize a contextmenu event for
           // Shift+F10, and Ark's ContextTrigger only listens for that event.
           // Reuse the exact same capture/dispatch path as a pointer menu.
@@ -1635,6 +1761,7 @@ export function OverviewThreadHero({
             "[data-overview-context-target]",
           )?.getAttribute("data-overview-context-target");
           if (contextValue) setContextTriggerValue(contextValue);
+          rememberContextPresentationRow(target);
           if (
             !target.closest(
               ".overview-thread-flow-node, .overview-thread-node, .overview-thread-viewer, .overview-thread-hull-monitor, .overview-thread-selection-note, .overview-thread-layout-switch, [data-part='context-trigger'], button",
@@ -1642,6 +1769,7 @@ export function OverviewThreadHero({
           ) {
             setSelectedKey(undefined);
             setHoveredKey(undefined);
+            setSelectedRowKey(undefined);
           }
         }}
       >
@@ -1698,6 +1826,7 @@ export function OverviewThreadHero({
             connections={selectedConnections}
             onClose={() => {
               setSelectedKey(undefined);
+              setSelectedRowKey(undefined);
               nodeRefs.current.get(selectedItem.key)?.focus();
             }}
             onFollow={(reference) => {
@@ -1724,7 +1853,7 @@ export function OverviewThreadHero({
                   type="button"
                   data-app={action.kind === "open-session" ? "true" : undefined}
                   title={action.label}
-                  onClick={() => runContextAction(action)}
+                  onClick={() => runContextAction(action, selectedRowKey)}
                 >
                   {action.kind === "open-session"
                     ? "Open viewer"
@@ -1735,11 +1864,43 @@ export function OverviewThreadHero({
               ))}
           </OverviewThreadSelectionNote>
         )}
+        {selectedBriefSection && currentBrief && (
+          <section
+            className="overview-thread-selection-note"
+            aria-label={`Read ${selectedBriefSection.label}`}
+          >
+            <header>
+              <span>Selected on the board</span>
+              <button
+                type="button"
+                onClick={() => setSelectedRowKey(undefined)}
+                aria-label="Close selected section"
+              >
+                Close
+              </button>
+            </header>
+            <div className="overview-thread-selection-body">
+              <h4>{selectedBriefSection.label}</h4>
+              <p className="overview-thread-selection-meta">
+                {selectedBriefSection.detail ?? "Current Brief section"}
+              </p>
+              <div className="overview-thread-selection-actions">
+                <button
+                  type="button"
+                  onClick={() => openCurrentBriefViewer(selectedRowKey)}
+                >
+                  Open current Brief
+                </button>
+              </div>
+            </div>
+          </section>
+        )}
         {selectedItem?.kind === "brief-source" && (
           <OverviewThreadBriefSourceNote
             item={selectedItem}
             onClose={() => {
               setSelectedKey(undefined);
+              setSelectedRowKey(undefined);
               nodeRefs.current.get(selectedItem.key)?.focus();
             }}
             onSelectRequirement={(requirementId) =>
@@ -1773,25 +1934,31 @@ export function OverviewThreadHero({
                   layout={flowLayout}
                   hullContents={hullContents}
                   rowAnchors={groupRowAnchors}
-                  onActivateHullRow={(row) => {
-                    activateOverviewHullRow(row, {
-                      selectNode,
-                      openSession: (sessionId, nodeKey) => {
-                        const session = viewerSessionsById.get(sessionId);
-                        if (
-                          !session || session.anchor.kind === "project-review"
-                        ) {
-                          return;
-                        }
-                        if (nodesByKey.has(nodeKey)) {
-                          openViewer({
-                            kind: "session",
-                            nodeKey,
-                            sessionId,
-                          });
-                        }
-                      },
-                    });
+                  selectedRowKey={selectedRowKey}
+                  onActivateHullRow={(row, groupKey) => {
+                    const presentationKey = overviewHullPresentationRowKey(
+                      groupKey,
+                      row.key,
+                    );
+                    const nextRowKey = nextOverviewHullPresentationRowKey(
+                      selectedRowKey,
+                      presentationKey,
+                    );
+                    setSelectedRowKey(nextRowKey);
+                    const mapped = overviewHullMappedGraphKey(
+                      groupKey,
+                      row,
+                      groupRowAnchors,
+                      hullContents.get(groupKey)?.rows,
+                      nodesByKey,
+                    );
+                    if (mapped && nextRowKey) {
+                      setSelectedKey(mapped);
+                      setFocusedKey(mapped);
+                    } else {
+                      setSelectedKey(undefined);
+                      if (!nextRowKey) setFocusedKey(undefined);
+                    }
                   }}
                   nodesByKey={nodesByKey}
                   viewerNodeKeys={viewerNodeKeys}
@@ -1799,6 +1966,7 @@ export function OverviewThreadHero({
                   showLaneStrip={!immersive}
                   activeKey={activeKey}
                   selectedKey={selectedKey}
+                  hoveredKey={hoveredKey}
                   focusedKey={focusedKey}
                   onHover={setHoveredKey}
                   onFocus={(key) => {
@@ -2021,11 +2189,13 @@ export function OverviewThreadHero({
                 )}
                 {viewers.map((viewer) => {
                   const anchor = overviewViewerAnchorPoint(
-                    viewer.nodeKey,
+                    viewer.kind === "session" ? viewer.nodeKey : "",
                     layoutMode,
                     flowLayout,
                     radialLayout,
                     whiteboardWorldSize,
+                    hullContents,
+                    viewer.presentationRowKey,
                   );
                   if (!anchor) return null;
                   const connector = buildOverviewThreadViewerConnectorGeometry(
@@ -2070,6 +2240,40 @@ export function OverviewThreadHero({
                 />
               )}
               {viewers.map((viewer) => {
+                if (viewer.kind === "current-brief") {
+                  if (
+                    !currentBrief ||
+                    !overviewCurrentBriefMatches(
+                      currentBrief,
+                      viewer.briefSnapshotId,
+                    )
+                  ) return null;
+                  return (
+                    <OverviewFloatingViewer
+                      key={viewer.id}
+                      refViewer={(node) => {
+                        if (node) viewerRefs.current.set(viewer.id, node);
+                        else viewerRefs.current.delete(viewer.id);
+                      }}
+                      viewer={viewer}
+                      currentBrief={currentBrief}
+                      onBringFront={() => bringViewerFront(viewer.id)}
+                      onClose={() => closeViewer(viewer.id)}
+                      onToggleExpanded={() => toggleViewerExpanded(viewer.id)}
+                      onMoveByKeyboard={(direction) =>
+                        moveViewerByKeyboard(viewer.id, direction)}
+                      onResizeByKeyboard={(direction) =>
+                        resizeViewerByKeyboard(viewer.id, direction)}
+                      onDragStart={(event) => beginViewerDrag(event, viewer)}
+                      onDrag={moveViewer}
+                      onDragEnd={endViewerDrag}
+                      onResizeStart={(event) =>
+                        beginViewerResize(event, viewer)}
+                      onResize={moveViewerResize}
+                      onResizeEnd={endViewerResize}
+                    />
+                  );
+                }
                 const item = nodesByKey.get(viewer.nodeKey);
                 if (!item) return null;
                 const viewerSession = item.kind === "recorded"
@@ -2125,6 +2329,7 @@ export function OverviewThreadHero({
           : undefined}
         viewerSessionsById={viewerSessionsById}
         actions={contextActions}
+        presentationRowKey={contextPresentationRowKey}
         onAction={runContextAction}
         onOpenHullMonitor={(groupKey) => {
           const group = flowLayout.groups.find((item) => item.key === groupKey);
@@ -2167,14 +2372,18 @@ function overviewPresentationState(
     groupPlacements,
     nodePlacements,
     transform,
-    viewers: viewers.map(overviewViewerToPresentation),
+    viewers: viewers.flatMap((viewer) => {
+      const presented = overviewViewerToPresentation(viewer);
+      return presented ? [presented] : [];
+    }),
     autoShownNodeKeys,
   };
 }
 
 function overviewViewerToPresentation(
   viewer: OverviewViewerState,
-): OverviewThreadWhiteboardPresentationViewer {
+): OverviewThreadWhiteboardPresentationViewer | undefined {
+  if (viewer.kind !== "session") return undefined;
   const spatial = {
     id: viewer.id,
     nodeKey: viewer.nodeKey,
@@ -2183,6 +2392,9 @@ function overviewViewerToPresentation(
     expanded: viewer.restoreGeometry !== undefined,
     ...(viewer.restoreGeometry
       ? { restoreGeometry: viewer.restoreGeometry }
+      : {}),
+    ...(viewer.presentationRowKey
+      ? { presentationRowKey: viewer.presentationRowKey }
       : {}),
   };
   return { ...spatial, kind: "session", sessionId: viewer.sessionId };
@@ -2200,7 +2412,14 @@ function overviewViewerFromPresentation(
       ? { restoreGeometry: viewer.restoreGeometry }
       : {}),
   };
-  return { ...spatial, kind: "session", sessionId: viewer.sessionId };
+  return {
+    ...spatial,
+    kind: "session",
+    sessionId: viewer.sessionId,
+    ...(viewer.presentationRowKey
+      ? { presentationRowKey: viewer.presentationRowKey }
+      : {}),
+  };
 }
 
 function overviewWhiteboardBrowserStorage(): Storage | undefined {
@@ -2357,20 +2576,58 @@ function overviewWhiteboardViewportStyle(
   } as CSSProperties;
 }
 
+function overviewPresentationRowKeyFromTarget(
+  target: Element | null | undefined,
+): string | undefined {
+  const row = target?.closest(".overview-thread-flow-structure-row");
+  if (!row) return undefined;
+  const groupKey = row.getAttribute("data-hull-group-key");
+  const rowKey = row.getAttribute("data-hull-row-key");
+  if (!groupKey || !rowKey) return undefined;
+  return overviewHullPresentationRowKey(groupKey, rowKey);
+}
+
 function overviewViewerAnchorPoint(
   nodeKey: string,
   layoutMode: OverviewLayoutMode,
   flowLayout: ReturnType<typeof buildOverviewThreadD3FlowLayout>,
   radialLayout: ReturnType<typeof buildOverviewThreadD3Layout>,
   world: { readonly width: number; readonly height: number },
+  hullContents?: ReadonlyMap<string, OverviewHullContent>,
+  presentationRowKey?: string,
 ): { readonly x: number; readonly y: number } | undefined {
   if (layoutMode === "hierarchy") {
+    const [viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight] =
+      flowLayout.viewBox;
+    if (presentationRowKey && hullContents && viewBoxWidth > 0) {
+      const found = overviewHullPresentationRowLookup(
+        presentationRowKey,
+        hullContents,
+      );
+      if (found) {
+        const group = flowLayout.groups.find((candidate) =>
+          candidate.key === found.groupKey
+        );
+        const rows = hullContents.get(found.groupKey)?.rows;
+        const position = group && rows
+          ? layoutOverviewHullRows(rows, group).find((item) =>
+            item.row.key === found.rowKey
+          )
+          : undefined;
+        if (position) {
+          return {
+            x: (position.x + position.width / 2 - viewBoxX) /
+              viewBoxWidth * world.width,
+            y: (position.y + position.height / 2 - viewBoxY) /
+              viewBoxHeight * world.height,
+          };
+        }
+      }
+    }
     const node = flowLayout.nodes.find((candidate) =>
       candidate.key === nodeKey
     );
     if (!node) return undefined;
-    const [viewBoxX, viewBoxY, viewBoxWidth, viewBoxHeight] =
-      flowLayout.viewBox;
     return {
       x: (node.centerX - viewBoxX) / viewBoxWidth * world.width,
       y: (node.centerY - viewBoxY) / viewBoxHeight * world.height,
@@ -2866,6 +3123,7 @@ function OverviewThreadContextMenu({
   content,
   viewerSessionsById,
   actions,
+  presentationRowKey,
   onAction,
   onOpenHullMonitor,
   onSelectNode,
@@ -2884,7 +3142,11 @@ function OverviewThreadContextMenu({
   readonly content?: OverviewHullContent;
   readonly viewerSessionsById: ReadonlyMap<string, ThreadViewerSession>;
   readonly actions: readonly OverviewNodeContextAction[];
-  readonly onAction: (action: OverviewNodeContextAction) => void;
+  readonly presentationRowKey?: string;
+  readonly onAction: (
+    action: OverviewNodeContextAction,
+    presentationRowKey?: string,
+  ) => void;
   readonly onOpenHullMonitor: (groupKey: string) => void;
   readonly onSelectNode: (key: string) => void;
 }): JSX.Element {
@@ -2943,7 +3205,7 @@ function OverviewThreadContextMenu({
             <DropdownMenuItem
               key={overviewContextActionValue(action, index)}
               value={overviewContextActionValue(action, index)}
-              onSelect={() => onAction(action)}
+              onSelect={() => onAction(action, presentationRowKey)}
             >
               {action.label}
             </DropdownMenuItem>
@@ -2975,16 +3237,41 @@ function OverviewThreadContextMenu({
             const style = {
               paddingInlineStart: `${0.75 + row.depth * 0.9}rem`,
             };
+            const rowPresentationKey = overviewHullPresentationRowKey(
+              group.key,
+              row.key,
+            );
+            if (row.nativeAction === "open-current-brief") {
+              return (
+                <DropdownMenuItem
+                  key={row.key}
+                  value={`hull-row-brief:${row.key}`}
+                  data-hull-row-key={row.key}
+                  data-hull-group-key={group.key}
+                  data-hull-row-kind={row.kind}
+                  className="overview-thread-context-viewer"
+                  style={style}
+                  onSelect={() =>
+                    onAction({
+                      kind: "open-current-brief",
+                      label: "Open current Brief",
+                    }, rowPresentationKey)}
+                >
+                  <OverviewHullMenuRowBody row={row} />
+                </DropdownMenuItem>
+              );
+            }
             if (rowActions.length > 0) {
               return rowActions.map((action) => (
                 <DropdownMenuItem
                   key={`${row.key}:${action.sessionId}`}
                   value={`hull-row-viewer:${row.key}:${action.sessionId}`}
                   data-hull-row-key={row.key}
+                  data-hull-group-key={group.key}
                   data-hull-row-kind={row.kind}
                   className="overview-thread-context-viewer"
                   style={style}
-                  onSelect={() => onAction(action)}
+                  onSelect={() => onAction(action, rowPresentationKey)}
                 >
                   <OverviewHullMenuRowBody row={row} />
                 </DropdownMenuItem>
@@ -3083,7 +3370,10 @@ function OverviewHullMonitorCard({
     readonly OverviewViewerOpenTarget[]
   >;
   readonly geometry: OverviewThreadViewerGeometry;
-  readonly onAction: (action: OverviewNodeContextAction) => void;
+  readonly onAction: (
+    action: OverviewNodeContextAction,
+    presentationRowKey?: string,
+  ) => void;
   readonly onSelectNode: (key: string) => void;
   readonly onDragStart: (event: ReactPointerEvent<HTMLElement>) => void;
   readonly onDrag: (event: ReactPointerEvent<HTMLElement>) => void;
@@ -3240,6 +3530,7 @@ function OverviewFloatingViewer({
   viewer,
   item,
   viewerSession,
+  currentBrief,
   onBringFront,
   onClose,
   onToggleExpanded,
@@ -3256,6 +3547,7 @@ function OverviewFloatingViewer({
   readonly viewer: OverviewViewerState;
   readonly item?: OverviewHeroNode;
   readonly viewerSession?: ThreadViewerSession;
+  readonly currentBrief?: ProjectBriefRevision;
   readonly onBringFront: () => void;
   readonly onClose: () => void;
   readonly onToggleExpanded: () => void;
@@ -3276,14 +3568,16 @@ function OverviewFloatingViewer({
     event: ReactPointerEvent<HTMLButtonElement>,
   ) => void;
 }): JSX.Element {
-  const title = overviewViewerTitle(item, viewerSession);
+  const title = viewer.kind === "current-brief"
+    ? overviewCurrentBriefViewerTitle(currentBrief?.revision ?? 0)
+    : overviewViewerTitle(item, viewerSession);
   return (
     <article
       ref={refViewer}
       className="overview-thread-viewer"
       data-viewer-id={viewer.id}
       data-viewer-kind={viewer.kind}
-      data-anchor-node={viewer.nodeKey}
+      data-anchor-node={viewer.kind === "session" ? viewer.nodeKey : undefined}
       data-expanded={viewer.restoreGeometry ? "true" : "false"}
       style={{
         left: viewer.x,
@@ -3343,7 +3637,9 @@ function OverviewFloatingViewer({
         </span>
       </header>
       <div className="overview-thread-viewer-body">
-        {viewerSession?.kind === "mcp-app"
+        {viewer.kind === "current-brief" && currentBrief
+          ? <OverviewCurrentBriefDocument brief={currentBrief} />
+          : viewerSession?.kind === "mcp-app"
           ? (
             <McpAppFrame
               className="overview-thread-viewer-app-frame"

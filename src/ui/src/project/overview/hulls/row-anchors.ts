@@ -1,7 +1,7 @@
 import type { OverviewHeroNode } from "../../overview-thread-hero-model.ts";
 import { overviewThreadD3FlowGroupIdentity } from "../../overview-thread-d3-flow-layout.ts";
 import type { ThreadViewerHierarchyProjection } from "../../../../../presentation/workbench/thread/viewer-hierarchy.ts";
-import type { OverviewHullContent } from "./content.ts";
+import type { OverviewHullContent } from "./types.ts";
 
 /**
  * Placement of actual recorded endpoints beside displayed rows. A navigation
@@ -44,6 +44,26 @@ export function overviewHullRowAnchors(
           node.kind === "recorded" && node.node.ref.kind === "artifact" &&
           artifactIds.has(node.node.ref.id)
         ) add(node.key, index);
+      }
+    }
+    const architectureId = hierarchy?.status === "available"
+      ? hierarchy.architectureArtifactId
+      : undefined;
+    const declaredRoots = hierarchy?.status === "available"
+      ? hierarchy.rootIds
+      : [];
+    if (architectureId && declaredRoots.length === 1) {
+      const rootId = declaredRoots[0]!;
+      const uniqueArchitectureMember = members.filter((node) =>
+        node.kind === "recorded" &&
+        node.node.ref.kind === "artifact" &&
+        node.node.ref.id === architectureId
+      ).length === 1;
+      const rootIndex = content.rows.findIndex((row) =>
+        row.kind === "navigation" && row.key === rootId
+      );
+      if (uniqueArchitectureMember && rootIndex >= 0) {
+        add(`artifact:${architectureId}`, rootIndex);
       }
     }
     result[groupKey] = Object.fromEntries(

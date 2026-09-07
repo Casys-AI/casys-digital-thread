@@ -41,6 +41,28 @@ export interface OverviewThreadD3CableHull extends OverviewThreadD3CableBox {
    */
   readonly headerHeight?: number;
   readonly footerHeight?: number;
+  /** Folded hulls have no body; their rail is the remaining bar. */
+  readonly collapsed?: boolean;
+}
+
+/**
+ * Side rail for left/right cables: the content body, never the caption band.
+ * A collapsed hull has no body, so the remaining bar is the dock.
+ */
+export function overviewThreadD3CableBodyBox(
+  hull: OverviewThreadD3CableHull,
+): OverviewThreadD3CableBox {
+  if (hull.collapsed) {
+    return { x: hull.x, y: hull.y, width: hull.width, height: hull.height };
+  }
+  const header = nonNegative(hull.headerHeight);
+  const footer = nonNegative(hull.footerHeight);
+  return {
+    x: hull.x,
+    y: hull.y + header,
+    width: hull.width,
+    height: Math.max(0, hull.height - header - footer),
+  };
 }
 
 /** A leaf inside a hull: one node's rectangle. */
@@ -104,15 +126,8 @@ export function overviewThreadD3CableHub(
   if (side === "top" || side === "bottom") {
     return overviewThreadD3CableAnchor(hull, side, hull.hubMargin);
   }
-  const header = nonNegative(hull.headerHeight);
-  const footer = nonNegative(hull.footerHeight);
   return overviewThreadD3CableAnchor(
-    {
-      x: hull.x,
-      y: hull.y + header,
-      width: hull.width,
-      height: Math.max(0, hull.height - header - footer),
-    },
+    overviewThreadD3CableBodyBox(hull),
     side,
     hull.hubMargin,
   );

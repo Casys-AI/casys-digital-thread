@@ -85,13 +85,33 @@ Deno.test("Overview hierarchy keeps dots compact while surfacing grounded group 
   assertStringIncludes(renderer, "overview-thread-flow-group-label");
   assertStringIncludes(renderer, "flowGroupCaption(group)");
   assertStringIncludes(renderer, "flowNodeDescription(item)");
-  assertStringIncludes(renderer, 'data-inspection={selectedKey ? "selected"');
+  assertStringIncludes(renderer, "data-inspection={inspection.mode}");
   assertEquals(renderer.includes("aria-controls={selected"), false);
   assertEquals(renderer.includes("aria-expanded={selected}"), false);
   assertEquals(renderer.includes("flowCardLines"), false);
   assertEquals(renderer.includes("overview-thread-flow-node-card"), false);
   assertStringIncludes(styles, '[data-inspection="hover"]');
   assertStringIncludes(styles, ".overview-thread-flow-node-tooltip > span");
+  assertStringIncludes(renderer, "flowSegmentState(");
+  const highlight = await Deno.readTextFile(
+    new URL(
+      "./src/project/overview-thread-d3-flow-highlight.ts",
+      import.meta.url,
+    ),
+  );
+  assertStringIncludes(
+    highlight,
+    "route.segmentKeys.includes(segment.key)",
+  );
+  assertStringIncludes(renderer, "structureRowTooltip(");
+  assertStringIncludes(
+    styles,
+    ".overview-thread-flow-structure-row:hover .overview-thread-flow-node-tooltip",
+  );
+  assertStringIncludes(
+    styles,
+    '[data-hull-row-view="matrix"] > :not(.overview-thread-flow-node-tooltip)',
+  );
 });
 
 Deno.test("Overview hierarchy integrates stage progress and semantic activity states", async () => {
@@ -760,8 +780,48 @@ Deno.test("Overview keeps current revisions and existing record access without e
   assertEquals(flow.includes('data-history="true"'), false);
   assertEquals(flow.includes("Preuves de"), false);
   assertStringIncludes(flow, "onMouseEnter");
-  assertStringIncludes(flow, "hoveredGraphKeys");
-  assertStringIncludes(flow, "navigation-parent");
+  assertStringIncludes(flow, "inspection.graphKeys");
+  assertStringIncludes(flow, "data-relation-kind={link.relationKind}");
+  assertEquals(flow.includes("navigation-parent"), false);
+  const rowLayout = await Deno.readTextFile(
+    new URL("./src/project/overview/hulls/row-layout.ts", import.meta.url),
+  );
+  assertStringIncludes(
+    rowLayout,
+    'OVERVIEW_HULL_ROW_PARENT_RELATION = "row-parent"',
+  );
+  assertStringIncludes(flow, "selectedRowKey");
+  assertEquals(flow.includes("onActivateHullRow?.(row, group.key)"), true);
+  assertStringIncludes(flow, "overviewHullPresentationRowKey(");
+  assertStringIncludes(flow, "overviewEffectiveInspection(");
+  assertStringIncludes(flow, "overviewHullHierarchyLinkState(");
+  assertStringIncludes(hero, "hoveredKey ?? selectedKey");
+  assertStringIncludes(hero, "openCurrentBriefViewer");
+  assertStringIncludes(hero, 'kind: "current-brief"');
+  assertStringIncludes(hero, "nextOverviewHullPresentationRowKey(");
+  assertStringIncludes(hero, "overviewHullMappedGraphKey(");
+  assertStringIncludes(hero, "overviewHullPresentationRowLookup(");
+  assertStringIncludes(hero, "setSelectedRowKey(undefined)");
+  const background = hero.slice(
+    hero.indexOf("onPointerDownCapture={(event) => {"),
+    hero.indexOf('className="overview-thread-layout-switch"'),
+  );
+  assertStringIncludes(background, "setSelectedRowKey(undefined)");
+  const selectionNoteClose = hero.slice(
+    hero.indexOf("<OverviewThreadSelectionNote"),
+    hero.indexOf("<OverviewThreadBriefSourceNote"),
+  );
+  assertStringIncludes(selectionNoteClose, "setSelectedRowKey(undefined)");
+  const briefClose = hero.slice(
+    hero.indexOf("<OverviewThreadBriefSourceNote"),
+    hero.indexOf('className="overview-thread-viewport"'),
+  );
+  assertStringIncludes(briefClose, "setSelectedRowKey(undefined)");
+  const toggle = hero.slice(
+    hero.indexOf("const toggleSelection ="),
+    hero.indexOf("const bringViewerFront ="),
+  );
+  assertStringIncludes(toggle, "setSelectedRowKey(undefined)");
   assertStringIncludes(helper, "buildVersionedProvenanceProjection");
   assertEquals(helper.includes("graphWithoutAnalysisOverlay"), false);
   assertEquals(helper.includes("producer"), false);

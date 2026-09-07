@@ -1,11 +1,11 @@
-import type { OverviewThreadD3FlowGroupLayout } from "../../overview-thread-d3-flow-layout.ts";
 import {
   OVERVIEW_THREAD_D3_HULL_HUB_MARGIN as HULL_HIERARCHY_HUB_MARGIN,
   OverviewThreadD3CableFanInFields,
   type OverviewThreadD3CableHull,
   overviewThreadD3CableTerminal,
 } from "../../overview-thread-d3-cable-board.ts";
-import type { OverviewHullContentRow } from "./content.ts";
+import type { OverviewThreadD3CableObstacle } from "../../overview-thread-d3-cable-field.ts";
+import type { OverviewHullContentRow, OverviewHullRowBox } from "./types.ts";
 
 export interface OverviewHullRowLayout {
   readonly row: OverviewHullContentRow;
@@ -16,21 +16,6 @@ export interface OverviewHullRowLayout {
   readonly depth: number;
 }
 
-type RowBox = Pick<
-  OverviewThreadD3FlowGroupLayout,
-  | "x"
-  | "y"
-  | "width"
-  | "height"
-  | "headerHeight"
-  | "footerHeight"
-  | "view"
-  | "columns"
-  | "visibleRows"
-  | "scrollRow"
-  | "collapsed"
->;
-
 export interface OverviewHullRowCell {
   readonly index: number;
   readonly x: number;
@@ -39,10 +24,16 @@ export interface OverviewHullRowCell {
   readonly height: number;
 }
 
+/**
+ * Gutter between listed columns. Without it the right port of one column and
+ * the left port of the next share a coordinate, and cables cut labels.
+ */
+export const OVERVIEW_HULL_LIST_COLUMN_GAP = 7;
+
 /** One visible cable surface shared by record docks and navigation fans. */
 export function overviewHullRowCableSurface(
   cell: Pick<OverviewHullRowCell, "x" | "y" | "width" | "height">,
-  view: RowBox["view"],
+  view: OverviewHullRowBox["view"],
   pointSize = 10,
 ): Pick<OverviewHullRowCell, "x" | "y" | "width" | "height"> {
   const compact = view === "matrix";
@@ -62,7 +53,7 @@ export function overviewHullRowCableSurface(
 /** Arrange the same content rows; changing a view never selects other objects. */
 export function layoutOverviewHullRows(
   rows: readonly OverviewHullContentRow[],
-  group: RowBox,
+  group: OverviewHullRowBox,
 ): readonly OverviewHullRowLayout[] {
   return layoutOverviewHullRowCells(rows.length, group).map((
     { index, ...cell },
@@ -76,14 +67,17 @@ export function layoutOverviewHullRows(
 /** Shared cell geometry for rendering and exact recorded cable docks. */
 export function layoutOverviewHullRowCells(
   rowCount: number,
-  group: RowBox,
+  group: OverviewHullRowBox,
 ): readonly OverviewHullRowCell[] {
   if (group.collapsed || rowCount === 0) return [];
   const matrix = group.view === "matrix";
   const columns = group.view === "tree" ? 1 : Math.max(1, group.columns);
+  const gap = group.view === "list" && columns > 1
+    ? OVERVIEW_HULL_LIST_COLUMN_GAP
+    : 0;
   const capacity = Math.ceil(rowCount / columns);
   const visibleRows = matrix ? capacity : Math.max(1, group.visibleRows);
-  const cellWidth = group.width / columns;
+  const cellWidth = (group.width - gap * (columns - 1)) / columns;
   const cellHeight = (group.height - group.headerHeight - group.footerHeight) /
     visibleRows;
   return Array.from({ length: rowCount }, (_, index) => index).flatMap(
@@ -95,7 +89,7 @@ export function layoutOverviewHullRowCells(
       if (rowIndex < 0 || rowIndex >= visibleRows) return [];
       return [{
         index,
-        x: group.x + column * cellWidth,
+        x: group.x + column * (cellWidth + gap),
         y: group.y + group.headerHeight + rowIndex * cellHeight,
         width: cellWidth,
         height: cellHeight,
@@ -104,17 +98,23 @@ export function layoutOverviewHullRowCells(
   );
 }
 
+export const OVERVIEW_HULL_ROW_PARENT_RELATION = "row-parent" as const;
+
 export interface OverviewHullHierarchyLink {
   readonly fromKey: string;
   readonly toKey: string;
+  readonly relationKind: typeof OVERVIEW_HULL_ROW_PARENT_RELATION;
   readonly points: readonly { readonly x: number; readonly y: number }[];
   readonly d: string;
 }
 
-/** Navigation parentage only: these paths are never Thread edges or evidence. */
+/**
+ * Presentation parentage for any visible row that already names a present
+ * parentKey. Never a Thread edge, evidence join, or inferred relation.
+ */
 export function layoutOverviewHullHierarchyLinks(
   rows: readonly OverviewHullContentRow[],
-  group: RowBox,
+  group: OverviewHullRowBox,
   pointSize = 10,
 ): readonly OverviewHullHierarchyLink[] {
   const positions = new Map(
@@ -125,10 +125,10 @@ export function layoutOverviewHullHierarchyLinks(
   );
   const childrenByParent = new Map<string, OverviewHullRowLayout[]>();
   for (const row of rows) {
-    if (row.kind !== "navigation" || !row.parentKey) continue;
+    if (!row.parentKey) continue;
     const source = positions.get(row.parentKey);
     const target = positions.get(row.key);
-    if (!source || !target || source.row.kind !== "navigation") continue;
+    if (!source || !target) continue;
     const siblings = childrenByParent.get(row.parentKey) ?? [];
     siblings.push(target);
     childrenByParent.set(row.parentKey, siblings);
@@ -137,6 +137,11 @@ export function layoutOverviewHullHierarchyLinks(
   for (const [parentKey, children] of childrenByParent) {
     const parent = positions.get(parentKey);
     if (!parent) continue;
+    const involved = new Set([
+      parentKey,
+      ...children.map((child) => child.row.key),
+    ]);
+    const side = hierarchyFanSide(parent, group);
     const hull: OverviewThreadD3CableHull = {
       key: parentKey,
       x: group.x,
@@ -149,7 +154,7 @@ export function layoutOverviewHullHierarchyLinks(
     const parentTerminal = overviewThreadD3CableTerminal(
       hull,
       rowLeaf(parent, group.view, pointSize),
-      "right",
+      side,
       "source",
     );
     fields.demand(parentTerminal, 1);
@@ -157,13 +162,26 @@ export function layoutOverviewHullHierarchyLinks(
       const terminal = overviewThreadD3CableTerminal(
         hull,
         rowLeaf(child, group.view, pointSize),
-        "right",
+        side,
         "target",
       );
       fields.demand(terminal, 1);
       return { child, terminal };
     });
-    fields.solve(() => []);
+    const obstacles: readonly OverviewThreadD3CableObstacle[] =
+      group.view === "list" && group.columns > 1
+        ? [...positions.values()]
+          .filter((position) => !involved.has(position.row.key))
+          .map((position) => ({
+            key: position.row.key,
+            minimumX: position.x,
+            maximumX: position.x + position.width,
+            minimumY: position.y,
+            maximumY: position.y + position.height,
+          }))
+          .toSorted((left, right) => left.key.localeCompare(right.key))
+        : [];
+    fields.solve(() => obstacles);
     const parentBranch = fields.branchFor(parentTerminal);
     if (!parentBranch) continue;
     for (const { child, terminal } of childTerminals) {
@@ -172,6 +190,7 @@ export function layoutOverviewHullHierarchyLinks(
       links.push({
         fromKey: parentKey,
         toKey: child.row.key,
+        relationKind: OVERVIEW_HULL_ROW_PARENT_RELATION,
         points: [
           ...parentBranch.points,
           ...childBranch.points.slice(1),
@@ -183,9 +202,18 @@ export function layoutOverviewHullHierarchyLinks(
   return links;
 }
 
+function hierarchyFanSide(
+  parent: OverviewHullRowLayout,
+  group: OverviewHullRowBox,
+): "left" | "right" {
+  if (group.view !== "list" || group.columns <= 1) return "right";
+  const mid = group.x + group.width / 2;
+  return parent.x + parent.width / 2 <= mid ? "left" : "right";
+}
+
 function rowLeaf(
   position: OverviewHullRowLayout,
-  view: RowBox["view"],
+  view: OverviewHullRowBox["view"],
   pointSize: number,
 ): {
   readonly key: string;

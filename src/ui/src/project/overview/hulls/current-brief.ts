@@ -1,11 +1,9 @@
 import type { ProjectBriefRevision } from "../../../../../domain/project/project-brief.ts";
 import type {
   OverviewBriefSourceHeroNode,
-  OverviewHeroEdge,
   OverviewThreadHeroView,
 } from "../../overview-thread-hero-model.ts";
-import { overviewBriefSourceKey } from "../../overview-thread-brief-correspondence.ts";
-import type { OverviewHullContent } from "./content.ts";
+import type { OverviewHullContent, OverviewHullContentRow } from "./types.ts";
 import { overviewThreadD3FlowGroupIdentity } from "../../overview-thread-d3-flow-layout.ts";
 
 export const OVERVIEW_BRIEF_HULL_KEY = overviewThreadD3FlowGroupIdentity(
@@ -13,65 +11,19 @@ export const OVERVIEW_BRIEF_HULL_KEY = overviewThreadD3FlowGroupIdentity(
   "brief",
 );
 
-/** Full current approved Project intent, not a reconstructed analysis snapshot. */
+/** Current approved Project intent. Exact correspondences stay on the graph. */
 export function withOverviewCurrentBrief(
   view: OverviewThreadHeroView,
   brief: ProjectBriefRevision | undefined,
 ): OverviewThreadHeroView {
   if (!brief) return view;
-  const nodesByKey = new Map(view.nodes.map((node) => [node.key, node]));
-  for (const item of brief.items) {
-    const key = overviewBriefSourceKey(brief.id, item.id);
-    // The same immutable snapshot+item is already present when a sealed
-    // correspondence names it. Preserve its exact source and correspondence.
-    if (nodesByKey.has(key)) continue;
-    nodesByKey.set(key, {
-      kind: "brief-source",
-      key,
-      lane: "requirements",
-      groupKey: "brief",
-      label: `${item.id} · brief r${brief.revision}`,
-      color: "#7c3aed",
-      emphasis: false,
-      brief: {
-        briefId: brief.briefId,
-        snapshotId: brief.id,
-        revision: brief.revision,
-      },
-      sourceItem: item,
-      correspondences: [],
-    });
-  }
-  const itemIds = new Set(brief.items.map((item) => item.id));
-  const edges: OverviewHeroEdge[] = [];
-  for (const item of brief.items) {
-    for (const dependencyId of new Set(item.dependsOnItemIds ?? [])) {
-      if (!itemIds.has(dependencyId) || dependencyId === item.id) continue;
-      const pathKey = `brief-dependency:${
-        JSON.stringify([brief.id, dependencyId, item.id])
-      }`;
-      edges.push({
-        key: pathKey,
-        fromKey: overviewBriefSourceKey(brief.id, dependencyId),
-        toKey: overviewBriefSourceKey(brief.id, item.id),
-        kind: "project-dependency",
-        emphasis: false,
-        pathCount: 1,
-        pathKeys: [pathKey],
-      });
-    }
-  }
-  return {
-    ...view,
-    nodes: [...nodesByKey.values()],
-    edges: [...view.edges, ...edges],
-  };
+  return view;
 }
 
 /**
- * Current brief contents are complete and ordered by their authoritative
- * Project snapshot. Analysis records and older source clauses stay evidence;
- * their fingerprints never select or parent a current brief item.
+ * Visible Brief hull is a section index of the current snapshot. The hull
+ * itself is the wrapper; historical and requirement-backed sources stay
+ * evidence records, never current-section leaves.
  */
 export function withOverviewCurrentBriefContent(
   contents: ReadonlyMap<string, OverviewHullContent>,
@@ -79,56 +31,73 @@ export function withOverviewCurrentBriefContent(
   brief: ProjectBriefRevision | undefined,
 ): ReadonlyMap<string, OverviewHullContent> {
   if (!brief) return contents;
-  const sourcesByKey = new Map(
-    view.nodes.flatMap((node) =>
-      node.kind === "brief-source" ? [[node.key, node] as const] : []
-    ),
-  );
-  const rootKey = `current-brief:${brief.id}`;
   const current = contents.get(OVERVIEW_BRIEF_HULL_KEY);
-  const historicalSources = [...sourcesByKey.values()].filter((node) =>
-    node.brief.snapshotId !== brief.id
-  );
+  const sources = view.nodes.filter((
+    node,
+  ): node is OverviewBriefSourceHeroNode => node.kind === "brief-source");
+  const seenRecords = new Set(current?.records.map((row) => row.key) ?? []);
   const result = new Map(contents);
   result.set(OVERVIEW_BRIEF_HULL_KEY, {
     groupKey: OVERVIEW_BRIEF_HULL_KEY,
     mode: "tree",
-    rows: [
-      {
-        key: rootKey,
-        kind: "navigation",
-        label: `Brief courant · r${brief.revision}`,
-        detail: `${brief.items.length} éléments · approuvé`,
-        depth: 0,
-        sessionIds: [],
-        endpoint: false,
-      },
-      ...brief.items.flatMap((item) => {
-        const source = sourcesByKey.get(
-          overviewBriefSourceKey(brief.id, item.id),
-        );
-        return source ? [sourceRow(source, 1, rootKey)] : [];
-      }),
-    ],
+    rows: overviewBriefSectionRows(brief),
     records: [
       ...current?.records ?? [],
-      ...historicalSources.map((source) => sourceRow(source, 0)),
+      ...sources.flatMap((source) =>
+        seenRecords.has(source.key) ? [] : [sourceRecord(source)]
+      ),
     ],
   });
   return result;
 }
 
-function sourceRow(
+export function overviewBriefSectionRowKey(
+  briefSnapshotId: string,
+  kind: string,
+): string {
+  return `brief-section:${JSON.stringify([briefSnapshotId, kind])}`;
+}
+
+export function overviewBriefSectionLabel(kind: string): string {
+  return kind.split("-").filter((part) => part.length > 0).map((part) =>
+    `${part.slice(0, 1).toUpperCase()}${part.slice(1)}`
+  ).join(" ");
+}
+
+export function overviewBriefSectionRows(
+  brief: ProjectBriefRevision,
+): readonly OverviewHullContentRow[] {
+  const counts = new Map<string, number>();
+  const order: string[] = [];
+  for (const item of brief.items) {
+    const previous = counts.get(item.kind) ?? 0;
+    if (previous === 0) order.push(item.kind);
+    counts.set(item.kind, previous + 1);
+  }
+  return order.map((kind) => {
+    const count = counts.get(kind) ?? 0;
+    return {
+      key: overviewBriefSectionRowKey(brief.id, kind),
+      kind: "navigation" as const,
+      label: overviewBriefSectionLabel(kind),
+      detail: count === 1 ? "1 élément" : `${count} éléments`,
+      depth: 0,
+      sessionIds: [],
+      endpoint: false,
+      nativeAction: "open-current-brief" as const,
+    };
+  });
+}
+
+function sourceRecord(
   source: OverviewBriefSourceHeroNode,
-  depth: number,
-  parentKey?: string,
-) {
+): OverviewHullContentRow {
   return {
     key: source.key,
-    kind: "source" as const,
+    kind: "source",
     label: source.sourceItem.id,
-    depth,
-    ...(parentKey ? { parentKey } : {}),
+    detail: source.sourceItem.kind,
+    depth: 0,
     nodeKey: source.key,
     sessionIds: [],
     endpoint: true,

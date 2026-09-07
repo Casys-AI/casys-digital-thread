@@ -306,13 +306,13 @@
 }
 
 .overview-thread-cable[data-state="incoming"] {
-  stroke: #6d28d9;
-  opacity: 0.88;
+  stroke: var(--overview-inspection-color, var(--thread-muted));
+  opacity: 0.82;
 }
 
 .overview-thread-cable[data-state="outgoing"] {
-  stroke: #0f766e;
-  opacity: 0.88;
+  stroke: var(--overview-inspection-color, var(--thread-muted));
+  opacity: 0.9;
 }
 
 .overview-thread-cable[data-state="muted"] {
@@ -437,12 +437,12 @@
 }
 
 .overview-thread-flow-segment[data-state="incoming"] {
-  stroke: #6d28d9;
-  opacity: 0.9;
+  stroke: var(--overview-inspection-color, var(--thread-muted));
+  opacity: 0.82;
 }
 
 .overview-thread-flow-segment[data-state="outgoing"] {
-  stroke: #0f766e;
+  stroke: var(--overview-inspection-color, var(--thread-muted));
   opacity: 0.9;
 }
 

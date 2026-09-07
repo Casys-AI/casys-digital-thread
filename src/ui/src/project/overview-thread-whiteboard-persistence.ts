@@ -60,6 +60,8 @@ interface OverviewThreadWhiteboardPresentationViewerBase {
   readonly expanded: boolean;
   /** Required while expanded so the integrated viewer can be restored. */
   readonly restoreGeometry?: OverviewThreadViewerGeometry;
+  /** Visible hull row used as the connector anchor; never Thread evidence. */
+  readonly presentationRowKey?: string;
 }
 
 /**
@@ -577,6 +579,10 @@ function parseViewer(
 ): OverviewThreadWhiteboardPresentationViewer | undefined {
   if (!isRecord(candidate)) return undefined;
   const hasRestoreGeometry = Object.hasOwn(candidate, "restoreGeometry");
+  const hasPresentationRowKey = Object.hasOwn(
+    candidate,
+    "presentationRowKey",
+  );
   const keys = [
     "kind",
     "id",
@@ -586,6 +592,7 @@ function parseViewer(
     "z",
     "expanded",
     ...(hasRestoreGeometry ? ["restoreGeometry"] : []),
+    ...(hasPresentationRowKey ? ["presentationRowKey"] : []),
   ];
   if (
     candidate.kind !== "session" ||
@@ -609,6 +616,11 @@ function parseViewer(
   if (!geometry || (candidate.expanded && !restoreGeometry)) return undefined;
 
   if (!isSafeId(candidate.sessionId)) return undefined;
+  const presentationRowKey = typeof candidate.presentationRowKey === "string" &&
+      isSafeId(candidate.presentationRowKey)
+    ? candidate.presentationRowKey
+    : undefined;
+  if (hasPresentationRowKey && !presentationRowKey) return undefined;
   const viewer: OverviewThreadWhiteboardSessionPresentationViewer = {
     kind: "session",
     id: candidate.id,
@@ -618,6 +630,7 @@ function parseViewer(
     z: candidate.z as number,
     expanded: candidate.expanded,
     ...(restoreGeometry ? { restoreGeometry } : {}),
+    ...(presentationRowKey ? { presentationRowKey } : {}),
   };
   return viewer.id === expectedViewerId(viewer) ? viewer : undefined;
 }

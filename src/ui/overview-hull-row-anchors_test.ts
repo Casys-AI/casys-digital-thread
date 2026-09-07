@@ -155,6 +155,83 @@ Deno.test("row anchors retain direct record and source identities without label 
   assertEquals("artifact:foreign" in anchors[GEOMETRY_HULL]!, false);
 });
 
+function hierarchyWithArchitecture(
+  nodes: ThreadViewerHierarchyProjection["nodes"],
+  architectureArtifactId: string,
+): ThreadViewerHierarchyProjection {
+  return {
+    ...hierarchy(nodes),
+    architectureArtifactId,
+  };
+}
+
+Deno.test("SYSML unique declared root visually anchors the hull architecture artifact only", () => {
+  const architectureId = "architecture-8fdff1a0e99f1";
+  const sysmlGroup = "domain:sysml-model";
+  const sysmlHull = overviewThreadD3FlowGroupIdentity(
+    "system-model",
+    sysmlGroup,
+  );
+  const architecture = {
+    ...artifact(architectureId, sysmlGroup, architectureId),
+    lane: "system-model" as const,
+    groupKey: sysmlGroup,
+  };
+  const nodes = [
+    architecture,
+    artifact("geometry-root"),
+    artifact("geometry-airframe"),
+  ];
+  const contents = new Map([
+    [
+      sysmlHull,
+      content(sysmlHull, [
+        navigationRow("root", "Assembly"),
+        navigationRow("airframe", "Airframe"),
+      ]),
+    ],
+    [
+      GEOMETRY_HULL,
+      content(GEOMETRY_HULL, [
+        navigationRow("root", "Assembly"),
+        navigationRow("airframe", "Airframe"),
+      ]),
+    ],
+  ]);
+  const anchors = overviewHullRowAnchors(
+    contents,
+    nodes,
+    hierarchyWithArchitecture(
+      [
+        {
+          id: "root",
+          label: "Assembly",
+          partDefinitionElementId: "def-root",
+          geometryArtifactId: "geometry-root",
+          artifactIds: ["geometry-root"],
+          sessionIds: [],
+        },
+        {
+          id: "airframe",
+          parentId: "root",
+          label: "Airframe",
+          partDefinitionElementId: "def-airframe",
+          geometryArtifactId: "geometry-airframe",
+          artifactIds: ["geometry-airframe"],
+          sessionIds: [],
+        },
+      ],
+      architectureId,
+    ),
+  );
+
+  assertEquals(anchors[sysmlHull], { [`artifact:${architectureId}`]: 0 });
+  assertEquals(anchors[GEOMETRY_HULL], {
+    "artifact:geometry-root": 0,
+    "artifact:geometry-airframe": 1,
+  });
+});
+
 Deno.test("navigation artifacts require one occurrence while direct assets retain separate record identities", () => {
   const nodes = [artifact("shared"), artifact("step"), artifact("glb")];
   const contents = new Map([[
@@ -298,6 +375,60 @@ Deno.test("missing or offscreen local row docks use a nonzero hull stub", () => 
   assertEquals(target.rowAnchored, true);
   assert(segment.key.startsWith("same-hull-folded-stub:"));
   assert(!samePoint(segment.points[0]!, segment.points.at(-1)!));
+});
+
+Deno.test("expanded folded stubs dock on the hull body rail outside the header band", () => {
+  const layout = localLayout("tree", {});
+  const group = layout.groups[0]!;
+  const segment = routeSegment(layout);
+  assertEquals(segment.dock, "hull-body");
+  assertEquals(layout.unroutedEdgeKeys, []);
+  const headerBottom = group.y + group.headerHeight;
+  const edgeX = group.x + group.width;
+  const hullEdge = segment.points.filter((point) => Math.abs(point.x - edgeX) <= 1e-6);
+  assert(hullEdge.length > 0);
+  for (const point of hullEdge) {
+    assert(
+      point.y >= headerBottom - 1e-6,
+      "expanded stubs must not attach to the caption band",
+    );
+  }
+
+  const collapsed = buildOverviewThreadD3FlowLayout(
+    [{
+      key: "artifact:a",
+      lane: "geometry" as const,
+      groupKey: GEOMETRY_GROUP,
+      label: "A",
+    }, {
+      key: "artifact:b",
+      lane: "geometry" as const,
+      groupKey: GEOMETRY_GROUP,
+      label: "B",
+    }],
+    [{
+      key: "edge:a-b",
+      fromKey: "artifact:a",
+      toKey: "artifact:b",
+      pathCount: 1,
+      pathKeys: ["recorded:path:a-b"],
+      emphasis: false,
+    }],
+    {
+      groupStructureRowCounts: { [GEOMETRY_HULL]: 2 },
+      groupRowAnchors: { [GEOMETRY_HULL]: {} },
+      groupPlacements: {
+        [GEOMETRY_HULL]: { collapsed: true, width: 300, height: 24 },
+      },
+    },
+  );
+  const collapsedSegment = collapsed.segments.find((candidate) =>
+    candidate.key.startsWith("same-hull-folded-stub:") ||
+    candidate.key.startsWith("folded-hull-stub:")
+  );
+  assertEquals(collapsed.unroutedEdgeKeys, []);
+  assert(collapsedSegment);
+  assertEquals(collapsedSegment.dock, "hull-collapsed");
 });
 
 function liveShapedLayout(view: "tree" | "list" | "matrix") {

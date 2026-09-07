@@ -6,6 +6,13 @@
 
 .overview-thread-hero {
   position: relative;
+  --overview-cable-idle-color: #6e7f86;
+  --overview-cable-idle-opacity: 0.08;
+  --overview-cable-idle-trunk-opacity: 0.12;
+  --overview-cable-idle-stub-opacity: 0.04;
+  --overview-inspection-color: var(--thread-muted);
+  --overview-point-idle-fill: 38%;
+  --overview-point-idle-stroke: 64%;
 }
 
 .overview-thread-hero > .overview-thread-viewport:has(.overview-thread-flow) {
@@ -364,25 +371,29 @@
 
 .overview-thread-hero .overview-thread-flow-segment {
   pointer-events: none;
-  stroke: #6e7f86;
-  opacity: 0.16;
+  stroke: var(--overview-cable-idle-color);
+  opacity: var(--overview-cable-idle-opacity);
   transition:
     stroke 120ms ease,
-    opacity 120ms ease;
+    opacity 120ms ease,
+    stroke-dasharray 120ms ease;
 }
 
 .overview-thread-hero .overview-thread-flow-segment[data-kind="bundle-trunk"] {
-  stroke: #3f555e;
-  opacity: 0.3;
+  stroke: color-mix(in srgb, var(--overview-cable-idle-color) 82%, #3f555e);
+  opacity: var(--overview-cable-idle-trunk-opacity);
 }
 
 .overview-thread-hero .overview-thread-flow-segment[data-kind="pair-feeder"] {
-  stroke: #566b73;
-  opacity: 0.22;
+  opacity: 0.1;
 }
 
 .overview-thread-hero .overview-thread-flow-segment[data-kind="node-branch"] {
-  opacity: 0.14;
+  opacity: var(--overview-cable-idle-opacity);
+}
+
+.overview-thread-hero .overview-thread-flow-segment[data-dock] {
+  opacity: var(--overview-cable-idle-stub-opacity);
 }
 
 .overview-thread-hero .overview-thread-flow-segment[data-state="emphasis"] {
@@ -390,40 +401,48 @@
   opacity: 0.58;
 }
 
-.overview-thread-hero .overview-thread-flow-segment[data-state="incoming"] {
-  stroke: #6d28d9;
-  opacity: 0.7;
+.overview-thread-hero .overview-thread-flow-segment[data-state="incoming"],
+.overview-thread-hero .overview-thread-flow-segment[data-kind="bundle-trunk"][data-state="incoming"],
+.overview-thread-hero .overview-thread-flow-segment[data-kind="node-branch"][data-state="incoming"],
+.overview-thread-hero .overview-thread-flow-segment[data-dock][data-state="incoming"] {
+  stroke: var(--overview-inspection-color);
+  opacity: 0.82;
 }
 
-.overview-thread-hero .overview-thread-flow-segment[data-state="outgoing"] {
-  stroke: #0f766e;
-  opacity: 0.7;
+.overview-thread-hero .overview-thread-flow-segment[data-state="outgoing"],
+.overview-thread-hero .overview-thread-flow-segment[data-kind="bundle-trunk"][data-state="outgoing"],
+.overview-thread-hero .overview-thread-flow-segment[data-kind="node-branch"][data-state="outgoing"],
+.overview-thread-hero .overview-thread-flow-segment[data-dock][data-state="outgoing"] {
+  stroke: var(--overview-inspection-color);
+  opacity: 0.9;
 }
 
 .overview-thread-hero .overview-thread-flow-segment[data-state="muted"] {
-  opacity: 0.055;
+  opacity: 0.03;
 }
 
 .overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="incoming"],
-.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="outgoing"] {
-  opacity: 0.42;
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="outgoing"],
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-kind="bundle-trunk"][data-state="incoming"],
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-kind="bundle-trunk"][data-state="outgoing"],
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-kind="node-branch"][data-state="incoming"],
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-kind="node-branch"][data-state="outgoing"],
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-dock][data-state="incoming"],
+.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-dock][data-state="outgoing"] {
+  stroke: var(--overview-inspection-color);
+  opacity: 0.9;
 }
 
 .overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="muted"] {
-  opacity: 0.06;
-}
-
-.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="incoming"] {
-  stroke: color-mix(in srgb, #6d28d9 56%, #75868d);
-}
-
-.overview-thread-flow[data-inspection="hover"] .overview-thread-flow-segment[data-state="outgoing"] {
-  stroke: color-mix(in srgb, #0f766e 58%, #75868d);
+  opacity: 0.03;
 }
 
 .overview-thread-flow[data-inspection="selected"] .overview-thread-flow-segment[data-state="incoming"],
-.overview-thread-flow[data-inspection="selected"] .overview-thread-flow-segment[data-state="outgoing"] {
-  opacity: 0.68;
+.overview-thread-flow[data-inspection="selected"] .overview-thread-flow-segment[data-state="outgoing"],
+.overview-thread-flow[data-inspection="selected"] .overview-thread-flow-segment[data-kind="bundle-trunk"][data-state="incoming"],
+.overview-thread-flow[data-inspection="selected"] .overview-thread-flow-segment[data-kind="bundle-trunk"][data-state="outgoing"] {
+  stroke: var(--overview-inspection-color);
+  opacity: 0.92;
 }
 
 .overview-thread-flow[data-dragging="true"] .overview-thread-flow-segment[data-drag-route="idle"] {
@@ -593,6 +612,15 @@
   overflow: hidden;
   cursor: context-menu;
 }
+.overview-thread-flow-structure-row:hover,
+.overview-thread-flow-structure-row:focus-visible,
+.overview-thread-flow-structure-row[data-inspection-active="true"] {
+  overflow: visible;
+  z-index: 6;
+}
+.overview-thread-flow-structure-row[data-inspection-active="true"] {
+  background: #e7eef0;
+}
 .overview-thread-flow-structure-row[data-has-viewer="true"],
 .overview-thread-flow-structure-row[data-hull-row-kind="source"] {
   cursor: pointer;
@@ -600,6 +628,11 @@
 .overview-thread-flow-structure-row:hover,
 .overview-thread-flow-structure-row:focus-visible {
   background: #eef3f4;
+}
+.overview-thread-flow-structure-row[data-hull-row-view="matrix"]:hover,
+.overview-thread-flow-structure-row[data-hull-row-view="matrix"]:focus-visible,
+.overview-thread-flow-structure-row[data-hull-row-view="matrix"][data-inspection-active="true"] {
+  background: transparent;
 }
 .overview-thread-flow-structure-mark {
   color: var(--flow-color);
@@ -630,27 +663,44 @@
   content: "";
   width: 0.5rem;
   height: 0.5rem;
-  border: 1px solid var(--flow-color);
+  border: 1px solid color-mix(in srgb, var(--flow-color)
+    var(--overview-point-idle-stroke), #fff);
   border-radius: 50%;
-  background: var(--flow-color);
+  background: color-mix(in srgb, var(--flow-color)
+    var(--overview-point-idle-fill),
+    #fff);
+  box-shadow: 0 0 0 2px #fff;
 }
-.overview-thread-flow-structure-row[data-hull-row-view="matrix"] > * {
+.overview-thread-flow-structure-row[data-hull-row-view="matrix"]:hover::before,
+.overview-thread-flow-structure-row[data-hull-row-view="matrix"]:focus-visible::before,
+.overview-thread-flow-structure-row[data-hull-row-view="matrix"][data-inspection-active="true"]::before {
+  background: var(--flow-color);
+  border-color: var(--flow-color);
+  box-shadow:
+    0 0 0 2px #fff,
+    0 0 0 4px color-mix(in srgb, var(--flow-color) 48%, transparent);
+}
+.overview-thread-flow-structure-row[data-hull-row-view="matrix"] > :not(.overview-thread-flow-node-tooltip) {
   display: none;
 }
 .overview-thread-flow-hierarchy-links path {
   fill: none;
-  stroke: var(--flow-color);
+  stroke: var(--overview-cable-idle-color);
   stroke-width: 1;
-  opacity: 0.4;
+  opacity: var(--overview-cable-idle-opacity);
   pointer-events: none;
 }
 .overview-thread-flow-hierarchy-links path[data-state="incoming"],
 .overview-thread-flow-hierarchy-links path[data-state="outgoing"] {
-  opacity: 1;
-  stroke-width: 1.8;
+  stroke: var(--overview-inspection-color);
+  opacity: 0.9;
+  stroke-width: 1.6;
+}
+.overview-thread-flow-hierarchy-links path[data-state="incoming"] {
+  opacity: 0.82;
 }
 .overview-thread-flow-hierarchy-links path[data-state="muted"] {
-  opacity: 0.08;
+  opacity: 0.03;
 }
 
 .overview-thread-hero .overview-thread-flow-node {
@@ -686,9 +736,12 @@
   display: block;
   width: 0.4375rem;
   height: 0.4375rem;
-  border: 1px solid color-mix(in srgb, var(--flow-color) 76%, #fff);
+  border: 1px solid color-mix(in srgb, var(--flow-color)
+    var(--overview-point-idle-stroke), #fff);
   border-radius: 999px;
-  background: var(--flow-color);
+  background: color-mix(in srgb, var(--flow-color)
+    var(--overview-point-idle-fill),
+    #fff);
   box-shadow: 0 0 0 2px #fff;
 }
 
@@ -890,8 +943,22 @@
 }
 
 .overview-thread-flow-node:hover .overview-thread-flow-node-tooltip,
-.overview-thread-flow-node:focus-visible .overview-thread-flow-node-tooltip {
+.overview-thread-flow-node:focus-visible .overview-thread-flow-node-tooltip,
+.overview-thread-flow-structure-row:hover .overview-thread-flow-node-tooltip,
+.overview-thread-flow-structure-row:focus-visible .overview-thread-flow-node-tooltip {
   display: block;
+}
+
+.overview-thread-flow-structure-row[data-hull-row-view="matrix"] .overview-thread-flow-node-tooltip {
+  max-width: min(8.5rem, 22cqi);
+  padding: 0.2rem 0.32rem;
+  font-size: 0.625rem;
+}
+
+.overview-thread-flow-structure-row[data-hull-row-view="matrix"] .overview-thread-flow-node-tooltip > span {
+  margin-top: 0.08rem;
+  font-size: 0.5rem;
+  -webkit-line-clamp: 1;
 }
 
 .overview-thread-flow-node[data-lane="requirements"] .overview-thread-flow-node-tooltip {
@@ -905,9 +972,11 @@
   transform: none;
 }
 
-.overview-thread-hero .overview-thread-flow-node:hover .overview-thread-flow-node-dot,
-.overview-thread-hero .overview-thread-flow-node:focus-visible .overview-thread-flow-node-dot,
-.overview-thread-hero .overview-thread-flow-node[data-state="selected"] .overview-thread-flow-node-dot {
+.overview-thread-hero .overview-thread-flow-node:not([data-kind="activity"]):hover .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node:not([data-kind="activity"]):focus-visible .overview-thread-flow-node-dot,
+.overview-thread-hero .overview-thread-flow-node:not([data-kind="activity"])[data-state="selected"] .overview-thread-flow-node-dot {
+  background: var(--flow-color);
+  border-color: var(--flow-color);
   box-shadow:
     0 0 0 2px #fff,
     0 0 0 4px color-mix(in srgb, var(--flow-color) 48%, transparent);
@@ -981,8 +1050,6 @@
   .overview-thread-flow-node-dot {
     width: 0.375rem;
     height: 0.375rem;
-    border: 0;
-    box-shadow: 0 0 0 1px #fff;
   }
 
   .overview-thread-flow-node-tooltip {

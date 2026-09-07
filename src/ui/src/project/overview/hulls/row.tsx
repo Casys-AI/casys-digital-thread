@@ -1,5 +1,5 @@
 import type { JSX } from "react";
-import type { OverviewHullContentRow } from "./content.ts";
+import type { OverviewHullContentRow } from "./types.ts";
 import { overviewHullRowPresentation } from "./row.ts";
 
 /** Shared visible content of one hull tree/list row. Surfaces own the chrome. */

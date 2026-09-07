@@ -239,6 +239,55 @@
   }
 }
 
+.overview-thread-current-brief {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.7rem 0.8rem 1.1rem;
+  color: var(--ui-foreground);
+}
+
+.overview-thread-current-brief > header > p:first-child {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.overview-thread-current-brief > header > p:last-child {
+  margin: 0.2rem 0 0;
+  color: var(--ui-muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.55rem;
+}
+
+.overview-thread-current-brief > ol {
+  display: grid;
+  gap: 0.7rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.overview-thread-current-brief li h5 {
+  display: flex;
+  gap: 0.4rem;
+  align-items: baseline;
+  margin: 0 0 0.2rem;
+  font-size: 0.68rem;
+}
+
+.overview-thread-current-brief li h5 small {
+  color: var(--ui-muted-foreground);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  font-weight: 500;
+}
+
+.overview-thread-current-brief li p {
+  margin: 0.12rem 0 0;
+  font-size: 0.62rem;
+  line-height: 1.35;
+}
+
 @media (prefers-reduced-motion: reduce) {
   .overview-thread-viewer,
   .overview-thread-viewer-actions > button,

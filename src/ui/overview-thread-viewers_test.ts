@@ -47,7 +47,7 @@ Deno.test("overview context menus expose every exact registered App", async () =
   assertStringIncludes(flow, "Shift+F10");
 });
 
-Deno.test("click opens an exact registered viewer and other records retain their selection note", async () => {
+Deno.test("click selects a record persistently while viewers open from the contextual action", async () => {
   const hero = await Deno.readTextFile(
     new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
   );
@@ -78,6 +78,10 @@ Deno.test("click opens an exact registered viewer and other records retain their
   assertStringIncludes(hero, "aria-pressed={selected}");
   assertStringIncludes(hero, "availableSessionIds?.has(viewer.sessionId)");
   assertStringIncludes(hero, "overviewViewerAnchorPoint(");
+  assertStringIncludes(hero, "presentationRowKey");
+  assertStringIncludes(hero, "openCurrentBriefViewer");
+  assertEquals(hero.includes("Open current Brief"), true);
+  assertStringIncludes(hero, "layoutOverviewHullRows(rows, group)");
   assertStringIncludes(hero, "buildOverviewThreadViewerConnectorGeometry(");
   assertEquals(hero.includes("OverviewRecordedNodePanel"), false);
   assertEquals(hero.includes("OverviewActivityNodePanel"), false);
@@ -86,13 +90,20 @@ Deno.test("click opens an exact registered viewer and other records retain their
   assertEquals(canvasStyles.includes(".overview-thread-selection-copy"), false);
   assertStringIncludes(canvasStyles, ".overview-thread-selection-note");
   assertStringIncludes(hero, "<OverviewThreadSelectionNote");
-  assertStringIncludes(hero, "onClick={() => runContextAction(action)}");
+  assertStringIncludes(hero, "runContextAction(action, selectedRowKey)");
   const toggle = hero.slice(
     hero.indexOf("const toggleSelection ="),
     hero.indexOf("const bringViewerFront ="),
   );
-  assertStringIncludes(toggle, "viewerSessionsByNodeKey.get(item.key)?.[0]");
-  assertEquals(toggle.includes("openViewer("), true);
+  assertEquals(toggle.includes("openViewer("), false);
+  assertStringIncludes(toggle, "nextOverviewHeroSelection(current, item.key)");
+  assertStringIncludes(hero, "const runContextAction =");
+  const sessionOpen = hero.slice(
+    hero.indexOf('if (action.kind === "open-session")'),
+    hero.indexOf('if (action.kind === "open-evidence")'),
+  );
+  assertStringIncludes(sessionOpen, "openViewer(");
+  assertStringIncludes(sessionOpen, "presentationRowKey");
   assertEquals(toggle.includes("runContextAction("), false);
   assertStringIncludes(canvasStyles, ".overview-thread-selection-connector");
   assertStringIncludes(canvasStyles, ".overview-thread-context-menu");
@@ -148,7 +159,10 @@ Deno.test("overview viewers stay read-only, spatially tethered, and keyboard rea
 
   assertStringIncludes(hero, "readonly nodeKey: string;");
   assertStringIncludes(hero, "whiteboardWorldSize");
-  assertStringIncludes(hero, "data-anchor-node={viewer.nodeKey}");
+  assertStringIncludes(
+    hero,
+    'data-anchor-node={viewer.kind === "session" ? viewer.nodeKey : undefined}',
+  );
   assertStringIncludes(hero, "left: viewer.x");
   assertStringIncludes(hero, "top: viewer.y");
   assertStringIncludes(hero, "width: viewer.width");

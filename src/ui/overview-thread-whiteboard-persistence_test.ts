@@ -173,6 +173,36 @@ Deno.test("whiteboard presentation round-trips every spatial field without grant
   );
 });
 
+Deno.test("persistence admits an optional group-scoped presentation row without changing canonical viewer identity", () => {
+  const presentationRowKey = `hull-row:${
+    JSON.stringify(["group:12:system-model|18:domain:sysml-model", "root"])
+  }`;
+  const state = completeState();
+  const first = state.viewers[0]!;
+  const withAnchor: OverviewThreadWhiteboardPresentationState = {
+    ...state,
+    viewers: [{ ...first, presentationRowKey }],
+  };
+  const serialized = serializeOverviewThreadWhiteboardPresentation(
+    PROJECT_ID,
+    withAnchor,
+  );
+  assert(serialized);
+  const parsed = parseOverviewThreadWhiteboardPresentation(
+    serialized,
+    PROJECT_ID,
+  );
+  assertEquals(parsed?.viewers[0]?.presentationRowKey, presentationRowKey);
+  assertEquals(parsed?.viewers[0]?.nodeKey, HULL_NODE);
+  assertEquals(parsed?.viewers[0]?.sessionId, HULL_SESSION);
+  const reconciled = reconcileOverviewThreadWhiteboardPresentation(
+    parsed!,
+    CURRENT,
+  );
+  assertEquals(reconciled.viewers[0]?.presentationRowKey, presentationRowKey);
+  assertEquals(reconciled.viewers[0]?.nodeKey, HULL_NODE);
+});
+
 Deno.test("off-graph viewers and camera positions survive a project reload", () => {
   const state = completeState();
   const offGraph: OverviewThreadWhiteboardPresentationState = {

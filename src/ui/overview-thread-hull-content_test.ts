@@ -8,6 +8,7 @@ import {
   activateOverviewHullRow,
   overviewHullRowActions,
   overviewHullRowPresentation,
+  overviewHullRowTooltip,
 } from "./src/project/overview/hulls/row.ts";
 import {
   buildOverviewThreadD3FlowLayout,
@@ -551,6 +552,12 @@ Deno.test("canvas and contextual menu share one hull row action model", () => {
     overviewHullRowPresentation(group).caption.includes("Navigation"),
     true,
   );
+  assertEquals(overviewHullRowTooltip(group, "tree").title, group.label);
+  assertEquals(overviewHullRowTooltip(clause, "matrix"), {
+    title: clause.label,
+    body: "Source clause",
+  });
+  assertEquals(overviewHullRowTooltip(root, "matrix").body, "Open viewer");
   assertEquals(root.kind === "record", false);
   const selected: string[] = [];
   const opened: string[] = [];

@@ -3,6 +3,7 @@ import { curveBumpX, line } from "d3-shape";
 import type { EngineeringPathLaneId } from "../../../domain/project/engineering-path-lane.ts";
 import {
   layoutOverviewHullRowCells,
+  OVERVIEW_HULL_LIST_COLUMN_GAP as HULL_LIST_COLUMN_GAP,
   overviewHullRowCableSurface,
 } from "./overview/hulls/row-layout.ts";
 import {
@@ -12,6 +13,7 @@ import {
 } from "./overview-thread-d3-cable-field.ts";
 import {
   OVERVIEW_THREAD_D3_HULL_HUB_MARGIN as GROUP_HUB_MARGIN,
+  overviewThreadD3CableBodyBox,
   OverviewThreadD3CableFanInFields,
   overviewThreadD3CableHub,
   overviewThreadD3CableHullSides,
@@ -70,12 +72,6 @@ const HULL_LIST_THREE_COLUMN_WIDTH = 331;
 const HULL_LIST_DEFAULT_ROWS = 4;
 /** Below this the hull refuses to shrink: fewer rows is not a folder. */
 const HULL_LIST_MINIMUM_ROWS = 3;
-/**
- * Gutter between listed columns. Without it the right port of one column and
- * the left port of the next share a coordinate, and two leaves anchored at the
- * same point collapse their fan-in field.
- */
-const HULL_LIST_COLUMN_GAP = 7;
 /**
  * Projected hull geometry for its caption and folder controls.
  *
@@ -330,6 +326,9 @@ export type OverviewThreadD3FlowSegmentKind =
   | "bundle-trunk"
   | "same-lane-trunk";
 
+/** Presentation dock for exact relations that cannot occupy a unique row. */
+export type OverviewThreadD3FlowSegmentDock = "hull-body" | "hull-collapsed";
+
 export type OverviewThreadD3FlowSegmentRole =
   | "source"
   | "target"
@@ -374,6 +373,8 @@ export interface OverviewThreadD3FlowSegmentLayout {
   readonly pairKeys: readonly string[];
   /** Magnetic corridor identities; never relation or persistence identities. */
   readonly corridorKeys: readonly string[];
+  /** Folded/unmapped exact relations dock on the hull rail, never a guessed row. */
+  readonly dock?: OverviewThreadD3FlowSegmentDock;
   readonly emphasis: boolean;
 }
 
@@ -462,6 +463,7 @@ interface MutableSegment {
   readonly corridorKeys: Set<string>;
   pathCount: number;
   emphasis: boolean;
+  dock?: OverviewThreadD3FlowSegmentDock;
 }
 
 interface SegmentSpec {
@@ -475,6 +477,7 @@ interface SegmentSpec {
   readonly pairKey?: string;
   readonly corridorKey?: string;
   readonly topologySignature?: string;
+  readonly dock?: OverviewThreadD3FlowSegmentDock;
 }
 
 interface GroupMatrixPlan {
@@ -738,6 +741,17 @@ export function buildOverviewThreadD3FlowLayout(
       );
       const centerY = placedGroupTop + hull.height / 2;
       const listed = hull.view !== "matrix" && !hull.collapsed;
+      const footerHeight = hull.view !== "matrix" && !hull.collapsed
+        ? HULL_LIST_FOOTER_HEIGHT
+        : 0;
+      const bodyTop = placedGroupTop + HULL_HEADER_HEIGHT;
+      const bodyHeight = Math.max(
+        0,
+        hull.height - HULL_HEADER_HEIGHT - footerHeight,
+      );
+      const bodyRailY = hull.collapsed
+        ? placedGroupTop + HULL_HEADER_HEIGHT / 2
+        : bodyTop + bodyHeight / 2;
       const listColumnWidth = listed
         ? (hull.width - HULL_LIST_COLUMN_GAP * (hull.columns - 1)) /
           hull.columns
@@ -789,8 +803,10 @@ export function buildOverviewThreadD3FlowLayout(
               groupLeft + hull.width - nodeSize,
             ));
         const nodeY = dock?.y ??
-          (hull.collapsed || structureRowCount
+          (hull.collapsed
             ? placedGroupTop + HULL_HEADER_HEIGHT / 2 - nodeSize / 2
+            : structureRowCount
+            ? bodyRailY - nodeSize / 2
             : offWindow
             ? listRow < 0
               ? placedGroupTop + HULL_HEADER_HEIGHT / 2 - nodeSize / 2
@@ -845,9 +861,6 @@ export function buildOverviewThreadD3FlowLayout(
           depth: 0,
         });
       }
-      const footerHeight = hull.view !== "matrix" && !hull.collapsed
-        ? HULL_LIST_FOOTER_HEIGHT
-        : 0;
       const hubHull = {
         key: groupIdentity,
         x: groupLeft,
@@ -856,6 +869,7 @@ export function buildOverviewThreadD3FlowLayout(
         height: hull.height,
         headerHeight: HULL_HEADER_HEIGHT,
         footerHeight,
+        collapsed: hull.collapsed,
         hubMargin: GROUP_HUB_MARGIN,
       };
       groupLayouts.push({
@@ -1066,9 +1080,11 @@ export function buildOverviewThreadD3FlowLayout(
         corridorKeys: new Set(),
         pathCount: 0,
         emphasis: false,
+        ...(spec.dock ? { dock: spec.dock } : {}),
       };
       segmentByKey.set(spec.key, segment);
     }
+    if (spec.dock) segment.dock = spec.dock;
     segment.roles.add(spec.role);
     segment.directions.add(spec.direction);
     segment.fromKeys.add(edge.fromKey);
@@ -1097,18 +1113,20 @@ export function buildOverviewThreadD3FlowLayout(
     if (hull.structureRowCount && (sourceNode.folded || targetNode.folded)) {
       // Ordinary listed hulls keep their existing obstacle-aware rack routing;
       // this aggregate dock is only for the separately rendered content rows.
-      // Hidden local leaves attach to the hull, never to an invisible header
-      // placeholder. The two hull-side docks are distinct even when both
-      // records are hidden, so the aggregate route cannot become zero-length.
-      const sideX = hull.x + hull.width;
-      const bandY = hull.y + hull.headerHeight / 2;
+      // Hidden local leaves attach to the hull body rail, never the caption
+      // band. The two hull-side docks are distinct even when both records are
+      // hidden, so the aggregate route cannot become zero-length.
+      const rail = overviewThreadD3CableAnchor(
+        overviewThreadD3CableBodyBox(hull),
+        "right",
+      );
       const start = sourceNode.folded
-        ? { x: sideX, y: bandY - 3 }
+        ? { x: rail.x, y: rail.y - (targetNode.folded ? 3 : 0) }
         : sourceNode.rightPort;
       const end = targetNode.folded
-        ? { x: sideX, y: bandY + 3 }
+        ? { x: rail.x, y: rail.y + (sourceNode.folded ? 3 : 0) }
         : targetNode.rightPort;
-      const outsideX = sideX + GROUP_HUB_MARGIN;
+      const outsideX = rail.x + GROUP_HUB_MARGIN;
       const segmentKey = addSegment({
         key: structuredKey("same-hull-folded-stub", [
           hull.key,
@@ -1119,6 +1137,7 @@ export function buildOverviewThreadD3FlowLayout(
         role: "shared",
         direction: "same-lane",
         curve: "rounded",
+        dock: hull.collapsed ? "hull-collapsed" : "hull-body",
         points: [
           start,
           { x: outsideX, y: start.y },
@@ -1410,7 +1429,10 @@ function appendHullEdgeStub(
   ) => string,
   route: string[],
 ): void {
-  const band = overviewThreadD3CableAnchor(terminal.hull, terminal.side);
+  const dockBox = terminal.side === "top" || terminal.side === "bottom"
+    ? terminal.hull
+    : overviewThreadD3CableBodyBox(terminal.hull);
+  const band = overviewThreadD3CableAnchor(dockBox, terminal.side);
   const points = terminal.role === "source"
     ? [band, terminal.hub]
     : [terminal.hub, band];
@@ -1429,6 +1451,7 @@ function appendHullEdgeStub(
       curve: "rounded",
       pairKey,
       corridorKey,
+      dock: terminal.hull.collapsed ? "hull-collapsed" : "hull-body",
     }, edge),
   );
 }
@@ -2129,6 +2152,7 @@ function finalizeSegment(
     pairKeys: [...segment.pairKeys].toSorted(),
     corridorKeys: [...segment.corridorKeys].toSorted(),
     emphasis: segment.emphasis,
+    ...(segment.dock ? { dock: segment.dock } : {}),
   };
 }
 

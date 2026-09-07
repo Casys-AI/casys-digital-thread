@@ -12,6 +12,9 @@ import type { ThreadViewerSession } from "../../../thread/viewer-sessions-client
 import type { ThreadViewerHierarchyProjection } from "../../../../../presentation/workbench/thread/viewer-hierarchy.ts";
 import type { ThreadAnalysisSemanticRef } from "../../../../../presentation/workbench/thread/graph.ts";
 import type { OverviewViewerOpenTarget } from "../../overview-thread-viewer-discovery.ts";
+import type { OverviewHullContent, OverviewHullContentRow } from "./types.ts";
+
+export type { OverviewHullContent, OverviewHullContentRow } from "./types.ts";
 
 const NO_VIEWER_ALIASES: ReadonlyMap<
   string,
@@ -20,35 +23,6 @@ const NO_VIEWER_ALIASES: ReadonlyMap<
 
 /** Navigation-only folder. Not a Thread identity or cable endpoint. */
 const REQUIREMENTS_NAVIGATION_KEY = "overview-navigation:requirements";
-
-/** One reusable row for the hull and its contextual menu, never a Thread node. */
-export interface OverviewHullContentRow {
-  readonly key: string;
-  readonly kind: "record" | "navigation" | "source";
-  readonly label: string;
-  readonly detail?: string;
-  readonly depth: number;
-  readonly parentKey?: string;
-  /** Graph node to select when this row is a real entity. Absent for grouping. */
-  readonly nodeKey?: string;
-  /**
-   * Exact graph node that owns a registered App session. Action binding only;
-   * it is not a parent, cable endpoint, or occurrence identity.
-   */
-  readonly viewerNodeKey?: string;
-  readonly sessionIds: readonly string[];
-  /** Provenance cables may land here. Navigation grouping never does. */
-  readonly endpoint: boolean;
-}
-
-export interface OverviewHullContent {
-  readonly groupKey: string;
-  readonly mode: "records" | "tree";
-  /** Exact server navigation, brief snapshot tree, or the recorded parent tree. */
-  readonly rows: readonly OverviewHullContentRow[];
-  /** All immutable records remain separately inspectable, including prior captures. */
-  readonly records: readonly OverviewHullContentRow[];
-}
 
 export function overviewBriefSnapshotGroupKey(
   brief: OverviewBriefSourceHeroNode["brief"],

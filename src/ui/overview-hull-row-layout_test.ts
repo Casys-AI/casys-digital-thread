@@ -2,6 +2,7 @@ import { assert, assertEquals } from "@std/assert";
 import {
   layoutOverviewHullHierarchyLinks,
   layoutOverviewHullRows,
+  OVERVIEW_HULL_LIST_COLUMN_GAP,
 } from "./src/project/overview/hulls/row-layout.ts";
 import type { OverviewHullContentRow } from "./src/project/overview/hulls/content.ts";
 import { overviewThreadD3CableHub } from "./src/project/overview-thread-d3-cable-board.ts";
@@ -74,6 +75,42 @@ Deno.test("listed hull rows scroll down each column without selecting evidence r
     "occurrence:23",
     "occurrence:24",
   ]);
+});
+
+Deno.test("listed hull columns keep a gutter and the same 29 rows in 2 and 3 columns", () => {
+  const before = JSON.stringify(rows);
+  for (const columns of [2, 3]) {
+    const group = { ...box, view: "list" as const, columns, visibleRows: 29 };
+    const laidOut = layoutOverviewHullRows(rows, group);
+    assertEquals(laidOut.map((item) => item.row.key), rows.map((row) => row.key));
+    assertEquals(laidOut.every((item) => item.depth === 0), true);
+    const byColumn = new Map<number, typeof laidOut>();
+    for (const item of laidOut) {
+      const column = Math.round(
+        (item.x - group.x) / (item.width + OVERVIEW_HULL_LIST_COLUMN_GAP),
+      );
+      byColumn.set(column, [...byColumn.get(column) ?? [], item]);
+    }
+    assertEquals(byColumn.size, columns);
+    const items = [...laidOut];
+    for (let i = 0; i < items.length; i++) {
+      for (let j = i + 1; j < items.length; j++) {
+        const left = items[i]!;
+        const right = items[j]!;
+        const differentColumns = Math.abs(left.x - right.x) > 1e-6;
+        const overlapX = left.x + 1e-6 < right.x + right.width &&
+          left.x + left.width > right.x + 1e-6;
+        const overlapY = left.y + 1e-6 < right.y + right.height &&
+          left.y + left.height > right.y + 1e-6;
+        assertEquals(
+          differentColumns && overlapX && overlapY,
+          false,
+          `${columns}-column cells ${left.row.key} and ${right.row.key} overlap`,
+        );
+      }
+    }
+  }
+  assertEquals(JSON.stringify(rows), before);
 });
 
 Deno.test("collapsed and empty hulls do not render navigation rows", () => {
@@ -199,7 +236,7 @@ function pointOn(
 }
 
 Deno.test(
-  "navigation-parent links fan at a shared lateral hull gate in tree, list and matrix",
+  "row-parent links fan at a shared lateral hull gate in tree, list and matrix",
   () => {
     const before = JSON.stringify(hierarchyRows);
     for (const view of ["tree", "list", "matrix"] as const) {
@@ -218,13 +255,17 @@ Deno.test(
         links.map((link) => `${link.fromKey}>${link.toKey}`).toSorted(),
         [
           "sysml:child-a>sysml:grand",
+          "sysml:root>artifact:historical",
+          "sysml:root>brief:current",
           "sysml:root>sysml:child-a",
           "sysml:root>sysml:child-b",
         ],
       );
+      assertEquals(
+        links.every((link) => link.relationKind === "row-parent"),
+        true,
+      );
       const parent = laidOut.find((item) => item.row.key === "sysml:root")!;
-      const childA = laidOut.find((item) => item.row.key === "sysml:child-a")!;
-      const childB = laidOut.find((item) => item.row.key === "sysml:child-b")!;
       const gate = overviewThreadD3CableHub({
         key: "sysml:root",
         x: group.x,
@@ -234,7 +275,7 @@ Deno.test(
         hubMargin: 20,
       }, "right");
       const siblings = links.filter((link) => link.fromKey === "sysml:root");
-      assertEquals(siblings.length, 2);
+      assertEquals(siblings.length, 4);
       for (const link of siblings) {
         assert(link.d.includes("C"));
         assert(!/[LQAS]/.test(link.d));
@@ -245,7 +286,7 @@ Deno.test(
           y: parent.y + parent.height / 2,
         }));
         assert(pointOn(link.points, gate));
-        const child = link.toKey === "sysml:child-a" ? childA : childB;
+        const child = laidOut.find((item) => item.row.key === link.toKey)!;
         assert(pointOn(link.points, {
           x: view === "matrix"
             ? child.x + child.width / 2 + 5
@@ -264,7 +305,7 @@ Deno.test(
 );
 
 Deno.test(
-  "navigation-parent links appear only for visible navigation rows and never mutate callers",
+  "row-parent links appear only for visible rows with a present parentKey",
   () => {
     const before = JSON.stringify(hierarchyRows);
     assertEquals(
@@ -300,3 +341,69 @@ Deno.test(
     assertEquals(JSON.stringify(hierarchyRows), before);
   },
 );
+
+Deno.test("row-parent curves cover navigation, brief source, and record children only when parentKey is present", () => {
+  const briefRoot: OverviewHullContentRow = {
+    key: "brief-root",
+    kind: "navigation",
+    label: "Brief courant",
+    depth: 0,
+    sessionIds: [],
+    endpoint: false,
+  };
+  const briefChild: OverviewHullContentRow = {
+    key: "brief-source:objective",
+    kind: "source",
+    label: "objective",
+    depth: 1,
+    parentKey: "brief-root",
+    sessionIds: [],
+    endpoint: false,
+  };
+  const orphan: OverviewHullContentRow = {
+    key: "brief-source:loose",
+    kind: "source",
+    label: "loose",
+    depth: 0,
+    sessionIds: [],
+    endpoint: false,
+  };
+  const recordParent: OverviewHullContentRow = {
+    key: "artifact:fea-root",
+    kind: "record",
+    label: "FEA root",
+    depth: 0,
+    sessionIds: [],
+    endpoint: true,
+  };
+  const recordChild: OverviewHullContentRow = {
+    key: "artifact:fea-child",
+    kind: "record",
+    label: "FEA child",
+    depth: 1,
+    parentKey: "artifact:fea-root",
+    sessionIds: [],
+    endpoint: true,
+  };
+  const treeBox = { ...hierarchyBox, view: "tree" as const };
+  const briefLinks = layoutOverviewHullHierarchyLinks(
+    [briefRoot, briefChild, orphan],
+    treeBox,
+  );
+  const recordLinks = layoutOverviewHullHierarchyLinks(
+    [recordParent, recordChild],
+    treeBox,
+  );
+  assertEquals(
+    briefLinks.map((link) => `${link.fromKey}>${link.toKey}`),
+    ["brief-root>brief-source:objective"],
+  );
+  assertEquals(
+    recordLinks.map((link) => `${link.fromKey}>${link.toKey}`),
+    ["artifact:fea-root>artifact:fea-child"],
+  );
+  assertEquals(
+    layoutOverviewHullHierarchyLinks([orphan, recordParent], treeBox),
+    [],
+  );
+});
