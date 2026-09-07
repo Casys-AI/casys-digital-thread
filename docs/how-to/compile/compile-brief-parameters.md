@@ -3,8 +3,13 @@
 Audience: agent · Diátaxis: how-to · Kind: how-to
 
 Use this when an agent must turn reviewed brief criteria into the exact parameters of
-`model.write-architecture@1` or `model.write-requirements@1`, instead of typing the
+`model.write-architecture@1` or `model.write-requirements@2`, instead of typing the
 envelope by hand.
+
+The traced requirements route is implemented and source-tested locally; a fresh
+composed-runtime qualification is still required. Do not treat historical @1 evidence as
+proof of @2. See
+[qualification boundary](../extend/qualify-requirements-brief-trace.md).
 
 This is **not** brief authoring. `project_brief_propose` and `project_brief_confirm`
 write and approve the brief; these two surfaces only read the already-approved one. They
@@ -75,13 +80,37 @@ requirement.arm-displacement.threshold   = 5 mm
     ← mechanical-verdict (success-criterion)
 ```
 
+For requirements, the returned parameters also seal the exact approved Project/brief
+basis, the full brief content fingerprint, `containerSourceItemId`, and each
+`requirement.<slug>.sourceItemId` / `.declaredThreshold`. Pass the **whole returned
+array verbatim**, not just the scalar excerpt above. The raw declared value/unit and the
+canonical normalized threshold are both bound by the MRTR. The server rejects missing,
+orphaned, duplicate or altered source metadata before a new write.
+
+The work item and its decision must belong to the same unique initial plan or plan
+change, with the same approved brief basis. Unrelated Project revisions do not stale
+that approval basis. A newly approved brief does: compile a new review before proposing
+or queueing a new write. Do not downgrade to `model.write-requirements@1`; it is
+retained only for historical evidence and completed publication replay.
+
+After a successful @2 write, `requirements-capture/5.0` preserves each original full
+brief clause and its references, joined to the exact native requirement/constraint
+identities. Completed replay reopens that historical approval, not a newer brief, and
+does not dispatch again. `model.recapture-requirements@2` preserves this provenance
+unchanged in schema 6.0; it does not confirm validity against today's brief. Historical
+schemas 3.0/4.0 remain readable with literal `TRACE GAP`, without inferred backfilling.
+
+The Workbench's read-only trace disclosure separates the sealed source from the current
+approved brief and marks its clause unchanged, changed or removed. This is a structural
+comparison, not a semantic verdict or an automatic invalidation/rerun.
+
 ### Units
 
 A threshold declared in `MPa` is rescaled to `Pa` and the provenance entry names the
 step as `transformation: "MPa-to-Pa"`; every other unit passes through as `identity`.
 Any unit outside the server-owned allowlist is refused by the grammar itself. See
-[Oracle units](../../reference/providers/oracle-units.md) for why `MPa` cannot be native and why the
-conversion is done here rather than left to the agent.
+[Oracle units](../../reference/providers/oracle-units.md) for why `MPa` cannot be native
+and why the conversion is done here rather than left to the agent.
 
 ## Architecture
 
@@ -175,8 +204,9 @@ project_agent_run_queue / _execute
 
 ## See also
 
-- [Agent workspace](../../reference/agent/agent-workspace.md) — the surfaces and their grants.
-- [Oracle units](../../reference/providers/oracle-units.md) — admissible units and the temperature
-  gap.
+- [Agent workspace](../../reference/agent/agent-workspace.md) — the surfaces and their
+  grants.
+- [Oracle units](../../reference/providers/oracle-units.md) — admissible units and the
+  temperature gap.
 - [Author architecture SysML](author-architecture-sysml.md) — the other, provider-free
   SysML path, which seals a Thread document instead of feeding a SysON write.

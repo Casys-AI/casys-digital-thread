@@ -1,4 +1,5 @@
 import { parseArgs } from "../lib/cli.ts";
+import { projectThreadViewerHierarchy } from "../../src/adapters/thread/thread-viewer-hierarchy.ts";
 import type { ThreadSnapshotStore } from "../../src/domain/thread/thread-snapshot-store.ts";
 import type { ThreadSnapshot } from "../../src/domain/thread/thread-snapshot.ts";
 import type { EngineeringProjectSnapshot } from "../../src/domain/project/engineering-project.ts";
@@ -30,6 +31,9 @@ import {
   type SysmlSourceAnalysisReader,
 } from "../../src/adapters/architecture/renderer/sysml-source-analysis-capture.ts";
 import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
+import { enrichEngineeringEvidenceWorkbenchWithRequirementsBriefTraces } from "../../src/adapters/thread/requirements-brief-trace-workbench.ts";
+import { createRequirementsBriefTraceStore } from "../../src/adapters/record/requirements-brief-trace-store.ts";
+import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../src/domain/record/requirements-brief-trace.ts";
 import { isExplicitLoopbackHostname } from "../../src/adapters/loopback-host.ts";
 import {
   type EngineeringWorkbenchSnapshot,
@@ -46,6 +50,9 @@ import { threadSnapshotDescendsFrom } from "../../src/adapters/shared/stores/thr
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/architecture/renderer/architecture-proposal.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../src/domain/cad/canonical/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-proposal.ts";
+import { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-traced-proposal.ts";
+import { MODEL_RECAPTURE_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-recapture-proposal.ts";
+import { MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-traced-recapture-proposal.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../src/domain/architecture/seed/syson-model-seed.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../src/domain/compile/admission/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../src/domain/cad/isolated/build123d-execution-proposal.ts";
@@ -144,7 +151,9 @@ import { DEFAULT_PROJECT_CAPABILITY_LEDGER_DIRECTORY } from "../../src/adapters/
 export interface NativeWorkbenchHandlerOptions {
   store: ThreadSnapshotStore;
   /** Read-side capability only; project commands stay in the paired MCP. */
-  projectStore: Pick<EngineeringProjectRevisionStore, "get">;
+  projectStore:
+    & Pick<EngineeringProjectRevisionStore, "get">
+    & Partial<Pick<EngineeringProjectRevisionStore, "getRevision">>;
   /** EngineeringProject identity; never inferred from a thread subject. */
   projectId?: string;
   /** Agent-selected durable target. The BFF reads it, never mutates it. */
@@ -168,8 +177,10 @@ export interface NativeWorkbenchHandlerOptions {
   /** Exact workspace recross for product-navigation source attachments. */
   projectSourceWorkspace?:
     ProductNavigationTechnicalAdmissionSourceDependencies["workspace"];
-  /** Optional exact CAS reopen of `model.write-requirements@1` captures. */
+  /** Optional exact CAS reopen of versioned requirements captures. */
   requirementsCaptures?: RequirementsCaptureReader;
+  /** Read-only store for independently versioned documentary correspondence claims. */
+  requirementsBriefTraceCaptures?: RequirementsCaptureReader;
   /**
    * Optional exact architecture-capture/4.0 reopen for the standalone
    * product-navigation GET query. Same application port as MCP read tools.
@@ -298,30 +309,31 @@ export function resolveNativeWorkbenchStartupTarget(
   // Preserve strict validation of the legacy flag while keeping startup
   // read-only regardless of whether callers include it.
   booleanFlag("no-seed", cliArgs);
-  const workspaceId = cliArgs["workspace-id"];
+  const explicitWorkspaceId = cliArgs["workspace-id"];
   const explicitProjectId = cliArgs["project-id"];
   const explicitSubjectId = cliArgs["subject"];
   if (explicitSubjectId !== undefined && explicitProjectId === undefined) {
     throw new TypeError("--subject requires --project-id.");
   }
   if (
-    workspaceId === undefined && explicitProjectId === undefined
+    explicitWorkspaceId === undefined && explicitProjectId === undefined
   ) {
     throw new TypeError(
       "--workspace-id or --project-id is required; no bootstrap project is configured.",
     );
   }
-  const focusOnly = workspaceId !== undefined &&
-    explicitProjectId === undefined && explicitSubjectId === undefined;
+  const projectId = resolveNativeWorkbenchProjectId(
+    explicitProjectId,
+    explicitSubjectId,
+  );
+  // An explicit pin disables cockpit-focus follow. Keeping --workspace-id
+  // would attach durable focus and silently serve that other project.
   return {
     hostname,
     port: integerArgument("port", cliArgs) ?? 5175,
     noSeed: true,
-    workspaceId,
-    projectId: focusOnly ? undefined : resolveNativeWorkbenchProjectId(
-      explicitProjectId,
-      explicitSubjectId,
-    ),
+    workspaceId: projectId === undefined ? explicitWorkspaceId : undefined,
+    projectId,
     explicitSubjectId,
   };
 }
@@ -338,13 +350,16 @@ type ActiveTargetResolution = ResolvedActiveProject;
 async function resolveActiveProject(
   options: NativeWorkbenchHandlerOptions,
 ): Promise<ActiveTargetResolution> {
-  const focus = await options.cockpitFocus?.get(
-    options.workspaceId ?? "primary",
-  );
-  const projectId = focus?.target.projectId ?? configuredProjectId(options);
+  const pinnedProjectId = options.projectId;
+  const focus = pinnedProjectId === undefined
+    ? await options.cockpitFocus?.get(options.workspaceId ?? "primary")
+    : undefined;
+  const projectId = pinnedProjectId ??
+    focus?.target.projectId ??
+    configuredProjectId(options);
   const project = await options.projectStore.get(projectId);
   if (!project) throw new NativeWorkbenchProjectNotFoundError(projectId);
-  const subjectId = focus
+  const subjectId = pinnedProjectId === undefined && focus
     ? project.project.subjectId
     : options.subjectId ?? project.project.subjectId;
   if (project.project.subjectId !== subjectId) {
@@ -792,7 +807,7 @@ async function projectViewerSessions(
       )
       : undefined;
     const registrySnapshot = await options.viewerAppRegistry?.read();
-    return await projectThreadViewerSessions(
+    const projection = await projectThreadViewerSessions(
       {
         projectId: context.projectId,
         projectRevision: context.project.revision,
@@ -811,6 +826,21 @@ async function projectViewerSessions(
         ? registrySnapshot?.launchResolver
         : options.viewerAppLaunchResolver,
     );
+    if (!snapshot || !options.productStructureCaptures || !options.geometryCaptures) {
+      return projection;
+    }
+    const hierarchy = await projectThreadViewerHierarchy({
+      snapshot,
+      basis: projection.basis,
+      sessions: projection.sessions,
+      architectureCaptures: options.productStructureCaptures,
+      geometryCaptures: options.geometryCaptures,
+      sysmlSourceAnalysis: options.sysmlSourceAnalysis,
+    });
+    const { projectionFingerprint: _priorFingerprint, ...base } = projection;
+    const withHierarchy = { ...base, hierarchy };
+    const fingerprint = await sha256Fingerprint(withHierarchy);
+    return { ...withHierarchy, projectionFingerprint: `sha256:${fingerprint.digest}` };
   };
   return sequencer ? await sequencer.project(project) : await project();
 }
@@ -872,6 +902,7 @@ export class ThreadViewerSessionsSequencer {
       basis: candidate.basis,
       sequence,
       sessions: candidate.sessions,
+      ...(candidate.hierarchy === undefined ? {} : { hierarchy: candidate.hierarchy }),
     };
     const fingerprint = await sha256Fingerprint(body);
     const projection: ThreadViewerSessionsProjection = {
@@ -1014,7 +1045,7 @@ async function projectWorkbenchSnapshot(
   ).map((issue) => ({ path: issue.path, message: issue.message }));
   const updates = liveUpdates ??
     (await options.liveUpdates?.list(subjectId) ?? []);
-  return projectEngineeringWorkbenchSnapshot(
+  const projected = projectEngineeringWorkbenchSnapshot(
     validatedProject,
     await projectThreadSnapshot(
       snapshot,
@@ -1027,6 +1058,33 @@ async function projectWorkbenchSnapshot(
     updates,
     unresolvedEvidenceReferences,
     REGISTERED_ENGINEERING_OPERATION_PATH_LANE_RESOLVER,
+  );
+  if (
+    projected.surface !== "evidence" || !options.requirementsCaptures ||
+    !options.projectStore.getRevision
+  ) return projected;
+  return await enrichEngineeringEvidenceWorkbenchWithRequirementsBriefTraces(
+    projected,
+    {
+      sourceThread: snapshot,
+      projects: {
+        getRevision: options.projectStore.getRevision.bind(options.projectStore),
+      },
+      captures: options.requirementsCaptures,
+      ...(options.requirementsBriefTraceCaptures
+        ? {
+          claimHistory: {
+            projects: {
+              get: options.projectStore.get.bind(options.projectStore),
+              getRevision: options.projectStore.getRevision.bind(options.projectStore),
+            },
+            snapshots: options.projectSnapshots ?? options.store,
+            captures: options.requirementsCaptures,
+            traces: options.requirementsBriefTraceCaptures,
+          },
+        }
+        : {}),
+    },
   );
 }
 
@@ -1108,6 +1166,10 @@ const DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
   SYSON_MODEL_SEED_OPERATION,
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   MODEL_WRITE_REQUIREMENTS_OPERATION,
+  MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
+  MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
+  MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
+  RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
   DESIGN_WRITE_GEOMETRY_OPERATION,
   VERIFY_SEAL_PROOF_CASE_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
@@ -1778,6 +1840,9 @@ if (import.meta.main) {
     technicalCompilationAdmissions,
     projectSourceWorkspace,
     requirementsCaptures,
+    requirementsBriefTraceCaptures: createRequirementsBriefTraceStore(
+      REQUIREMENTS_CAPTURE_DESCRIPTOR.directory,
+    ),
     productStructureCaptures: archCaptures,
     geometryCaptures,
     sysmlSourceAnalysis,

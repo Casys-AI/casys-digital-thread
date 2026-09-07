@@ -14,7 +14,10 @@ import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { applyThreadSnapshotExtension } from "../../../domain/thread/thread-snapshot-extension.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import { ARCHITECTURE_CAPTURE_SCHEMA } from "../../architecture/renderer/architecture-capture.ts";
-import { REQUIREMENTS_CAPTURE_SCHEMA } from "../../architecture/requirements/requirements-capture.ts";
+import {
+  REQUIREMENTS_CAPTURE_SCHEMA,
+  REQUIREMENTS_RECAPTURE_SCHEMA,
+} from "../../architecture/requirements/requirements-capture.ts";
 import {
   CaptureBackedTechnicalCompilationBasisResolver,
   TechnicalCompilationBasisResolutionError,
@@ -251,6 +254,60 @@ Deno.test("technical basis resolver never joins a requirements target by label",
   );
 });
 
+Deno.test(
+  "technical basis resolver still refuses a V3 requirements capture after a successor architecture tip",
+  async () => {
+    const fixture = await exactFixture({
+      requirementsCaptureVersion: "v3",
+      successorArchitecture: true,
+    });
+    await assertRejects(
+      () => fixture.resolver.resolve(fixture.request),
+      TechnicalCompilationBasisResolutionError,
+      "inputs are not exact",
+    );
+  },
+);
+
+Deno.test(
+  "technical basis resolver refuses a V4 recapture whose predecessor field is foreign",
+  async () => {
+    const fixture = await exactFixture({
+      requirementsCaptureVersion: "v4",
+      successorArchitecture: true,
+      foreignRequirementsPredecessor: true,
+    });
+    await assertRejects(
+      () => fixture.resolver.resolve(fixture.request),
+      TechnicalCompilationBasisResolutionError,
+      "predecessor field is foreign",
+    );
+  },
+);
+
+Deno.test(
+  "technical basis resolver admits a V4 recapture bound to the current successor architecture",
+  async () => {
+    const fixture = await exactFixture({
+      requirementsCaptureVersion: "v4",
+      successorArchitecture: true,
+    });
+    const resolved = await fixture.resolver.resolve(fixture.request);
+    const requirementUsage = resolved?.sysmlAnchor.elements.find((element) =>
+      element.id === "requirement-usage-frame"
+    );
+    const constraintUsage = resolved?.sysmlAnchor.elements.find((element) =>
+      element.id === "constraint-usage-frame-displacement"
+    );
+    assertEquals(requirementUsage?.kind, "RequirementUsage");
+    assertEquals(constraintUsage?.kind, "ConstraintUsage");
+    assertEquals(
+      requirementUsage?.provenance.artifactId,
+      fixture.requirementsArtifactId,
+    );
+  },
+);
+
 Deno.test("archived V3 requirements identities cannot authorize compilation bindings", async () => {
   const fixture = await exactFixture({
     requirementsCaptureVersion: "v3",
@@ -271,12 +328,13 @@ interface FixtureOptions {
   readonly archiveArchitecture?: boolean;
   readonly duplicateSysmlId?: boolean;
   readonly frameAttribute?: boolean;
-  readonly requirementsCaptureVersion?: "v2" | "v3";
+  readonly requirementsCaptureVersion?: "v2" | "v3" | "v4";
   readonly divergentConstraintSourceId?: boolean;
   readonly foreignRequirementsTargetId?: boolean;
   readonly staleRequirements?: boolean;
   readonly archiveRequirements?: boolean;
   readonly successorArchitecture?: boolean;
+  readonly foreignRequirementsPredecessor?: boolean;
 }
 
 async function exactFixture(options: FixtureOptions = {}) {
@@ -446,11 +504,16 @@ async function exactFixture(options: FixtureOptions = {}) {
   const requirementsCaptures = new Map<string, string>();
   let requirementsArtifactId: string | undefined;
   let requirementsDigest: string | undefined;
+  let predecessorRequirementsArtifact: {
+    readonly id: string;
+    readonly fingerprint: { readonly algorithm: "sha256"; readonly digest: string };
+    readonly producer: { readonly runId: string };
+  } | undefined;
   if (options.requirementsCaptureVersion) {
     const requirementsCapture: Record<string, unknown> = {
-      schemaVersion: options.requirementsCaptureVersion === "v3"
-        ? REQUIREMENTS_CAPTURE_SCHEMA
-        : "requirements-capture/2.0",
+      schemaVersion: options.requirementsCaptureVersion === "v2"
+        ? "requirements-capture/2.0"
+        : REQUIREMENTS_CAPTURE_SCHEMA,
       operation: { id: "model.write-requirements", version: "1" },
       trustedRunId: "run:requirements-basis-test",
       containerComponent: "Frame",
@@ -486,22 +549,20 @@ async function exactFixture(options: FixtureOptions = {}) {
       },
       requirementsElementId: "requirement-usage-frame",
       insertedAt: REQUIREMENTS_AT,
-      ...(options.requirementsCaptureVersion === "v3"
-        ? {
-          requirementUsage: {
-            id: "requirement-usage-frame",
-            kind: "RequirementUsage",
-          },
-          constraintUsages: [{
-            requirementId: "maximum-frame-displacement",
-            id: "constraint-usage-frame-displacement",
-            kind: "ConstraintUsage",
-            sourceId: options.divergentConstraintSourceId
-              ? "constraint-usage-foreign"
-              : "constraint-usage-frame-displacement",
-          }],
-        }
-        : {}),
+      ...(options.requirementsCaptureVersion === "v2" ? {} : {
+        requirementUsage: {
+          id: "requirement-usage-frame",
+          kind: "RequirementUsage",
+        },
+        constraintUsages: [{
+          requirementId: "maximum-frame-displacement",
+          id: "constraint-usage-frame-displacement",
+          kind: "ConstraintUsage",
+          sourceId: options.divergentConstraintSourceId
+            ? "constraint-usage-foreign"
+            : "constraint-usage-frame-displacement",
+        }],
+      }),
     };
     const requirementsFingerprint = await sha256Fingerprint(
       requirementsCapture,
@@ -575,6 +636,11 @@ async function exactFixture(options: FixtureOptions = {}) {
       proposedActions: [],
     }, { appliedAt: REQUIREMENTS_AT });
     successorSnapshots.push(snapshot);
+    predecessorRequirementsArtifact = {
+      id: requirementsArtifact.id,
+      fingerprint: requirementsArtifact.fingerprint,
+      producer: { runId: requirementsArtifact.producer.runId },
+    };
     requirementsCaptures.set(
       requirementsFingerprint.digest,
       deterministicJson(requirementsCapture),
@@ -703,6 +769,164 @@ async function exactFixture(options: FixtureOptions = {}) {
     ]);
     architectureArtifactId = successorArtifactId;
     architectureFingerprint = successorFingerprint;
+  }
+
+  if (
+    options.requirementsCaptureVersion === "v4" && predecessorRequirementsArtifact
+  ) {
+    const recaptureAt = "2026-08-12T09:13:00.000Z";
+    const currentArchitecture = snapshot.artifacts.find((artifact) =>
+      artifact.id === architectureArtifactId
+    )!;
+    const recapture = {
+      schemaVersion: REQUIREMENTS_RECAPTURE_SCHEMA,
+      operation: { id: "model.recapture-requirements", version: "1" },
+      trustedRunId: "run:requirements-recapture-basis-test",
+      containerComponent: "Frame",
+      partDefName: "FrameRequirements",
+      target: {
+        kind: "part-definition",
+        label: "Frame",
+        elementId: "part-definition-frame",
+      },
+      architectureBasis: {
+        snapshotId: snapshot.id,
+        revision: snapshot.revision,
+        fingerprint: architectureFingerprint.digest,
+      },
+      requirements: [{
+        id: "maximum-frame-displacement",
+        name: "Maximum frame displacement",
+        metric: "frameDisplacement",
+        operator: "<=",
+        limit: { value: 3, unit: "mm" },
+      }],
+      seed: {
+        artifactId: seedArtifact.id,
+        fingerprint: seedArtifact.fingerprint,
+        producerRunId: seedArtifact.producer.runId,
+      },
+      architecture: {
+        artifactId: currentArchitecture.id,
+        fingerprint: currentArchitecture.fingerprint,
+        producerRunId: currentArchitecture.producer.runId,
+      },
+      predecessor: {
+        artifactId: options.foreignRequirementsPredecessor
+          ? "requirements-Frame-foreign"
+          : predecessorRequirementsArtifact.id,
+        fingerprint: predecessorRequirementsArtifact.fingerprint,
+        producerRunId: options.foreignRequirementsPredecessor
+          ? "run:foreign-predecessor"
+          : predecessorRequirementsArtifact.producer.runId,
+      },
+      requirementsElementId: "requirement-usage-frame",
+      capturedAt: recaptureAt,
+      requirementUsage: {
+        id: "requirement-usage-frame",
+        kind: "RequirementUsage",
+      },
+      constraintUsages: [{
+        requirementId: "maximum-frame-displacement",
+        id: "constraint-usage-frame-displacement",
+        kind: "ConstraintUsage",
+        sourceId: "constraint-usage-frame-displacement",
+      }],
+      subject: {
+        id: "reference-usage-frame-target",
+        kind: "ReferenceUsage",
+        name: "target",
+      },
+    };
+    const recaptureFingerprint = await sha256Fingerprint(recapture);
+    requirementsDigest = recaptureFingerprint.digest;
+    requirementsArtifactId = `requirements-Frame-${recaptureFingerprint.digest}`;
+    const recaptureArtifact = {
+      id: requirementsArtifactId,
+      name: "Requirements: Frame",
+      kind: "sysml-model" as const,
+      version: recaptureFingerprint.digest,
+      fingerprint: recaptureFingerprint,
+      uri: `casys://requirements-capture/Frame/sha256/${recaptureFingerprint.digest}`,
+      mediaType: "application/json",
+      producer: {
+        serverId: "syson",
+        tool: "syson_constraint_extract",
+        runId: "run:requirements-recapture-basis-test",
+      },
+      inputArtifactIds: [
+        currentArchitecture.id,
+        predecessorRequirementsArtifact.id,
+      ],
+      freshness: {
+        status: "fresh" as const,
+        changedAt: recaptureAt,
+        invalidatedByChangeIds: [],
+      },
+    };
+    snapshot = applyThreadSnapshotExtension(snapshot, {
+      id: "requirements-recapture-basis-test",
+      name: "Recapture exact requirements",
+      subjectId: SUBJECT_ID,
+      capturedAt: recaptureAt,
+      artifacts: [recaptureArtifact],
+      consumptions: [{
+        id: "consumption:requirements-recapture-basis-test:architecture",
+        artifactId: currentArchitecture.id,
+        consumer: recaptureArtifact.producer,
+        observedFingerprint: currentArchitecture.fingerprint,
+        verifiedAt: recaptureAt,
+        status: "verified",
+      }, {
+        id: "consumption:requirements-recapture-basis-test:predecessor",
+        artifactId: predecessorRequirementsArtifact.id,
+        consumer: recaptureArtifact.producer,
+        observedFingerprint: predecessorRequirementsArtifact.fingerprint,
+        verifiedAt: recaptureAt,
+        status: "verified",
+      }],
+      observations: [],
+      requirements: [],
+      evaluations: [],
+      violations: [],
+      provenance: [{
+        id: "derived:requirements-recapture-basis-test:architecture",
+        relation: "derived_from",
+        from: { kind: "artifact", id: recaptureArtifact.id },
+        to: { kind: "artifact", id: currentArchitecture.id },
+        rationale: "The recapture consumed the exact current architecture.",
+      }, {
+        id: "derived:requirements-recapture-basis-test:predecessor",
+        relation: "derived_from",
+        from: { kind: "artifact", id: recaptureArtifact.id },
+        to: { kind: "artifact", id: predecessorRequirementsArtifact.id },
+        rationale: "The recapture consumed the exact predecessor requirements.",
+      }, {
+        id: "uses:requirements-recapture-basis-test:architecture",
+        relation: "uses",
+        from: {
+          kind: "consumption",
+          id: "consumption:requirements-recapture-basis-test:architecture",
+        },
+        to: { kind: "artifact", id: currentArchitecture.id },
+        rationale: "The consumption attests the exact architecture bytes.",
+      }, {
+        id: "uses:requirements-recapture-basis-test:predecessor",
+        relation: "uses",
+        from: {
+          kind: "consumption",
+          id: "consumption:requirements-recapture-basis-test:predecessor",
+        },
+        to: { kind: "artifact", id: predecessorRequirementsArtifact.id },
+        rationale: "The consumption attests the exact predecessor bytes.",
+      }],
+      proposedActions: [],
+    }, { appliedAt: recaptureAt });
+    successorSnapshots.push(snapshot);
+    requirementsCaptures.set(
+      recaptureFingerprint.digest,
+      deterministicJson(recapture),
+    );
   }
 
   if (options.archiveArchitecture) {

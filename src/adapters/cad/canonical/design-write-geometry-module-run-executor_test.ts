@@ -33,6 +33,7 @@ import {
   parseGeometryModuleDraftCapture,
   parseGeometryModuleManifest,
 } from "../../../domain/cad/canonical/geometry-module-evidence.ts";
+import { parseGeometryPartCapture } from "../../../domain/cad/canonical/geometry-part-capture.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../../domain/architecture/renderer/architecture-proposal.ts";
 import {
   GEOMETRY_PART_CAPTURE_SCHEMA,
@@ -612,6 +613,304 @@ Deno.test("replacing a child leaf cascades retirement through parent module asse
   }
 });
 
+Deno.test("leaf, airframe module, then root module seals compose two levels and two-hop archive", async () => {
+  const tmpDir = await Deno.makeTempDir({ prefix: "geo-nested-module-" });
+  try {
+    const world = await prepareNestedModuleWorld(tmpDir);
+    const airframeCapture = world.airframe.capture;
+    assertEquals(airframeCapture.schemaVersion, GEOMETRY_MODULE_CAPTURE_SCHEMA);
+    assertEquals(
+      airframeCapture.children[0]?.childGeometry.schemaVersion,
+      GEOMETRY_PART_CAPTURE_SCHEMA,
+    );
+    assertEquals(
+      airframeCapture.children[0]?.childGeometry.artifactId,
+      world.bolt.primary.id,
+    );
+    assertEquals(
+      airframeCapture.children[0]?.authoritativeStep.fingerprint.digest,
+      world.bolt.stepDigest,
+    );
+    assertEquals(
+      world.airframe.primary.inputArtifactIds.includes(world.bolt.primary.id),
+      true,
+    );
+
+    const rootCapture = world.root.capture;
+    assertEquals(rootCapture.schemaVersion, GEOMETRY_MODULE_CAPTURE_SCHEMA);
+    assertEquals(
+      rootCapture.children.map((child) => child.childGeometry.schemaVersion),
+      [GEOMETRY_MODULE_CAPTURE_SCHEMA, GEOMETRY_MODULE_CAPTURE_SCHEMA],
+    );
+    assertEquals(
+      rootCapture.children.map((child) => child.childGeometry.artifactId),
+      [world.airframe.primary.id, world.airframe.primary.id],
+    );
+    assertEquals(
+      rootCapture.children[0]?.authoritativeStep.fingerprint.digest,
+      airframeCapture.assemblyStep.fingerprint.digest,
+    );
+    assertEquals(
+      world.root.primary.inputArtifactIds.includes(world.airframe.primary.id),
+      true,
+    );
+
+    const projectBefore = await world.fixture.projects.get(PROJECT_ID);
+    assertExists(projectBefore);
+    const runIdsBefore = new Set(
+      projectBefore.agentRuns.map((run) => run.id),
+    );
+
+    const replacement = await queueGeometryPartSeal(
+      world.fixture,
+      world.root.completed,
+      { target: "bolt", suffix: "nested-leaf-replacement" },
+    );
+    const replaced = await makeExecutor(replacement.fixture, tmpDir).execute(
+      AGENT,
+      {
+        ...executionCommand(replacement.fixture),
+        commandId: "exec-nested-bolt-replacement",
+        issuedAt: "2026-08-08T13:21:00.000Z",
+      },
+    );
+    const replacementRun = replaced.agentRuns.find((run) =>
+      run.id === replacement.fixture.queued.runId
+    );
+    assertExists(replacementRun?.resultSnapshot);
+    const snapshot = await replacement.fixture.snapshots.get(
+      replacementRun.resultSnapshot.snapshotId,
+    );
+    assertExists(snapshot);
+    const archived = archivedRefKeys(snapshot);
+    for (
+      const id of [
+        ...world.bolt.familyIds,
+        ...world.airframe.familyIds,
+        ...world.root.familyIds,
+      ]
+    ) {
+      assertEquals(archived.has(`artifact:${id}`), true);
+    }
+    assertEquals(archived.has(`artifact:${world.v1PrimaryId}`), false);
+    const replacementPrimary = snapshot.artifacts.find((artifact) =>
+      artifact.producer.runId === replacementRun.id && artifact.kind === "cad-model"
+    );
+    assertExists(replacementPrimary);
+    assertEquals(archived.has(`artifact:${replacementPrimary.id}`), false);
+    const assets = world.fixture.canonicalAssetDirectory;
+    await assertStoredCanonicalAsset(assets, world.bolt.stepDigest, "step");
+    await assertStoredCanonicalAsset(
+      assets,
+      world.airframe.assemblyStep.digest,
+      "step",
+      world.airframe.assemblyStep.bytes,
+    );
+    await assertStoredCanonicalAsset(
+      assets,
+      world.airframe.assemblyGlb.digest,
+      "glb",
+      world.airframe.assemblyGlb.bytes,
+    );
+    await assertStoredCanonicalAsset(
+      assets,
+      world.root.assemblyStep.digest,
+      "step",
+      world.root.assemblyStep.bytes,
+    );
+    await assertStoredCanonicalAsset(
+      assets,
+      world.root.assemblyGlb.digest,
+      "glb",
+      world.root.assemblyGlb.bytes,
+    );
+    const project = await replacement.fixture.projects.get(PROJECT_ID);
+    assertExists(project);
+    const addedRunIds = project.agentRuns
+      .map((run) => run.id)
+      .filter((id) => !runIdsBefore.has(id));
+    assertEquals(addedRunIds, [replacement.fixture.queued.runId]);
+    assertEquals(
+      project.agentRuns.filter((run) => run.id === world.airframe.runId).length,
+      1,
+    );
+    assertEquals(
+      project.agentRuns.filter((run) => run.id === world.root.runId).length,
+      1,
+    );
+    const activeRootFamilies = await activeModuleFamiliesForTarget(
+      snapshot,
+      replacement.fixture,
+      "part-definition:system",
+    );
+    const activeAirframeFamilies = await activeModuleFamiliesForTarget(
+      snapshot,
+      replacement.fixture,
+      "part-definition:frame",
+    );
+    assertEquals(activeRootFamilies, []);
+    assertEquals(activeAirframeFamilies, []);
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
+Deno.test("root module seal refuses nested child STEP mismatch and archived airframe evidence", async () => {
+  const mismatchDir = await Deno.makeTempDir({
+    prefix: "geo-nested-module-mismatch-",
+  });
+  try {
+    const world = await prepareNestedModuleWorld(mismatchDir, { stopAt: "airframe" });
+    const wrongStep = part21("WRONG-NESTED-STEP");
+    const wrongDigest = await fingerprintResourceBytes(wrongStep);
+    const mismatched = world.airframe.rootChildren.map((child) => ({
+      ...child,
+      authoritativeStep: {
+        fingerprint: fp(wrongDigest),
+        bytes: wrongStep.byteLength,
+      },
+    }));
+    const queued = await queueModuleFromChildren({
+      directory: mismatchDir,
+      fixture: world.fixture,
+      projectRevision: world.airframe.completed.revision,
+      basis: world.airframe.snapshot,
+      children: mismatched,
+      target: ROOT_TARGET,
+      suffix: "root-step-mismatch",
+      dependsOnWorkItemIds: [`wi:geometry-${world.airframe.suffix}`],
+      issuedAt: "2026-08-08T13:10:00.000Z",
+      now: SUCCESSOR_NOW,
+      childStepBytes: [wrongStep, wrongStep],
+    });
+    await assertRejects(
+      () => queued.executor.execute(AGENT, queued.command),
+      EngineeringProjectCommandError,
+      "geometry_module_bundle_mismatch",
+    );
+    await assertQueued(queued.fixture);
+  } finally {
+    await Deno.remove(mismatchDir, { recursive: true });
+  }
+
+  const archivedDir = await Deno.makeTempDir({
+    prefix: "geo-nested-module-archived-",
+  });
+  try {
+    const world = await prepareNestedModuleWorld(archivedDir, { stopAt: "airframe" });
+    const replacement = await queueGeometryPartSeal(
+      world.fixture,
+      world.airframe.completed,
+      { target: "bolt", suffix: "nested-archive-leaf" },
+    );
+    const replaced = await makeExecutor(replacement.fixture, archivedDir).execute(
+      AGENT,
+      {
+        ...executionCommand(replacement.fixture),
+        commandId: "exec-nested-archive-leaf",
+        issuedAt: "2026-08-08T13:21:00.000Z",
+      },
+    );
+    const replacementRun = replaced.agentRuns.find((run) =>
+      run.id === replacement.fixture.queued.runId
+    );
+    assertExists(replacementRun?.resultSnapshot);
+    const snapshot = await replacement.fixture.snapshots.get(
+      replacementRun.resultSnapshot.snapshotId,
+    );
+    assertExists(snapshot);
+    assertEquals(
+      archivedRefKeys(snapshot).has(`artifact:${world.airframe.primary.id}`),
+      true,
+    );
+    const queued = await queueModuleFromChildren({
+      directory: archivedDir,
+      fixture: replacement.fixture,
+      projectRevision: replaced.revision,
+      basis: snapshot,
+      children: world.airframe.rootChildren,
+      target: ROOT_TARGET,
+      suffix: "root-archived-child",
+      dependsOnWorkItemIds: ["wi:target-geometry-nested-archive-leaf"],
+      issuedAt: "2026-08-08T13:30:00.000Z",
+      now: "2026-08-08T13:31:00.000Z",
+    });
+    await assertRejects(
+      () => queued.executor.execute(AGENT, queued.command),
+      EngineeringProjectCommandError,
+      "geometry_module_child_superseded",
+    );
+    await assertQueued(queued.fixture);
+  } finally {
+    await Deno.remove(archivedDir, { recursive: true });
+  }
+});
+
+Deno.test("root module seal refuses a module capture for the wrong child PartDefinition", async () => {
+  const tmpDir = await Deno.makeTempDir({
+    prefix: "geo-nested-module-child-target-",
+  });
+  try {
+    const world = await prepareNestedModuleWorld(tmpDir);
+    const diverged = world.airframe.rootChildren.map((child) => ({
+      ...child,
+      childGeometry: {
+        schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
+        artifactId: world.root.primary.id,
+        fingerprint: world.root.primary.fingerprint,
+      },
+      authoritativeStep: {
+        fingerprint: world.root.capture.assemblyStep.fingerprint,
+        bytes: world.root.capture.assemblyStep.bytes,
+      },
+    }));
+    const queued = await queueModuleFromChildren({
+      directory: tmpDir,
+      fixture: world.fixture,
+      projectRevision: world.root.completed.revision,
+      basis: world.root.snapshot,
+      children: diverged,
+      target: ROOT_TARGET,
+      suffix: "root-child-target-divergence",
+      dependsOnWorkItemIds: [`wi:geometry-${world.root.suffix}`],
+      issuedAt: "2026-08-08T13:40:00.000Z",
+      now: "2026-08-08T13:41:00.000Z",
+      predecessor: {
+        schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
+        artifactId: world.root.primary.id,
+        fingerprint: world.root.primary.fingerprint,
+        partDefinitionElementId: ROOT_TARGET.partDefinitionElementId,
+      },
+      childStepBytes: [
+        world.root.assemblyStep.bytes,
+        world.root.assemblyStep.bytes,
+      ],
+    });
+    const error = await assertRejects(
+      () => queued.executor.execute(AGENT, queued.command),
+      EngineeringProjectCommandError,
+      "geometry_module_child_superseded: named child",
+    );
+    assertStringIncludes(
+      error.message,
+      `is not the unique active capture for ${AIRFRAME_TARGET.partDefinitionElementId}`,
+    );
+    await assertQueued(queued.fixture);
+    await assertRejects(() =>
+      Deno.stat(
+        `${world.fixture.canonicalAssetDirectory}/${queued.assemblyStep.digest}.step`,
+      )
+    );
+    await assertRejects(() =>
+      Deno.stat(
+        `${world.fixture.canonicalAssetDirectory}/${queued.assemblyGlb.digest}.glb`,
+      )
+    );
+  } finally {
+    await Deno.remove(tmpDir, { recursive: true });
+  }
+});
+
 Deno.test("module seal failure before snapshot commit leaves no promoted assets or Thread write", async () => {
   const tmpDir = await Deno.makeTempDir({ prefix: "geo-module-atomic-" });
   try {
@@ -659,6 +958,14 @@ Deno.test("module seal failure before snapshot commit leaves no promoted assets 
 
 const MODULE_NOW = "2026-08-08T13:01:00.000Z";
 const SUCCESSOR_NOW = "2026-08-08T13:11:00.000Z";
+const AIRFRAME_TARGET = {
+  partDefinitionElementId: "part-definition:frame",
+  label: "FrameDefinition",
+} as const;
+const ROOT_TARGET = {
+  partDefinitionElementId: "part-definition:system",
+  label: "GeometrySystem",
+} as const;
 
 interface ModuleWorld {
   readonly directory: string;
@@ -1246,6 +1553,455 @@ async function attachInstalledSnapshot(
   return project.revision;
 }
 
+interface NestedSealedModule {
+  readonly suffix: string;
+  readonly runId: string;
+  readonly completed: Awaited<ReturnType<ReturnType<typeof makeExecutor>["execute"]>>;
+  readonly snapshot: ThreadSnapshot;
+  readonly primary: ThreadArtifact;
+  readonly capture: Awaited<ReturnType<typeof parseGeometryModuleCapture>>;
+  readonly familyIds: readonly string[];
+  readonly assemblyStep: { readonly digest: string; readonly bytes: Uint8Array };
+  readonly assemblyGlb: { readonly digest: string; readonly bytes: Uint8Array };
+  readonly rootChildren: readonly GeometryModuleChild[];
+}
+
+interface NestedModuleWorld {
+  readonly fixture: GeoFixture;
+  readonly v1PrimaryId: string;
+  readonly bolt: {
+    readonly primary: ThreadArtifact;
+    readonly familyIds: readonly string[];
+    readonly stepDigest: string;
+  };
+  readonly airframe: NestedSealedModule;
+  readonly root: NestedSealedModule;
+}
+
+async function prepareNestedModuleWorld(
+  directory: string,
+  options: { readonly stopAt?: "airframe" | "root" } = {},
+): Promise<NestedModuleWorld> {
+  const initial = await buildGeoFixture(directory, {
+    mode: "happy",
+    multiPartArchitecture: true,
+  });
+  const v1 = await makeExecutor(initial, directory).execute(
+    AGENT,
+    executionCommand(initial),
+  );
+  const v1Run = v1.agentRuns.find((run) => run.id === initial.queued.runId);
+  assertExists(v1Run?.resultSnapshot);
+  const v1Snapshot = await initial.snapshots.get(v1Run.resultSnapshot.snapshotId);
+  assertExists(v1Snapshot);
+  const v1Primary = v1Snapshot.artifacts.find((artifact) =>
+    artifact.kind === "cad-model" && artifact.producer.runId === v1Run.id
+  );
+  assertExists(v1Primary);
+
+  const boltQueued = await queueGeometryPartSeal(initial, v1, {
+    target: "bolt",
+    suffix: "nested-leaf",
+    stepBytes: part21("BOLT-LEAF"),
+  });
+  const boltCompleted = await makeExecutor(boltQueued.fixture, directory).execute(
+    AGENT,
+    {
+      ...executionCommand(boltQueued.fixture),
+      commandId: "exec-nested-bolt-leaf",
+      issuedAt: "2026-08-08T12:21:00.000Z",
+    },
+  );
+  const boltSealed = await requireSealedPrimary(
+    boltQueued.fixture,
+    boltCompleted,
+    boltQueued.fixture.queued.runId,
+  );
+  const boltCaptureText = await boltQueued.fixture.geoCaptures.read(
+    boltSealed.primary.fingerprint,
+  );
+  assertExists(boltCaptureText);
+  const boltCapture = await parseGeometryPartCapture(JSON.parse(boltCaptureText));
+  const boltStep = boltCapture.sourceScript.authoritativeStep;
+  const boltStepBytes = await Deno.readFile(
+    `${boltQueued.fixture.canonicalAssetDirectory}/${boltStep.fingerprint.digest}.step`,
+  );
+  assertEquals(boltStepBytes.byteLength, boltStep.bytes);
+
+  const architecture = boltSealed.snapshot.artifacts.find((artifact) =>
+    artifact.id.startsWith("architecture-")
+  );
+  assertExists(architecture);
+  const structure = await materializeStructureCapture(architecture);
+  const installed = applyThreadSnapshotExtensionIfNew(boltSealed.snapshot, {
+    id: `install-nested-structure-${structure.artifact.fingerprint.digest}`,
+    name: "Install nested module structure",
+    subjectId: boltSealed.snapshot.subject.id,
+    capturedAt: "2026-08-08T12:50:00.000Z",
+    artifacts: [structure.artifact],
+    consumptions: [...structure.consumptions],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    proposedActions: [],
+    provenance: [...structure.provenance],
+  }, { appliedAt: "2026-08-08T12:50:00.000Z" });
+  if (!installed.applied) throw new Error("nested structure extension already present");
+  validateThreadSnapshot(installed.snapshot);
+  await boltQueued.fixture.snapshots.save(installed.snapshot);
+  const projectRevision = await attachInstalledSnapshot(
+    boltQueued.fixture,
+    boltCompleted.revision,
+    boltSealed.snapshot,
+    installed.snapshot,
+    structure.artifact.id,
+  );
+
+  const airframeChildren: GeometryModuleChild[] = [{
+    usageElementId: "usage:bolt",
+    partDefinitionElementId: "part-definition:bolt",
+    placement: { translationMm: [0, 0, 0], rotationDeg: [0, 0, 0] },
+    placementCapture: PLACEMENT.fingerprint,
+    childGeometry: {
+      schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+      artifactId: boltSealed.primary.id,
+      fingerprint: boltSealed.primary.fingerprint,
+    },
+    authoritativeStep: {
+      fingerprint: boltStep.fingerprint,
+      bytes: boltStep.bytes,
+    },
+  }];
+  const airframeQueued = await queueModuleFromChildren({
+    directory,
+    fixture: boltQueued.fixture,
+    projectRevision,
+    basis: installed.snapshot,
+    children: airframeChildren,
+    target: AIRFRAME_TARGET,
+    suffix: "airframe",
+    dependsOnWorkItemIds: ["wi:install-module-children"],
+    issuedAt: "2026-08-08T13:00:00.000Z",
+    now: MODULE_NOW,
+    assemblyMark: "AIRFRAME-MODULE",
+    childStepBytes: [boltStepBytes],
+  });
+  const airframeCompleted = await airframeQueued.executor.execute(
+    AGENT,
+    airframeQueued.command,
+  );
+  const airframeSealed = await requireSealedModule(
+    airframeQueued.fixture,
+    airframeCompleted,
+    airframeQueued.fixture.queued.runId,
+  );
+  const airframeStepBytes = await Deno.readFile(
+    `${airframeQueued.fixture.canonicalAssetDirectory}/${airframeSealed.capture.assemblyStep.fingerprint.digest}.step`,
+  );
+  const rootChildren: GeometryModuleChild[] = [
+    {
+      usageElementId: "usage:frame",
+      partDefinitionElementId: "part-definition:frame",
+      placement: { translationMm: [0, 0, 0], rotationDeg: [0, 0, 0] },
+      placementCapture: PLACEMENT.fingerprint,
+      childGeometry: {
+        schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
+        artifactId: airframeSealed.primary.id,
+        fingerprint: airframeSealed.primary.fingerprint,
+      },
+      authoritativeStep: {
+        fingerprint: airframeSealed.capture.assemblyStep.fingerprint,
+        bytes: airframeSealed.capture.assemblyStep.bytes,
+      },
+    },
+    {
+      usageElementId: "usage:frame-secondary",
+      partDefinitionElementId: "part-definition:frame",
+      placement: { translationMm: [10, 0, 0], rotationDeg: [0, 90, 0] },
+      placementCapture: PLACEMENT.fingerprint,
+      childGeometry: {
+        schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
+        artifactId: airframeSealed.primary.id,
+        fingerprint: airframeSealed.primary.fingerprint,
+      },
+      authoritativeStep: {
+        fingerprint: airframeSealed.capture.assemblyStep.fingerprint,
+        bytes: airframeSealed.capture.assemblyStep.bytes,
+      },
+    },
+  ];
+  const airframe: NestedSealedModule = {
+    suffix: "airframe",
+    runId: airframeQueued.fixture.queued.runId,
+    completed: airframeCompleted,
+    snapshot: airframeSealed.snapshot,
+    primary: airframeSealed.primary,
+    capture: airframeSealed.capture,
+    familyIds: captureFamilyIds(airframeSealed.snapshot, airframeSealed.primary),
+    assemblyStep: {
+      digest: airframeSealed.capture.assemblyStep.fingerprint.digest,
+      bytes: airframeStepBytes,
+    },
+    assemblyGlb: {
+      digest: airframeSealed.capture.assemblyGlb.fingerprint.digest,
+      bytes: airframeQueued.assemblyGlb.bytes,
+    },
+    rootChildren,
+  };
+  const emptyRoot: NestedSealedModule = airframe;
+  if (options.stopAt === "airframe") {
+    return {
+      fixture: airframeQueued.fixture,
+      v1PrimaryId: v1Primary.id,
+      bolt: {
+        primary: boltSealed.primary,
+        familyIds: captureFamilyIds(boltSealed.snapshot, boltSealed.primary),
+        stepDigest: boltStep.fingerprint.digest,
+      },
+      airframe,
+      root: emptyRoot,
+    };
+  }
+
+  const rootQueued = await queueModuleFromChildren({
+    directory,
+    fixture: airframeQueued.fixture,
+    projectRevision: airframeCompleted.revision,
+    basis: airframeSealed.snapshot,
+    children: rootChildren,
+    target: ROOT_TARGET,
+    suffix: "root",
+    dependsOnWorkItemIds: ["wi:geometry-airframe"],
+    issuedAt: "2026-08-08T13:10:00.000Z",
+    now: SUCCESSOR_NOW,
+    assemblyMark: "ROOT-MODULE",
+    childStepBytes: [airframeStepBytes, airframeStepBytes],
+  });
+  const rootCompleted = await rootQueued.executor.execute(AGENT, rootQueued.command);
+  const rootSealed = await requireSealedModule(
+    rootQueued.fixture,
+    rootCompleted,
+    rootQueued.fixture.queued.runId,
+  );
+  return {
+    fixture: rootQueued.fixture,
+    v1PrimaryId: v1Primary.id,
+    bolt: {
+      primary: boltSealed.primary,
+      familyIds: captureFamilyIds(boltSealed.snapshot, boltSealed.primary),
+      stepDigest: boltStep.fingerprint.digest,
+    },
+    airframe,
+    root: {
+      suffix: "root",
+      runId: rootQueued.fixture.queued.runId,
+      completed: rootCompleted,
+      snapshot: rootSealed.snapshot,
+      primary: rootSealed.primary,
+      capture: rootSealed.capture,
+      familyIds: captureFamilyIds(rootSealed.snapshot, rootSealed.primary),
+      assemblyStep: {
+        digest: rootSealed.capture.assemblyStep.fingerprint.digest,
+        bytes: rootQueued.assemblyStep.bytes,
+      },
+      assemblyGlb: {
+        digest: rootSealed.capture.assemblyGlb.fingerprint.digest,
+        bytes: rootQueued.assemblyGlb.bytes,
+      },
+      rootChildren,
+    },
+  };
+}
+
+async function queueModuleFromChildren(options: {
+  readonly directory: string;
+  readonly fixture: GeoFixture;
+  readonly projectRevision: number;
+  readonly basis: ThreadSnapshot;
+  readonly children: readonly GeometryModuleChild[];
+  readonly target: { readonly partDefinitionElementId: string; readonly label: string };
+  readonly suffix: string;
+  readonly dependsOnWorkItemIds: readonly string[];
+  readonly issuedAt: string;
+  readonly now: string;
+  readonly predecessor?: GeometryModuleManifest["predecessor"];
+  readonly assemblyMark?: string;
+  readonly childStepBytes?: readonly Uint8Array[];
+}): Promise<{
+  readonly fixture: GeoFixture;
+  readonly executor: ReturnType<typeof makeExecutor>;
+  readonly command: ReturnType<typeof executionCommand> & { readonly issuedAt: string };
+  readonly assemblyStep: { readonly digest: string; readonly bytes: Uint8Array };
+  readonly assemblyGlb: { readonly digest: string; readonly bytes: Uint8Array };
+}> {
+  const architecture = options.basis.artifacts.find((artifact) =>
+    artifact.id.startsWith("architecture-")
+  );
+  assertExists(architecture);
+  const structure = options.basis.artifacts.find((artifact) =>
+    artifact.id.startsWith("part-definitions-")
+  );
+  assertExists(structure);
+  const childStepBytes = options.childStepBytes ?? await Promise.all(
+    options.children.map((child) =>
+      Deno.readFile(
+        `${options.fixture.canonicalAssetDirectory}/${child.authoritativeStep.fingerprint.digest}.step`,
+      )
+    ),
+  );
+  const bundle = await createGeometryModuleInputBundle(
+    options.children.map((child, index) => ({
+      usageElementId: child.usageElementId,
+      partDefinitionElementId: child.partDefinitionElementId,
+      placement: child.placement,
+      childCapture: child.childGeometry,
+      stepBytes: childStepBytes[index]!,
+    })),
+  );
+  const assemblyStep = part21(options.assemblyMark ?? `MODULE-${options.suffix}`);
+  const assemblyGlb = structuralGlb(options.suffix.length);
+  const assembly = await moduleAssemblyFixture(
+    bundle.bytes.copy(),
+    assemblyStep,
+    assemblyGlb,
+  );
+  const draft = await parseGeometryModuleDraftCapture(unsignedDraft({
+    architecture,
+    snapshot: options.basis,
+    structure,
+    children: options.children,
+    bundle,
+    assembly,
+    assemblyStep,
+    assemblyGlb,
+    predecessor: options.predecessor,
+    target: options.target,
+  }));
+  const manifest = geometryModuleManifestFromDraft(draft);
+  const draftFp = await sha256Fingerprint(draft);
+  await options.fixture.draftCaptures.save(draftFp, deterministicJson(draft));
+  const draftAssets = new FixtureModuleDraftAssets();
+  draftAssets.set(fp(assembly.stepDigest), assemblyStep);
+  draftAssets.set(fp(assembly.glbDigest), assemblyGlb);
+  const validator = stubModuleValidator();
+  const queued = await queueModuleSeal({
+    fixture: options.fixture,
+    projectRevision: options.projectRevision,
+    basis: options.basis,
+    draftFp,
+    manifest,
+    suffix: options.suffix,
+    dependsOnWorkItemIds: options.dependsOnWorkItemIds,
+    issuedAt: options.issuedAt,
+  });
+  return {
+    fixture: queued,
+    executor: makeExecutor(
+      queued,
+      options.directory,
+      queued.geoCaptures,
+      queued.snapshots,
+      moduleExecutorExtras({ draftAssets, validator }, options.now),
+    ),
+    command: {
+      ...executionCommand(queued),
+      commandId: `exec-module-${options.suffix}`,
+      issuedAt: options.now,
+    },
+    assemblyStep: { digest: assembly.stepDigest, bytes: assemblyStep },
+    assemblyGlb: { digest: assembly.glbDigest, bytes: assemblyGlb },
+  };
+}
+
+async function requireSealedPrimary(
+  fixture: GeoFixture,
+  completed: Awaited<ReturnType<ReturnType<typeof makeExecutor>["execute"]>>,
+  runId: string,
+): Promise<{ readonly snapshot: ThreadSnapshot; readonly primary: ThreadArtifact }> {
+  const run = completed.agentRuns.find((candidate) => candidate.id === runId);
+  assertExists(run?.resultSnapshot);
+  const snapshot = await fixture.snapshots.get(run.resultSnapshot.snapshotId);
+  assertExists(snapshot);
+  const primary = snapshot.artifacts.find((artifact) =>
+    artifact.kind === "cad-model" && artifact.producer.runId === run.id
+  );
+  assertExists(primary);
+  return { snapshot, primary };
+}
+
+async function requireSealedModule(
+  fixture: GeoFixture,
+  completed: Awaited<ReturnType<ReturnType<typeof makeExecutor>["execute"]>>,
+  runId: string,
+): Promise<{
+  readonly snapshot: ThreadSnapshot;
+  readonly primary: ThreadArtifact;
+  readonly capture: Awaited<ReturnType<typeof parseGeometryModuleCapture>>;
+}> {
+  const sealed = await requireSealedPrimary(fixture, completed, runId);
+  const captureText = await fixture.geoCaptures.read(sealed.primary.fingerprint);
+  assertExists(captureText);
+  return {
+    ...sealed,
+    capture: await parseGeometryModuleCapture(JSON.parse(captureText)),
+  };
+}
+
+async function assertStoredCanonicalAsset(
+  directory: string,
+  digest: string,
+  extension: "step" | "glb",
+  expectedBytes?: Uint8Array,
+): Promise<void> {
+  const observed = await Deno.readFile(`${directory}/${digest}.${extension}`);
+  if (expectedBytes !== undefined) {
+    assertEquals(observed, expectedBytes);
+  }
+  assertEquals(await fingerprintResourceBytes(observed), digest);
+}
+
+function captureFamilyIds(
+  snapshot: ThreadSnapshot,
+  primary: ThreadArtifact,
+): readonly string[] {
+  const digest = primary.fingerprint.digest;
+  return snapshot.artifacts.filter((artifact) =>
+    artifact.id === primary.id || artifact.id.startsWith(`cad-asset-${digest}-`)
+  ).map((artifact) => artifact.id);
+}
+
+async function activeModuleFamiliesForTarget(
+  snapshot: ThreadSnapshot,
+  fixture: GeoFixture,
+  partDefinitionElementId: string,
+): Promise<readonly string[]> {
+  const archived = archivedRefKeys(snapshot);
+  const ids: string[] = [];
+  for (const artifact of snapshot.artifacts) {
+    if (
+      artifact.kind !== "cad-model" ||
+      !artifact.uri?.startsWith(GEOMETRY_CAPTURE_URI_PREFIX) ||
+      archived.has(`artifact:${artifact.id}`)
+    ) {
+      continue;
+    }
+    const text = await fixture.geoCaptures.read(artifact.fingerprint);
+    if (!text) continue;
+    const parsed = JSON.parse(text) as {
+      schemaVersion?: string;
+      manifest?: { target?: { partDefinitionElementId?: string } };
+    };
+    if (
+      parsed.schemaVersion === GEOMETRY_MODULE_CAPTURE_SCHEMA &&
+      parsed.manifest?.target?.partDefinitionElementId === partDefinitionElementId
+    ) {
+      ids.push(artifact.id);
+    }
+  }
+  return ids;
+}
+
 async function materializeChildCapture(
   fixture: GeoFixture,
   options: {
@@ -1519,6 +2275,10 @@ function unsignedDraft(options: {
   readonly assemblyStep: Uint8Array;
   readonly assemblyGlb: Uint8Array;
   readonly predecessor?: GeometryModuleManifest["predecessor"];
+  readonly target?: {
+    readonly partDefinitionElementId: string;
+    readonly label: string;
+  };
 }): Omit<GeometryModuleDraftCapture, "fingerprint"> {
   return {
     schemaVersion: GEOMETRY_MODULE_DRAFT_CAPTURE_SCHEMA,
@@ -1532,10 +2292,7 @@ function unsignedDraft(options: {
       options.architecture,
       options.structure,
     ),
-    target: {
-      partDefinitionElementId: "part-definition:system",
-      label: "GeometrySystem",
-    },
+    target: options.target ?? ROOT_TARGET,
     ...(options.predecessor ? { predecessor: options.predecessor } : {}),
     placementAnalysis: PLACEMENT,
     children: options.children,

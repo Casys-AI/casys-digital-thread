@@ -24,8 +24,10 @@ import {
   validateAssemblyIntegrityEvaluationCloseoutAdmission,
 } from "../../../domain/cad/assembly-integrity/assembly-integrity-evaluation-closeout-proposal.ts";
 import {
+  assemblyIntegrityCloseoutAcceptGateClaims,
+} from "../../../domain/cad/assembly-integrity/assembly-integrity-evaluation-gate-policy.ts";
+import {
   ASSEMBLY_INTEGRITY_VERIFICATION_AUTHORITY,
-  currentApprovedAssemblyIntegrityVerificationGateIds,
 } from "../../../domain/cad/assembly-integrity/assembly-integrity-verification-authority.ts";
 import {
   VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION,
@@ -39,6 +41,7 @@ import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotBasis,
+  EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
 import { projectBriefContractVersion } from "../../../domain/project/project-brief.ts";
 import {
@@ -76,6 +79,7 @@ export interface AssemblyIntegrityCloseoutResolvedEvidence {
   readonly subjectId: string;
   readonly basis: AssemblyIntegrityEvaluationCloseoutAdmission["basis"];
   readonly l4Run: EngineeringAgentRun;
+  readonly l4Work: EngineeringWorkItem;
   readonly evaluationCapture: ThreadArtifact;
   readonly geometryModule: ThreadArtifact;
   readonly assemblyStep: ThreadArtifact;
@@ -85,9 +89,12 @@ export interface AssemblyIntegrityCloseoutResolvedEvidence {
 }
 
 /**
- * Exact L5 authorization selected from the current human-approved Brief V2.
- * The review and executor use this same derivation so a caller cannot select a
- * subset, a success criterion, or another verification authority.
+ * Exact L5 authorization from the selected L4 work item recrossed against the
+ * current human-approved Brief V2. New unsealed accepts satisfy only that L4's
+ * current contributes-to claims; reject never satisfies a gate. Review and
+ * executor share this derivation so a caller cannot select, invent, or omit a
+ * gate. Completed replay attests the signed admission rather than re-deriving
+ * these claims.
  */
 export interface AssemblyIntegrityCloseoutAuthorization {
   readonly approvedBriefBasis: AssemblyIntegrityEvaluationCloseoutAdmission[
@@ -100,6 +107,7 @@ export interface AssemblyIntegrityCloseoutAuthorization {
 export function assemblyIntegrityCloseoutAuthorization(
   project: EngineeringProjectSnapshot,
   consequence: AssemblyIntegrityEvaluationCloseoutConsequence,
+  l4Work: EngineeringWorkItem,
 ): AssemblyIntegrityCloseoutAuthorization {
   const brief = project.framing?.currentBrief;
   if (!brief || projectBriefContractVersion(brief) !== "2.0") {
@@ -117,15 +125,14 @@ export function assemblyIntegrityCloseoutAuthorization(
       "Assembly-integrity closeout requires the exact current human-approved Brief basis.",
     );
   }
-  const gateClaims = consequence === "accept"
-    ? currentApprovedAssemblyIntegrityVerificationGateIds(project).map((
-      gateItemId,
-    ) => ({
-      gateItemId,
-      role: "satisfies" as const,
-      status: "current" as const,
-    }))
-    : [];
+  let gateClaims: AssemblyIntegrityEvaluationCloseoutAdmission["gateClaims"] = [];
+  if (consequence === "accept") {
+    try {
+      gateClaims = assemblyIntegrityCloseoutAcceptGateClaims(project, l4Work);
+    } catch (error) {
+      throw integrity(error instanceof Error ? error.message : String(error));
+    }
+  }
   return Object.freeze({
     approvedBriefBasis,
     verificationAuthority: ASSEMBLY_INTEGRITY_VERIFICATION_AUTHORITY,
@@ -198,7 +205,11 @@ export async function resolveAssemblyIntegrityCloseoutEvidence(
   if (snapshot.freshness.status !== "fresh") {
     throw stale("The exact current Thread tip is not fresh.");
   }
-  const l4Run = selectExactCompletedL4Run(project, basis, snapshot);
+  const { run: l4Run, work: l4Work } = selectExactCompletedL4(
+    project,
+    basis,
+    snapshot,
+  );
   const evaluationCapture = unique(
     snapshot.artifacts.filter((artifact) =>
       artifact.producer.runId === l4Run.id && isL4CaptureArtifact(artifact)
@@ -255,6 +266,7 @@ export async function resolveAssemblyIntegrityCloseoutEvidence(
       fingerprint,
     },
     l4Run,
+    l4Work,
     evaluationCapture,
     geometryModule,
     assemblyStep,
@@ -266,11 +278,11 @@ export async function resolveAssemblyIntegrityCloseoutEvidence(
   });
 }
 
-function selectExactCompletedL4Run(
+function selectExactCompletedL4(
   project: EngineeringProjectSnapshot,
   basis: EngineeringThreadSnapshotBasis,
   snapshot: ThreadSnapshot,
-): EngineeringAgentRun {
+): { readonly run: EngineeringAgentRun; readonly work: EngineeringWorkItem } {
   const currentResult = {
     snapshotId: snapshot.id,
     revision: snapshot.revision,
@@ -295,7 +307,7 @@ function selectExactCompletedL4Run(
   if (!work || work.status !== "completed") {
     throw integrity("The exact L4 run is not attached to one completed work item.");
   }
-  return run;
+  return { run, work };
 }
 
 async function reopenCapture(

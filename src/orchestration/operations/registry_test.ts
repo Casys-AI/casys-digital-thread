@@ -17,6 +17,11 @@ import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission
 
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/architecture/agent-seal/architecture-sysml-seal-proposal.ts";
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/architecture/part-definitions/part-definitions-capture.ts";
+import { MODEL_RECAPTURE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-recapture-proposal.ts";
+import { MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-recapture-proposal.ts";
+import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-proposal.ts";
+import { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-proposal.ts";
+import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../domain/record/requirements-brief-trace.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
 import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
@@ -342,6 +347,139 @@ Deno.test("model.capture-part-definitions@1 cannot appear in the initial plan", 
   )!;
   assertEquals(registered.requiresAdditiveChange, true);
 });
+
+Deno.test(
+  "model.write-requirements@1 remains readable only for history while traced @2 is plan-eligible",
+  () => {
+    const retired = getRegisteredEngineeringOperation(
+      MODEL_WRITE_REQUIREMENTS_OPERATION,
+    )!;
+    assertEquals(retired.retiredForPlanning, true);
+    assertEquals(retired.title.includes("Retired"), true);
+    assertEquals(
+      engineeringOperationRegistry.list().find((operation) =>
+        operation.id === MODEL_WRITE_REQUIREMENTS_OPERATION.id &&
+        operation.version === MODEL_WRITE_REQUIREMENTS_OPERATION.version
+      )?.retiredForPlanning,
+      true,
+    );
+    assertEquals(
+      requireRegisteredEngineeringOperation(MODEL_WRITE_REQUIREMENTS_OPERATION)
+        .retiredForPlanning,
+      true,
+    );
+    for (const stage of ["planning", "queue"] as const) {
+      const error = assertThrows(
+        () =>
+          validateRegisteredEngineeringOperationInput(
+            stage === "planning"
+              ? {
+                operation: {
+                  ...MODEL_WRITE_REQUIREMENTS_OPERATION,
+                  bindings: [{
+                    name: "approvedBrief",
+                    source: { kind: "approved-brief" },
+                  }],
+                },
+                stage,
+              }
+              : {
+                operation: {
+                  ...MODEL_WRITE_REQUIREMENTS_OPERATION,
+                  bindings: [{
+                    name: "approvedBrief",
+                    source: { kind: "approved-brief" },
+                  }],
+                },
+                stage,
+                basisKind: "thread-snapshot",
+              },
+          ),
+        EngineeringOperationRegistryError,
+      );
+      assertEquals(error.code, "retired_for_planning");
+    }
+
+    const traced = getRegisteredEngineeringOperation(
+      MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
+    )!;
+    assertEquals(traced.retiredForPlanning, undefined);
+    assertEquals(traced.runtimeDemand, retired.runtimeDemand);
+    assertEquals(traced.bindings, retired.bindings);
+  },
+);
+
+Deno.test(
+  "model.recapture-requirements@1 is a trusted inspect operation that binds architecture and predecessor",
+  () => {
+    const registered = getRegisteredEngineeringOperation(
+      MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
+    )!;
+    assertEquals(registered.execution, "trusted");
+    assertEquals(registered.riskClass, "consequential");
+    assertEquals(registered.workItemKind, "verify");
+    assertEquals(registered.requiresAdditiveChange, true);
+    assertEquals(registered.decisionEvidenceScope, "thread-entity-bindings");
+    assertEquals(registered.threadEntityBindingsMustMatchBasis, true);
+    assertEquals(registered.allowedBasisKinds, ["thread-snapshot"]);
+    assertEquals(registered.bindings, [{
+      name: "architecture",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }, {
+      name: "predecessor",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }]);
+  },
+);
+
+Deno.test(
+  "model.recapture-requirements@2 retains the read-only predecessor and architecture boundary",
+  () => {
+    const legacy = getRegisteredEngineeringOperation(
+      MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
+    )!;
+    const traced = getRegisteredEngineeringOperation(
+      MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
+    )!;
+    assertEquals(traced.retiredForPlanning, undefined);
+    assertEquals(traced.execution, "trusted");
+    assertEquals(traced.runtimeDemand, legacy.runtimeDemand);
+    assertEquals(traced.requiresAdditiveChange, true);
+    assertEquals(traced.decisionEvidenceScope, "thread-entity-bindings");
+    assertEquals(traced.threadEntityBindingsMustMatchBasis, true);
+    assertEquals(traced.bindings, legacy.bindings);
+  },
+);
+
+Deno.test(
+  "requirements brief trace is a provider-free documentary append with exact current-basis capture binding",
+  () => {
+    const operation = getRegisteredEngineeringOperation(
+      RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
+    )!;
+    assertEquals(operation.workItemKind, "review");
+    assertEquals(operation.riskClass, "consequential");
+    assertEquals(operation.execution, "trusted");
+    assertEquals(operation.runtimeDemand, { kind: "none" });
+    assertEquals(operation.requiresAdditiveChange, true);
+    assertEquals(operation.decisionEvidenceScope, "thread-entity-bindings");
+    assertEquals(operation.threadEntityBindingsMustMatchBasis, true);
+    assertEquals(operation.allowedBasisKinds, ["thread-snapshot"]);
+    assertEquals(operation.bindings, [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }, {
+      name: "claimInput",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one-or-more",
+      allowedThreadEntityKinds: ["artifact"],
+    }]);
+  },
+);
 
 Deno.test("assembly-integrity observation is trusted and binds exactly one canonical geometry module artifact", () => {
   const registered = getRegisteredEngineeringOperation(

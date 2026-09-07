@@ -3,6 +3,10 @@ import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/architecture/re
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/architecture/part-definitions/part-definitions-capture.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/cad/canonical/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-proposal.ts";
+import { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-proposal.ts";
+import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../domain/record/requirements-brief-trace.ts";
+import { MODEL_RECAPTURE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-recapture-proposal.ts";
+import { MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-recapture-proposal.ts";
 import { EngineeringProjectCommandError } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import type {
   EngineeringAgentRun,
@@ -178,6 +182,10 @@ Deno.test("recorded @2 writers participate in the same basis exclusion", async (
     const [index, operation] of [
       VERIFY_RUN_FEA_STATIC_PROOF_V2_OPERATION,
       VERIFY_RUN_FEA_STATIC_PROOF_V3_OPERATION,
+      MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
+      MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
+      MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
+      RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
     ].entries()
   ) {
     const sibling = {

@@ -5,12 +5,16 @@ import type {
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import { parseSysonModelSeedCapture } from "../../../domain/architecture/seed/syson-model-seed.ts";
 import {
+  listRequirementsCaptureContainers,
   REQUIREMENTS_CAPTURE_URI_PREFIX,
   selectRequirementsTip,
 } from "../../../domain/thread/requirements-tip.ts";
 import {
+  assertTracedRequirementsRecaptureThreadContinuity,
+  isRecaptureRequirementsCapture,
+  isWriteRequirementsCapture,
   parseExactRequirementsCapture,
-  REQUIREMENTS_CAPTURE_SCHEMA,
+  requirementsCaptureProducerTool,
 } from "../../architecture/requirements/requirements-capture.ts";
 import { mechanicalProofRequirementsMatchCapture } from "../../../domain/fea/seal-case/mechanical-proof-case.ts";
 
@@ -39,17 +43,26 @@ export class CaptureBackedFeaProofSealRequirementsReviewer
   async review(
     input: Parameters<FeaProofSealRequirementsReviewer["review"]>[0],
   ): Promise<FeaProofSealRequirementsReviewResult> {
-    const artifacts = input.snapshot.artifacts.filter((artifact) =>
-      artifact.kind === "sysml-model" &&
-      artifact.mediaType === "application/json" &&
-      artifact.uri?.startsWith(REQUIREMENTS_CAPTURE_URI_PREFIX)
-    );
     const matching: Array<{
-      readonly artifact: (typeof artifacts)[number];
+      readonly artifact: ThreadArtifactLike;
       readonly component: string;
     }> = [];
 
-    for (const artifact of artifacts) {
+    for (const component of listRequirementsCaptureContainers(input.snapshot)) {
+      const tip = selectRequirementsTip(input.snapshot, component);
+      if (tip.kind === "ambiguous") {
+        return unresolved(
+          "requirements-ambiguous",
+          null,
+          `The named basis does not expose one unique active requirements tip for exact component "${component}".`,
+        );
+      }
+      if (tip.kind === "retired") {
+        continue;
+      }
+      if (tip.kind !== "one") continue;
+      const artifact = tip.artifact;
+
       let text: string | undefined;
       try {
         text = await this.dependencies.requirementsCaptures.read(
@@ -92,15 +105,34 @@ export class CaptureBackedFeaProofSealRequirementsReviewer
         continue;
       }
       if (
-        capture.schemaVersion !== REQUIREMENTS_CAPTURE_SCHEMA ||
+        (!isWriteRequirementsCapture(capture) &&
+          !isRecaptureRequirementsCapture(capture)) ||
         artifact.uri !==
           `${REQUIREMENTS_CAPTURE_URI_PREFIX}${capture.containerComponent}/sha256/${artifact.fingerprint.digest}` ||
-        capture.target.label !== capture.containerComponent
+        capture.containerComponent !== component ||
+        capture.target.label !== capture.containerComponent ||
+        artifact.producer.tool !== requirementsCaptureProducerTool(capture)
       ) {
         return unresolved(
           "requirements-component-mismatch",
           artifact.id,
-          `Requirements capture "${artifact.id}" does not bind one exact active V3 component lineage.`,
+          `Requirements capture "${artifact.id}" does not bind one exact active requirements component lineage.`,
+        );
+      }
+      try {
+        await assertTracedRequirementsRecaptureThreadContinuity(
+          capture,
+          artifact,
+          input.snapshot.artifacts,
+          this.dependencies.requirementsCaptures,
+        );
+      } catch (error) {
+        return unresolved(
+          "requirements-capture-invalid",
+          artifact.id,
+          `Requirements capture "${artifact.id}" has no exact traced predecessor continuity: ${
+            errorMessage(error)
+          }.`,
         );
       }
       if (
@@ -158,14 +190,14 @@ export class CaptureBackedFeaProofSealRequirementsReviewer
           }.`,
         );
       }
-      matching.push({ artifact, component: capture.containerComponent });
+      matching.push({ artifact, component });
     }
 
     if (matching.length === 0) {
       return unresolved(
         "requirements-component-mismatch",
         null,
-        `No reopened active V3 requirements capture binds target element "${input.proofCase.target.modelElementId}" and RequirementUsage "${input.proofCase.requirementsSource.elementId}".`,
+        `No reopened active requirements capture binds target element "${input.proofCase.target.modelElementId}" and RequirementUsage "${input.proofCase.requirementsSource.elementId}".`,
       );
     }
     if (matching.length > 1) {
@@ -178,35 +210,13 @@ export class CaptureBackedFeaProofSealRequirementsReviewer
       );
     }
 
-    const selected = matching[0]!;
-    const tip = selectRequirementsTip(input.snapshot, selected.component);
-    if (tip.kind === "retired") {
-      return unresolved(
-        "requirements-retired",
-        selected.artifact.id,
-        `The requirements lineage for exact component "${selected.component}" is archived on the named basis.`,
-      );
-    }
-    if (tip.kind !== "one") {
-      return unresolved(
-        tip.kind === "ambiguous" ? "requirements-ambiguous" : "requirements-absent",
-        selected.artifact.id,
-        `The named basis does not expose one unique active requirements tip for exact component "${selected.component}".`,
-      );
-    }
-    if (
-      tip.artifact.id !== selected.artifact.id ||
-      tip.artifact.fingerprint.digest !== selected.artifact.fingerprint.digest
-    ) {
-      return unresolved(
-        "requirements-component-mismatch",
-        selected.artifact.id,
-        `Reopened requirements capture "${selected.artifact.id}" is not the authoritative active tip for exact component "${selected.component}".`,
-      );
-    }
-    return { status: "resolved", artifact: selected.artifact };
+    return { status: "resolved", artifact: matching[0]!.artifact };
   }
 }
+
+type ThreadArtifactLike = Parameters<
+  FeaProofSealRequirementsReviewer["review"]
+>[0]["snapshot"]["artifacts"][number];
 
 function unresolved(
   code:

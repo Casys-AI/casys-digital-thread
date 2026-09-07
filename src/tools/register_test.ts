@@ -930,6 +930,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_product_inspect",
     "project_product_search",
     "project_question_propose",
+    "project_requirements_brief_trace_review",
+    "project_requirements_recapture_review",
     "project_resource_capture",
     "project_sensitivity_base_evaluation_review",
     "project_sensitivity_study_seal_review",
@@ -1027,6 +1029,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_product_inspect",
       "project_product_search",
       "project_question_propose",
+      "project_requirements_brief_trace_review",
+      "project_requirements_recapture_review",
       "project_resource_capture",
       "project_sensitivity_base_evaluation_review",
       "project_sensitivity_study_seal_review",
@@ -1301,6 +1305,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_cross_domain_impact_decision_review" ||
           tool.name === "project_cross_domain_impact_manifest_seal_review" ||
           tool.name === "project_brief_requirements_review" ||
+          tool.name === "project_requirements_brief_trace_review" ||
+          tool.name === "project_requirements_recapture_review" ||
           tool.name === "project_brief_architecture_review" ||
           tool.name === "project_thermal_method_sheet_seal_review" ||
           tool.name === "project_admitted_modelica_evaluation_closeout_review" ||
@@ -1329,6 +1335,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_source_attachment_recross" ||
           tool.name === "project_source_attachment_detach" ||
           tool.name === "project_brief_requirements_review" ||
+          tool.name === "project_requirements_brief_trace_review" ||
+          tool.name === "project_requirements_recapture_review" ||
           tool.name === "project_brief_architecture_review" ||
           tool.name === "project_start" ||
           tool.name === "project_question_propose" ||

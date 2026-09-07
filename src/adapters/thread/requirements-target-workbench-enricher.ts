@@ -1,5 +1,5 @@
 /**
- * BFF-only reopen of sealed model.write-requirements@1 captures.
+ * BFF-only reopen of exact sealed requirements writer/recapture captures.
  *
  * sourceElementId remains the RequirementUsage identity. The enricher recrosses
  * exact target.elementId from the unique current requirements tip per
@@ -15,6 +15,9 @@ import type { ThreadGraphEdge } from "../../presentation/workbench/thread/graph.
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-proposal.ts";
+import { MODEL_RECAPTURE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-recapture-proposal.ts";
+import { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-proposal.ts";
+import { MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-recapture-proposal.ts";
 import {
   listRequirementsCaptureContainers,
   REQUIREMENTS_CAPTURE_URI_PREFIX,
@@ -27,8 +30,14 @@ import {
 import { currentArchitectureArtifact } from "./thread-workbench-architecture-basis.ts";
 
 const PROJECTED_FINGERPRINT = /^sha256:([0-9a-f]{64})$/;
-const PRODUCER =
+const WRITE_PRODUCER =
   `${MODEL_WRITE_REQUIREMENTS_OPERATION.id}@${MODEL_WRITE_REQUIREMENTS_OPERATION.version}` as const;
+const RECAPTURE_PRODUCER =
+  `${MODEL_RECAPTURE_REQUIREMENTS_OPERATION.id}@${MODEL_RECAPTURE_REQUIREMENTS_OPERATION.version}` as const;
+const TRACED_WRITE_PRODUCER =
+  `${MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION.id}@${MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION.version}` as const;
+const TRACED_RECAPTURE_PRODUCER =
+  `${MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION.id}@${MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION.version}` as const;
 
 export interface RequirementsCaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
@@ -53,6 +62,10 @@ export async function enrichThreadWorkbenchWithRequirementsTargets(
     if (!identity) continue;
     const capture = await reopenRequirementsCapture(identity, captures);
     if (!capture) continue;
+    if (
+      projected.producedBy !==
+        `${capture.operation.id}@${capture.operation.version}`
+    ) continue;
     if (capture.containerComponent !== container) continue;
     if (!sameArchitecture(capture, architecture, projected)) continue;
     const requirement = snapshot.requirements.find((item) =>
@@ -167,7 +180,10 @@ function requirementsCaptureIdentity(artifact: ThreadArtifact): {
   if (
     !fingerprintMatch ||
     artifact.kind !== "sysml-model" ||
-    artifact.producedBy !== PRODUCER ||
+    (artifact.producedBy !== WRITE_PRODUCER &&
+      artifact.producedBy !== RECAPTURE_PRODUCER &&
+      artifact.producedBy !== TRACED_WRITE_PRODUCER &&
+      artifact.producedBy !== TRACED_RECAPTURE_PRODUCER) ||
     artifact.uri === undefined ||
     !artifact.uri.startsWith(REQUIREMENTS_CAPTURE_URI_PREFIX)
   ) {

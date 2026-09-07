@@ -467,6 +467,7 @@ async function recrossAdmission(
     const authorization = assemblyIntegrityCloseoutAuthorization(
       project,
       admission.consequence,
+      resolved.l4Work,
     );
     const expected = assemblyIntegrityEvaluationCloseoutAdmission(
       resolved,
@@ -474,9 +475,13 @@ async function recrossAdmission(
       authorization,
     );
     if (deterministicJson(expected) !== deterministicJson(admission)) {
-      throw invalidTransition(
-        "The signed assembly-integrity closeout no longer matches the exact current fresh L4 capture and limits.",
-      );
+      if (
+        !attestsCompletedCloseoutSignedAdmission(run, expected, admission)
+      ) {
+        throw invalidTransition(
+          "The signed assembly-integrity closeout no longer matches the exact current fresh L4 capture and limits.",
+        );
+      }
     }
     assertAssemblyIntegrityCloseoutGateClaims(
       project,
@@ -497,9 +502,34 @@ async function recrossAdmission(
 }
 
 /**
- * Gate identity stays entirely current-Brief-owned. Review seals the complete
- * compatible authority-derived set into the admission; execution admits only
- * an identical set on the appended human work item.
+ * New unsealed accepts recross the current L4-derived satisfies/current set.
+ * An already completed closeout, and a publishing recovery whose capture
+ * already exists, attest the signed admission as persisted fact: L4 capture,
+ * Brief identity, method, and limits still recross, but sealed gate claims
+ * are not reinterpreted. Queued and running still require the derived set.
+ */
+function attestsCompletedCloseoutSignedAdmission(
+  run: EngineeringAgentRun,
+  expected: AssemblyIntegrityEvaluationCloseoutAdmission,
+  admission: AssemblyIntegrityEvaluationCloseoutAdmission,
+): boolean {
+  if (run.status !== "completed" && run.status !== "publishing") return false;
+  return deterministicJson(closeoutAdmissionEvidence(expected)) ===
+    deterministicJson(closeoutAdmissionEvidence(admission));
+}
+
+function closeoutAdmissionEvidence(
+  admission: AssemblyIntegrityEvaluationCloseoutAdmission,
+) {
+  const { gateClaims: _gateClaims, ...evidence } = admission;
+  return evidence;
+}
+
+/**
+ * Gate identity on a new unsealed accept stays on the selected L4 work item
+ * recrossed against the current Brief. Execution still requires the appended
+ * human work item to carry exactly the signed admission claims, including a
+ * historical completed replay that attests those sealed bytes.
  */
 export function assertAssemblyIntegrityCloseoutGateClaims(
   project: EngineeringProjectSnapshot,

@@ -26,10 +26,15 @@
  *   6. Derived requirements tip rejected — tip does not match MRTR artifact → invalid_transition
  *   7. Happy path — sealed artifact in snapshot; triplets present;
  *      validateThreadSnapshot passes; idempotent replay returns same project revision
+ *   8. Long intact lineage above 50 ancestors seals; replay does not advance
+ *   9. Matching proof beyond the 50th ancestor still refuses before claim
+ *  10. Anti-removal helper: present proof is a no-op; missing, mismatched,
+ *      wrong-subject, and cyclic ancestors refuse fail-closed
  */
 
 import { assert, assertEquals, assertExists, assertRejects } from "@std/assert";
 import {
+  deterministicJson,
   sha256Fingerprint,
   sha256Hex,
 } from "../../../domain/kernel/deterministic-json.ts";
@@ -83,7 +88,10 @@ import { ExactInitialBaselineEvidenceValidator } from "../../project/engineering
 import { ApprovedBriefBaselineRunExecutor } from "../../project/approved-brief-baseline-run-executor.ts";
 import { approvedBriefSourceAnalysisFixture } from "../../../testing/approved-brief-source-analysis-fixture.ts";
 import {
+  assertProofCaseArtifactNotRemoved,
   FEA_PROOF_CASE_CAPTURE_URI_PREFIX,
+  ProofCaseArtifactRemovedError,
+  ProofCaseLineageReviewRequiredError,
   VerifySealProofCaseRunExecutor,
 } from "./verify-seal-proof-case-run-executor.ts";
 import { GEOMETRY_BUNDLE_CAPTURE_SCHEMA } from "../../cad/canonical/design-write-geometry-run-executor.ts";
@@ -1528,6 +1536,618 @@ Deno.test(
   },
 );
 
+Deno.test(
+  "verify-seal-proof-case executor seals an honest v4 recapture including an unrelated extra nonmechanical criterion",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-fea-seal-v4-honest-",
+    });
+    try {
+      const geomArtifact = makeGeomArtifact();
+      const reqArtifact = makeReqArtifact(true);
+      const base = await buildSealFixtureBase(directory, {
+        geomArtifact,
+        reqArtifact,
+      });
+      const proofCase = makeTestCase(
+        base.r2Snapshot.id,
+        undefined,
+        base.r2Snapshot.id,
+        base.r2Snapshot.revision,
+      );
+      const proofDigest = (await sha256Fingerprint(proofCase)).digest;
+      const params = encodeFeaProofDecisionParameters(
+        proofDigest,
+        proofCase,
+        { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
+        { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+        SOURCE_FINGERPRINT,
+      );
+      const fixture = await appendSealRun(base, {
+        proofCase,
+        proofDigest,
+        params,
+      });
+      const executor = new VerifySealProofCaseRunExecutor({
+        projects: fixture.projects,
+        commands: fixture.commands,
+        snapshots: fixture.snapshots,
+        proofCaseCaptures: new FileCaptureStore({
+          ...FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
+          directory: `${directory}/fea-proof-captures`,
+        }),
+        geometryCaptures: makeGeomCaptureStub() as never,
+        requirementsCaptures: makeReqCaptureStub(
+          "u.max",
+          "sigma.max",
+          true,
+          [{
+            id: "R-TEMP",
+            name: "Maximum surface temperature",
+            metric: "maxSurfaceTemperature",
+            operator: "<=",
+            limit: { value: 373, unit: "K" },
+          }],
+        ) as never,
+        seedCaptures: makeSeedCaptureStub() as never,
+        canonicalAssetReader: makeCanonicalAssetReader() as never,
+        lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+        proofCaseSources: makeSourceStub(proofCase),
+      });
+      const completed = await executor.execute(AGENT, {
+        commandId: "agent-seal-v4",
+        projectId: PROJECT_ID,
+        expectedRevision: fixture.queued.revision,
+        issuedAt: NOW,
+        runId: fixture.runId,
+      });
+      const run = completed.agentRuns.find((item) => item.id === fixture.runId)!;
+      assertEquals(run.status, "completed");
+      const resultSnapshot = await fixture.snapshots.get(
+        run.resultSnapshot!.snapshotId,
+      );
+      assertExists(resultSnapshot);
+      validateThreadSnapshot(resultSnapshot);
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "verify-seal-proof-case executor refuses a forged v4 producer/operation pair",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-fea-seal-v4-forged-",
+    });
+    try {
+      const geomArtifact = makeGeomArtifact();
+      const reqArtifact = makeReqArtifact();
+      const base = await buildSealFixtureBase(directory, {
+        geomArtifact,
+        reqArtifact,
+      });
+      const proofCase = makeTestCase(
+        base.r2Snapshot.id,
+        undefined,
+        base.r2Snapshot.id,
+        base.r2Snapshot.revision,
+      );
+      const proofDigest = (await sha256Fingerprint(proofCase)).digest;
+      const params = encodeFeaProofDecisionParameters(
+        proofDigest,
+        proofCase,
+        { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
+        { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+        SOURCE_FINGERPRINT,
+      );
+      const fixture = await appendSealRun(base, {
+        proofCase,
+        proofDigest,
+        params,
+      });
+      const executor = new VerifySealProofCaseRunExecutor({
+        projects: fixture.projects,
+        commands: fixture.commands,
+        snapshots: fixture.snapshots,
+        proofCaseCaptures: new FileCaptureStore({
+          ...FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
+          directory: `${directory}/fea-proof-captures`,
+        }),
+        geometryCaptures: makeGeomCaptureStub() as never,
+        requirementsCaptures: makeReqCaptureStub(
+          "u.max",
+          "sigma.max",
+          true,
+        ) as never,
+        seedCaptures: makeSeedCaptureStub() as never,
+        canonicalAssetReader: makeCanonicalAssetReader() as never,
+        lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+        proofCaseSources: makeSourceStub(proofCase),
+      });
+      await assertRejects(
+        () =>
+          executor.execute(AGENT, {
+            commandId: "agent-seal-v4-forged",
+            projectId: PROJECT_ID,
+            expectedRevision: fixture.queued.revision,
+            issuedAt: NOW,
+            runId: fixture.runId,
+          }),
+        EngineeringProjectCommandError,
+        "schema/operation pair",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "verify-seal-proof-case executor refuses a V6 whose reopened V5 provenance drifts",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-fea-seal-v6-provenance-drift-",
+    });
+    try {
+      const geomArtifact = makeGeomArtifact();
+      const traced = await makeTracedReqCaptureFixture(true);
+      const predecessor = traced.predecessor;
+      const reqArtifact = traced.current;
+      const consumption = {
+        id: `consume-${predecessor.id}-by-${reqArtifact.id}`,
+        artifactId: predecessor.id,
+        consumer: reqArtifact.producer,
+        observedFingerprint: predecessor.fingerprint,
+        verifiedAt: NOW,
+        status: "verified" as const,
+      };
+      const base = await buildSealFixtureBase(directory, {
+        geomArtifact,
+        reqArtifact,
+        extraArtifacts: [predecessor],
+        extraConsumptions: [consumption],
+        extraProvenance: [{
+          id: `derived-${reqArtifact.id}-from-${predecessor.id}`,
+          relation: "derived_from",
+          from: { kind: "artifact", id: reqArtifact.id },
+          to: { kind: "artifact", id: predecessor.id },
+          rationale: "V6 recapture consumes its exact V5 predecessor.",
+        }, {
+          id: `uses-${consumption.id}`,
+          relation: "uses",
+          from: { kind: "consumption", id: consumption.id },
+          to: { kind: "artifact", id: predecessor.id },
+          rationale: `verified at ${NOW}`,
+        }],
+      });
+      const proofCase = makeTestCase(
+        base.r2Snapshot.id,
+        undefined,
+        base.r2Snapshot.id,
+        base.r2Snapshot.revision,
+      );
+      const proofDigest = (await sha256Fingerprint(proofCase)).digest;
+      const params = encodeFeaProofDecisionParameters(
+        proofDigest,
+        proofCase,
+        { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
+        { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+        SOURCE_FINGERPRINT,
+      );
+      const fixture = await appendSealRun(base, {
+        proofCase,
+        proofDigest,
+        params,
+      });
+      const executor = new VerifySealProofCaseRunExecutor({
+        projects: fixture.projects,
+        commands: fixture.commands,
+        snapshots: fixture.snapshots,
+        proofCaseCaptures: new FileCaptureStore({
+          ...FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
+          directory: `${directory}/fea-proof-captures`,
+        }),
+        geometryCaptures: makeGeomCaptureStub() as never,
+        requirementsCaptures: traced.reader as never,
+        seedCaptures: makeSeedCaptureStub() as never,
+        canonicalAssetReader: makeCanonicalAssetReader() as never,
+        lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+        proofCaseSources: makeSourceStub(proofCase),
+      });
+      await assertRejects(
+        () =>
+          executor.execute(AGENT, {
+            commandId: "agent-seal-v6-provenance-drift",
+            projectId: PROJECT_ID,
+            expectedRevision: fixture.queued.revision,
+            issuedAt: NOW,
+            runId: fixture.runId,
+          }),
+        EngineeringProjectCommandError,
+        "brief provenance is not exactly continuous",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "verify-seal-proof-case executor refuses a stale signed requirements tip after a v4 successor",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-fea-seal-v4-stale-tip-",
+    });
+    try {
+      const geomArtifact = makeGeomArtifact();
+      const oldReq = makeReqArtifact();
+      const v4Digest = "2".repeat(64);
+      const v4Req: ThreadArtifact = {
+        ...makeReqArtifact(true),
+        id: "req-drip-tray-v4",
+        version: v4Digest,
+        fingerprint: { algorithm: "sha256", digest: v4Digest },
+        uri: `casys://requirements-capture/${CONTAINER_COMPONENT}/sha256/${v4Digest}`,
+        inputArtifactIds: [oldReq.id],
+      };
+      const consumeV4 = {
+        id: `consume-${oldReq.id}-by-${v4Req.id}`,
+        artifactId: oldReq.id,
+        consumer: v4Req.producer,
+        observedFingerprint: oldReq.fingerprint,
+        verifiedAt: NOW,
+        status: "verified" as const,
+      };
+      const base = await buildSealFixtureBase(directory, {
+        geomArtifact,
+        reqArtifact: oldReq,
+        extraArtifacts: [v4Req],
+        extraConsumptions: [consumeV4],
+        extraProvenance: [
+          {
+            id: "derived-v4-from-old-req",
+            relation: "derived_from",
+            from: { kind: "artifact", id: v4Req.id },
+            to: { kind: "artifact", id: oldReq.id },
+            rationale: "v4 recapture of the signed requirements predecessor.",
+          },
+          {
+            id: `uses-${consumeV4.id}`,
+            relation: "uses",
+            from: { kind: "consumption", id: consumeV4.id },
+            to: { kind: "artifact", id: oldReq.id },
+            rationale: `verified at ${NOW}`,
+          },
+        ],
+      });
+      const proofCase = makeTestCase(
+        base.r2Snapshot.id,
+        undefined,
+        base.r2Snapshot.id,
+        base.r2Snapshot.revision,
+      );
+      const proofDigest = (await sha256Fingerprint(proofCase)).digest;
+      const params = encodeFeaProofDecisionParameters(
+        proofDigest,
+        proofCase,
+        { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
+        { id: oldReq.id, fingerprint: oldReq.fingerprint },
+        SOURCE_FINGERPRINT,
+      );
+      const fixture = await appendSealRun(base, {
+        proofCase,
+        proofDigest,
+        params,
+      });
+      const executor = new VerifySealProofCaseRunExecutor({
+        projects: fixture.projects,
+        commands: fixture.commands,
+        snapshots: fixture.snapshots,
+        proofCaseCaptures: new FileCaptureStore({
+          ...FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
+          directory: `${directory}/fea-proof-captures`,
+        }),
+        geometryCaptures: makeGeomCaptureStub() as never,
+        requirementsCaptures: makeReqCaptureStub() as never,
+        seedCaptures: makeSeedCaptureStub() as never,
+        canonicalAssetReader: makeCanonicalAssetReader() as never,
+        lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+        proofCaseSources: makeSourceStub(proofCase),
+      });
+      await assertRejects(
+        () =>
+          executor.execute(AGENT, {
+            commandId: "agent-seal-v4-stale-tip",
+            projectId: PROJECT_ID,
+            expectedRevision: fixture.queued.revision,
+            issuedAt: NOW,
+            runId: fixture.runId,
+          }),
+        EngineeringProjectCommandError,
+        "does not match MRTR-signed requirementsArtifact",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Anti-removal walk — long intact lineage and fail-closed ancestors
+// ---------------------------------------------------------------------------
+
+Deno.test(
+  "verify-seal-proof-case executor seals a proof case on an intact lineage longer than 50 ancestors; replay does not advance",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-fea-seal-long-lineage-",
+    });
+    try {
+      const fixture = await queuedLongChainSealFixture(directory);
+      assert(
+        fixture.head.revision > 50,
+        "The registered head must sit beyond the former 50-ancestor ceiling.",
+      );
+
+      let snapshotSaves = 0;
+      const snapshots = {
+        get: (snapshotId: string) => fixture.snapshots.get(snapshotId),
+        latest: (subjectId: string) => fixture.snapshots.latest(subjectId),
+        save: (snapshot: ThreadSnapshot) => {
+          snapshotSaves += 1;
+          return fixture.snapshots.save(snapshot);
+        },
+      };
+      const executor = new VerifySealProofCaseRunExecutor({
+        projects: fixture.projects,
+        commands: fixture.commands,
+        snapshots: snapshots as never,
+        proofCaseCaptures: new FileCaptureStore({
+          ...FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
+          directory: `${directory}/fea-proof-captures`,
+        }),
+        geometryCaptures: makeGeomCaptureStub() as never,
+        requirementsCaptures: makeReqCaptureStub() as never,
+        seedCaptures: makeSeedCaptureStub() as never,
+        canonicalAssetReader: makeCanonicalAssetReader() as never,
+        lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+        proofCaseSources: makeSourceStub(fixture.proofCase),
+      });
+
+      const command = {
+        commandId: "agent-seal-long-lineage",
+        projectId: PROJECT_ID,
+        expectedRevision: fixture.queued.revision,
+        issuedAt: NOW,
+        runId: fixture.runId,
+      };
+      const completed = await executor.execute(AGENT, command);
+      const run = completed.agentRuns.find((item) => item.id === fixture.runId)!;
+      assertEquals(run.status, "completed");
+      assertExists(run.resultSnapshot);
+      const resultSnapshot = await fixture.snapshots.get(
+        run.resultSnapshot!.snapshotId,
+      );
+      assertExists(resultSnapshot);
+      validateThreadSnapshot(resultSnapshot);
+      assertEquals(resultSnapshot.revision, fixture.head.revision + 1);
+      const sealArtifact = resultSnapshot.artifacts.find((artifact) =>
+        artifact.kind === "document" &&
+        artifact.uri?.startsWith(FEA_PROOF_CASE_CAPTURE_URI_PREFIX)
+      );
+      assertExists(sealArtifact);
+      assertEquals(sealArtifact.version, fixture.proofDigest);
+
+      const savesAfterSeal = snapshotSaves;
+      assert(savesAfterSeal > 0, "The first seal must persist a result snapshot.");
+      const replay = await executor.execute(AGENT, command);
+      assertEquals(
+        replay.revision,
+        completed.revision,
+        "Idempotent replay must not advance the project revision.",
+      );
+      assertEquals(
+        snapshotSaves,
+        savesAfterSeal,
+        "Idempotent replay must not persist another Thread snapshot.",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "verify-seal-proof-case executor refuses a matching proof beyond the 50th ancestor before claim",
+  async () => {
+    const directory = await Deno.makeTempDir({
+      prefix: "casys-fea-seal-removed-beyond-50-",
+    });
+    try {
+      const fixture = await queuedLongChainSealFixture(directory);
+      assert(fixture.head.revision > 50);
+      const ancestorDistance = fixture.head.revision - fixture.r2Snapshot.revision;
+      assert(
+        ancestorDistance > 50,
+        "The matching proof must sit beyond the former 50-ancestor ceiling.",
+      );
+
+      let snapshotSaves = 0;
+      const snapshots = {
+        get: async (snapshotId: string) => {
+          const snapshot = await fixture.snapshots.get(snapshotId);
+          if (!snapshot || snapshot.id !== fixture.r2Snapshot.id) {
+            return snapshot;
+          }
+          return withMatchingProofArtifact(snapshot, fixture.proofDigest);
+        },
+        latest: (subjectId: string) => fixture.snapshots.latest(subjectId),
+        save: (snapshot: ThreadSnapshot) => {
+          snapshotSaves += 1;
+          return fixture.snapshots.save(snapshot);
+        },
+      };
+      const executor = new VerifySealProofCaseRunExecutor({
+        projects: fixture.projects,
+        commands: fixture.commands,
+        snapshots: snapshots as never,
+        proofCaseCaptures: new FileCaptureStore({
+          ...FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
+          directory: `${directory}/fea-proof-captures`,
+        }),
+        geometryCaptures: makeGeomCaptureStub() as never,
+        requirementsCaptures: makeReqCaptureStub() as never,
+        seedCaptures: makeSeedCaptureStub() as never,
+        canonicalAssetReader: makeCanonicalAssetReader() as never,
+        lease: new FileEngineeringProjectRunLease(`${directory}/leases`),
+        proofCaseSources: makeSourceStub(fixture.proofCase),
+      });
+
+      await assertRejects(
+        () =>
+          executor.execute(AGENT, {
+            commandId: "agent-seal-removed-beyond-50",
+            projectId: PROJECT_ID,
+            expectedRevision: fixture.queued.revision,
+            issuedAt: NOW,
+            runId: fixture.runId,
+          }),
+        ProofCaseArtifactRemovedError,
+      );
+
+      assertEquals(snapshotSaves, 0, "Refusal must not persist a Thread snapshot.");
+      const project = await fixture.projects.get(PROJECT_ID);
+      assertExists(project);
+      assertEquals(project.revision, fixture.queued.revision);
+      const run = project.agentRuns.find((item) => item.id === fixture.runId)!;
+      assertEquals(
+        run.status,
+        "queued",
+        "Refusal must happen before claim so the run stays queued.",
+      );
+    } finally {
+      await Deno.remove(directory, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "assertProofCaseArtifactNotRemoved is a no-op when the current snapshot already carries the proof",
+  async () => {
+    const digest = "d".repeat(64);
+    const current = ratchetSnapshot("snap-present", 2, {
+      previous: { snapshotId: "snap-missing", revision: 1 },
+      proofDigest: digest,
+    });
+    await assertProofCaseArtifactNotRemoved(
+      current,
+      SUBJECT_ID,
+      digest,
+      memoryGet([]),
+    );
+  },
+);
+
+Deno.test(
+  "assertProofCaseArtifactNotRemoved refuses missing, mismatched, wrong-subject, and cyclic ancestors fail-closed",
+  async () => {
+    const digest = "d".repeat(64);
+    const root = ratchetSnapshot("snap-root", 1);
+
+    const missingBasis = ratchetSnapshot("snap-missing-basis", 2, {
+      previous: { snapshotId: "snap-absent", revision: 1 },
+    });
+    await assertRejects(
+      () =>
+        assertProofCaseArtifactNotRemoved(
+          missingBasis,
+          SUBJECT_ID,
+          digest,
+          memoryGet([missingBasis]),
+        ),
+      ProofCaseLineageReviewRequiredError,
+      "not resolvable",
+    );
+
+    const mismatchedId = ratchetSnapshot("snap-other", 1);
+    const mismatchedIdBasis = ratchetSnapshot("snap-mismatch-id", 2, {
+      previous: { snapshotId: "snap-expected", revision: 1 },
+    });
+    await assertRejects(
+      () =>
+        assertProofCaseArtifactNotRemoved(
+          mismatchedIdBasis,
+          SUBJECT_ID,
+          digest,
+          memoryGet([], { "snap-expected": mismatchedId }),
+        ),
+      ProofCaseLineageReviewRequiredError,
+      "not resolvable",
+    );
+
+    const mismatchedRevision = ratchetSnapshot("snap-rev", 9);
+    const mismatchedRevisionBasis = ratchetSnapshot("snap-mismatch-rev", 2, {
+      previous: { snapshotId: "snap-rev", revision: 1 },
+    });
+    await assertRejects(
+      () =>
+        assertProofCaseArtifactNotRemoved(
+          mismatchedRevisionBasis,
+          SUBJECT_ID,
+          digest,
+          memoryGet([mismatchedRevision]),
+        ),
+      ProofCaseLineageReviewRequiredError,
+      "not resolvable",
+    );
+
+    const wrongSubject = ratchetSnapshot("snap-foreign", 1, {
+      subjectId: "project:other-subject",
+      proofDigest: digest,
+    });
+    const wrongSubjectBasis = ratchetSnapshot("snap-wrong-subject", 2, {
+      previous: { snapshotId: "snap-foreign", revision: 1 },
+    });
+    await assertRejects(
+      () =>
+        assertProofCaseArtifactNotRemoved(
+          wrongSubjectBasis,
+          SUBJECT_ID,
+          digest,
+          memoryGet([wrongSubject]),
+        ),
+      ProofCaseLineageReviewRequiredError,
+      "different subject",
+    );
+
+    const cyclicA = ratchetSnapshot("snap-cycle-a", 2, {
+      previous: { snapshotId: "snap-cycle-b", revision: 1 },
+    });
+    const cyclicB = ratchetSnapshot("snap-cycle-b", 1, {
+      previous: { snapshotId: "snap-cycle-a", revision: 2 },
+    });
+    await assertRejects(
+      () =>
+        assertProofCaseArtifactNotRemoved(
+          cyclicA,
+          SUBJECT_ID,
+          digest,
+          memoryGet([cyclicA, cyclicB]),
+        ),
+      ProofCaseLineageReviewRequiredError,
+      "cycle detected",
+    );
+
+    await assertProofCaseArtifactNotRemoved(
+      ratchetSnapshot("snap-root-only", 1),
+      SUBJECT_ID,
+      digest,
+      memoryGet([root]),
+    );
+  },
+);
+
 // ---------------------------------------------------------------------------
 // Fixture helpers
 // ---------------------------------------------------------------------------
@@ -1712,6 +2332,8 @@ async function buildSealFixtureBase(
     geomArtifact: ThreadArtifact;
     reqArtifact: ThreadArtifact;
     extraArtifacts?: readonly ThreadArtifact[];
+    extraConsumptions?: ThreadSnapshot["consumptions"];
+    extraProvenance?: ThreadSnapshot["provenance"];
   },
 ): Promise<SealFixtureBase> {
   let tick = 0;
@@ -1824,12 +2446,19 @@ async function buildSealFixtureBase(
   if (!r1Snapshot) throw new Error("r1 snapshot missing in fixture");
 
   // Extend the r1 snapshot with geometry/requirements/STEP artifacts.
-  const r2Snapshot = buildExtendedSnapshot(r1Snapshot, [
-    opts.geomArtifact,
-    opts.reqArtifact,
-    makeStepArtifact(),
-    ...(opts.extraArtifacts ?? []),
-  ]);
+  const r2Snapshot = buildExtendedSnapshot(
+    r1Snapshot,
+    [
+      opts.geomArtifact,
+      opts.reqArtifact,
+      makeStepArtifact(),
+      ...(opts.extraArtifacts ?? []),
+    ],
+    {
+      consumptions: opts.extraConsumptions,
+      provenance: opts.extraProvenance,
+    },
+  );
   await snapshots.save(r2Snapshot);
 
   // r2Ref intentionally lacks `kind`; see test 7 comment for the reason.
@@ -1924,13 +2553,15 @@ async function appendSealRun(
       label: string;
       value: string | number | boolean;
     }>;
+    basisSnapshot?: ThreadSnapshot;
   },
 ): Promise<SealFixture> {
   const { r2Snapshot, projects, commands, snapshots } = base;
+  const basisSnapshot = opts.basisSnapshot ?? r2Snapshot;
   const r2Ref = {
-    snapshotId: r2Snapshot.id,
-    revision: r2Snapshot.revision,
-    subjectId: r2Snapshot.subject.id,
+    snapshotId: basisSnapshot.id,
+    revision: basisSnapshot.revision,
+    subjectId: basisSnapshot.subject.id,
   };
   let project = await projects.get(PROJECT_ID);
   if (!project) throw new Error("Project not found in appendSealRun");
@@ -2026,6 +2657,309 @@ async function queuedSealFixture(
   });
 }
 
+/** Revisions added after r2 so the registered head sits beyond the former 50-cap. */
+const LONG_CHAIN_EXTRA_REVISIONS = 51;
+
+interface LongChainSealFixture extends SealFixture {
+  readonly head: ThreadSnapshot;
+  readonly r2Snapshot: ThreadSnapshot;
+  readonly proofCase: ReturnType<typeof validateMechanicalProofCase>;
+  readonly proofDigest: string;
+}
+
+async function queuedLongChainSealFixture(
+  directory: string,
+): Promise<LongChainSealFixture> {
+  const geomArtifact = makeGeomArtifact();
+  const reqArtifact = makeReqArtifact();
+  const base = await buildSealFixtureBase(directory, { geomArtifact, reqArtifact });
+  const marker = makeLongChainMarkerArtifact();
+  const head = await extendSnapshotLineage(
+    base.r2Snapshot,
+    LONG_CHAIN_EXTRA_REVISIONS,
+    base.snapshots,
+    [marker],
+  );
+  await registerDeclaredSnapshot(base, head, marker, "long-chain");
+  const proofCase = makeTestCase(
+    head.id,
+    undefined,
+    head.id,
+    head.revision,
+  );
+  const proofDigest = (await sha256Fingerprint(proofCase)).digest;
+  const params = encodeFeaProofDecisionParameters(
+    proofDigest,
+    proofCase,
+    { id: geomArtifact.id, fingerprint: geomArtifact.fingerprint },
+    { id: reqArtifact.id, fingerprint: reqArtifact.fingerprint },
+    SOURCE_FINGERPRINT,
+  );
+  const fixture = await appendSealRun(base, {
+    proofCase,
+    proofDigest,
+    params,
+    basisSnapshot: head,
+  });
+  return {
+    ...fixture,
+    head,
+    r2Snapshot: base.r2Snapshot,
+    proofCase,
+    proofDigest,
+  };
+}
+
+async function extendSnapshotLineage(
+  start: ThreadSnapshot,
+  extraRevisions: number,
+  snapshots: FileThreadSnapshotStore,
+  tipArtifacts: readonly ThreadArtifact[] = [],
+): Promise<ThreadSnapshot> {
+  let cursor = start;
+  for (let index = 0; index < extraRevisions; index++) {
+    const isTip = index === extraRevisions - 1;
+    const next = buildExtendedSnapshot(
+      cursor,
+      isTip ? [...tipArtifacts] : [],
+    );
+    await snapshots.save(next);
+    cursor = next;
+  }
+  return cursor;
+}
+
+async function registerDeclaredSnapshot(
+  base: SealFixtureBase,
+  snapshot: ThreadSnapshot,
+  evidence: ThreadArtifact,
+  label: string,
+): Promise<void> {
+  const baseRef = {
+    snapshotId: base.r2Snapshot.id,
+    revision: base.r2Snapshot.revision,
+    subjectId: base.r2Snapshot.subject.id,
+  };
+  const resultRef = {
+    snapshotId: snapshot.id,
+    revision: snapshot.revision,
+    subjectId: snapshot.subject.id,
+  };
+  const { projects, commands } = base;
+  let project = await projects.get(PROJECT_ID);
+  if (!project) throw new Error("Project not found in registerDeclaredSnapshot");
+
+  project = await commands.appendChange(AGENT, {
+    ...ctx(`append-fixture-${label}`, project.revision),
+    baseSnapshot: baseRef,
+    phases: [{
+      id: `fixture-phase-${label}`,
+      name: `Fixture: register ${label} snapshot`,
+      description: "Stub phase to promote a pre-built long-chain snapshot.",
+    }],
+    workItems: [{
+      id: `fixture-item-${label}`,
+      phaseId: `fixture-phase-${label}`,
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      decisionIds: [],
+      operation: { id: "fixture.artifacts-stub", version: "1", bindings: [] },
+    }],
+    requiredDecisions: [],
+  });
+  project = await commands.queueRun(AGENT, {
+    ...ctx(`queue-fixture-${label}`, project.revision),
+    runId: `run:fixture-${label}`,
+    workItemId: `fixture-item-${label}`,
+    summary: `Stub: register ${label} snapshot.`,
+    basis: {
+      kind: "thread-snapshot" as const,
+      snapshotId: baseRef.snapshotId,
+      revision: baseRef.revision,
+      subjectId: baseRef.subjectId,
+    },
+  });
+  project = await commands.claimRun(AGENT, {
+    ...ctx(`claim-fixture-${label}`, project.revision),
+    runId: `run:fixture-${label}`,
+    summary: `Stub: claim ${label} fixture run.`,
+  });
+  project = await commands.publishRun(AGENT, {
+    ...ctx(`publish-fixture-${label}`, project.revision),
+    runId: `run:fixture-${label}`,
+    summary: `Stub: publish ${label} fixture run.`,
+  });
+  await commands.completeRun(AGENT, {
+    ...ctx(`complete-fixture-${label}`, project.revision),
+    runId: `run:fixture-${label}`,
+    summary: `Stub: complete ${label} fixture run.`,
+    resultSnapshot: resultRef,
+    evidenceRefs: [{
+      kind: "artifact" as const,
+      id: evidence.id,
+      snapshotId: snapshot.id,
+      snapshotRevision: snapshot.revision,
+    }],
+  });
+}
+
+function makeLongChainMarkerArtifact(): ThreadArtifact {
+  const digest = "f".repeat(64);
+  return {
+    id: "fixture-long-chain-marker",
+    name: "Long-chain registration marker",
+    kind: "document",
+    version: digest,
+    fingerprint: { algorithm: "sha256", digest },
+    uri: `casys://fixture-long-chain/sha256/${digest}`,
+    mediaType: "application/json",
+    producer: {
+      serverId: "digital-thread",
+      tool: "fixture.artifacts-stub@1",
+      runId: "run:fixture-long-chain",
+    },
+    inputArtifactIds: [],
+    freshness: {
+      status: "fresh",
+      changedAt: NOW,
+      invalidatedByChangeIds: [],
+    },
+  };
+}
+
+function withMatchingProofArtifact(
+  snapshot: ThreadSnapshot,
+  proofDigest: string,
+): ThreadSnapshot {
+  return {
+    ...snapshot,
+    artifacts: [
+      ...snapshot.artifacts,
+      {
+        id: `fea-proof-prior-${proofDigest.slice(0, 8)}`,
+        name: "Prior sealed proof",
+        kind: "document",
+        version: proofDigest,
+        fingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+        uri: `${FEA_PROOF_CASE_CAPTURE_URI_PREFIX}sha256/${"e".repeat(64)}`,
+        mediaType: "application/json",
+        producer: {
+          serverId: "digital-thread",
+          tool: "verify.seal-proof-case@1",
+          runId: "run-prior-seal",
+        },
+        inputArtifactIds: [],
+        freshness: {
+          status: "fresh",
+          changedAt: NOW,
+          invalidatedByChangeIds: [],
+        },
+      },
+    ],
+  };
+}
+
+function ratchetSnapshot(
+  id: string,
+  revision: number,
+  options: {
+    previous?: { snapshotId: string; revision: number };
+    subjectId?: string;
+    proofDigest?: string;
+  } = {},
+): ThreadSnapshot {
+  const subjectId = options.subjectId ?? SUBJECT_ID;
+  const artifacts: ThreadArtifact[] = [{
+    id: "model-artifact-test",
+    name: "Model",
+    kind: "sysml-model",
+    version: "v1",
+    fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+    producer: {
+      serverId: "test",
+      tool: "test",
+      runId: "run-test",
+    },
+    inputArtifactIds: [],
+    freshness: {
+      status: "fresh",
+      changedAt: NOW,
+      invalidatedByChangeIds: [],
+    },
+  }];
+  if (options.proofDigest) {
+    artifacts.push({
+      id: `fea-proof-${options.proofDigest.slice(0, 8)}`,
+      name: "Sealed proof",
+      kind: "document",
+      version: options.proofDigest,
+      fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+      uri: `${FEA_PROOF_CASE_CAPTURE_URI_PREFIX}sha256/${"b".repeat(64)}`,
+      producer: {
+        serverId: "digital-thread",
+        tool: "verify.seal-proof-case@1",
+        runId: "run-prior",
+      },
+      inputArtifactIds: [],
+      freshness: {
+        status: "fresh",
+        changedAt: NOW,
+        invalidatedByChangeIds: [],
+      },
+    });
+  }
+  return {
+    schemaVersion: "1.0",
+    id,
+    revision,
+    generatedAt: NOW,
+    subject: {
+      id: subjectId,
+      name: "Ratchet subject",
+      kind: "system",
+      version: "v1",
+      modelArtifactId: "model-artifact-test",
+    },
+    freshness: {
+      status: "fresh",
+      changedAt: NOW,
+      invalidatedByChangeIds: [],
+    },
+    changeSet: {
+      id: `cs-${id}`,
+      name: "Ratchet",
+      status: "applied",
+      createdAt: NOW,
+      appliedAt: NOW,
+      changes: [],
+    },
+    artifacts,
+    consumptions: [],
+    observations: [],
+    requirements: [],
+    evaluations: [],
+    violations: [],
+    provenance: [],
+    proposedActions: [],
+    ...(options.previous ? { previous: options.previous } : {}),
+  };
+}
+
+function memoryGet(
+  snapshots: readonly ThreadSnapshot[],
+  overrides: Record<string, ThreadSnapshot | undefined> = {},
+): { get: (snapshotId: string) => Promise<ThreadSnapshot | undefined> } {
+  const map = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot]));
+  return {
+    get: (snapshotId) => {
+      if (Object.hasOwn(overrides, snapshotId)) {
+        return Promise.resolve(overrides[snapshotId]);
+      }
+      return Promise.resolve(map.get(snapshotId));
+    },
+  };
+}
+
 // ---------------------------------------------------------------------------
 // Artifact constructors
 // ---------------------------------------------------------------------------
@@ -2059,7 +2993,7 @@ function makeGeomArtifact(): ThreadArtifact {
  * Requirements artifact for DripTray. The URI must start with the containerComponent
  * prefix expected by selectRequirementsTip (kind: "sysml-model" + URI prefix).
  */
-function makeReqArtifact(): ThreadArtifact {
+function makeReqArtifact(recapture = false): ThreadArtifact {
   const fp: ContentFingerprint = { algorithm: "sha256", digest: REQ_DIGEST };
   return {
     id: `req-drip-tray-test`,
@@ -2070,8 +3004,8 @@ function makeReqArtifact(): ThreadArtifact {
     uri: `casys://requirements-capture/${CONTAINER_COMPONENT}/sha256/${REQ_DIGEST}`,
     mediaType: "application/json",
     producer: {
-      serverId: "digital-thread",
-      tool: "model-write-requirements@1",
+      serverId: "syson",
+      tool: recapture ? "syson_constraint_extract" : "syson_element_insert_sysml",
       runId: "run-req-test",
     },
     inputArtifactIds: [],
@@ -2214,6 +3148,10 @@ async function linkedAdmissionDocument(sourceText: string) {
 function buildExtendedSnapshot(
   base: ThreadSnapshot,
   artifacts: ThreadArtifact[],
+  extras: {
+    consumptions?: ThreadSnapshot["consumptions"];
+    provenance?: ThreadSnapshot["provenance"];
+  } = {},
 ): ThreadSnapshot {
   const extension: ThreadSnapshotExtension = {
     id: `fixture-extension-${base.revision + 1}`,
@@ -2221,12 +3159,12 @@ function buildExtendedSnapshot(
     subjectId: base.subject.id,
     capturedAt: NOW,
     artifacts,
-    consumptions: [],
+    consumptions: extras.consumptions ? [...extras.consumptions] : [],
     observations: [],
     requirements: [],
     evaluations: [],
     violations: [],
-    provenance: [],
+    provenance: extras.provenance ? [...extras.provenance] : [],
     proposedActions: [],
   };
   const result = applyThreadSnapshotExtensionIfNew(base, extension, {
@@ -2273,14 +3211,28 @@ function makeGeomCaptureStub(
 function makeReqCaptureStub(
   displacementMetric = "u.max",
   stressMetric = "sigma.max",
+  recapture = false,
+  extra: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly metric: string;
+    readonly operator: "<=";
+    readonly limit: { readonly value: number; readonly unit: string };
+  }> = [],
 ): { read: () => Promise<string> } {
-  const content = JSON.stringify({
-    schemaVersion: REQUIREMENTS_CAPTURE_SCHEMA,
+  const common = {
+    trustedRunId: "run-req-test",
     containerComponent: CONTAINER_COMPONENT,
+    partDefName: `${CONTAINER_COMPONENT}Requirements`,
     target: {
       kind: "part-definition",
       label: CONTAINER_COMPONENT,
       elementId: TARGET_ELEMENT_ID,
+    },
+    architectureBasis: {
+      snapshotId: "snap-001",
+      revision: 1,
+      fingerprint: "a".repeat(64),
     },
     requirements: [
       {
@@ -2288,7 +3240,7 @@ function makeReqCaptureStub(
         name: "Maximum displacement",
         metric: displacementMetric,
         operator: "<=",
-        limit: { value: 1.0, unit: "mm" },
+        limit: { value: 1, unit: "mm" },
       },
       {
         id: "R-STRESS",
@@ -2297,15 +3249,232 @@ function makeReqCaptureStub(
         operator: "<=",
         limit: { value: 180000000, unit: "Pa" },
       },
+      ...extra,
     ],
     seed: {
       artifactId: "seed-artifact-test",
       fingerprint: { algorithm: "sha256", digest: SEED_DIGEST },
       producerRunId: "run-seed-test",
     },
+    architecture: {
+      artifactId: "architecture-test",
+      fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+      producerRunId: "run-arch-test",
+    },
     requirementsElementId: REQUIREMENTS_ELEMENT_ID,
-  });
+    requirementUsage: {
+      id: REQUIREMENTS_ELEMENT_ID,
+      kind: "RequirementUsage",
+    },
+    constraintUsages: [
+      {
+        requirementId: "R-DISP",
+        id: "constraint-disp-test",
+        kind: "ConstraintUsage",
+        sourceId: "constraint-disp-test",
+      },
+      {
+        requirementId: "R-STRESS",
+        id: "constraint-stress-test",
+        kind: "ConstraintUsage",
+        sourceId: "constraint-stress-test",
+      },
+      ...extra.map((requirement) => ({
+        requirementId: requirement.id,
+        id: `constraint-${requirement.id}`,
+        kind: "ConstraintUsage" as const,
+        sourceId: `constraint-${requirement.id}`,
+      })),
+    ],
+  };
+  const content = JSON.stringify(
+    recapture
+      ? {
+        schemaVersion: "requirements-capture/4.0",
+        operation: { id: "model.recapture-requirements", version: "1" },
+        ...common,
+        predecessor: {
+          artifactId: "req-drip-tray-old",
+          fingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+          producerRunId: "run-req-old",
+        },
+        capturedAt: NOW,
+        subject: {
+          id: "subject-drip-tray-test",
+          kind: "ReferenceUsage",
+          name: "target",
+        },
+      }
+      : {
+        schemaVersion: REQUIREMENTS_CAPTURE_SCHEMA,
+        operation: { id: "model.write-requirements", version: "1" },
+        ...common,
+        insertedAt: NOW,
+      },
+  );
   return { read: () => Promise.resolve(content) };
+}
+
+async function makeTracedReqCaptureFixture(
+  drift: boolean,
+): Promise<{
+  readonly predecessor: ThreadArtifact;
+  readonly current: ThreadArtifact;
+  readonly reader: { read(fingerprint: ContentFingerprint): Promise<string> };
+}> {
+  const requirements = [
+    {
+      id: "uMax",
+      name: "Maximum displacement",
+      metric: "uMax",
+      operator: "<=" as const,
+      limit: { value: 1, unit: "mm" },
+    },
+    {
+      id: "sigmaMax",
+      name: "Maximum von Mises stress",
+      metric: "sigmaMax",
+      operator: "<=" as const,
+      limit: { value: 180000000, unit: "Pa" },
+    },
+  ];
+  const common = {
+    containerComponent: CONTAINER_COMPONENT,
+    partDefName: `${CONTAINER_COMPONENT}Requirements`,
+    target: {
+      kind: "part-definition",
+      label: CONTAINER_COMPONENT,
+      elementId: TARGET_ELEMENT_ID,
+    },
+    architectureBasis: {
+      snapshotId: "snap-001",
+      revision: 1,
+      fingerprint: "a".repeat(64),
+    },
+    requirements,
+    seed: {
+      artifactId: "seed-artifact-test",
+      fingerprint: { algorithm: "sha256", digest: SEED_DIGEST },
+      producerRunId: "run-seed-test",
+    },
+    architecture: {
+      artifactId: "architecture-test",
+      fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+      producerRunId: "run-arch-test",
+    },
+    requirementsElementId: REQUIREMENTS_ELEMENT_ID,
+    requirementUsage: {
+      id: REQUIREMENTS_ELEMENT_ID,
+      kind: "RequirementUsage",
+    },
+    constraintUsages: requirements.toSorted((left, right) =>
+      left.id.localeCompare(right.id)
+    ).map((requirement) => ({
+      requirementId: requirement.id,
+      id: `constraint-${requirement.id}`,
+      kind: "ConstraintUsage" as const,
+      sourceId: `constraint-${requirement.id}`,
+    })),
+  };
+  const provenance = (sourceItemId: string) => ({
+    schemaVersion: "requirements-brief-provenance/1.0",
+    briefBasis: {
+      kind: "approved-brief",
+      projectId: "project:fea",
+      projectSnapshotId: "project:fea:r1",
+      projectRevision: 1,
+      briefId: "brief:fea",
+      briefSnapshotId: "brief:fea:r1",
+      briefRevision: 1,
+      approvedBriefFingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
+    },
+    briefContentFingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
+    container: {
+      sourceItem: {
+        id: "brief:container",
+        kind: "objective",
+        statement: "Constrain the drip tray.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:fea" }],
+      },
+    },
+    requirements: requirements.map((requirement) => ({
+      requirementId: requirement.id,
+      sourceItem: {
+        id: sourceItemId,
+        kind: "success-criterion",
+        statement: `Constrain ${requirement.metric}.`,
+        sourceRefs: [{ kind: "document", reference: "brief:fea" }],
+      },
+      declaredThreshold: requirement.limit,
+      transformation: "identity",
+    })),
+  });
+  const v5 = {
+    schemaVersion: "requirements-capture/5.0",
+    operation: { id: "model.write-requirements", version: "2" },
+    trustedRunId: "run-req-v5",
+    ...common,
+    insertedAt: NOW,
+    briefProvenance: provenance("brief:canonical"),
+  };
+  const v5Text = deterministicJson(v5);
+  const v5Fingerprint = await sha256Fingerprint(v5);
+  const v6 = {
+    schemaVersion: "requirements-capture/6.0",
+    operation: { id: "model.recapture-requirements", version: "2" },
+    trustedRunId: "run-req-test",
+    ...common,
+    predecessor: {
+      artifactId: "req-drip-tray-v5",
+      fingerprint: v5Fingerprint,
+      producerRunId: "run-req-v5",
+    },
+    capturedAt: NOW,
+    subject: {
+      id: "subject-drip-tray-test",
+      kind: "ReferenceUsage",
+      name: "target",
+    },
+    briefProvenance: provenance(drift ? "brief:forged" : "brief:canonical"),
+  };
+  const v6Text = deterministicJson(v6);
+  const v6Fingerprint = await sha256Fingerprint(v6);
+  const predecessor: ThreadArtifact = {
+    ...makeReqArtifact(),
+    id: "req-drip-tray-v5",
+    version: v5Fingerprint.digest,
+    fingerprint: v5Fingerprint,
+    uri:
+      `casys://requirements-capture/${CONTAINER_COMPONENT}/sha256/${v5Fingerprint.digest}`,
+    producer: {
+      serverId: "syson",
+      tool: "model.write-requirements@2",
+      runId: "run-req-v5",
+    },
+  };
+  const current: ThreadArtifact = {
+    ...makeReqArtifact(),
+    version: v6Fingerprint.digest,
+    fingerprint: v6Fingerprint,
+    uri:
+      `casys://requirements-capture/${CONTAINER_COMPONENT}/sha256/${v6Fingerprint.digest}`,
+    producer: {
+      serverId: "syson",
+      tool: "model.recapture-requirements@2",
+      runId: "run-req-test",
+    },
+    inputArtifactIds: [predecessor.id],
+  };
+  return {
+    predecessor,
+    current,
+    reader: {
+      read: (fingerprint) =>
+        Promise.resolve(
+          fingerprint.digest === v5Fingerprint.digest ? v5Text : v6Text,
+        ),
+    },
+  };
 }
 
 /**

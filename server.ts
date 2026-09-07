@@ -102,6 +102,9 @@ import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "./src/adapters/architecture/
 import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "./src/domain/architecture/part-definitions/part-definitions-capture.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "./src/adapters/cad/canonical/design-write-geometry-run-executor.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "./src/adapters/architecture/requirements/model-write-requirements-run-executor.ts";
+import { MODEL_RECAPTURE_REQUIREMENTS_OPERATION } from "./src/domain/architecture/requirements/requirements-recapture-proposal.ts";
+import { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "./src/domain/architecture/requirements/requirements-traced-proposal.ts";
+import { MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION } from "./src/domain/architecture/requirements/requirements-traced-recapture-proposal.ts";
 import {
   ARCHIVE_LINEAGE_OPERATION,
   ArchiveLineageRunExecutor,
@@ -169,6 +172,10 @@ import { PrepareProjectAssemblyIntegrityReview } from "./src/application/use-cas
 import { PrepareAssemblyIntegrityEvaluation } from "./src/application/use-cases/cad/assembly-integrity/prepare-assembly-integrity-evaluation.ts";
 import { PrepareProjectAssemblyIntegrityEvaluationReview } from "./src/application/use-cases/cad/assembly-integrity/prepare-project-assembly-integrity-evaluation-review.ts";
 import { FileEngineeringProjectRunLease } from "./src/adapters/shared/stores/file-engineering-project-run-lease.ts";
+import { PrepareProjectRequirementsBriefTraceReview } from "./src/adapters/record/capture-backed-requirements-brief-trace-reviewer.ts";
+import { RecordSealRequirementsBriefTraceRunExecutor } from "./src/adapters/record/record-seal-requirements-brief-trace-run-executor.ts";
+import { createRequirementsBriefTraceStore } from "./src/adapters/record/requirements-brief-trace-store.ts";
+import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "./src/domain/record/requirements-brief-trace.ts";
 import { FileLiveThreadUpdateStore } from "./src/adapters/shared/stores/live-thread-update-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./src/adapters/shared/stores/engineering-project-store.ts";
 import {
@@ -362,6 +369,8 @@ const DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY = "state/local/geometry-draft-cap
 const DEFAULT_GEOMETRY_CAPTURE_DIRECTORY = "state/local/geometry-captures";
 const DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY = "state/local/requirements-captures";
 const DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY = "state/local/requirements-attempts";
+const DEFAULT_REQUIREMENTS_RECAPTURE_PUBLICATION_DIRECTORY =
+  "state/local/requirements-recapture-publications";
 /**
  * Canonical binary asset store shared with design.write-geometry@1 promotion.
  * The FEA path reads sealed STEP bytes from here — never from the draft store:
@@ -470,6 +479,8 @@ export interface CreateConsoleServerOptions {
   requirementsCaptureDirectory?: string;
   /** Generic model.write-requirements@1 WAL attempt directory. */
   requirementsAttemptDirectory?: string;
+  /** Generic model.recapture-requirements@1 publication WAL directory. */
+  requirementsRecapturePublicationDirectory?: string;
   printabilityCaseCaptureDirectory?: string;
   printabilityAttemptDirectory?: string;
   printabilityObservationCaptureDirectory?: string;
@@ -1023,16 +1034,30 @@ async function createProjectControl(
     );
   });
 
-  const sysonRuntimeConnection = sysonMcpUrl
+  const sysonLaunchGroup = sysonMcpUrl
+    ? await capabilityRead.launchGroups.require(
+      await firstPartySysonLaunchGroupReference(),
+    )
+    : undefined;
+  const sysonRuntimeConnection = sysonMcpUrl && sysonLaunchGroup
     ? (await createLocalFixedCapabilityRuntimeConnection({
       leases: capabilityRuntimeLeases,
       binding: requiredCatalogBinding(
         capabilityRead.catalog,
         "syson-author-system",
       ),
-      launchGroup: await capabilityRead.launchGroups.require(
-        await firstPartySysonLaunchGroupReference(),
+      launchGroup: sysonLaunchGroup,
+      fleetMcpUrl: sysonMcpUrl,
+    })).boundClient()
+    : undefined;
+  const sysonInspectRuntimeConnection = sysonMcpUrl && sysonLaunchGroup
+    ? (await createLocalFixedCapabilityRuntimeConnection({
+      leases: capabilityRuntimeLeases,
+      binding: requiredCatalogBinding(
+        capabilityRead.catalog,
+        "syson-inspect-system",
       ),
+      launchGroup: sysonLaunchGroup,
       fleetMcpUrl: sysonMcpUrl,
     })).boundClient()
     : undefined;
@@ -1043,6 +1068,7 @@ async function createProjectControl(
     lease,
     liveUpdates,
     sysonRuntimeConnection,
+    sysonInspectRuntimeConnection,
     foundation: architectureFoundation,
     capabilityRuntime,
     capabilityRuntimeSession,
@@ -1056,6 +1082,9 @@ async function createProjectControl(
       DEFAULT_PART_DEFINITIONS_PUBLICATION_DIRECTORY,
     requirementsAttemptDirectory: options.requirementsAttemptDirectory ??
       DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY,
+    requirementsRecapturePublicationDirectory:
+      options.requirementsRecapturePublicationDirectory ??
+        DEFAULT_REQUIREMENTS_RECAPTURE_PUBLICATION_DIRECTORY,
   });
   const compilationProject = createTechnicalCompilationProject({
     projects: runtime.projects,
@@ -1305,6 +1334,25 @@ async function createProjectControl(
     projects: runtime.projects,
     commands: runtime.commands,
     snapshots: activeThreadSnapshots,
+    lease,
+  });
+  const requirementsBriefTraceStore = createRequirementsBriefTraceStore(
+    options.requirementsCaptureDirectory ?? DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY,
+  );
+  const requirementsBriefTraceInputs = {
+    projects: runtime.projects,
+    snapshots: activeThreadSnapshots,
+    captures: architectureFoundation.requirementsCaptures,
+    architectureCaptures: architectureFoundation.genericArchitectureCaptures,
+    sysmlSourceAnalysis: architectureFoundation.sysmlSourceAnalysis,
+    traces: requirementsBriefTraceStore,
+  };
+  const requirementsBriefTraceReview = new PrepareProjectRequirementsBriefTraceReview(
+    requirementsBriefTraceInputs,
+  );
+  const requirementsBriefTrace = new RecordSealRequirementsBriefTraceRunExecutor({
+    ...requirementsBriefTraceInputs,
+    commands: runtime.commands,
     lease,
   });
   // Reconcile-uncertain-writer requires no provider — always available.
@@ -1593,6 +1641,8 @@ async function createProjectControl(
       architectureSysmlPreview: architectureFoundation.architectureSysmlPreview,
       briefArchitectureReview: architectureProject.briefArchitectureReview,
       briefRequirementsReview: architectureProject.briefRequirementsReview,
+      requirementsRecaptureReview: architectureProject.requirementsRecaptureReview,
+      requirementsBriefTraceReview,
       feaProofCaseCapture: feaProject.feaProofCaseCapture,
       feaProofSealReview: feaProject.feaProofSealReview,
       feaIsolatedRunReview: feaProject.feaIsolatedRunReview,
@@ -1791,8 +1841,33 @@ async function createProjectControl(
               "configured for this run (SysON provider is required).",
           },
           {
+            operation: MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
+            executor: architectureProject.genericModelRecaptureRequirements,
+            unavailableMessage:
+              "The server has no trusted generic model.recapture-requirements@1 executor " +
+              "configured for this run (SysON inspect provider is required).",
+          },
+          {
+            operation: MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
+            executor: architectureProject.genericModelWriteRequirements,
+            unavailableMessage:
+              "The server has no trusted generic model.write-requirements@2 executor " +
+              "configured for this run (SysON provider is required).",
+          },
+          {
+            operation: MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
+            executor: architectureProject.genericModelRecaptureRequirements,
+            unavailableMessage:
+              "The server has no trusted generic model.recapture-requirements@2 executor " +
+              "configured for this run (SysON inspect provider is required).",
+          },
+          {
             operation: ARCHIVE_LINEAGE_OPERATION,
             executor: genericArchiveLineage,
+          },
+          {
+            operation: RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
+            executor: requirementsBriefTrace,
           },
           {
             operation: RECONCILE_UNCERTAIN_WRITER_OPERATION,

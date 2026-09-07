@@ -86,6 +86,8 @@ Deno.test("Overview hierarchy keeps dots compact while surfacing grounded group 
   assertStringIncludes(renderer, "flowGroupCaption(group)");
   assertStringIncludes(renderer, "flowNodeDescription(item)");
   assertStringIncludes(renderer, 'data-inspection={selectedKey ? "selected"');
+  assertEquals(renderer.includes("aria-controls={selected"), false);
+  assertEquals(renderer.includes("aria-expanded={selected}"), false);
   assertEquals(renderer.includes("flowCardLines"), false);
   assertEquals(renderer.includes("overview-thread-flow-node-card"), false);
   assertStringIncludes(styles, '[data-inspection="hover"]');
@@ -109,7 +111,8 @@ Deno.test("Overview hierarchy integrates stage progress and semantic activity st
   assertStringIncludes(renderer, "overview-thread-flow-stage-count");
   assertStringIncludes(renderer, "overview-thread-flow-stage-status");
   assertStringIncludes(renderer, "overview-thread-flow-activity-legend");
-  assertStringIncludes(renderer, "activityStatuses.length > 0");
+  assertStringIncludes(renderer, "notableActivityStatuses.length > 0");
+  assertStringIncludes(renderer, 'status !== "planned"');
   assertStringIncludes(renderer, 'data-status={item.kind === "activity"');
   assertStringIncludes(renderer, 'return "IN PROGRESS"');
   assertStringIncludes(renderer, 'return "PENDING"');
@@ -361,7 +364,7 @@ Deno.test("Overview hierarchy drags whole group surfaces or labels while constra
   assertStringIncludes(renderer, 'beginDrag("node", position.key, event)');
   assertStringIncludes(renderer, "event.currentTarget.setPointerCapture(");
   assertStringIncludes(renderer, "minimumX = group.x;");
-  assertStringIncludes(renderer, "minimumY = group.y;");
+  assertStringIncludes(renderer, "minimumY = group.y + group.headerHeight;");
   assertStringIncludes(renderer, "group.x + group.width - node.width");
   assertStringIncludes(renderer, "group.y + group.height - node.height");
 
@@ -701,15 +704,19 @@ Deno.test("Overview activity markers stay distinct from recorded Verification na
   assertStringIncludes(overview, "onOpenEvidence={openOverviewEvidence}");
 });
 
-Deno.test("Overview Product destination uses the unique project route", async () => {
+Deno.test("Overview destinations keep Evidence and Activity without a Product tab", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/project/overview.tsx", import.meta.url),
   );
 
-  assertStringIncludes(source, 'onClick={() => onNavigate("product")}');
+  assertEquals(source.includes('onNavigate("product")'), false);
   assertEquals(source.includes("ProductWorkspaceFacet"), false);
   assertEquals(source.includes("onOpenProductFacet"), false);
   assertEquals(source.includes("openProductFacet"), false);
+  assertStringIncludes(source, 'onClick={() => onNavigate("verification")}');
+  assertStringIncludes(source, 'onClick={() => onNavigate("work")}');
+  assertStringIncludes(source, 'data-surface="digital-thread-whiteboard"');
+  assertStringIncludes(source, "<OverviewThreadHero");
 });
 
 function cssRule(source: string, selector: string): string {

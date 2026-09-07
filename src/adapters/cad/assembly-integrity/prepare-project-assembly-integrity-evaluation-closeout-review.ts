@@ -119,13 +119,13 @@ export class PrepareProjectAssemblyIntegrityEvaluationCloseoutReview
       const reject = assemblyIntegrityEvaluationCloseoutAdmission(
         resolved,
         "reject",
-        assemblyIntegrityCloseoutAuthorization(project, "reject"),
+        assemblyIntegrityCloseoutAuthorization(project, "reject", resolved.l4Work),
       );
       const accept = resolved.acceptanceEligible
         ? assemblyIntegrityEvaluationCloseoutAdmission(
           resolved,
           "accept",
-          assemblyIntegrityCloseoutAuthorization(project, "accept"),
+          assemblyIntegrityCloseoutAuthorization(project, "accept", resolved.l4Work),
         )
         : undefined;
       return {

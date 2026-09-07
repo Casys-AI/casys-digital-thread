@@ -173,9 +173,13 @@ Deno.test("Workbench keeps navigation and recorded review projection without a m
   assertStringIncludes(source, "onOpenReviewEvidence={openPublishedEvidence}");
   assertEquals(source.includes("const changeProductFacet"), false);
   assertEquals(source.includes("productFacetHash"), false);
-  assertStringIncludes(source, "<McpAppProductHandoff");
-  assertStringIncludes(source, "projection={viewerSessions}");
-  assertStringIncludes(source, "Open Project whiteboard");
+  assertEquals(source.includes("<McpAppProductHandoff"), false);
+  assertEquals(source.includes("function McpAppProductHandoff"), false);
+  assertEquals(source.includes("mcp-app-product-handoff"), false);
+  assertEquals(source.includes('activeView === "product"'), false);
+  assertEquals(source.includes("Open Project whiteboard"), false);
+  assertStringIncludes(source, "<ProjectOverview");
+  assertStringIncludes(source, "viewerSessions={viewerSessions &&");
   assertEquals(source.includes("<ProductFacetNavigation"), false);
   assertEquals(source.includes("<ProductRequirementsMatrix"), false);
   assertEquals(source.includes("<ProductSourcingLane"), false);
@@ -236,14 +240,24 @@ Deno.test("native Workbench has no review-intent client or POST outbox", async (
   assertEquals(source.includes("HttpProductAuthoringSourceClient"), false);
 });
 
-Deno.test("Product has no native domain renderer and hands exact Apps to the whiteboard", async () => {
+Deno.test("Product workspace is gone; exact Apps stay on the Project whiteboard", async () => {
   const source = await Deno.readTextFile(
     new URL("./src/thread/workbench.tsx", import.meta.url),
   );
-  assertStringIncludes(source, "function McpAppProductHandoff");
-  assertStringIncludes(source, "Digital Thread keeps no native CAD, SysML");
-  assertStringIncludes(source, "no exact whole-App binding is registered");
-  assertStringIncludes(source, "artifact kinds, providers or graph proximity");
+  const overview = await Deno.readTextFile(
+    new URL("./src/project/overview.tsx", import.meta.url),
+  );
+  const navigation = await Deno.readTextFile(
+    new URL("./src/project/navigation-model.ts", import.meta.url),
+  );
+  assertEquals(source.includes("function McpAppProductHandoff"), false);
+  assertEquals(source.includes("mcp-app-product-handoff"), false);
+  assertEquals(source.includes('activeView === "product"'), false);
+  assertEquals(navigation.includes('id: "product"'), false);
+  assertEquals(overview.includes('onNavigate("product")'), false);
+  assertStringIncludes(overview, 'data-surface="digital-thread-whiteboard"');
+  assertStringIncludes(overview, "viewerSessions={viewerSessions}");
+  assertStringIncludes(overview, "<OverviewThreadHero");
   assertEquals(source.includes("GltfAssetCanvas"), false);
   assertEquals(source.includes("ComponentWorkspace"), false);
   assertEquals(source.includes("STLLoader"), false);

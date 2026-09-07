@@ -22,6 +22,7 @@ Authorities:
 | `model.capture-part-definitions@1`   | `syson_element_get`, `syson_element_children`, `syson_query_aql`                                                                                            |
 | `model.write-requirements@1`         | `syson_element_get`, `syson_element_children`, `syson_query_aql`, `syson_element_insert_sysml`, `syson_constraint_extract`, optional `syson_element_delete` |
 | `model.write-sensitivity-edges@1`    | `syson_element_insert_sysml`, `syson_constraint_extract`                                                                                                    |
+| `model.recapture-requirements@1`     | `syson_element_get`, `syson_element_children`, `syson_query_aql`, `syson_constraint_extract`; read-only                                                     |
 | `verify.evaluate-sensitivity-base@1` | `syson_constraint_evaluate`                                                                                                                                 |
 | `verify.run-fea-static-proof@3`      | `syson_constraint_evaluate` after local proof publication                                                                                                   |
 
@@ -41,10 +42,12 @@ syson_constraint_evaluate
 
 `architecture.author-inspection-drone@3` and
 `model.capture-inspection-drone-part-definitions@1` are retired and unregistered;
-`syson_part_structure` is no longer composed. Generic SysML uses
-`model.write-architecture@1` or `model.seal-architecture-sysml@1`. Historical probes may
-also use `syson_search`, `syson_project_list`, `syson_project_delete` or
-`syson_constraint_solve`; those scripts are not registered project operations.
+`syson_part_structure` is no longer composed. Generic architecture authoring uses
+`model.write-architecture@1` or `model.seal-architecture-sysml@1`; requirements writing
+and unchanged native requirements recapture are distinct registered operations.
+Historical probes may also use `syson_search`, `syson_project_list`,
+`syson_project_delete` or `syson_constraint_solve`; those scripts are not registered
+project operations.
 
 The shared backend MCP client is transport-generic and does not enforce a SysON
 allowlist itself. The safety boundary therefore lives in the registered dispatcher and
@@ -74,6 +77,9 @@ SysON mutations are not assumed idempotent.
   intermediate state is explicitly a partial-write risk.
 - The read-only PartDefinition capture persists a publication record so replay can
   publish the captured result without querying SysON again.
+- Requirements recapture likewise persists its complete versioned capture before Thread
+  attachment. Replay reconciles exact durable evidence and releases a recorded lease
+  without another provider read; uncertain publication is not treated as absent.
 - FEA and sensitivity evaluators journal the exact oracle request/response separately
   from solver evidence.
 

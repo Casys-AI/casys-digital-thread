@@ -549,16 +549,6 @@ function documentaryWorkspaceCopy(
         "The documentary baseline is complete; the next technical operation has not been recorded.",
     };
   }
-  if (view === "product") {
-    return {
-      title: "Product structure",
-      description:
-        "Components appear after an explicit model or CAD operation.",
-      unavailableTitle: "No product definition is recorded yet",
-      unavailableDetail:
-        "There is no SysML model, CAD geometry or ERP component record to inspect.",
-    };
-  }
   if (view === "verification") {
     return {
       title: "Evidence map",

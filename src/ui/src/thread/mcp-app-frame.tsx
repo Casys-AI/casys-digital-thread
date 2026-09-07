@@ -1,20 +1,16 @@
 import type { CSSProperties, JSX } from "react";
 import { useLayoutEffect, useRef } from "react";
 import type { ThreadViewerSession } from "./viewer-sessions-client.ts";
-import {
-  createMcpAppReadOnlyHost,
-  type McpAppHostPresentationContext,
-} from "./mcp-app-read-only-host.ts";
-import {
-  advanceMcpAppFrameLoad,
-  type McpAppFrameDocumentPhase,
-} from "./mcp-app-frame-lifecycle.ts";
-import {
-  type LoadedMcpAppDocument,
-  loadVerifiedMcpAppDocument,
-  readMcpAppHostScriptNonce,
-} from "./mcp-app-document-loader.ts";
+import type { McpAppHostPresentationContext } from "./mcp-app-read-only-host.ts";
+import { startMcpAppFrame } from "./mcp-app-frame-lifecycle.ts";
+import { loadVerifiedMcpAppDocument } from "./mcp-app-document-loader.ts";
 import { resolveMcpAppTheme } from "./mcp-app-frame-theme.ts";
+import {
+  type McpAppFrameStatus,
+  mcpAppFrameStatusAllowsRetry,
+  mcpAppFrameStatusCoversFrame,
+  mcpAppFrameStatusLabel,
+} from "./mcp-app-frame-status.ts";
 
 export interface McpAppFrameProps {
   readonly session: ThreadViewerSession;
@@ -32,109 +28,51 @@ export function McpAppFrame({
   session,
   className,
 }: McpAppFrameProps): JSX.Element {
-  const mount = useRef<HTMLSpanElement>(null);
+  const mount = useRef<HTMLDivElement>(null);
 
   // Create the iframe imperatively so its native load handler is attached
-  // before insertion. Chrome may dispatch the initial about:blank load while
-  // append() is still running; remembering that observation avoids both a
-  // deadlock and counting the registered App as a replacement document.
+  // before insertion. Fetch starts once the source-locked controller exists;
+  // about:blank is not a launch gate. Theme, language and SSE object identity
+  // updates reuse this document generation.
   useLayoutEffect(() => {
     const mountNode = mount.current;
     if (!mountNode) return;
 
-    const frameNode = document.createElement("iframe");
-    frameNode.className = className ?? "";
-    frameNode.title = `${session.app.id} ${session.app.version}`;
-    frameNode.setAttribute("sandbox", "allow-scripts");
-    frameNode.referrerPolicy = "no-referrer";
-    frameNode.loading = "lazy";
-
-    let phase: McpAppFrameDocumentPhase = "waiting-controller";
-    let blankLoadObserved = false;
-    let controller: ReturnType<typeof createMcpAppReadOnlyHost> | undefined;
-    let loadedDocument: LoadedMcpAppDocument | undefined;
-    const stopPresentationObservation: Array<() => void> = [];
-    let active = true;
-    const abort = new AbortController();
-
-    const revokeLoadedDocument = (): void => {
-      loadedDocument?.revoke();
-      loadedDocument = undefined;
+    const overlay = createStatusOverlay();
+    mountNode.append(overlay);
+    let status: McpAppFrameStatus = { kind: "loading", stage: "starting" };
+    const render = (next: McpAppFrameStatus): void => {
+      status = next;
+      writeMountStatus(mountNode, status);
+      renderStatusOverlay(overlay, status, () => handle.retry());
     };
+    render(status);
 
-    const invalidate = (): void => {
-      if (!active) return;
-      active = false;
-      for (const stop of stopPresentationObservation.splice(0)) {
-        stop();
-      }
-      abort.abort();
-      revokeLoadedDocument();
-      controller?.invalidate();
-      controller = undefined;
-      phase = "invalid";
-    };
-
-    const launchVerifiedDocument = (): void => {
-      let hostScriptNonce: string;
-      try {
-        hostScriptNonce = readMcpAppHostScriptNonce();
-      } catch {
-        invalidate();
-        return;
-      }
-      void loadVerifiedMcpAppDocument(session, hostScriptNonce, {
-        signal: abort.signal,
-      }).then((document) => {
-        if (!active || phase !== "loading-app") {
-          document.revoke();
-          return;
-        }
-        loadedDocument = document;
-        frameNode.src = document.url;
-      }).catch(() => invalidate());
-    };
-
-    const advanceLoad = (): void => {
-      if (phase === "waiting-controller") {
-        blankLoadObserved = true;
-        return;
-      }
-      const [nextPhase, action] = advanceMcpAppFrameLoad(phase);
-      phase = nextPhase;
-      if (action === "launch") {
-        launchVerifiedDocument();
-        return;
-      }
-      if (action !== "invalidate") return;
-      // A WindowProxy and opaque origin survive a child navigation. Do not let
-      // a replacement document inherit the registered session or byte port.
-      invalidate();
-    };
-    frameNode.addEventListener("load", advanceLoad);
-    frameNode.addEventListener("error", invalidate);
-    mountNode.append(frameNode);
-
-    const target = frameNode.contentWindow;
-    if (!target) {
-      frameNode.removeEventListener("load", advanceLoad);
-      frameNode.removeEventListener("error", invalidate);
-      frameNode.remove();
-      return;
-    }
-    controller = createMcpAppReadOnlyHost({
-      target,
+    const handle = startMcpAppFrame({
       session,
-      hostContext: {
-        ...resolvedPresentationContext(),
-        displayMode: "inline",
-        availableDisplayModes: ["inline"],
+      hostContext: resolvedPresentationContext,
+      onStatus: render,
+      loadDocument: loadVerifiedMcpAppDocument,
+      createFrame() {
+        const frameNode = document.createElement("iframe");
+        frameNode.className = className ?? "";
+        frameNode.title = `${session.app.id} ${session.app.version}`;
+        frameNode.setAttribute("sandbox", "allow-scripts");
+        frameNode.referrerPolicy = "no-referrer";
+        frameNode.loading = "eager";
+        mountNode.insertBefore(frameNode, overlay);
+        return frameNode;
+      },
+      disposeFrame(frameNode) {
+        frameNode.remove();
+      },
+      applyLoadedDocument(frameNode, document) {
+        frameNode.src = document.url;
       },
     });
-    // Follow presentation on the existing document: recreating the iframe
-    // would discard its resource port, session and interactive viewer state.
+
     const updatePresentation = (): void => {
-      controller?.updateHostContext(resolvedPresentationContext());
+      handle.updateHostContext(resolvedPresentationContext());
     };
     const presentationObserver = new MutationObserver(updatePresentation);
     presentationObserver.observe(document.documentElement, {
@@ -146,24 +84,13 @@ export function McpAppFrame({
     );
     themePreference?.addEventListener("change", updatePresentation);
     globalThis.addEventListener("languagechange", updatePresentation);
-    stopPresentationObservation.push(() => {
+
+    return () => {
       presentationObserver.disconnect();
       themePreference?.removeEventListener("change", updatePresentation);
       globalThis.removeEventListener("languagechange", updatePresentation);
-    });
-    const onMessage = (event: MessageEvent<unknown>): void => {
-      controller?.handleMessage(event);
-    };
-    globalThis.addEventListener("message", onMessage);
-    phase = "waiting-blank-load";
-    if (blankLoadObserved) advanceLoad();
-
-    return () => {
-      globalThis.removeEventListener("message", onMessage);
-      frameNode.removeEventListener("load", advanceLoad);
-      frameNode.removeEventListener("error", invalidate);
-      invalidate();
-      frameNode.remove();
+      handle.dispose();
+      overlay.remove();
     };
   }, [
     className,
@@ -175,10 +102,16 @@ export function McpAppFrame({
   ]);
 
   return (
-    <span
+    <div
       ref={mount}
       data-mcp-app-frame-mount={session.id}
-      style={{ display: "contents" } as CSSProperties}
+      style={{
+        position: "relative",
+        display: "grid",
+        width: "100%",
+        height: "100%",
+        minHeight: 0,
+      } as CSSProperties}
     />
   );
 }
@@ -202,4 +135,75 @@ function resolvedTheme(): "light" | "dark" {
     prefersDark: globalThis.matchMedia?.("(prefers-color-scheme: dark)")
       .matches ?? false,
   });
+}
+
+function createStatusOverlay(): HTMLDivElement {
+  const overlay = document.createElement("div");
+  overlay.setAttribute("role", "status");
+  overlay.style.position = "absolute";
+  overlay.style.inset = "0";
+  overlay.style.display = "grid";
+  overlay.style.alignContent = "center";
+  overlay.style.justifyItems = "center";
+  overlay.style.gap = "0.5rem";
+  overlay.style.padding = "0.75rem";
+  overlay.style.zIndex = "1";
+  overlay.style.fontSize = "0.75rem";
+  overlay.style.lineHeight = "1.35";
+  overlay.style.textAlign = "center";
+  overlay.style.pointerEvents = "auto";
+  return overlay;
+}
+
+function renderStatusOverlay(
+  overlay: HTMLDivElement,
+  status: McpAppFrameStatus,
+  onRetry: () => void,
+): void {
+  overlay.dataset.mcpAppFrameOverlay = status.kind;
+  if ("reason" in status && status.reason) {
+    overlay.dataset.mcpAppFrameReason = status.reason;
+  } else {
+    delete overlay.dataset.mcpAppFrameReason;
+  }
+  if (!mcpAppFrameStatusCoversFrame(status)) {
+    overlay.style.display = "none";
+    overlay.replaceChildren();
+    overlay.style.pointerEvents = "none";
+    return;
+  }
+  overlay.style.display = "grid";
+  overlay.style.pointerEvents = "auto";
+  const message = document.createElement("p");
+  message.style.margin = "0";
+  message.textContent = mcpAppFrameStatusLabel(status);
+  if (!mcpAppFrameStatusAllowsRetry(status)) {
+    overlay.replaceChildren(message);
+    return;
+  }
+  const retry = document.createElement("button");
+  retry.type = "button";
+  retry.textContent = "Retry registered App";
+  retry.dataset.mcpAppFrameRetry = "";
+  retry.addEventListener("click", onRetry);
+  overlay.replaceChildren(message, retry);
+}
+
+function writeMountStatus(
+  mount: HTMLElement,
+  status: McpAppFrameStatus,
+): void {
+  mount.setAttribute("data-mcp-app-frame-status", status.kind);
+  if (status.kind === "loading") {
+    mount.setAttribute("data-mcp-app-frame-stage", status.stage);
+    mount.setAttribute("aria-busy", "true");
+  } else {
+    mount.removeAttribute("data-mcp-app-frame-stage");
+    mount.removeAttribute("aria-busy");
+  }
+  if ("reason" in status && status.reason) {
+    mount.setAttribute("data-mcp-app-frame-reason", status.reason);
+  } else {
+    mount.removeAttribute("data-mcp-app-frame-reason");
+  }
 }

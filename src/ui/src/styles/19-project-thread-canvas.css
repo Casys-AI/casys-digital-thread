@@ -5,6 +5,189 @@
    windows mount inside the graph's own layer; this sheet does not simulate
    one or create a second authority surface. */
 
+.overview-thread-selection-note {
+  position: absolute;
+  /* Viewer frames deliberately keep their restored stacking order inside a
+     layer at z=30. A selected reading note must remain above that layer, or
+     its own close/follow controls become unreachable. */
+  z-index: 31;
+  top: 112px;
+  left: 16px;
+  width: min(300px, calc(100% - 32px));
+  max-height: calc(100% - 232px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  border: 1px solid var(--ui-border);
+  border-top: 3px solid var(--thread-brand, #08798d);
+  border-radius: 6px 6px 12px 12px;
+  background: var(--ui-background, #fff);
+  box-shadow: 0 8px 28px #153c3b14;
+  font-size: 12px;
+}
+
+.overview-thread-selection-note > header {
+  position: sticky;
+  z-index: 1;
+  top: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: var(--ui-background, #fff);
+  color: var(--ui-muted-foreground);
+  font-size: 10px;
+}
+
+.overview-thread-selection-note > header > button {
+  min-height: 28px;
+  padding: 4px 6px;
+}
+
+.overview-thread-selection-body {
+  padding: 0 14px 14px;
+}
+
+.overview-thread-selection-body h4 {
+  margin: 0 0 8px;
+  font-size: 15px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.overview-thread-selection-meta {
+  margin: 0;
+  color: var(--ui-muted-foreground);
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+
+.overview-thread-selection-summary {
+  margin: 10px 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.overview-thread-selection-details {
+  margin-top: 10px;
+  color: var(--ui-muted-foreground);
+  font-size: 10px;
+}
+
+.overview-thread-selection-details > summary {
+  cursor: pointer;
+  padding: 4px 0;
+}
+
+.overview-thread-selection-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.overview-thread-selection-actions > button {
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px solid var(--ui-border);
+  border-radius: 5px;
+  font-size: 11px;
+}
+
+.overview-thread-selection-actions > button[data-app="true"] {
+  border-color: var(--thread-brand, #08798d);
+  background: var(--thread-brand, #08798d);
+  color: #fff;
+}
+
+.overview-thread-selection-relations {
+  border-top: 1px solid var(--ui-border);
+}
+
+.overview-thread-selection-relations > summary {
+  padding: 12px 14px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.overview-thread-selection-relations > summary > span {
+  margin-left: 6px;
+  color: var(--ui-muted-foreground);
+  font-variant-numeric: tabular-nums;
+}
+
+.overview-thread-selection-relations > p {
+  margin: 0;
+  padding: 0 14px 10px;
+  color: var(--ui-muted-foreground);
+  font-size: 10px;
+}
+
+.overview-thread-selection-relations ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 6px 6px;
+}
+
+.overview-thread-selection-relations li > button {
+  display: grid;
+  width: 100%;
+  gap: 3px;
+  padding: 10px 8px;
+  border-radius: 5px;
+  text-align: left;
+  overflow-wrap: anywhere;
+}
+
+.overview-thread-selection-relations li > button:hover,
+.overview-thread-selection-relations li > button:focus-visible {
+  background: var(--ui-muted);
+}
+
+.overview-thread-selection-relations small {
+  color: var(--ui-muted-foreground);
+  font-size: 9px;
+}
+
+.overview-thread-selection-relations strong {
+  color: var(--thread-brand, #08798d);
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.overview-thread-brief-source-note code,
+.overview-thread-brief-source-references,
+.overview-thread-brief-source-claims {
+  overflow-wrap: anywhere;
+}
+
+.overview-thread-brief-source-note h5 {
+  margin: 12px 0 5px;
+  color: var(--ui-muted-foreground);
+  font-size: 10px;
+}
+
+.overview-thread-brief-source-note ul {
+  margin: 0;
+  padding-left: 16px;
+}
+
+.overview-thread-brief-source-note li + li {
+  margin-top: 5px;
+}
+
+.overview-thread-brief-source-note li > button,
+.overview-thread-selection-brief-source-link {
+  margin: 5px 0 0;
+  padding: 4px 6px;
+  border: 1px solid var(--ui-border);
+  border-radius: 4px;
+  background: var(--ui-background, #fff);
+  color: var(--thread-brand, #08798d);
+  font-size: 10px;
+  text-align: left;
+}
+
 .thread-workbench:has(> #project-workspace-panel.project-thread-page) {
   height: 100dvh;
   min-height: 0;
@@ -144,8 +327,11 @@
 }
 
 .project-thread-mission > p:first-child {
-  font-size: 0.48rem;
-  line-height: 1;
+  overflow: hidden;
+  font-size: 0.625rem;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .project-thread-mission h2 {
@@ -532,8 +718,9 @@
 }
 
 .overview-thread-context-menu {
-  width: min(18rem, calc(100vw - 1rem));
-  max-height: min(24rem, calc(100dvh - 1rem));
+  width: min(26rem, calc(100vw - 1rem));
+  max-height: min(38rem, calc(100dvh - 1rem));
+  overflow-y: auto;
 }
 
 .overview-thread-context-members {
@@ -586,15 +773,27 @@
 
 .overview-thread-context-viewer > span,
 .overview-thread-context-viewer > small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .overview-thread-context-viewer > small {
   color: var(--ui-primary);
   font-family: var(--font-mono);
   font-size: 0.54rem;
+}
+
+.overview-thread-context-structure {
+  display: grid;
+  gap: 0.08rem;
+  padding-block: 0.25rem;
+  color: var(--ui-muted-foreground);
+  font-size: 0.7rem;
+}
+
+.overview-thread-context-structure small {
+  font-size: 0.55rem;
+  line-height: 1.3;
 }
 
 .project-thread-board .overview-thread-hero-immersive > p.text-warning {

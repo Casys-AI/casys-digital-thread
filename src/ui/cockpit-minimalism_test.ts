@@ -29,7 +29,6 @@ Deno.test("project surfaces share one ProjectNavigation header without a second 
     const label of [
       'label: "Project"',
       'label: "Activity"',
-      'label: "Product"',
       'label: "Evidence"',
       'label: "Systems & runs"',
     ]

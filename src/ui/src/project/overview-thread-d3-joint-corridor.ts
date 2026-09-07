@@ -11,6 +11,8 @@ import {
   overviewThreadD3CableCatmullRomPath,
   type OverviewThreadD3CableObstacle,
   type OverviewThreadD3CablePoint,
+  overviewThreadD3CablePolylineClear,
+  overviewThreadD3CableSegmentVisible,
   overviewThreadD3CableSvgPathClear,
   sampleOverviewThreadD3CableSvgPath,
 } from "./overview-thread-d3-cable-field.ts";
@@ -181,45 +183,69 @@ export function buildOverviewThreadD3JointCorridor(
         ),
       },
     );
-    const sampled = sampleOverviewThreadD3CableSvgPath(independent.d, 0.2);
-    const routePoints = resamplePolyline(sampled, PARTICLES_PER_ROUTE);
-    const shapeGuide = buildIndividualShapeGuide(
+    const seedPoints = resampleClearControlPoints(
+      independent.points,
+      PARTICLES_PER_ROUTE,
+      trajectory.obstacles,
+    );
+    const shaped = buildIndividualShapeGuide(
       trajectory,
       independent.topologySignature,
-      routePoints,
+      seedPoints,
     );
+    const shapeGuide = makeSafeExactTangentGuide(shaped, trajectory, [
+      0,
+      PARTICLES_PER_ROUTE - 1,
+    ]);
+    if (!shapeGuide) {
+      throw new Error(
+        `${trajectory.key} has no safe individual Catmull-Rom baseline`,
+      );
+    }
     const baselineD = catmullPathWithExactTangents(
       shapeGuide,
       trajectory.sourceTangent,
       trajectory.targetTangent,
     );
-    if (
-      !baselineD.includes("C") || /[LQAS]/.test(baselineD) ||
-      !overviewThreadD3CableSvgPathClear(
-        baselineD,
-        trajectory.obstacles,
-        0.16,
-      )
-    ) {
+    if (!routeGeometryClear(shapeGuide, baselineD, trajectory.obstacles)) {
       throw new Error(
         `${trajectory.key} has no safe individual Catmull-Rom baseline`,
       );
     }
-    const combStubs = span > 2 * COMBED_STUB + 8;
+    const stubLength = clamp(span / 2 - 4, 0, COMBED_STUB);
+    const combStubs = stubLength >= 4;
     const stubSource = addScaled(
       trajectory.source,
       trajectory.sourceTangent,
-      COMBED_STUB,
+      stubLength,
     );
     const stubTarget = addScaled(
       trajectory.target,
       trajectory.targetTangent,
-      -COMBED_STUB,
+      -stubLength,
     );
     const lastStep = PARTICLES_PER_ROUTE - 1;
-    const routeParticles = routePoints.map((point, step) => {
-      const combStep = combStubs && (step === 1 || step === lastStep - 1);
-      const placed = !combStep ? point : step === 1 ? stubSource : stubTarget;
+    const stubSourceUsable = combStubs &&
+      combStubUsable(trajectory.source, stubSource, trajectory.obstacles);
+    const stubTargetUsable = combStubs &&
+      combStubUsable(trajectory.target, stubTarget, trajectory.obstacles);
+    const combedGuide = shapeGuide.map(copyPoint);
+    if (stubSourceUsable) combedGuide[1] = copyPoint(stubSource);
+    if (stubTargetUsable) combedGuide[lastStep - 1] = copyPoint(stubTarget);
+    const pinnedComb = new Set<number>([0, lastStep]);
+    if (stubSourceUsable) pinnedComb.add(1);
+    if (stubTargetUsable) pinnedComb.add(lastStep - 1);
+    const combedSafe = makeSafeExactTangentGuide(
+      combedGuide,
+      trajectory,
+      pinnedComb,
+    );
+    const usedComb = combedSafe !== undefined;
+    const placedGuide = combedSafe ?? shapeGuide;
+    const routeParticles = placedGuide.map((point, step) => {
+      const combStep = usedComb &&
+        ((step === 1 && stubSourceUsable) ||
+          (step === lastStep - 1 && stubTargetUsable));
       const fixed = step === 0 || step === lastStep || combStep;
       const node: RouteParticle = {
         id: `${encodeURIComponent(trajectory.key)}:${step}`,
@@ -231,12 +257,12 @@ export function buildOverviewThreadD3JointCorridor(
         ),
         shapeX: shapeGuide[step]!.x,
         shapeY: shapeGuide[step]!.y,
-        x: placed.x,
-        y: placed.y,
+        x: point.x,
+        y: point.y,
         vx: 0,
         vy: 0,
-        fx: fixed ? placed.x : undefined,
-        fy: fixed ? placed.y : undefined,
+        fx: fixed ? point.x : undefined,
+        fy: fixed ? point.y : undefined,
       };
       particles.push(node);
       return node;
@@ -284,9 +310,11 @@ export function buildOverviewThreadD3JointCorridor(
     .force("port-tangents", endpointTangentForce(relaxed))
     .force("hulls", obstacleForce(obstacleByKey));
 
+  projectOutsideObstacles(relaxed);
+  pinEndpoints(particles);
   for (let tick = 0; tick < ticks; tick++) {
     simulation.tick();
-    projectOutsideObstacles(particles, obstacleByKey);
+    projectOutsideObstacles(relaxed);
     pinEndpoints(particles);
   }
   simulation.stop();
@@ -304,10 +332,10 @@ export function buildOverviewThreadD3JointCorridor(
         `${route.input.key} did not produce cubic-only Catmull-Rom`,
       );
     }
-    const bundled = overviewThreadD3CableSvgPathClear(
+    const bundled = routeGeometryClear(
+      relaxedPoints,
       relaxedD,
       route.input.obstacles,
-      0.16,
     );
     const points = bundled ? relaxedPoints : route.baseline.points;
     const d = bundled ? relaxedD : route.baseline.d;
@@ -388,7 +416,7 @@ function buildIndividualShapeGuide(
       trajectory.sourceTangent,
       trajectory.targetTangent,
     );
-    if (overviewThreadD3CableSvgPathClear(d, trajectory.obstacles, 0.16)) {
+    if (routeGeometryClear(candidate, d, trajectory.obstacles)) {
       return candidate;
     }
   }
@@ -657,48 +685,433 @@ function obstacleForce(
 }
 
 function projectOutsideObstacles(
-  nodes: readonly RouteParticle[],
-  obstacleByKey: ReadonlyMap<string, OverviewThreadD3CableObstacle>,
+  routes: readonly RelaxedTrajectory[],
 ): void {
-  for (const node of nodes) {
-    if (node.fx != null) continue;
-    for (const key of node.obstacleKeys) {
-      const obstacle = obstacleByKey.get(key);
-      if (!obstacle || !inside(node, obstacle)) continue;
-      const exit = nearestExit(node, obstacle);
-      node.x = exit.x;
-      node.y = exit.y;
-      node.vx *= 0.18;
-      node.vy *= 0.18;
+  // Normalization already partitions ordered particles and exact obstacles.
+  // Reuse that partition through all ticks instead of rebuilding it per frame.
+  for (const route of routes) {
+    const relevant = route.input.obstacles;
+    for (const node of route.particles) {
+      if (node.fx != null) continue;
+      for (let pass = 0; pass < relevant.length + 2; pass++) {
+        const cluster = containingCluster(node, relevant);
+        if (!cluster) break;
+        const exit = nearestExit(node, cluster, relevant);
+        node.x = exit.x;
+        node.y = exit.y;
+        node.vx *= 0.18;
+        node.vy *= 0.18;
+      }
     }
   }
+  projectChordsOutsideObstacles(routes);
 }
 
 function nearestExit(
   point: OverviewThreadD3CablePoint,
   obstacle: OverviewThreadD3CableObstacle,
+  allObstacles: readonly OverviewThreadD3CableObstacle[] = [],
 ): OverviewThreadD3CablePoint {
-  return [
-    {
-      x: obstacle.minimumX - OBSTACLE_GAP,
-      y: clamp(point.y, obstacle.minimumY, obstacle.maximumY),
-    },
-    {
-      x: obstacle.maximumX + OBSTACLE_GAP,
-      y: clamp(point.y, obstacle.minimumY, obstacle.maximumY),
-    },
-    {
-      x: clamp(point.x, obstacle.minimumX, obstacle.maximumX),
-      y: obstacle.minimumY - OBSTACLE_GAP,
-    },
-    {
-      x: clamp(point.x, obstacle.minimumX, obstacle.maximumX),
-      y: obstacle.maximumY + OBSTACLE_GAP,
-    },
-  ].toSorted((left, right) =>
+  const candidates = offsetFaces(point, obstacle, OBSTACLE_GAP);
+  const ranked = candidates.toSorted((left, right) =>
     distance(left, point) - distance(right, point) ||
     left.x - right.x || left.y - right.y
+  );
+  const outside = ranked.filter((candidate) =>
+    allObstacles.every((other) => !inside(candidate, other))
+  );
+  return (outside[0] ?? ranked[0])!;
+}
+
+function offsetFaces(
+  point: OverviewThreadD3CablePoint,
+  obstacle: OverviewThreadD3CableObstacle,
+  gap: number,
+): OverviewThreadD3CablePoint[] {
+  return [
+    {
+      x: obstacle.minimumX - gap,
+      y: clamp(point.y, obstacle.minimumY, obstacle.maximumY),
+    },
+    {
+      x: obstacle.maximumX + gap,
+      y: clamp(point.y, obstacle.minimumY, obstacle.maximumY),
+    },
+    {
+      x: clamp(point.x, obstacle.minimumX, obstacle.maximumX),
+      y: obstacle.minimumY - gap,
+    },
+    {
+      x: clamp(point.x, obstacle.minimumX, obstacle.maximumX),
+      y: obstacle.maximumY + gap,
+    },
+  ];
+}
+
+function containingCluster(
+  point: OverviewThreadD3CablePoint,
+  obstacles: readonly OverviewThreadD3CableObstacle[],
+): OverviewThreadD3CableObstacle | undefined {
+  const containing = obstacles.filter((obstacle) => inside(point, obstacle));
+  if (containing.length === 0) return undefined;
+  if (containing.length === 1) return containing[0];
+  return {
+    key: containing.map((obstacle) => obstacle.key).toSorted().join("+"),
+    minimumX: Math.min(...containing.map((obstacle) => obstacle.minimumX)),
+    maximumX: Math.max(...containing.map((obstacle) => obstacle.maximumX)),
+    minimumY: Math.min(...containing.map((obstacle) => obstacle.minimumY)),
+    maximumY: Math.max(...containing.map((obstacle) => obstacle.maximumY)),
+  };
+}
+
+function projectChordsOutsideObstacles(
+  routes: readonly RelaxedTrajectory[],
+): void {
+  for (const trajectory of routes) {
+    const route = trajectory.particles;
+    const relevant = trajectory.input.obstacles;
+    for (let index = 1; index < route.length; index++) {
+      const source = route[index - 1]!;
+      const target = route[index]!;
+      for (const obstacle of relevant) {
+        if (
+          overviewThreadD3CableSegmentVisible(source, target, [obstacle])
+        ) continue;
+        const repaired = repairChord(
+          source,
+          target,
+          obstacle,
+          source.fx != null,
+          target.fx != null,
+        );
+        if (!repaired) continue;
+        if (source.fx == null) {
+          source.x = repaired.source.x;
+          source.y = repaired.source.y;
+        }
+        if (target.fx == null) {
+          target.x = repaired.target.x;
+          target.y = repaired.target.y;
+        }
+      }
+    }
+  }
+}
+
+function routeGeometryClear(
+  points: readonly OverviewThreadD3CablePoint[],
+  d: string,
+  obstacles: readonly OverviewThreadD3CableObstacle[],
+): boolean {
+  return d.includes("C") && !/[LQAS]/.test(d) &&
+    overviewThreadD3CablePolylineClear(points, obstacles) &&
+    overviewThreadD3CableSvgPathClear(d, obstacles, 0.16);
+}
+
+function combStubUsable(
+  endpoint: OverviewThreadD3CablePoint,
+  stub: OverviewThreadD3CablePoint,
+  obstacles: readonly OverviewThreadD3CableObstacle[],
+): boolean {
+  return !obstacles.some((obstacle) => inside(stub, obstacle)) &&
+    overviewThreadD3CableSegmentVisible(endpoint, stub, obstacles);
+}
+
+function resampleClearControlPoints(
+  points: readonly OverviewThreadD3CablePoint[],
+  count: number,
+  obstacles: readonly OverviewThreadD3CableObstacle[],
+): OverviewThreadD3CablePoint[] {
+  if (points.length < 2) {
+    throw new RangeError("Degenerate trajectory");
+  }
+  let current = deduplicateControlPoints(points);
+  if (current.length > count) {
+    current = reduceClearControlPoints(current, count, obstacles);
+  }
+  if (current.length < count) {
+    current = expandClearControlPoints(current, count);
+  }
+  if (
+    current.length === count &&
+    overviewThreadD3CablePolylineClear(current, obstacles)
+  ) {
+    return current;
+  }
+  return resamplePolyline(points, count);
+}
+
+function deduplicateControlPoints(
+  points: readonly OverviewThreadD3CablePoint[],
+): OverviewThreadD3CablePoint[] {
+  const result: OverviewThreadD3CablePoint[] = [];
+  for (const point of points) {
+    if (
+      result.length === 0 ||
+      distance(result.at(-1)!, point) > EPSILON
+    ) result.push(copyPoint(point));
+  }
+  return result;
+}
+
+function reduceClearControlPoints(
+  points: readonly OverviewThreadD3CablePoint[],
+  count: number,
+  obstacles: readonly OverviewThreadD3CableObstacle[],
+): OverviewThreadD3CablePoint[] {
+  const result = points.map(copyPoint);
+  while (result.length > count) {
+    let removable = -1;
+    let cost = Infinity;
+    for (let index = 1; index < result.length - 1; index++) {
+      if (
+        !overviewThreadD3CableSegmentVisible(
+          result[index - 1]!,
+          result[index + 1]!,
+          obstacles,
+        )
+      ) continue;
+      const extra = distance(result[index - 1]!, result[index + 1]!) -
+        distance(result[index - 1]!, result[index]!) -
+        distance(result[index]!, result[index + 1]!);
+      if (
+        extra < cost - EPSILON ||
+        Math.abs(extra - cost) <= EPSILON && index < removable
+      ) {
+        cost = extra;
+        removable = index;
+      }
+    }
+    if (removable < 0) break;
+    result.splice(removable, 1);
+  }
+  return result;
+}
+
+function expandClearControlPoints(
+  points: readonly OverviewThreadD3CablePoint[],
+  count: number,
+): OverviewThreadD3CablePoint[] {
+  const extras = count - points.length;
+  if (extras <= 0) return points.map(copyPoint);
+  const segmentLengths = points.slice(1).map((point, index) =>
+    distance(points[index]!, point)
+  );
+  const allocation = segmentLengths.map(() => 0);
+  for (let extra = 0; extra < extras; extra++) {
+    let selected = 0;
+    let selectedSpacing = -Infinity;
+    for (let index = 0; index < segmentLengths.length; index++) {
+      const spacing = segmentLengths[index]! / (allocation[index]! + 1);
+      if (
+        spacing > selectedSpacing + EPSILON ||
+        Math.abs(spacing - selectedSpacing) <= EPSILON && index < selected
+      ) {
+        selected = index;
+        selectedSpacing = spacing;
+      }
+    }
+    allocation[selected]! += 1;
+  }
+  const result: OverviewThreadD3CablePoint[] = [copyPoint(points[0]!)];
+  for (let index = 0; index < segmentLengths.length; index++) {
+    const source = points[index]!;
+    const target = points[index + 1]!;
+    const divisor = allocation[index]! + 1;
+    for (let step = 1; step <= divisor; step++) {
+      const ratio = step / divisor;
+      result.push({
+        x: source.x + (target.x - source.x) * ratio,
+        y: source.y + (target.y - source.y) * ratio,
+      });
+    }
+  }
+  return result;
+}
+
+function makeSafeExactTangentGuide(
+  points: readonly OverviewThreadD3CablePoint[],
+  trajectory: NormalizedTrajectory,
+  pinned: ReadonlySet<number> | readonly number[],
+): OverviewThreadD3CablePoint[] | undefined {
+  const locked = pinned instanceof Set ? pinned : new Set(pinned);
+  const current = points.map(copyPoint);
+  const obstacles = trajectory.obstacles;
+  for (let attempt = 0; attempt < 24; attempt++) {
+    const d = catmullPathWithExactTangents(
+      current,
+      trajectory.sourceTangent,
+      trajectory.targetTangent,
+    );
+    if (routeGeometryClear(current, d, obstacles)) return current;
+    let moved = false;
+    for (let index = 0; index < current.length; index++) {
+      if (locked.has(index)) continue;
+      const cluster = containingCluster(current[index]!, obstacles);
+      if (!cluster) continue;
+      current[index] = nearestExit(current[index]!, cluster, obstacles);
+      moved = true;
+    }
+    for (let index = 1; index < current.length; index++) {
+      const source = current[index - 1]!;
+      const target = current[index]!;
+      for (const obstacle of obstacles) {
+        if (overviewThreadD3CableSegmentVisible(source, target, [obstacle])) {
+          continue;
+        }
+        const repaired = repairChord(
+          source,
+          target,
+          obstacle,
+          locked.has(index - 1),
+          locked.has(index),
+        );
+        if (!repaired) continue;
+        current[index - 1] = repaired.source;
+        current[index] = repaired.target;
+        moved = true;
+      }
+    }
+    if (!moved && !overviewThreadD3CableSvgPathClear(d, obstacles, 0.16)) {
+      moved = pushInteriorFromCubicHits(
+        current,
+        d,
+        obstacles,
+        locked,
+      );
+    }
+    if (!moved) break;
+  }
+  const d = catmullPathWithExactTangents(
+    current,
+    trajectory.sourceTangent,
+    trajectory.targetTangent,
+  );
+  return routeGeometryClear(current, d, obstacles) ? current : undefined;
+}
+
+function pushInteriorFromCubicHits(
+  points: OverviewThreadD3CablePoint[],
+  d: string,
+  obstacles: readonly OverviewThreadD3CableObstacle[],
+  locked: ReadonlySet<number>,
+): boolean {
+  const samples = sampleOverviewThreadD3CableSvgPath(d, 0.16);
+  let moved = false;
+  for (let index = 1; index < samples.length; index++) {
+    const source = samples[index - 1]!;
+    const target = samples[index]!;
+    for (const obstacle of obstacles) {
+      if (overviewThreadD3CableSegmentVisible(source, target, [obstacle])) {
+        continue;
+      }
+      const hit = midpoint(source, target);
+      let nearest = -1;
+      let nearestDistance = Infinity;
+      for (let step = 0; step < points.length; step++) {
+        if (locked.has(step)) continue;
+        const candidate = distance(points[step]!, hit);
+        if (candidate < nearestDistance) {
+          nearest = step;
+          nearestDistance = candidate;
+        }
+      }
+      if (nearest < 0) continue;
+      const exit = nearestExit(hit, obstacle, obstacles);
+      points[nearest] = {
+        x: points[nearest]!.x + (exit.x - hit.x),
+        y: points[nearest]!.y + (exit.y - hit.y),
+      };
+      moved = true;
+    }
+  }
+  return moved;
+}
+
+function midpoint(
+  left: OverviewThreadD3CablePoint,
+  right: OverviewThreadD3CablePoint,
+): OverviewThreadD3CablePoint {
+  return { x: (left.x + right.x) / 2, y: (left.y + right.y) / 2 };
+}
+
+function repairChord(
+  source: OverviewThreadD3CablePoint,
+  target: OverviewThreadD3CablePoint,
+  obstacle: OverviewThreadD3CableObstacle,
+  sourcePinned: boolean,
+  targetPinned: boolean,
+): {
+  source: OverviewThreadD3CablePoint;
+  target: OverviewThreadD3CablePoint;
+} | undefined {
+  if (sourcePinned && targetPinned) return undefined;
+  const gap = OBSTACLE_GAP;
+  const corners = [
+    { x: obstacle.minimumX - gap, y: obstacle.minimumY - gap },
+    { x: obstacle.maximumX + gap, y: obstacle.minimumY - gap },
+    { x: obstacle.minimumX - gap, y: obstacle.maximumY + gap },
+    { x: obstacle.maximumX + gap, y: obstacle.maximumY + gap },
+  ];
+  const center = {
+    x: (obstacle.minimumX + obstacle.maximumX) / 2,
+    y: (obstacle.minimumY + obstacle.maximumY) / 2,
+  };
+  return {
+    source: sourcePinned
+      ? source
+      : pushToClearSide(target, source, corners, center),
+    target: targetPinned
+      ? target
+      : pushToClearSide(source, target, corners, center),
+  };
+}
+
+function pushToClearSide(
+  fixed: OverviewThreadD3CablePoint,
+  free: OverviewThreadD3CablePoint,
+  corners: readonly OverviewThreadD3CablePoint[],
+  center: OverviewThreadD3CablePoint,
+): OverviewThreadD3CablePoint {
+  const corner = corners.toSorted((left, right) =>
+    pointToSegmentDistance(left, fixed, free) -
+      pointToSegmentDistance(right, fixed, free) ||
+    left.x - right.x || left.y - right.y
   )[0]!;
+  const dir = { x: corner.x - fixed.x, y: corner.y - fixed.y };
+  const dirLength = Math.hypot(dir.x, dir.y);
+  if (dirLength <= EPSILON) return free;
+  const toFree = { x: free.x - fixed.x, y: free.y - fixed.y };
+  const toCenter = { x: center.x - fixed.x, y: center.y - fixed.y };
+  const crossFree = dir.x * toFree.y - dir.y * toFree.x;
+  const crossCenter = dir.x * toCenter.y - dir.y * toCenter.x;
+  if (crossFree * crossCenter <= 0) return free;
+  const t = Math.max(
+    1,
+    (toFree.x * dir.x + toFree.y * dir.y) / (dir.x * dir.x + dir.y * dir.y),
+  );
+  return { x: fixed.x + dir.x * t, y: fixed.y + dir.y * t };
+}
+
+function pointToSegmentDistance(
+  point: OverviewThreadD3CablePoint,
+  source: OverviewThreadD3CablePoint,
+  target: OverviewThreadD3CablePoint,
+): number {
+  const deltaX = target.x - source.x;
+  const deltaY = target.y - source.y;
+  const denominator = deltaX * deltaX + deltaY * deltaY;
+  if (denominator <= EPSILON) return distance(point, source);
+  const ratio = clamp(
+    ((point.x - source.x) * deltaX + (point.y - source.y) * deltaY) /
+      denominator,
+    0,
+    1,
+  );
+  return Math.hypot(
+    point.x - (source.x + deltaX * ratio),
+    point.y - (source.y + deltaY * ratio),
+  );
 }
 
 function pinEndpoints(nodes: readonly RouteParticle[]): void {

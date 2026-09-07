@@ -34,7 +34,9 @@ export function isAssemblyIntegrityVerificationAuthority(
 /**
  * Select only explicit V2 verification activities carrying the exact semantic
  * authority. The result is an ID set in canonical order; labels, dependencies
- * and product-specific identifiers have no role in this selection.
+ * and product-specific identifiers have no role in this selection. The set is
+ * eligibility for recrossing a recorded L4 contributes-to claim, not automatic
+ * L5 gate satisfaction.
  */
 export function canonicalAssemblyIntegrityVerificationGateIds(
   brief: ProjectBriefRevision,

@@ -129,10 +129,13 @@ import {
 } from "../../shared/thread-write-basis-guard.ts";
 import type { CanonicalAssetReader } from "../../../application/ports/out/canonical-asset-reader.ts";
 import { admitFeaProofSealSource } from "../../../application/use-cases/fea/seal-case/fea-proof-seal-source-admission.ts";
+import { requireRequirementsTip } from "../../architecture/requirements/model-write-requirements-run-executor.ts";
 import {
-  REQUIREMENTS_CAPTURE_SCHEMA,
-  requireRequirementsTip,
-} from "../../architecture/requirements/model-write-requirements-run-executor.ts";
+  assertTracedRequirementsRecaptureThreadContinuity,
+  parseExactRequirementsCapture,
+  requirementsCaptureProducerTool,
+} from "../../architecture/requirements/requirements-capture.ts";
+import { mechanicalProofRequirementsMatchCapture } from "../../../domain/fea/seal-case/mechanical-proof-case.ts";
 
 // ---------------------------------------------------------------------------
 // Public constants
@@ -1155,50 +1158,47 @@ export class VerifySealProofCaseRunExecutor {
       );
     }
 
-    let reqCaptureRecord: unknown;
+    let reqRecord;
     try {
-      reqCaptureRecord = JSON.parse(reqCaptureText);
-    } catch {
+      reqRecord = parseExactRequirementsCapture(JSON.parse(reqCaptureText));
+    } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        "Requirements capture is not valid JSON.",
+        `Requirements capture is not exact: ${errorMessage(error)}`,
       );
     }
-
     if (
-      !reqCaptureRecord ||
-      typeof reqCaptureRecord !== "object" ||
-      Array.isArray(reqCaptureRecord) ||
-      (reqCaptureRecord as Record<string, unknown>).schemaVersion !==
-        REQUIREMENTS_CAPTURE_SCHEMA
+      requirementsArtifact.producer.tool !==
+        requirementsCaptureProducerTool(reqRecord) ||
+      reqRecord.trustedRunId !== requirementsArtifact.producer.runId
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        `Requirements capture has unexpected schema: "${
-          (reqCaptureRecord as Record<string, unknown>)?.schemaVersion
-        }".`,
+        "Requirements capture producer is not the exact schema/operation pair.",
+      );
+    }
+    try {
+      await assertTracedRequirementsRecaptureThreadContinuity(
+        reqRecord,
+        requirementsArtifact,
+        basisSnapshot.artifacts,
+        this.#requirementsCaptures,
+      );
+    } catch (error) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        `Requirements capture has no exact traced predecessor continuity: ${
+          errorMessage(error)
+        }`,
       );
     }
 
-    const reqRecord = reqCaptureRecord as Record<string, unknown>;
-
-    // Get containerComponent from the capture.
     const containerComponent = reqRecord.containerComponent;
-    if (typeof containerComponent !== "string" || !containerComponent) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Requirements capture has no valid containerComponent.",
-      );
-    }
 
-    // Verify the capture target matches the proof target.
-    const captureTarget = reqRecord.target as Record<string, unknown> | undefined;
-    if (
-      !captureTarget || captureTarget.elementId !== decisionParams.target.modelElementId
-    ) {
+    if (reqRecord.target.elementId !== decisionParams.target.modelElementId) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        `Requirements capture target element "${captureTarget?.elementId}" ` +
+        `Requirements capture target element "${reqRecord.target.elementId}" ` +
           `does not match proof target.modelElementId "${decisionParams.target.modelElementId}".`,
       );
     }
@@ -1232,39 +1232,7 @@ export class VerifySealProofCaseRunExecutor {
       );
     }
 
-    // Follow the chain: requirements capture → seed; verify editingContextId.
-    const captureSeed = reqRecord.seed as Record<string, unknown> | undefined;
-    if (
-      !captureSeed ||
-      typeof captureSeed.artifactId !== "string" ||
-      !captureSeed.artifactId ||
-      typeof captureSeed.producerRunId !== "string" ||
-      !captureSeed.producerRunId
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Requirements capture seed identity is missing or incomplete.",
-      );
-    }
-    const captureSeedFp = captureSeed.fingerprint as
-      | Record<string, unknown>
-      | undefined;
-    if (
-      !captureSeedFp ||
-      captureSeedFp.algorithm !== "sha256" ||
-      typeof captureSeedFp.digest !== "string"
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Requirements capture seed fingerprint is missing or invalid.",
-      );
-    }
-    const seedFingerprint: ContentFingerprint = {
-      algorithm: captureSeedFp.algorithm as "sha256",
-      digest: captureSeedFp.digest,
-    };
-
-    // Read the seed capture.
+    const seedFingerprint = reqRecord.seed.fingerprint;
     const seedCaptureText = await this.#seedCaptures.read(seedFingerprint);
     if (!seedCaptureText) {
       throw new EngineeringProjectCommandError(
@@ -1273,19 +1241,9 @@ export class VerifySealProofCaseRunExecutor {
       );
     }
 
-    let seedCaptureRaw: unknown;
-    try {
-      seedCaptureRaw = JSON.parse(seedCaptureText);
-    } catch {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Seed capture is not valid JSON.",
-      );
-    }
-
     let seedCapture;
     try {
-      seedCapture = parseSysonModelSeedCapture(seedCaptureRaw);
+      seedCapture = parseSysonModelSeedCapture(JSON.parse(seedCaptureText));
     } catch (error) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
@@ -1303,68 +1261,19 @@ export class VerifySealProofCaseRunExecutor {
       );
     }
 
-    // Verify proof requirements consistency with the capture OracleRequirements.
-    // Each proof requirement must have a matching OracleRequirement in the capture
-    // (matching by feature path / operator / limit).
-    const captureRequirements = reqRecord.requirements;
-    if (!Array.isArray(captureRequirements)) {
-      throw new EngineeringProjectCommandError(
-        "invalid_transition",
-        "Requirements capture has no requirements array.",
-      );
-    }
-    const captureReqByFeature = new Map<
-      string,
-      { operator: string; limitValue: number; limitUnit: string }
-    >();
-    for (const oracleReq of captureRequirements) {
-      if (
-        oracleReq && typeof oracleReq === "object" &&
-        typeof oracleReq.metric === "string" &&
-        typeof oracleReq.operator === "string" &&
-        oracleReq.limit && typeof oracleReq.limit === "object" &&
-        typeof oracleReq.limit.value === "number" &&
-        typeof oracleReq.limit.unit === "string"
-      ) {
-        captureReqByFeature.set(oracleReq.metric, {
-          operator: oracleReq.operator,
-          limitValue: oracleReq.limit.value,
-          limitUnit: oracleReq.limit.unit,
-        });
-      }
-    }
-    for (const proofReq of validatedCase.requirements) {
-      const captureReq = captureReqByFeature.get(proofReq.feature);
-      if (!captureReq) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          `Proof requirement feature path "${proofReq.feature}" is not found ` +
-            "among the OracleRequirements in the requirements capture.",
-        );
-      }
-      if (
-        captureReq.operator !== proofReq.operator ||
-        captureReq.limitValue !== proofReq.limit.value ||
-        captureReq.limitUnit !== proofReq.limit.unit
-      ) {
-        throw new EngineeringProjectCommandError(
-          "invalid_transition",
-          `Proof requirement "${proofReq.feature}" operator/limit does not match ` +
-            "the corresponding OracleRequirement in the requirements capture.",
-        );
-      }
-    }
-
-    // Get requirementsElementId from the capture.
-    const requirementsElementId = reqRecord.requirementsElementId;
     if (
-      typeof requirementsElementId !== "string" || !requirementsElementId
+      !mechanicalProofRequirementsMatchCapture(
+        reqRecord.requirements,
+        validatedCase.requirements,
+      )
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_transition",
-        "Requirements capture has no valid requirementsElementId.",
+        "Requirements capture does not exactly restate the proof requirement metrics, operators, limits and units.",
       );
     }
+
+    const requirementsElementId = reqRecord.requirementsElementId;
 
     return {
       requirementsArtifact,
@@ -1648,23 +1557,40 @@ async function exactBasisSnapshot(
  * that carried the given (subjectId, proofDigest) pair in an ancestor.
  *
  * WHY WALK ANCESTORS — the ratchet only fires when a *prior* revision carried
- * the artifact but the current basis does not. If no ancestor has ever sealed
- * this proofDigest, the check is a no-op. Cap at 50 ancestors to bound the
- * traversal cost; larger lineages require operator review.
+ * the artifact but the current basis does not. If the current snapshot already
+ * carries this proofDigest, the check is a no-op. Otherwise walk every
+ * immutable predecessor to the root. Lineage intactness is asserted separately
+ * before this guard; the walk still refuses missing, mismatched, wrong-subject,
+ * and cyclic ancestors fail-closed. There is no local ancestor-count ceiling.
  */
-async function assertProofCaseArtifactNotRemoved(
+export async function assertProofCaseArtifactNotRemoved(
   basis: ThreadSnapshot,
   subjectId: string,
   proofDigest: string,
-  snapshots: ThreadSnapshotStore,
+  snapshots: Pick<ThreadSnapshotStore, "get">,
 ): Promise<void> {
   if (hasProofCaseArtifact(basis, proofDigest)) return;
 
-  const MAX_ANCESTORS = 50;
+  const visited = new Set<string>();
   let cursor = basis.previous;
-  for (let i = 0; i < MAX_ANCESTORS; i++) {
-    if (!cursor) return; // Root reached without finding the artifact.
-    const ancestor = await snapshots.get(cursor.snapshotId);
+  while (cursor) {
+    const key = `${cursor.snapshotId}\u0000${cursor.revision}`;
+    if (visited.has(key)) {
+      throw new ProofCaseLineageReviewRequiredError(
+        `cycle detected at ${cursor.snapshotId}@${cursor.revision}.`,
+      );
+    }
+    visited.add(key);
+
+    let ancestor: ThreadSnapshot | undefined;
+    try {
+      ancestor = await snapshots.get(cursor.snapshotId);
+    } catch {
+      throw new ProofCaseLineageReviewRequiredError(
+        `ancestor ${cursor.snapshotId}@${cursor.revision} is not resolvable or ` +
+          "belongs to a different subject.",
+      );
+    }
     if (
       !ancestor ||
       ancestor.id !== cursor.snapshotId ||
@@ -1680,11 +1606,6 @@ async function assertProofCaseArtifactNotRemoved(
       throw new ProofCaseArtifactRemovedError(subjectId, proofDigest);
     }
     cursor = ancestor.previous;
-  }
-  if (cursor) {
-    throw new ProofCaseLineageReviewRequiredError(
-      `ancestor traversal exceeded the explicit ${MAX_ANCESTORS}-revision review bound.`,
-    );
   }
 }
 

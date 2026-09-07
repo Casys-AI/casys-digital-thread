@@ -64,8 +64,8 @@ capture, not a generic requirement evaluation. It has exactly these criteria:
 
 The aggregate precedence is `fail`, then `unresolved`, then `pass`. The expected
 occurrence matrix is derived one-way from the bundle placement: millimetre translation
-after `Rx * Ry * Rz`. The label `right-handed-mm-extrinsic-xyz-degrees` is not enough
-by itself. The fixed matrix epsilon is representation equivalence, not a clearance
+after `Rx * Ry * Rz`. The label `right-handed-mm-extrinsic-xyz-degrees` is not enough by
+itself. The fixed matrix epsilon is representation equivalence, not a clearance
 allowance. Pairwise minimum distance and contact are L3 diagnostics; they are not an L4
 clearance, joint, or assemblability criterion.
 
@@ -86,10 +86,20 @@ reopens the unique fresh L4 result whose result snapshot equals the current Thre
 then recrosses the L4 capture, L3 observation, module, and STEP. It returns closed human
 consequences; it selects no gate, provider, tolerance, work item, or disposition.
 
-| Human consequence | Registered operation                            | Availability and gate rule                                                                                                                                                                                          |
-| ----------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Accept            | `decide.accept-assembly-integrity-evaluation@1` | Returned only when all five L4 criteria are literal `pass`. A claim may only `satisfies/current` an existing current Brief V2 gate. Without that claim, no gate is satisfied.                                       |
-| Reject            | `decide.reject-assembly-integrity-evaluation@1` | Always returned. Its disposition is `none` when all criteria pass, otherwise `assembly-integrity-review-required`. It may omit gate claims or only `contributes-to/current` a current gate; it never satisfies one. |
+| Human consequence | Registered operation                            | Availability and gate rule                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ----------------- | ----------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Accept            | `decide.accept-assembly-integrity-evaluation@1` | Returned only when all five L4 criteria are literal `pass`. A new unsealed accept may only `satisfies/current` an existing current Brief V2 gate that the selected L4 work item already records as exact `contributes-to/current`, recrossed against the current approved Brief. Zero L4 claims produce a valid zero-gate accept even when the Brief has other assembly-integrity gates. Without that L4 claim, no new gate is satisfied. The review does not select a gate. |
+| Reject            | `decide.reject-assembly-integrity-evaluation@1` | Always returned. Its disposition is `none` when all criteria pass, otherwise `assembly-integrity-review-required`. It may omit gate claims or only `contributes-to/current` a current gate; it never satisfies one.                                                                                                                                                                                                                                                          |
+
+A new unsealed Brief-derived accept is refused. An already completed historical closeout
+is reopened as a read of its signed admission, capture, producer/MRTR, basis lineage,
+and saved successor. Replay attests those exact bytes; it does not reinterpret sealed
+`satisfies/current` claims through the current L4-derived rule, grant new satisfaction,
+or write a new closeout. Publishing recovery that already has that exact capture and
+successor attests the same signed bytes and completes the run; it does not persist a new
+capture or invent a new legacy accept. Tampered capture, missing signed evidence, forged
+completed state, or mismatched work, dependencies, basis, or successor still fail
+closed.
 
 The person chooses one returned consequence, then signs its MRTR. The L5 work must be a
 newly appended, human-origin (`mustOrigin: "human"`) item based on the exact L4 result
@@ -142,12 +152,13 @@ bundle, method, bounds, and provider profile.
 
 Kinematics is not a richer provider profile for this port. It has a separate bounded
 vertical with explicit bodies, frames, joints, limits, sampled scenarios, capture,
-evaluation, and Brief verification authority; see
-[mechanism](../mechanism/README.md). It still does not turn static non-intersection into
-a motion, contact, clearance, forces, strength, safety, or manufacturability claim.
+evaluation, and Brief verification authority; see [mechanism](../mechanism/README.md).
+It still does not turn static non-intersection into a motion, contact, clearance,
+forces, strength, safety, or manufacturability claim.
 
 The mechanism catalogue baseline is `unqualified`. A particular host may carry an exact
 qualified emulated AMD64 attestation, but that host fact neither rewrites the catalogue
 nor makes an L3 product observation. Product L3 separately needs project authorization,
-a sealed ROP, a current Thread basis, and a JIT lease. Static assembly integrity does not
-establish any of those prerequisites, and its L3/L4/L5 evidence never establishes motion.
+a sealed ROP, a current Thread basis, and a JIT lease. Static assembly integrity does
+not establish any of those prerequisites, and its L3/L4/L5 evidence never establishes
+motion.

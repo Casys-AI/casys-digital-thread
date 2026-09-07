@@ -5,7 +5,7 @@ Deno.test("Project whiteboard hydrates exact local presentation state before aut
 
   assertStringIncludes(
     source,
-    "  projectId,\n  viewerSessions,\n  activities = [],",
+    "  projectId,\n  viewerSessions,\n  viewerSessionsReady = true,",
   );
   assertStringIncludes(
     source,
@@ -17,7 +17,7 @@ Deno.test("Project whiteboard hydrates exact local presentation state before aut
       "setGroupPlacements(restored.groupPlacements);",
       "setNodePlacements(restored.nodePlacements);",
       "setWhiteboardTransform(restored.transform);",
-      "setViewers(restored.viewers.map(overviewViewerFromPresentation));",
+      "setViewers(separateOverviewThreadViewers(\n        restored.viewers.map(overviewViewerFromPresentation),\n      ));",
     ]
   ) {
     assertStringIncludes(source, restoration);
@@ -125,3 +125,31 @@ function heroSource(): Promise<string> {
     new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
   );
 }
+
+Deno.test("whiteboard waits for exact sessions before restoring viewers or saving", async () => {
+  const source = await heroSource();
+  const workbench = await Deno.readTextFile(
+    new URL("./src/thread/workbench.tsx", import.meta.url),
+  );
+  const overview = await Deno.readTextFile(
+    new URL("./src/project/overview.tsx", import.meta.url),
+  );
+  assertStringIncludes(workbench, "viewerSessionsReady={!viewerSessionsClient");
+  assertStringIncludes(
+    workbench,
+    "viewerSessionsMatchWorkbench(viewerSessions, workbench)",
+  );
+  assertStringIncludes(overview, "viewerSessionsReady={viewerSessionsReady}");
+  assertStringIncludes(source, "viewersRestored: viewerSessionsReady");
+  assertStringIncludes(source, "persistenceHydration.viewersRestored");
+  const save = source.slice(
+    source.indexOf("!persistenceProjectId ||"),
+    source.indexOf("pendingPersistenceRef.current = {"),
+  );
+  assertStringIncludes(save, "!viewerSessionsReady ||");
+  assertStringIncludes(save, "!persistenceHydration?.viewersRestored ||");
+  assertStringIncludes(
+    source,
+    "setViewers(separateOverviewThreadViewers(\n      restored?.viewers.map(overviewViewerFromPresentation) ?? [],\n    ));",
+  );
+});

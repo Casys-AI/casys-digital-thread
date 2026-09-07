@@ -60,6 +60,11 @@ export interface RegisteredEngineeringOperation {
   readonly riskClass: EngineeringOperationRiskClass;
   readonly execution: EngineeringOperationExecution;
   /**
+   * Retained only so completed records can resolve their exact historic
+   * contract. It is neither plan- nor queue-eligible for new work.
+   */
+  readonly retiredForPlanning?: true;
+  /**
    * Provider-neutral, code-owned semantic ceiling. It cannot choose a
    * provider, package, image, endpoint, tool, argument, port, or secret.
    */
@@ -137,6 +142,7 @@ export type EngineeringOperationRegistryErrorCode =
   | "invalid_input"
   | "unknown_operation"
   | "prerequisite_only"
+  | "retired_for_planning"
   | "unsupported_basis"
   | "invalid_bindings";
 

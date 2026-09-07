@@ -93,7 +93,7 @@ export function PlanningWorkbench({
       <ProjectNavigation
         activeView={activeView}
         onChange={onChangeView}
-        disabledViews={["work", "product", "verification", "operations"]}
+        disabledViews={["work", "verification", "operations"]}
         status={
           <>
             <span

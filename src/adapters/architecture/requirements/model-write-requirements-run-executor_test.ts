@@ -24,6 +24,7 @@ import { CapabilityRuntimeConnectionError } from "../../../application/ports/out
 import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../../orchestration/operations/registry.ts";
 import {
+  approvedBriefBasisForProject,
   EngineeringProjectCommandError,
   EngineeringProjectCommandService,
   type EngineeringProjectCompletionEvidenceValidator,
@@ -77,7 +78,6 @@ import { ExactInitialBaselineEvidenceValidator } from "../../project/engineering
 import {
   assertRequirementsArtifactNotRemoved,
   computePriorRequirementsArchiveCascade,
-  MODEL_WRITE_REQUIREMENTS_OPERATION,
   ModelWriteRequirementsRunExecutor,
   RequirementsArtifactRemovedError,
   resolveRequirementsPartDefinitionTarget,
@@ -88,6 +88,13 @@ import {
   parseRequirementsProposalParameters,
   requirementEntriesToOracleRequirements,
 } from "../../../domain/architecture/requirements/requirements-proposal.ts";
+import {
+  MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
+  parseTracedRequirementsProposalParameters,
+  type TracedRequirementsProposal,
+  tracedRequirementsProposalParameters,
+} from "../../../domain/architecture/requirements/requirements-traced-proposal.ts";
+import { buildRequirementsBriefProvenance } from "../../../domain/architecture/requirements/requirements-brief-provenance.ts";
 import type {
   ThreadArtifact,
   ThreadSnapshot,
@@ -168,6 +175,40 @@ const UNKNOWN_TARGET_REQS_PARAMS = WING_REQS_PARAMS_INITIAL.map((parameter) =>
     ? { ...parameter, value: "Tail" }
     : parameter
 );
+
+async function tracedRequirementsParameters(
+  project: EngineeringProjectSnapshot,
+  parameters: readonly EngineeringDecisionProposalParameter[],
+): Promise<readonly EngineeringDecisionProposalParameter[]> {
+  const parsed = parseRequirementsProposalParameters(parameters);
+  const declaredBySlug = new Map(
+    parameters.flatMap((parameter) => {
+      const match = /^requirement\.([a-z0-9-]+)\.threshold$/.exec(parameter.key);
+      return match ? [[match[1], parameter] as const] : [];
+    }),
+  );
+  const proposal: TracedRequirementsProposal = {
+    ...parsed,
+    briefSource: {
+      basis: approvedBriefBasisForProject(project),
+      briefContentFingerprint: await sha256Fingerprint(project.framing!.currentBrief!),
+      containerSourceItemId: "mission",
+      requirements: parsed.requirements.map((requirement) => {
+        const declared = declaredBySlug.get(requirement.slug)!;
+        return {
+          requirementId: requirement.metric,
+          sourceItemId: "success",
+          declaredThreshold: {
+            value: declared.value as number,
+            unit: declared.unit!,
+          },
+          transformation: "identity",
+        };
+      }),
+    },
+  };
+  return tracedRequirementsProposalParameters(proposal);
+}
 
 // Enrichment proposal: adds maxForce (new) alongside adopted maxMass.
 const WING_REQS_PARAMS_ENRICHMENT = [
@@ -1551,7 +1592,7 @@ async function queuedRequirementsFixture(
         dependsOnWorkItemIds: ["wi:architecture"],
         decisionIds: ["decision:reqs-params"],
         operation: {
-          ...MODEL_WRITE_REQUIREMENTS_OPERATION,
+          ...MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
           bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
         },
       },
@@ -1563,7 +1604,7 @@ async function queuedRequirementsFixture(
           dependsOnWorkItemIds: ["wi:architecture"],
           decisionIds: ["decision:reqs-parallel"],
           operation: {
-            ...MODEL_WRITE_REQUIREMENTS_OPERATION,
+            ...MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
             bindings: [{
               name: "approvedBrief",
               source: { kind: "approved-brief" as const },
@@ -1598,10 +1639,14 @@ async function queuedRequirementsFixture(
   // and this fixture claims only the boundary that failed.
   const mcp = new RequirementsMcpApp();
   registerProjectControlTools(mcp as unknown as McpApp, { projects, commands });
+  const tracedProposalParams = await tracedRequirementsParameters(
+    project,
+    proposalParams,
+  );
   await mcp.handler("project_decision_propose")({
     ...ctx("propose-reqs-decision", project.revision),
     decisionId: "decision:reqs-params",
-    proposal: { summary: "Wing requirements", parameters: proposalParams },
+    proposal: { summary: "Wing requirements", parameters: tracedProposalParams },
   }, {
     toolName: "project_decision_propose",
     clientInfo: { name: "paired-chat", version: "1" },
@@ -1611,7 +1656,10 @@ async function queuedRequirementsFixture(
     await mcp.handler("project_decision_propose")({
       ...ctx("propose-reqs-parallel", project.revision),
       decisionId: "decision:reqs-parallel",
-      proposal: { summary: "Parallel Wing requirements", parameters: proposalParams },
+      proposal: {
+        summary: "Parallel Wing requirements",
+        parameters: tracedProposalParams,
+      },
     }, {
       toolName: "project_decision_propose",
       clientInfo: { name: "paired-chat", version: "1" },
@@ -1688,7 +1736,7 @@ function makeExecutor(
 ): ModelWriteRequirementsRunExecutor {
   const capability = successfulCapabilityRuntimeFor(
     PROJECT_ID,
-    MODEL_WRITE_REQUIREMENTS_OPERATION,
+    MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
     "model.author-system",
   );
   return new ModelWriteRequirementsRunExecutor({
@@ -1786,7 +1834,7 @@ async function queueEnrichmentRun(
       dependsOnWorkItemIds: ["wi:requirements"],
       decisionIds: ["decision:reqs-enrichment"],
       operation: {
-        ...MODEL_WRITE_REQUIREMENTS_OPERATION,
+        ...MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
         bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
       },
     }],
@@ -1803,7 +1851,7 @@ async function queueEnrichmentRun(
     baseSnapshot: enrichmentBasisRef,
     proposal: {
       summary: "Wing requirements enrichment",
-      parameters: enrichmentParams,
+      parameters: await tracedRequirementsParameters(project, enrichmentParams),
     },
   });
   const enrichmentApproval = project.approvals.find((a) =>
@@ -2240,7 +2288,7 @@ Deno.test(
 // ── Refusal — no human-approved MRTR decision ─────────────────────────────────
 
 Deno.test(
-  "model.write-requirements executor refuses when no exact human-approved MRTR decision is bound",
+  "model.write-requirements@2 refuses queueing when no exact human-approved MRTR decision is bound",
   async () => {
     const directory = await Deno.makeTempDir({ prefix: "casys-reqs-no-mrtr-" });
     try {
@@ -2267,7 +2315,7 @@ Deno.test(
         revision: reqsRun.resultSnapshot.revision,
         subjectId: archBasis.subjectId,
       };
-      let project = await fixture.commands.appendChange(AGENT, {
+      const project = await fixture.commands.appendChange(AGENT, {
         ...ctx(
           "append-reqs-no-decision",
           initialResult.revision,
@@ -2281,35 +2329,23 @@ Deno.test(
           dependsOnWorkItemIds: ["wi:architecture"],
           decisionIds: [], // No decisions — will trigger the refusal.
           operation: {
-            ...MODEL_WRITE_REQUIREMENTS_OPERATION,
+            ...MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
             bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
           },
         }],
         requiredDecisions: [],
       });
-      project = await fixture.commands.queueRun(AGENT, {
-        ...ctx("queue-reqs-nd", project.revision),
-        runId: "run:requirements-no-decision",
-        workItemId: "wi:requirements-no-decision",
-        summary: "Test no-MRTR refusal.",
-        basis: archBasis,
-      });
-      const noMrtrCmd = {
-        commandId: "agent-no-mrtr",
-        projectId: PROJECT_ID,
-        expectedRevision: project.revision,
-        issuedAt: "2026-08-08T12:20:00.000Z",
-        runId: "run:requirements-no-decision",
-      };
       await assertRejects(
         () =>
-          makeExecutor(fixture, {
-            syson: new InitialReqsSyson(),
-            directory,
-            leaseSubdir: "no-mrtr-leases",
-          }).execute(AGENT, noMrtrCmd),
+          fixture.commands.queueRun(AGENT, {
+            ...ctx("queue-reqs-nd", project.revision),
+            runId: "run:requirements-no-decision",
+            workItemId: "wi:requirements-no-decision",
+            summary: "Test no-MRTR refusal.",
+            basis: archBasis,
+          }),
         EngineeringProjectCommandError,
-        "human-approved",
+        "exactly one approved decision",
       );
     } finally {
       await Deno.remove(directory, { recursive: true });
@@ -2685,7 +2721,7 @@ Deno.test(
           dependsOnWorkItemIds: ["wi:architecture"],
           decisionIds: ["decision:reqs-tampered"],
           operation: {
-            ...MODEL_WRITE_REQUIREMENTS_OPERATION,
+            ...MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
             bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
           },
         }],
@@ -2705,7 +2741,10 @@ Deno.test(
         ...({ inputFingerprint: wrongFp } as Record<string, unknown>),
         proposal: {
           summary: "Tampered",
-          parameters: WING_REQS_PARAMS_INITIAL, // executor re-computes from these
+          parameters: await tracedRequirementsParameters(
+            project,
+            WING_REQS_PARAMS_INITIAL,
+          ), // executor re-computes from these
         },
       });
       const tamperedApproval = project.approvals.find((a) =>
@@ -2793,7 +2832,7 @@ Deno.test(
       const captureText = await fixture.reqsCaptures.read(reqsArtifact.fingerprint);
       assertExists(captureText, "requirements capture must be readable");
       const capture = JSON.parse(captureText) as Record<string, unknown>;
-      assertEquals(capture.schemaVersion, "requirements-capture/3.0");
+      assertEquals(capture.schemaVersion, "requirements-capture/5.0");
       assertEquals(capture.containerComponent, "Wing");
       assertEquals(capture.partDefName, "WingRequirements");
       assertEquals(capture.target, {
@@ -2945,10 +2984,34 @@ Deno.test(
         "completed",
       );
 
+      // Completed @2 evidence reopens its immutable original brief. A later
+      // approved brief must not make the historical replay require the new
+      // current source or trigger a second provider call.
+      const briefs = new ProjectBriefCommandService(
+        fixture.projects,
+        () => "2026-08-08T12:30:00.000Z",
+      );
+      const current = (await fixture.projects.get(PROJECT_ID))!;
+      const successor = await briefs.proposeBrief(AGENT, {
+        ...ctx("propose-successor-brief", current.revision),
+        items: current.framing!.currentBrief!.items.map((item) =>
+          item.id === "success"
+            ? { ...item, statement: "A successor brief changes this criterion." }
+            : item
+        ),
+      });
+      const afterSuccessor = await briefs.approveBrief(HUMAN, {
+        ...ctx("approve-successor-brief", successor.revision),
+        briefSnapshotId: successor.framing!.proposedBrief!.id,
+        briefRevision: successor.framing!.proposedBrief!.revision,
+        rationale: "Approve a successor after the writer completed.",
+        inputFingerprint: successor.framing!.proposalReview!.inputFingerprint,
+      });
+
       // Second execution with the same command — must return the already-completed project.
       const second = await makeExecutor(fixture, { syson, directory }).execute(
         AGENT,
-        { ...cmd, expectedRevision: first.revision },
+        { ...cmd, expectedRevision: afterSuccessor.revision },
       );
       assertEquals(
         second.agentRuns.find((r) => r.id === "run:requirements")?.status,
@@ -3098,10 +3161,10 @@ Deno.test(
           id: "wi:requirements-dummy-stripped",
           phaseId: "dummy-stripped",
           owner: "agent",
-          dependsOnWorkItemIds: ["wi:requirements"],
+          dependsOnWorkItemIds: ["wi:requirements", "wi:baseline"],
           decisionIds: [],
           operation: {
-            ...MODEL_WRITE_REQUIREMENTS_OPERATION,
+            ...SYSON_MODEL_SEED_OPERATION,
             bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
           },
         }],
@@ -3153,7 +3216,7 @@ Deno.test(
           dependsOnWorkItemIds: ["wi:requirements"],
           decisionIds: ["decision:reqs-cliquet"],
           operation: {
-            ...MODEL_WRITE_REQUIREMENTS_OPERATION,
+            ...MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
             bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" } }],
           },
         }],
@@ -3172,7 +3235,10 @@ Deno.test(
         baseSnapshot: strippedBasisRef,
         proposal: {
           summary: "Wing requirements re-attempt",
-          parameters: WING_REQS_PARAMS_INITIAL,
+          parameters: await tracedRequirementsParameters(
+            proj,
+            WING_REQS_PARAMS_INITIAL,
+          ),
         },
       });
       const cliquetApproval = proj.approvals.find((a) =>
@@ -3484,7 +3550,7 @@ Deno.test(
             runId: queued.runId,
           }),
         EngineeringProjectCommandError,
-        "not exact requirements-capture/3.0 evidence",
+        "not exact requirements-capture/3.0 or 4.0 evidence",
       );
       assertEquals(syson.calls, []);
       assertEquals(await attempts.readRun(PROJECT_ID, queued.runId), undefined);
@@ -3557,7 +3623,7 @@ Deno.test(
             leaseSubdir: "v2-non-authority-leases",
           }).execute(AGENT, command),
         EngineeringProjectCommandError,
-        "not exact requirements-capture/3.0 evidence",
+        "not exact requirements-capture/3.0 or 4.0 evidence",
       );
 
       assertEquals(captureReads, 1, "the old capture is read once then rejected");
@@ -4201,7 +4267,7 @@ Deno.test(
         lease: new FileEngineeringProjectRunLease(`${directory}/reqs-leases`),
         ...successfulCapabilityRuntimeFor(
           PROJECT_ID,
-          MODEL_WRITE_REQUIREMENTS_OPERATION,
+          MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
           "model.author-system",
         ),
         capabilityRuntimeSession: session,
@@ -4268,7 +4334,7 @@ Deno.test(
             ),
             ...successfulCapabilityRuntimeFor(
               PROJECT_ID,
-              MODEL_WRITE_REQUIREMENTS_OPERATION,
+              MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
               "model.author-system",
             ),
             capabilityRuntimeSession: session,
@@ -4331,7 +4397,7 @@ Deno.test(
             ),
             ...successfulCapabilityRuntimeFor(
               PROJECT_ID,
-              MODEL_WRITE_REQUIREMENTS_OPERATION,
+              MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
               "model.author-system",
             ),
             capabilityRuntimeSession: session,
@@ -4560,7 +4626,7 @@ Deno.test(
             leaseSubdir: "prior-constraint-identity-leases",
           }).execute(AGENT, command),
         EngineeringProjectCommandError,
-        "Prior V3 ConstraintUsage identity mismatch",
+        "Prior ConstraintUsage identity mismatch",
       );
 
       assertEquals(
@@ -4759,10 +4825,19 @@ Deno.test(
     try {
       const fixture = await queuedRequirementsFixture(directory);
       const proposal = parseRequirementsProposalParameters(WING_REQS_PARAMS_INITIAL);
+      const project = (await fixture.projects.get(PROJECT_ID))!;
+      const traced = parseTracedRequirementsProposalParameters(
+        await tracedRequirementsParameters(project, WING_REQS_PARAMS_INITIAL),
+      );
+      const briefProvenance = await buildRequirementsBriefProvenance({
+        brief: project.framing!.currentBrief!,
+        basis: approvedBriefBasisForProject(project),
+        proposal: traced,
+      });
       const requirements = requirementEntriesToOracleRequirements(
         proposal.requirements,
       );
-      const plan = await sha256Fingerprint({
+      const requirementsPlan = await sha256Fingerprint({
         partDefName: proposal.partDefName,
         target: {
           kind: "part-definition",
@@ -4770,6 +4845,10 @@ Deno.test(
           elementId: "wing-def-001",
         },
         requirements,
+      });
+      const plan = await sha256Fingerprint({
+        requirementsPlan: requirementsPlan.digest,
+        briefProvenance,
       });
       await fixture.reqsAttempts.begin({
         projectId: PROJECT_ID,
@@ -4793,9 +4872,9 @@ Deno.test(
         EngineeringProjectCommandError,
         "Refusing to adopt a homonym",
       );
-      const project = await fixture.projects.get(PROJECT_ID);
+      const after = await fixture.projects.get(PROJECT_ID);
       assertEquals(
-        project?.agentRuns.find((run) => run.id === fixture.queued.runId)
+        after?.agentRuns.find((run) => run.id === fixture.queued.runId)
           ?.resultSnapshot,
         undefined,
       );
@@ -5210,7 +5289,7 @@ Deno.test(
         if (name === "extra root field") {
           assertEquals(
             error.message,
-            "The prior requirements capture is not exact requirements-capture/3.0 evidence: " +
+            "The prior requirements capture is not exact requirements-capture/3.0 or 4.0 evidence: " +
               "Requirements capture has non-exact fields.",
           );
         }

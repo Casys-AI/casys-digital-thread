@@ -45,14 +45,13 @@ Attribute names are currently unique across the whole proposal, not merely withi
 parent.
 
 Initial mode inserts the package, definitions and attributes through bounded textual
-statements. Typed occurrences use a native lowering: the adapter creates `PartUsage`
-and `FeatureTyping`, resolves the reviewed target definition's semantic identity through
+statements. Typed occurrences use a native lowering: the adapter creates `PartUsage` and
+`FeatureTyping`, resolves the reviewed target definition's semantic identity through
 code-owned AQL, sets `FeatureTyping.type`, then rereads the exact triple. Enrichment
 mode adopts exact existing parent→usage→target triples and adds missing definitions,
-usages or attributes.
-Mistyped or ambiguous usages fail closed. An old structural edge cannot disappear
-through this operation; removal or retyping requires another reviewed authority that is
-not currently generic.
+usages or attributes. Mistyped or ambiguous usages fail closed. An old structural edge
+cannot disappear through this operation; removal or retyping requires another reviewed
+authority that is not currently generic.
 
 No port, interface, item or flow, connection, allocation, multiplicity, inheritance,
 state, activity, action, view, diagram, stereotype, typed attribute value or arbitrary
@@ -111,6 +110,17 @@ Requirements enrichment is monotone by metric: identical entries are adopted, ne
 metrics may be added, but a changed threshold/operator/unit or a missing prior metric is
 refused. Provider replacement uses delete-then-reinsert behind a dedicated WAL; an
 uncertain partial outcome is quarantined rather than retried blindly.
+
+## Unchanged requirements recapture
+
+`model.recapture-requirements@1` is a separate provider-read-only route. A new closed
+MRTR binds the current monotone architecture and exact requirements predecessor; the
+server rereads native ownership, typing, RequirementUsage/ConstraintUsage identities and
+complete extracted integer-scalar criteria. It never inserts, deletes or repairs.
+Historical `requirements-capture/3.0` remains paired with `model.write-requirements@1`;
+recapture publishes `requirements-capture/4.0` with its exact predecessor. New Thread
+requirements receive no inherited evaluation or verdict. Local qualification:
+[requirements recapture](../../../how-to/extend/qualify-requirements-recapture.md).
 
 ## Provider-free SysML is a different path
 

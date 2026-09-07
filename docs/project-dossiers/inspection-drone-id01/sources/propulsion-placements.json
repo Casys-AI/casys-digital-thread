@@ -1,0 +1,135 @@
+{
+  "schemaVersion": "cad-immediate-placement-source/1.0",
+  "unitSystem": "mm",
+  "placementConvention": "right-handed-mm-extrinsic-xyz-degrees",
+  "placements": [
+    {
+      "usageElementId": "117a5eb0-84e7-4d83-a1cb-e05d53860158",
+      "partDefinitionElementId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+      "placement": {
+        "translationMm": [
+          100,
+          0,
+          16.6
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "usageElementId": "22bf7d13-7332-4a44-acae-6a2356ffa6dc",
+      "partDefinitionElementId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+      "placement": {
+        "translationMm": [
+          0,
+          100,
+          16.6
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          90
+        ]
+      }
+    },
+    {
+      "usageElementId": "2af4870f-8d50-4c48-8c2e-6e3ef1a88209",
+      "partDefinitionElementId": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+      "placement": {
+        "translationMm": [
+          0,
+          -100,
+          0
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          -90
+        ]
+      }
+    },
+    {
+      "usageElementId": "5155b333-d1b7-43c9-8b38-42fd2c0be55d",
+      "partDefinitionElementId": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+      "placement": {
+        "translationMm": [
+          0,
+          100,
+          0
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          90
+        ]
+      }
+    },
+    {
+      "usageElementId": "698c6a23-e848-4782-995e-fedfecbd15aa",
+      "partDefinitionElementId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+      "placement": {
+        "translationMm": [
+          -100,
+          0,
+          16.6
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          180
+        ]
+      }
+    },
+    {
+      "usageElementId": "9276f935-52cd-4699-bcce-c2cc3bc54500",
+      "partDefinitionElementId": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+      "placement": {
+        "translationMm": [
+          100,
+          0,
+          0
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "usageElementId": "a77d99bc-14a6-48bb-bdbf-33e6b001e39a",
+      "partDefinitionElementId": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+      "placement": {
+        "translationMm": [
+          -100,
+          0,
+          0
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          180
+        ]
+      }
+    },
+    {
+      "usageElementId": "d253e7d0-2a2b-4c7d-9670-6b72f030bad8",
+      "partDefinitionElementId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+      "placement": {
+        "translationMm": [
+          0,
+          -100,
+          16.6
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          -90
+        ]
+      }
+    }
+  ]
+}

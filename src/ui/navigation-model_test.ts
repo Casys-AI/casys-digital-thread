@@ -68,13 +68,13 @@ Deno.test("Every space carries a label and a description for wayfinding", () => 
   }
 });
 
-Deno.test("The five spaces stay distinct and stable", () => {
-  assertEquals(PROJECT_VIEWS.length, 5);
+Deno.test("The four spaces stay distinct and stable", () => {
+  assertEquals(PROJECT_VIEWS.length, 4);
   assertEquals(
     PROJECT_VIEWS.map((view) => view.id),
-    ["overview", "work", "product", "verification", "operations"],
+    ["overview", "work", "verification", "operations"],
   );
-  assertEquals(new Set(PROJECT_VIEWS.map((view) => view.label)).size, 5);
+  assertEquals(new Set(PROJECT_VIEWS.map((view) => view.label)).size, 4);
 });
 
 Deno.test("review deep links round-trip through a fixed fail-closed vocabulary", () => {
@@ -99,9 +99,10 @@ Deno.test("review deep links round-trip through a fixed fail-closed vocabulary",
   });
 });
 
-Deno.test("Product has one exact handoff route and rejects retired facets", () => {
+Deno.test("retired Product fragment falls back to the default project space", () => {
+  assertEquals(parseProjectViewHash("#product"), DEFAULT_PROJECT_VIEW);
   assertEquals(parseProjectLocationHash("#product"), {
-    view: "product",
+    view: DEFAULT_PROJECT_VIEW,
   });
   assertEquals(
     parseProjectLocationHash("#product/requirements"),

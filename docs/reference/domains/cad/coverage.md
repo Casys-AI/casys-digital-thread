@@ -8,27 +8,33 @@ admission can seal it, and the fixed execution paths can reopen the same sealed 
 The detailed grammar and the authority of each path remain in
 [Build123d closed subset v1](build123d-closed-subset-v1.md) and
 [CAD execution paths](execution-paths.md). The direct workspace-closure form is defined
-separately in [Build123d workspace-closure lowering v1](build123d-workspace-closure-lowering-v1.md).
+separately in
+[Build123d workspace-closure lowering v1](build123d-workspace-closure-lowering-v1.md).
 
 ## Covered now
 
-| Area               | Exact covered surface                                                                                                                                                                                                                                                                                                                                                                            |
-| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Values             | Module-level finite decimal values, unary/binary arithmetic, earlier values, `pi`/`e`/`tau`, and reviewed flat lists.                                                                                                                                                                                                                                                                            |
-| Solids             | `Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Wedge`.                                                                                                                                                                                                                                                                                                                                           |
-| Sketches           | `Rectangle`, `Circle`, `Ellipse`, `RegularPolygon`. A sketch cannot be `result`.                                                                                                                                                                                                                                                                                                                 |
-| Placement          | `Pos`, `Rot`, prior placements and their left-associative products; `Plane.XY`, `XZ`, `YZ`, `YX`, `ZX`, `ZY` applied to a solid or sketch.                                                                                                                                                                                                                                                       |
-| Shape algebra      | Same-kind `+` and `-`; `scale` on a solid; reviewed `fillet`/`chamfer`, including reviewed `solid.edges()` forms; `extrude`, `offset`, `revolve` about `Axis.X`, `Y`, or `Z`; `Compound(children=[...])` over prior solids.                                                                                                                                                                      |
-| Result             | One module-level `result`, resolving to a solid.                                                                                                                                                                                                                                                                                                                                                 |
-| Admission          | No unresolved construct; unique server-derived `represents` artifact binding and `parameterizes` bindings; at least one finite named numeric literal must causally reach `result`.                                                                                                                                                                                                               |
-| Direct workspace closure V1 | The Build123d 3.0 profile accepts the exact direct scalar-leaf form, lowers it to one D4-valid script, and carries its `technical-unit:<closure sha256>` plus full manifest through V4 capture/reopen, `technical-compilation/2.0`, and `technical-compilation-admission/4.0`. This is code-and-test coverage, not a claim that any caller can select a lowerer, path, provider or runtime. |
-| Geometry authority | A system/bundle admitted export produces canonical STEP/GLTF draft then `design.write-geometry@1` seals canonical STEP. A target admitted export can seal exactly one PartDefinition through `geometry-part-capture/1.0`. The bounded module path reopens exact immediate child geometries plus an exact placement capture, and the same sealer can publish one composite PartDefinition STEP/GLB. Neither path infers a physical product verdict. The local isolated path writes a validated AP214 STEP privately and only a documentary Thread capture. |
+| Area                        | Exact covered surface                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| --------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Values                      | Module-level finite decimal values, unary/binary arithmetic, earlier values, `pi`/`e`/`tau`, and reviewed flat lists.                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| Solids                      | `Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, `Wedge`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| Sketches                    | `Rectangle`, `Circle`, `Ellipse`, `RegularPolygon`. A sketch cannot be `result`.                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Placement                   | `Pos`, `Rot`, prior placements and their left-associative products; `Plane.XY`, `XZ`, `YZ`, `YX`, `ZX`, `ZY` applied to a solid or sketch.                                                                                                                                                                                                                                                                                                                                                                                                                |
+| Shape algebra               | Same-kind `+` and `-`; `scale` on a solid; reviewed `fillet`/`chamfer`, including reviewed `solid.edges()` forms; `extrude`, `offset`, `revolve` about `Axis.X`, `Y`, or `Z`; `Compound(children=[...])` over prior solids.                                                                                                                                                                                                                                                                                                                               |
+| Result                      | One module-level `result`, resolving to a solid.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| Admission                   | No unresolved construct; unique server-derived `represents` artifact binding and `parameterizes` bindings; at least one finite named numeric literal must causally reach `result`.                                                                                                                                                                                                                                                                                                                                                                        |
+| Direct workspace closure V1 | The Build123d 3.0 profile accepts the exact direct scalar-leaf form, lowers it to one D4-valid script, and carries its `technical-unit:<closure sha256>` plus full manifest through V4 capture/reopen, `technical-compilation/2.0`, and `technical-compilation-admission/4.0`. This is code-and-test coverage, not a claim that any caller can select a lowerer, path, provider or runtime.                                                                                                                                                               |
+| Geometry authority          | A system/bundle admitted export produces canonical STEP/GLTF draft then `design.write-geometry@1` seals canonical STEP. A target admitted export can seal exactly one PartDefinition through `geometry-part-capture/1.0`. The bounded module path reopens exact immediate child geometries plus an exact placement capture, and the same sealer can publish one composite PartDefinition STEP/GLB. Neither path infers a physical product verdict. The local isolated path writes a validated AP214 STEP privately and only a documentary Thread capture. |
 
-The active closure slice is proven by focused code tests for lowering, V4 capture and
+The active closure slice has focused code-test evidence for lowering, V4 capture and
 reopen, V2 preview, V4 admission/replay, and the canonical and isolated review
-boundaries. A real private `mcp-build123d` execution from a lowered multi-file closure
-is still pending. It must not be represented as runtime proof, canonical geometry or a
-relaxation of either path's existing authority.
+boundaries. Separately, the live WH01 walk on 2026-09-06 exercised one exact two-file
+direct scalar-leaf closure through admission, canonical export, and
+`design.write-geometry@1`; its run identities and outputs are recorded in the
+[WH01 runtime evidence](../../../../examples/wall-hook-wh01/runtime-evidence.md#cad-closure-and-canonical-geometry).
+That dated execution does not establish arbitrary multi-file closure execution, a Python
+import environment, execution on other platforms, module execution, or
+`productionEligible`; it adds neither isolated-path authority nor any relaxation of the
+existing path authorities.
 
 Named single-root runtime proof: MCS-02 captured an attachment-rooted RailFrame source,
 sealed its admission at Thread r4, and published one canonical target STEP at r7 before
@@ -36,16 +42,30 @@ the downstream FEA branch. See
 [MCS-02 CAD](../../../project-dossiers/motorized-camera-slider-mcs02/domains/cad.md).
 That proof covers one `PartDefinition`, not an assembly.
 
-MSM01 then proved the bounded immediate-module path: three independently admitted
-child roots were sealed as canonical PartDefinition geometries; after the required
+MSM01 then proved the bounded immediate-module path: three independently admitted child
+roots were sealed as canonical PartDefinition geometries; after the required
 `model.capture-part-definitions@1` structural capture and an exact three-usage placement
 capture, `project_geometry_module_export` produced a ModularSensorMount STEP/GLB draft
 and `design.write-geometry@1` sealed it. The associated L3/L4/L5 assembly-integrity
 branch passed only the exact static checks it records: child import, occurrence
-coverage, captured placements, BRep reopening and intersection observation. It does
-not prove joints, clearance, motion, loads, fabricability or safety. Exact assets,
+coverage, captured placements, BRep reopening and intersection observation. It does not
+prove joints, clearance, motion, loads, fabricability or safety. Exact assets,
 placements and the L3/L4/L5 boundary are recorded in the
 [MSM01 CAD dossier](../../../project-dossiers/modular-sensor-mount-msm01/domains/cad.md).
+
+ID01 then proved bounded manual composition at two module levels on 2026-09-06 UTC: the
+fixed qualified assembler consumed six exact canonical subsystem module STEP files, and
+`design.write-geometry@1` sealed InspectionDrone at Thread r66. Separate real
+assembly-integrity L3/L4/L5 passed only the five fixed geometric criteria at r67-r69,
+with zero gate claims. Focused source tests also exercise child module capture/STEP
+identity, target/STEP/stale refusals and transitive leaf-to-child-to-root retirement;
+they are not runtime evidence of replacement. The
+[exact canary ledger](../../../project-dossiers/inspection-drone-id01/nested-root-canary-20260907.md)
+separates those proofs. Existing per-invocation bounds and schemas remain unchanged.
+Mixed immediate part/module runtime composition, deeper/unbounded nesting and automatic
+ancestor rebuilding are not promoted by this case; physical joints and loads remain
+outside this geometry capability. See the
+[bounded qualification route](../../../how-to/extend/qualify-nested-cad-modules.md).
 
 ## Not covered
 
@@ -67,8 +87,8 @@ These states must remain literal: they are not degraded success.
   `fileId`, `profileId` or `resourceRef`. Isolated execution still starts from
   `compile.seal-admission@3`.
 - Modelica and circuit-only SPICE multi-file closures are not enabled by the Build123d
-  lowering. They remain `source.dependency-lowering-unavailable`; a capture or
-  navigable closure is not an executable language environment.
+  lowering. They remain `source.dependency-lowering-unavailable`; a capture or navigable
+  closure is not an executable language environment.
 - [Assembly integrity](assembly-integrity.md) is a separate post-publication evidence
   family, not a CAD language construct or an export path. L3 first reopens the
   [exact static assembly basis](static-assembly-basis.md), then the current
@@ -101,16 +121,16 @@ closed input, neutral receipt, exact-output, and recovery contract.
 ## Targeted PartDefinition seal
 
 `geometry-part-manifest/1.0` and `geometry-part-draft-capture/1.1` are a separate
-target-only review family. Version `geometry-part-draft-capture/1.0` is unsupported:
-it retained a provider container path, so readers do not migrate or dual-read it.
-Promotion remains exclusively `design.write-geometry@1`: it
-reopens the human-signed target MRTR and the exact capture-backed
-`compile.seal-admission@3` artifact named by the v2 target-bound stamp, re-crossing
-admitted source bytes/hash plus the unique P1 `represents` PartDefinition, passive
-source analysis and exact reviewed assets. It never reruns Build123d. The resulting
-`geometry-part-capture/1.0` repeats the exact PartDefinition element ID, architecture
-basis, admission/source hash and one authoritative STEP hash. It has no `assembly`,
-`components`, `occurrences`, `placements` or `partDefinitions` array.
+target-only review family. Version `geometry-part-draft-capture/1.0` is unsupported: it
+retained a provider container path, so readers do not migrate or dual-read it. Promotion
+remains exclusively `design.write-geometry@1`: it reopens the human-signed target MRTR
+and the exact capture-backed `compile.seal-admission@3` artifact named by the v2
+target-bound stamp, re-crossing admitted source bytes/hash plus the unique P1
+`represents` PartDefinition, passive source analysis and exact reviewed assets. It never
+reruns Build123d. The resulting `geometry-part-capture/1.0` repeats the exact
+PartDefinition element ID, architecture basis, admission/source hash and one
+authoritative STEP hash. It has no `assembly`, `components`, `occurrences`, `placements`
+or `partDefinitions` array.
 
 Each target STEP asset uses the deterministic capture-scoped identity
 `cad-asset-<captureDigest>-target-<fileIndex>-<fileDigest>`. Different PartDefinitions

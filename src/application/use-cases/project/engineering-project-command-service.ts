@@ -68,6 +68,10 @@ import {
   applyProposeDecision,
 } from "./commands/engineering-decision-transitions.ts";
 import {
+  assertRequirementsDecisionProposalAtCommandBoundary,
+  assertRequirementsWriteQueueAdmissible,
+} from "./commands/requirements-brief-source-guard.ts";
+import {
   applyCancelQueuedRun,
   applyClaimRun,
   applyCompleteRun,
@@ -219,6 +223,12 @@ export class EngineeringProjectCommandService {
     command: ProposeDecisionCommand,
   ): Promise<EngineeringProjectSnapshot> {
     return this.apply(origin, "decision.propose", command, async (draft, appliedAt) => {
+      await assertRequirementsDecisionProposalAtCommandBoundary({
+        projects: this.store,
+        project: draft,
+        decisionId: command.decisionId,
+        proposal: command.proposal,
+      });
       await applyProposeDecision(draft, appliedAt, origin, command);
     });
   }
@@ -250,6 +260,11 @@ export class EngineeringProjectCommandService {
       );
     }
     return this.apply(origin, "agent-run.queue", command, async (draft, appliedAt) => {
+      await assertRequirementsWriteQueueAdmissible({
+        projects: this.store,
+        project: draft,
+        workItemId: command.workItemId,
+      });
       await applyQueueRun(draft, appliedAt, origin, command, this.planning);
     });
   }

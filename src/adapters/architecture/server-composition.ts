@@ -3,9 +3,11 @@
  * contributions.
  *
  * Agent-authored seal stores stay distinct from the renderer SysML capture.
- * Write-architecture, write-requirements, part-definitions and the SysON seed
- * locate the publication through the generic lease-bound connection handle;
- * they never receive a URL. `model.seal-architecture-sysml@1` never receives
+ * Write-architecture, write-requirements and the SysON seed locate the
+ * author-bound publication through the generic lease-bound connection handle;
+ * part-definitions and requirements recapture locate the inspect-bound
+ * publication through a separate handle. They never receive a URL. Absence does not
+ * fall back to authoring. `model.seal-architecture-sysml@1` never receives
  * a provider client.
  * Requirements CAS is created once here so FEA, compilation basis, and ROP
  * reopen the same bytes.
@@ -54,10 +56,13 @@ import {
   ModelWriteArchitectureRunExecutor,
 } from "./renderer/model-write-architecture-run-executor.ts";
 import { FileRequirementsAttemptStore } from "./requirements/file-requirements-attempt-store.ts";
+import { FileRequirementsRecapturePublicationStore } from "./requirements/file-requirements-recapture-publication-store.ts";
 import {
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   ModelWriteRequirementsRunExecutor,
 } from "./requirements/model-write-requirements-run-executor.ts";
+import { ModelRecaptureRequirementsRunExecutor } from "./requirements/model-recapture-requirements-run-executor.ts";
+import { PrepareProjectRequirementsRecaptureReview } from "./requirements/capture-backed-requirements-recapture-reviewer.ts";
 import { FileSysonModelSeedAttemptStore } from "./seed/file-syson-model-seed-attempt-store.ts";
 import type { CapabilityRuntimeBoundMcpClient } from "../../application/ports/out/capability/capability-runtime-connection.ts";
 import { SysonModelSeedRunExecutor } from "./seed/syson-model-seed-run-executor.ts";
@@ -69,6 +74,9 @@ export {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   MODEL_WRITE_REQUIREMENTS_OPERATION,
 };
+export { MODEL_RECAPTURE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-recapture-proposal.ts";
+export { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-proposal.ts";
+export { MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-recapture-proposal.ts";
 
 export interface ArchitectureFoundationOptions {
   readonly recordedAnalysisDirectory: string;
@@ -106,29 +114,38 @@ export interface ArchitectureProjectOptions {
   readonly lease: EngineeringProjectRunLease;
   readonly liveUpdates: FileLiveThreadUpdateStore;
   /**
-   * Lease-bound SysON publication. Composition owns the trusted binding and
-   * `casys-syson` mapping; the executors never name the URL. The same generic
-   * locator is reused for assembly observation.
+   * Lease-bound SysON authoring publication. Composition owns the trusted
+   * `syson-author-system` binding and `casys-syson` mapping; seed, architecture
+   * write and requirements write never name the URL.
    */
   readonly sysonRuntimeConnection?: CapabilityRuntimeBoundMcpClient;
+  /**
+   * Lease-bound SysON inspection publication. Composition owns the trusted
+   * `syson-inspect-system` binding and the same `casys-syson` mapping;
+   * part-definitions and requirements recapture never name the URL. Absence
+   * does not fall back to authoring.
+   */
+  readonly sysonInspectRuntimeConnection?: CapabilityRuntimeBoundMcpClient;
   readonly foundation: ArchitectureFoundation;
   readonly sysonModelSeedAttemptDirectory: string;
   readonly architectureAttemptDirectory: string;
   readonly partDefinitionsCaptureDirectory: string;
   readonly partDefinitionsPublicationDirectory: string;
   readonly requirementsAttemptDirectory: string;
+  readonly requirementsRecapturePublicationDirectory: string;
   /** Cold operational envelope recheck before SysON seed/writes/reads. */
   readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
   /** JIT host session. Entered only after the final cold recheck. */
   readonly capabilityRuntimeSession?: Pick<
     CapabilityRuntimeExecutionSessionCoordinator,
-    "begin"
+    "begin" | "releaseRecorded"
   >;
 }
 
 export interface ArchitectureProject {
   readonly briefArchitectureReview: PrepareProjectBriefArchitectureReview;
   readonly briefRequirementsReview: PrepareProjectBriefRequirementsReview;
+  readonly requirementsRecaptureReview: PrepareProjectRequirementsRecaptureReview;
   readonly modelSealArchitectureSysml: ModelSealArchitectureSysmlRunExecutor;
   readonly sysonModelSeed: SysonModelSeedRunExecutor | undefined;
   readonly genericModelWriteArchitecture:
@@ -139,6 +156,9 @@ export interface ArchitectureProject {
     | undefined;
   readonly genericModelWriteRequirements:
     | ModelWriteRequirementsRunExecutor
+    | undefined;
+  readonly genericModelRecaptureRequirements:
+    | ModelRecaptureRequirementsRunExecutor
     | undefined;
 }
 
@@ -230,12 +250,28 @@ export function createArchitectureFoundation(
 export function createArchitectureProject(
   options: ArchitectureProjectOptions,
 ): ArchitectureProject {
-  const { foundation, sysonRuntimeConnection } = options;
+  const {
+    foundation,
+    sysonRuntimeConnection,
+    sysonInspectRuntimeConnection,
+  } = options;
   const briefRequirementsReview = new PrepareProjectBriefRequirementsReview({
     projects: options.projects,
   });
   const briefArchitectureReview = new PrepareProjectBriefArchitectureReview({
     projects: options.projects,
+  });
+  const requirementsAttemptStore = new FileRequirementsAttemptStore(
+    options.requirementsAttemptDirectory,
+  );
+  const requirementsRecaptureReview = new PrepareProjectRequirementsRecaptureReview({
+    projects: options.projects,
+    snapshots: options.snapshots,
+    architectureCaptures: foundation.genericArchitectureCaptures,
+    requirementsCaptures: foundation.requirementsCaptures,
+    seedCaptures: foundation.sysonModelSeedCaptures,
+    sysmlSourceAnalysis: foundation.sysmlSourceAnalysis,
+    attempts: requirementsAttemptStore,
   });
   const modelSealArchitectureSysml = new ModelSealArchitectureSysmlRunExecutor({
     projects: options.projects,
@@ -279,7 +315,7 @@ export function createArchitectureProject(
       liveUpdates: options.liveUpdates,
     })
     : undefined;
-  const genericModelCapturePartDefinitions = sysonRuntimeConnection
+  const genericModelCapturePartDefinitions = sysonInspectRuntimeConnection
     ? new ModelCapturePartDefinitionsRunExecutor({
       projects: options.projects,
       commands: options.commands,
@@ -290,7 +326,7 @@ export function createArchitectureProject(
         ...PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
         directory: options.partDefinitionsCaptureDirectory,
       }),
-      capabilityRuntimeConnection: sysonRuntimeConnection,
+      capabilityRuntimeConnection: sysonInspectRuntimeConnection,
       lease: options.lease,
       publications: new FilePartDefinitionsPublicationStore(
         options.partDefinitionsPublicationDirectory,
@@ -308,9 +344,7 @@ export function createArchitectureProject(
       architectureCaptures: foundation.genericArchitectureCaptures,
       sysmlSourceAnalysis: foundation.sysmlSourceAnalysis,
       captures: foundation.requirementsCaptures,
-      attempts: new FileRequirementsAttemptStore(
-        options.requirementsAttemptDirectory,
-      ),
+      attempts: requirementsAttemptStore,
       capabilityRuntimeConnection: sysonRuntimeConnection,
       lease: options.lease,
       capabilityRuntime: options.capabilityRuntime,
@@ -318,13 +352,35 @@ export function createArchitectureProject(
       liveUpdates: options.liveUpdates,
     })
     : undefined;
+  const genericModelRecaptureRequirements = sysonInspectRuntimeConnection
+    ? new ModelRecaptureRequirementsRunExecutor({
+      projects: options.projects,
+      commands: options.commands,
+      snapshots: options.snapshots,
+      architectureCaptures: foundation.genericArchitectureCaptures,
+      seedCaptures: foundation.sysonModelSeedCaptures,
+      captures: foundation.requirementsCaptures,
+      sysmlSourceAnalysis: foundation.sysmlSourceAnalysis,
+      review: requirementsRecaptureReview,
+      capabilityRuntimeConnection: sysonInspectRuntimeConnection,
+      lease: options.lease,
+      publications: new FileRequirementsRecapturePublicationStore(
+        options.requirementsRecapturePublicationDirectory,
+      ),
+      attempts: requirementsAttemptStore,
+      capabilityRuntime: options.capabilityRuntime,
+      capabilityRuntimeSession: options.capabilityRuntimeSession,
+    })
+    : undefined;
   return {
     briefArchitectureReview,
     briefRequirementsReview,
+    requirementsRecaptureReview,
     modelSealArchitectureSysml,
     sysonModelSeed,
     genericModelWriteArchitecture,
     genericModelCapturePartDefinitions,
     genericModelWriteRequirements,
+    genericModelRecaptureRequirements,
   };
 }

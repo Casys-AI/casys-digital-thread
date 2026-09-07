@@ -16,6 +16,13 @@ Decide explicitly whether the concept is:
 - an agent-authored, provider-free documentary source construct; or
 - neither, in which case it does not belong in this SysML surface yet.
 
+Provider-read-only recapture of unchanged requirements is a separate locally qualified
+route, not either writer above. Follow
+[qualify requirements recapture](qualify-requirements-recapture.md) for its exact
+predecessor/current-basis, MRTR, native reread and publication-replay contract. That
+runbook records its qualification state; this routing link does not enable the operation
+or claim product coverage.
+
 Do not make a source-seal construct writable merely because its parser recognizes it. Do
 not use a native SysON feature as the specification. Record the concept's ownership,
 identity, allowed cardinality, typing, value/unit semantics, admissible mutations,

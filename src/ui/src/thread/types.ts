@@ -23,6 +23,10 @@ import type {
   EngineeringEvidenceWorkbenchSnapshot,
 } from "../../../presentation/workbench/engineering/evidence.ts";
 import type {
+  EngineeringWorkbenchRequirementsBriefRequirementTrace,
+  EngineeringWorkbenchRequirementsBriefTrace,
+} from "../../../presentation/workbench/engineering/evidence.ts";
+import type {
   EngineeringPlanningActivity,
   EngineeringPlanningActivityMilestone,
   EngineeringPlanningAgentRunStatus,
@@ -149,6 +153,8 @@ export type {
   EngineeringWorkbenchCaseActivityJoin,
   EngineeringWorkbenchPhaseLane,
   EngineeringWorkbenchProjectPathProjection,
+  EngineeringWorkbenchRequirementsBriefRequirementTrace,
+  EngineeringWorkbenchRequirementsBriefTrace,
 } from "../../../presentation/workbench/engineering/evidence.ts";
 export type {
   EngineeringPlanningActivity,
@@ -216,7 +222,17 @@ function isEvidenceWorkbenchSnapshot(
     & Record<string, unknown>
     & Partial<EngineeringEvidenceWorkbenchSnapshot>;
   if (
-    !hasExactKeys(candidate, [
+    !hasAllowedKeys(candidate, [
+      "schemaVersion",
+      "surface",
+      "project",
+      "thread",
+      "projectPath",
+      "alignment",
+      "caseActivityJoins",
+      "unresolvedEvidenceReferences",
+      "requirementsBriefTraces",
+    ]) || !hasRequiredKeys(candidate, [
       "schemaVersion",
       "surface",
       "project",
@@ -235,7 +251,14 @@ function isEvidenceWorkbenchSnapshot(
       candidate.project,
       candidate.thread,
     ) ||
-    !isUnresolvedEvidenceReferenceList(candidate.unresolvedEvidenceReferences)
+    !isUnresolvedEvidenceReferenceList(
+      candidate.unresolvedEvidenceReferences,
+    ) ||
+    (candidate.requirementsBriefTraces !== undefined &&
+      !isRequirementsBriefTraceList(
+        candidate.requirementsBriefTraces,
+        candidate.thread,
+      ))
   ) {
     return false;
   }
@@ -263,6 +286,207 @@ function isEvidenceWorkbenchSnapshot(
       (alignment.currentThreadRevision === projectThreadRevision
         ? "aligned"
         : "thread-ahead");
+}
+
+function isRequirementsBriefTraceList(
+  value: unknown,
+  thread: EngineeringEvidenceWorkbenchSnapshot["thread"],
+): value is readonly EngineeringWorkbenchRequirementsBriefTrace[] {
+  if (!Array.isArray(value)) return false;
+  const artifactIds = new Set(thread.artifacts.map((artifact) => artifact.id));
+  const requirementIds = new Set(
+    thread.requirements.map((requirement) => requirement.id),
+  );
+  const seenArtifacts = new Set<string>();
+  return value.every((trace) => {
+    if (
+      !isRecord(trace) || typeof trace.artifactId !== "string" ||
+      !artifactIds.has(trace.artifactId) ||
+      seenArtifacts.has(trace.artifactId) ||
+      !isUniqueKnownRequirementIds(trace.threadRequirementIds, requirementIds)
+    ) return false;
+    seenArtifacts.add(trace.artifactId);
+    if (trace.status === "TRACE GAP") {
+      return hasExactKeys(trace, [
+        "artifactId",
+        "status",
+        "threadRequirementIds",
+      ]);
+    }
+    if (
+      trace.status !== "available" || !hasAllowedKeys(trace, [
+        "artifactId",
+        "status",
+        "threadRequirementIds",
+        "originalBrief",
+        "currentBrief",
+        "container",
+        "requirements",
+        "declaration",
+      ]) || !isBriefRevisionIdentity(trace.originalBrief) ||
+      (trace.currentBrief !== undefined &&
+        !isBriefRevisionIdentity(trace.currentBrief)) ||
+      (trace.declaration !== undefined &&
+        !isRetrospectiveDocumentaryDeclaration(
+          trace.declaration,
+          artifactIds,
+          trace.artifactId,
+        )) ||
+      !isBriefSourceImpact(trace.container) ||
+      !Array.isArray(trace.requirements)
+    ) return false;
+    const mapped = new Set<string>();
+    for (const requirement of trace.requirements) {
+      if (
+        !isRequirementsBriefRequirementTrace(requirement, requirementIds) ||
+        mapped.has(requirement.threadRequirementId)
+      ) return false;
+      mapped.add(requirement.threadRequirementId);
+    }
+    return mapped.size === trace.threadRequirementIds.length &&
+      trace.threadRequirementIds.every((id) => mapped.has(id));
+  });
+}
+
+function isRetrospectiveDocumentaryDeclaration(
+  value: unknown,
+  knownArtifactIds: ReadonlySet<string>,
+  documentArtifactId: string,
+): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "kind",
+    "linkedAt",
+    "artifactId",
+    "requirementsArtifactId",
+    "claimId",
+    "revision",
+  ]) && value.kind === "retrospective-documentary" &&
+    isCanonicalIsoTimestamp(value.linkedAt) &&
+    isStableIdentifier(value.artifactId) &&
+    value.artifactId === documentArtifactId &&
+    knownArtifactIds.has(value.artifactId) &&
+    typeof value.requirementsArtifactId === "string" &&
+    isStableIdentifier(value.requirementsArtifactId) &&
+    knownArtifactIds.has(value.requirementsArtifactId) &&
+    value.requirementsArtifactId !== documentArtifactId &&
+    typeof value.claimId === "string" &&
+    /^requirements-brief-claim-[a-f0-9]{64}$/.test(value.claimId) &&
+    isPositiveSafeInteger(value.revision);
+}
+
+function isCanonicalIsoTimestamp(value: unknown): boolean {
+  if (typeof value !== "string" || !Number.isFinite(Date.parse(value))) {
+    return false;
+  }
+  try {
+    return new Date(value).toISOString() === value;
+  } catch {
+    return false;
+  }
+}
+
+function isStableIdentifier(value: unknown): boolean {
+  return typeof value === "string" &&
+    /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/.test(value);
+}
+
+function isUniqueKnownRequirementIds(
+  value: unknown,
+  known: ReadonlySet<string>,
+): value is readonly string[] {
+  return Array.isArray(value) && new Set(value).size === value.length &&
+    value.every((id) => typeof id === "string" && known.has(id));
+}
+
+function isBriefRevisionIdentity(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "briefId",
+    "snapshotId",
+    "revision",
+  ]) && typeof value.briefId === "string" &&
+    typeof value.snapshotId === "string" &&
+    isPositiveSafeInteger(value.revision);
+}
+
+function isRequirementsBriefRequirementTrace(
+  value: unknown,
+  knownRequirementIds: ReadonlySet<string>,
+): value is EngineeringWorkbenchRequirementsBriefRequirementTrace {
+  if (
+    !isRecord(value) || !hasAllowedKeys(value, [
+      "threadRequirementId",
+      "requirementId",
+      "sourceItemId",
+      "originalSourceItem",
+      "currentSourceItem",
+      "state",
+    ]) || typeof value.threadRequirementId !== "string" ||
+    !knownRequirementIds.has(value.threadRequirementId) ||
+    typeof value.requirementId !== "string" ||
+    typeof value.sourceItemId !== "string" ||
+    !isBriefSourceImpact(value, ["threadRequirementId", "requirementId"])
+  ) return false;
+  return value.sourceItemId === value.originalSourceItem.id;
+}
+
+function isBriefSourceImpact(
+  value: unknown,
+  additionalAllowedKeys: readonly string[] = [],
+): value is {
+  readonly sourceItemId: string;
+  readonly originalSourceItem: {
+    readonly id: string;
+    readonly kind: string;
+    readonly statement: string;
+    readonly sourceRefs: readonly {
+      readonly kind: string;
+      readonly reference: string;
+    }[];
+  };
+  readonly currentSourceItem?: {
+    readonly id: string;
+    readonly kind: string;
+    readonly statement: string;
+    readonly sourceRefs: readonly {
+      readonly kind: string;
+      readonly reference: string;
+    }[];
+  };
+  readonly state: string;
+} {
+  if (
+    !isRecord(value) || !hasAllowedKeys(value, [
+      "sourceItemId",
+      "originalSourceItem",
+      "currentSourceItem",
+      "state",
+      ...additionalAllowedKeys,
+    ]) || typeof value.sourceItemId !== "string" ||
+    !isProjectedBriefItem(value.originalSourceItem) ||
+    value.sourceItemId !== value.originalSourceItem.id ||
+    (value.currentSourceItem !== undefined &&
+      !isProjectedBriefItem(value.currentSourceItem))
+  ) return false;
+  return value.state === "unchanged" || value.state === "changed" ||
+    value.state === "removed" || value.state === "brief-unavailable";
+}
+
+function isProjectedBriefItem(value: unknown): value is {
+  readonly id: string;
+  readonly kind: string;
+  readonly statement: string;
+  readonly sourceRefs: readonly {
+    readonly kind: string;
+    readonly reference: string;
+  }[];
+} {
+  return isRecord(value) && typeof value.id === "string" &&
+    typeof value.kind === "string" && typeof value.statement === "string" &&
+    Array.isArray(value.sourceRefs) &&
+    value.sourceRefs.every((source) =>
+      isRecord(source) && typeof source.kind === "string" &&
+      typeof source.reference === "string"
+    );
 }
 
 function isProjectPathProjection(
@@ -746,6 +970,13 @@ function hasAllowedKeys(
   allowed: readonly string[],
 ): boolean {
   return Object.keys(value).every((key) => allowed.includes(key));
+}
+
+function hasRequiredKeys(
+  value: Record<string, unknown>,
+  required: readonly string[],
+): boolean {
+  return required.every((key) => Object.hasOwn(value, key));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

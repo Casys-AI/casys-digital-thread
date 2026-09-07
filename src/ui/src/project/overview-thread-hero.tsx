@@ -30,9 +30,11 @@ import {
   type OverviewThreadD3FlowGroupPlacement,
   type OverviewThreadD3FlowNodePlacement,
   type OverviewThreadD3FlowRoutingState,
+  rememberOverviewThreadHullPositions,
 } from "./overview-thread-d3-flow-layout.ts";
 import type { ProjectPathActivityView } from "./model.ts";
 import type {
+  EngineeringWorkbenchRequirementsBriefTrace,
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
 } from "../thread/types.ts";
@@ -41,6 +43,15 @@ import type {
   ThreadViewerSessionsProjection,
 } from "../thread/viewer-sessions-client.ts";
 import { McpAppFrame } from "../thread/mcp-app-frame.tsx";
+import { overviewThreadSelectionConnections } from "./overview-thread-selection-model.ts";
+import { OverviewThreadSelectionNote } from "./overview-thread-selection-note.tsx";
+import { OverviewThreadRequirementsBriefTrace } from "./overview-thread-requirements-brief-trace.tsx";
+import { OverviewThreadBriefSourceNote } from "./overview-thread-brief-source-note.tsx";
+import { overviewDefaultViewerSessions } from "./overview-thread-viewer-discovery.ts";
+import {
+  buildOverviewHullContents,
+  type OverviewHullContent,
+} from "./overview-thread-hull-content.ts";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -80,6 +91,8 @@ import {
   overviewThreadViewerScreenDeltaToWorld,
   overviewThreadViewerScreenPointToWorld,
   resizeOverviewThreadViewerByScreenDelta,
+  separateOverviewThreadInitialViewer,
+  separateOverviewThreadViewers,
 } from "./overview-thread-viewer-geometry.ts";
 
 const OVERVIEW_GRAPH_TITLE_ID = "overview-thread-graph-title";
@@ -184,6 +197,7 @@ interface OverviewCanvasPanState {
 interface OverviewWhiteboardPersistenceHydration {
   readonly projectId: string | null;
   readonly restored: boolean;
+  readonly viewersRestored: boolean;
 }
 
 interface OverviewWhiteboardPendingPersistence {
@@ -198,8 +212,8 @@ const OVERVIEW_WHITEBOARD_INITIAL_TRANSFORM = {
   k: 1,
 } as const satisfies OverviewThreadWhiteboardTransform;
 const OVERVIEW_VIEWER_PADDING = 8;
-const OVERVIEW_VIEWER_DEFAULT_WIDTH = 340;
-const OVERVIEW_VIEWER_DEFAULT_HEIGHT = 280;
+const OVERVIEW_VIEWER_DEFAULT_WIDTH = 620;
+const OVERVIEW_VIEWER_DEFAULT_HEIGHT = 460;
 const OVERVIEW_VIEWER_MIN_WIDTH = 260;
 const OVERVIEW_VIEWER_MIN_HEIGHT = 210;
 const OVERVIEW_HULL_MONITOR_WIDTH = 360;
@@ -210,6 +224,8 @@ export function OverviewThreadHero({
   thread,
   projectId,
   viewerSessions,
+  viewerSessionsReady = true,
+  requirementsBriefTraces = [],
   activities = [],
   stages = [],
   immersive = false,
@@ -219,6 +235,11 @@ export function OverviewThreadHero({
   readonly thread: ThreadWorkbenchSnapshot;
   readonly projectId?: string;
   readonly viewerSessions?: ThreadViewerSessionsProjection;
+  /** False while the exact current session projection is unknown, not empty. */
+  readonly viewerSessionsReady?: boolean;
+  /** Optional server-sealed brief clauses for requirements selections. */
+  readonly requirementsBriefTraces?:
+    readonly EngineeringWorkbenchRequirementsBriefTrace[];
   readonly activities?: readonly ProjectPathActivityView[];
   readonly stages?: readonly OverviewThreadStageSummary[];
   readonly immersive?: boolean;
@@ -226,8 +247,8 @@ export function OverviewThreadHero({
   readonly onOpenActivity: () => void;
 }): JSX.Element {
   const view = useMemo(
-    () => buildOverviewThreadHero(thread, activities),
-    [thread, activities],
+    () => buildOverviewThreadHero(thread, activities, requirementsBriefTraces),
+    [thread, activities, requirementsBriefTraces],
   );
   const [groupPlacements, setGroupPlacements] = useState<
     Readonly<Record<string, OverviewThreadD3FlowGroupPlacement>>
@@ -235,6 +256,7 @@ export function OverviewThreadHero({
   const [nodePlacements, setNodePlacements] = useState<
     Readonly<Record<string, OverviewThreadD3FlowNodePlacement>>
   >({});
+  const [fixedGroupKey, setFixedGroupKey] = useState<string>();
   const [whiteboardTransform, setWhiteboardTransform] = useState<
     OverviewThreadWhiteboardTransform
   >(OVERVIEW_WHITEBOARD_INITIAL_TRANSFORM);
@@ -246,6 +268,18 @@ export function OverviewThreadHero({
   // capture/release across drag frames, but is intentionally excluded from
   // the persisted whiteboard and every Thread authority contract.
   const flowRoutingStateRef = useRef<OverviewThreadD3FlowRoutingState>();
+  const hullContents = useMemo(() =>
+    buildOverviewHullContents(
+      view.nodes,
+      viewerSessions?.sessions ?? [],
+      viewerSessions?.hierarchy,
+      groupPlacements,
+    ), [view.nodes, viewerSessions, groupPlacements]);
+  const groupStructureRowCounts = useMemo(() =>
+    Object.fromEntries(
+      [...hullContents].filter(([, content]) => content.mode === "structure")
+        .map(([key, content]) => [key, content.rows.length]),
+    ), [hullContents]);
   const radialLayout = useMemo(
     () =>
       buildOverviewThreadD3Layout(
@@ -282,22 +316,50 @@ export function OverviewThreadHero({
             topInset: 64,
             bottomInset: 104,
             groupPlacements,
+            groupStructureRowCounts,
+            avoidGroupOverlap: true,
+            fixedGroupKey,
             nodePlacements,
             previousRoutingState: flowRoutingStateRef.current,
           }
           : {
             groupPlacements,
+            groupStructureRowCounts,
+            avoidGroupOverlap: true,
+            fixedGroupKey,
             nodePlacements,
             previousRoutingState: flowRoutingStateRef.current,
           },
       ),
-    [groupPlacements, immersive, nodePlacements, view.edges, view.nodes],
+    [
+      fixedGroupKey,
+      groupPlacements,
+      groupStructureRowCounts,
+      immersive,
+      nodePlacements,
+      view.edges,
+      view.nodes,
+    ],
   );
   const flowLayoutRef = useRef(flowLayout);
   flowLayoutRef.current = flowLayout;
   useEffect(() => {
     flowRoutingStateRef.current = flowLayout.nextRoutingState;
   }, [flowLayout.nextRoutingState]);
+  const changeHullPlacement = (
+    key: string,
+    patch: OverviewThreadD3FlowGroupPlacement,
+  ) => {
+    whiteboardTouchedRef.current = true;
+    setFixedGroupKey(key);
+    setGroupPlacements((current) => {
+      const settled = rememberOverviewThreadHullPositions(
+        current,
+        flowLayoutRef.current.groups,
+      );
+      return { ...settled, [key]: { ...settled[key], ...patch } };
+    });
+  };
   const nodesByKey = useMemo(
     () => new Map(view.nodes.map((item) => [item.key, item])),
     [view.nodes],
@@ -325,6 +387,10 @@ export function OverviewThreadHero({
           session,
         ]),
       ),
+    [viewerSessionsByNodeKey],
+  );
+  const viewerNodeKeys = useMemo(
+    () => new Set(viewerSessionsByNodeKey.keys()),
     [viewerSessionsByNodeKey],
   );
   const persistenceProjectId = projectId &&
@@ -378,6 +444,9 @@ export function OverviewThreadHero({
   >(null);
   const [layoutMode, setLayoutMode] = useState<OverviewLayoutMode>("hierarchy");
   const [viewers, setViewers] = useState<readonly OverviewViewerState[]>([]);
+  const [autoShownNodeKeys, setAutoShownNodeKeys] = useState<readonly string[]>(
+    [],
+  );
   const [hullMonitor, setHullMonitor] = useState<OverviewHullMonitorState>();
   const [persistenceHydration, setPersistenceHydration] = useState<
     OverviewWhiteboardPersistenceHydration
@@ -385,6 +454,7 @@ export function OverviewThreadHero({
   const heroRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
   const worldRef = useRef<HTMLDivElement>(null);
+  const fitWhiteboardRef = useRef<() => void>(() => undefined);
   const dragRef = useRef<OverviewViewerDragState>();
   const resizeRef = useRef<OverviewViewerResizeState>();
   const hullMonitorDragRef = useRef<OverviewHullMonitorDragState>();
@@ -436,21 +506,71 @@ export function OverviewThreadHero({
       setGroupPlacements(restored.groupPlacements);
       setNodePlacements(restored.nodePlacements);
       setWhiteboardTransform(restored.transform);
-      setViewers(restored.viewers.map(overviewViewerFromPresentation));
+      setViewers(separateOverviewThreadViewers(
+        restored.viewers.map(overviewViewerFromPresentation),
+      ));
+      setAutoShownNodeKeys(
+        restored.autoShownNodeKeys ??
+          restored.viewers.map((viewer) => viewer.nodeKey),
+      );
     } else {
       setLayoutMode("hierarchy");
       setGroupPlacements({});
       setNodePlacements({});
       setWhiteboardTransform(OVERVIEW_WHITEBOARD_INITIAL_TRANSFORM);
       setViewers([]);
+      setAutoShownNodeKeys([]);
     }
     whiteboardTouchedRef.current = restored !== undefined;
+    setFixedGroupKey(undefined);
     skipNextAutoFitRef.current = restored !== undefined;
     setPersistenceHydration({
       projectId: persistenceProjectId ?? null,
       restored: restored !== undefined,
+      viewersRestored: viewerSessionsReady,
     });
   }, [persistenceProjectId]);
+  useEffect(() => {
+    if (persistenceHydration?.projectId !== (persistenceProjectId ?? null)) {
+      return;
+    }
+    setGroupPlacements((current) =>
+      rememberOverviewThreadHullPositions(current, flowLayout.groups)
+    );
+  }, [
+    flowLayout.groups,
+    persistenceHydration?.projectId,
+    persistenceProjectId,
+  ]);
+  useEffect(() => {
+    if (
+      !viewerSessionsReady ||
+      persistenceHydration?.projectId !== (persistenceProjectId ?? null) ||
+      persistenceHydration.viewersRestored
+    ) return;
+    // Layout can hydrate immediately. Viewer intent must wait for the first
+    // exact session replacement; an in-flight read is not an empty registry.
+    // Do not restore layout again or overwrite movements made while loading.
+    const storage = overviewWhiteboardBrowserStorage();
+    const restored = persistenceProjectId && storage
+      ? loadOverviewThreadWhiteboardPresentation(
+        storage,
+        persistenceProjectId,
+        persistenceReconciliationRef.current,
+      )
+      : undefined;
+    setViewers(separateOverviewThreadViewers(
+      restored?.viewers.map(overviewViewerFromPresentation) ?? [],
+    ));
+    setAutoShownNodeKeys(
+      restored?.autoShownNodeKeys ?? restored?.viewers.map((viewer) =>
+        viewer.nodeKey
+      ) ?? [],
+    );
+    setPersistenceHydration((current) =>
+      current ? { ...current, viewersRestored: true } : current
+    );
+  }, [persistenceHydration, persistenceProjectId, viewerSessionsReady]);
   useEffect(() => {
     const visibleKeys = new Set(view.nodes.map((item) => item.key));
     const availableSessionIds = viewerSessions
@@ -549,6 +669,8 @@ export function OverviewThreadHero({
   useEffect(() => {
     if (
       !persistenceProjectId ||
+      !viewerSessionsReady ||
+      !persistenceHydration?.viewersRestored ||
       persistenceHydration?.projectId !== persistenceProjectId
     ) return;
     pendingPersistenceRef.current = {
@@ -559,6 +681,7 @@ export function OverviewThreadHero({
         nodePlacements,
         whiteboardTransform,
         viewers,
+        autoShownNodeKeys,
       ),
       reconciliation: persistenceReconciliation,
     };
@@ -576,13 +699,16 @@ export function OverviewThreadHero({
       }
     };
   }, [
+    autoShownNodeKeys,
     groupPlacements,
     layoutMode,
     nodePlacements,
     persistenceHydration?.projectId,
+    persistenceHydration?.viewersRestored,
     persistenceProjectId,
     persistenceReconciliation,
     viewers,
+    viewerSessionsReady,
     whiteboardTransform,
   ]);
   useEffect(() => {
@@ -594,11 +720,24 @@ export function OverviewThreadHero({
     };
   }, []);
   const activeKey = selectedKey ?? hoveredKey;
+  const selectedItem = selectedKey ? nodesByKey.get(selectedKey) : undefined;
+  const selectedConnections = useMemo(
+    () =>
+      selectedKey
+        ? overviewThreadSelectionConnections(thread.graph, selectedKey)
+        : [],
+    [selectedKey, thread.graph],
+  );
   const relatedKeys = useMemo(
     () => overviewRelatedNodeKeys(view.edges, activeKey),
     [view.edges, activeKey],
   );
   const toggleSelection = (item: OverviewHeroNode) => {
+    const session = viewerSessionsByNodeKey.get(item.key)?.[0];
+    if (session) {
+      openViewer({ kind: "session", nodeKey: item.key, sessionId: session.id });
+      return;
+    }
     setSelectedKey((current) => nextOverviewHeroSelection(current, item.key));
   };
   const bringViewerFront = (viewerId: string) => {
@@ -615,8 +754,14 @@ export function OverviewThreadHero({
       readonly nodeKey: string;
       readonly sessionId: string;
     },
+    automatic = false,
   ) => {
     const id = overviewViewerId(request);
+    setAutoShownNodeKeys((current) =>
+      current.includes(request.nodeKey)
+        ? current
+        : [...current, request.nodeKey]
+    );
     setViewers((current) => {
       const top = Math.max(0, ...current.map((viewer) => viewer.z)) + 1;
       if (current.some((viewer) => viewer.id === id)) {
@@ -660,12 +805,14 @@ export function OverviewThreadHero({
         ),
         overviewViewerGeometryConstraints(),
       );
-      return [...current, {
+      return separateOverviewThreadViewers([...current, {
         ...request,
         id,
-        ...geometry,
+        ...(automatic
+          ? separateOverviewThreadInitialViewer(geometry, current, worldWidth)
+          : geometry),
         z: top,
-      } as OverviewViewerState];
+      } as OverviewViewerState], id);
     });
     setSelectedKey(undefined);
     setHoveredKey(undefined);
@@ -687,6 +834,57 @@ export function OverviewThreadHero({
     }
     onOpenActivity();
   };
+  useEffect(() => {
+    if (
+      !viewerSessionsReady || !persistenceHydration?.viewersRestored ||
+      persistenceHydration.projectId !== (persistenceProjectId ?? null)
+    ) return;
+    const sessions = [...viewerSessionsById.values()];
+    if (sessions.length > 1 && viewerSessions?.hierarchy === undefined) return;
+    const unseen = sessions.filter((session) =>
+      session.anchor.kind !== "project-review" &&
+      !autoShownNodeKeys.includes(overviewThreadGraphRefKey(session.anchor))
+    );
+    if (unseen.length === 0) return;
+    const unseenIds = new Set(unseen.map((session) => session.id));
+    const defaults = overviewDefaultViewerSessions(
+      sessions,
+      viewerSessions?.hierarchy,
+    )
+      .filter((session) => unseenIds.has(session.id));
+    for (const session of defaults) {
+      if (session.anchor.kind === "project-review") continue;
+      openViewer({
+        kind: "session",
+        nodeKey: overviewThreadGraphRefKey(session.anchor),
+        sessionId: session.id,
+      }, true);
+    }
+    setAutoShownNodeKeys((
+      current,
+    ) => [
+      ...new Set([
+        ...current,
+        ...unseen.flatMap((session) =>
+          session.anchor.kind === "project-review"
+            ? []
+            : [overviewThreadGraphRefKey(session.anchor)]
+        ),
+      ]),
+    ]);
+    if (defaults.length > 0) {
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => fitWhiteboardRef.current())
+      );
+    }
+  }, [
+    autoShownNodeKeys,
+    persistenceHydration,
+    persistenceProjectId,
+    viewerSessions,
+    viewerSessionsById,
+    viewerSessionsReady,
+  ]);
   const closeViewer = (viewerId: string) => {
     const viewer = viewers.find((candidate) => candidate.id === viewerId);
     setViewers((current) => current.filter((viewer) => viewer.id !== viewerId));
@@ -723,25 +921,28 @@ export function OverviewThreadHero({
     event.preventDefault();
     event.stopPropagation();
     setViewers((current) =>
-      current.map((viewer) => {
-        if (viewer.id !== drag.viewerId) return viewer;
-        const delta = overviewThreadViewerScreenDeltaToWorld(
-          {
-            x: event.clientX - drag.startClientX,
-            y: event.clientY - drag.startClientY,
-          },
-          whiteboardTransform,
-        );
-        const geometry = normalizeOverviewThreadViewerGeometry(
-          {
-            ...viewer,
-            x: drag.originX + delta.x,
-            y: drag.originY + delta.y,
-          },
-          overviewViewerGeometryConstraints(),
-        );
-        return { ...viewer, ...geometry };
-      })
+      separateOverviewThreadViewers(
+        current.map((viewer) => {
+          if (viewer.id !== drag.viewerId) return viewer;
+          const delta = overviewThreadViewerScreenDeltaToWorld(
+            {
+              x: event.clientX - drag.startClientX,
+              y: event.clientY - drag.startClientY,
+            },
+            whiteboardTransform,
+          );
+          const geometry = normalizeOverviewThreadViewerGeometry(
+            {
+              ...viewer,
+              x: drag.originX + delta.x,
+              y: drag.originY + delta.y,
+            },
+            overviewViewerGeometryConstraints(),
+          );
+          return { ...viewer, ...geometry };
+        }),
+        drag.viewerId,
+      )
     );
   };
   const endViewerDrag = (event: ReactPointerEvent<HTMLElement>) => {
@@ -775,23 +976,26 @@ export function OverviewThreadHero({
     event.preventDefault();
     event.stopPropagation();
     setViewers((current) =>
-      current.map((viewer) => {
-        if (viewer.id !== resize.viewerId) return viewer;
-        const geometry = resizeOverviewThreadViewerByScreenDelta(
-          {
-            ...viewer,
-            width: resize.originWidth,
-            height: resize.originHeight,
-          },
-          {
-            x: event.clientX - resize.startClientX,
-            y: event.clientY - resize.startClientY,
-          },
-          whiteboardTransform,
-          overviewViewerGeometryConstraints(),
-        );
-        return { ...viewer, ...geometry };
-      })
+      separateOverviewThreadViewers(
+        current.map((viewer) => {
+          if (viewer.id !== resize.viewerId) return viewer;
+          const geometry = resizeOverviewThreadViewerByScreenDelta(
+            {
+              ...viewer,
+              width: resize.originWidth,
+              height: resize.originHeight,
+            },
+            {
+              x: event.clientX - resize.startClientX,
+              y: event.clientY - resize.startClientY,
+            },
+            whiteboardTransform,
+            overviewViewerGeometryConstraints(),
+          );
+          return { ...viewer, ...geometry };
+        }),
+        resize.viewerId,
+      )
     );
   };
   const endViewerResize = (event: ReactPointerEvent<HTMLButtonElement>) => {
@@ -949,31 +1153,34 @@ export function OverviewThreadHero({
         y: whiteboardWorldSize.height - OVERVIEW_VIEWER_PADDING,
       };
     setViewers((current) =>
-      current.map((viewer) => {
-        if (viewer.id !== viewerId) return viewer;
-        if (viewer.restoreGeometry) {
+      separateOverviewThreadViewers(
+        current.map((viewer) => {
+          if (viewer.id !== viewerId) return viewer;
+          if (viewer.restoreGeometry) {
+            return {
+              ...viewer,
+              ...viewer.restoreGeometry,
+              restoreGeometry: undefined,
+            };
+          }
+          const restoreGeometry = overviewViewerGeometry(viewer);
           return {
             ...viewer,
-            ...viewer.restoreGeometry,
-            restoreGeometry: undefined,
+            x: visibleTopLeft.x,
+            y: visibleTopLeft.y,
+            width: Math.max(
+              OVERVIEW_VIEWER_MIN_WIDTH,
+              visibleBottomRight.x - visibleTopLeft.x,
+            ),
+            height: Math.max(
+              OVERVIEW_VIEWER_MIN_HEIGHT,
+              visibleBottomRight.y - visibleTopLeft.y,
+            ),
+            restoreGeometry,
           };
-        }
-        const restoreGeometry = overviewViewerGeometry(viewer);
-        return {
-          ...viewer,
-          x: visibleTopLeft.x,
-          y: visibleTopLeft.y,
-          width: Math.max(
-            OVERVIEW_VIEWER_MIN_WIDTH,
-            visibleBottomRight.x - visibleTopLeft.x,
-          ),
-          height: Math.max(
-            OVERVIEW_VIEWER_MIN_HEIGHT,
-            visibleBottomRight.y - visibleTopLeft.y,
-          ),
-          restoreGeometry,
-        };
-      })
+        }),
+        viewerId,
+      )
     );
     bringViewerFront(viewerId);
   };
@@ -986,20 +1193,23 @@ export function OverviewThreadHero({
       whiteboardTransform,
     );
     setViewers((current) =>
-      current.map((viewer) =>
-        viewer.id === viewerId && !viewer.restoreGeometry
-          ? {
-            ...viewer,
-            ...normalizeOverviewThreadViewerGeometry(
-              {
-                ...viewer,
-                x: viewer.x + delta.x,
-                y: viewer.y + delta.y,
-              },
-              overviewViewerGeometryConstraints(),
-            ),
-          }
-          : viewer
+      separateOverviewThreadViewers(
+        current.map((viewer) =>
+          viewer.id === viewerId && !viewer.restoreGeometry
+            ? {
+              ...viewer,
+              ...normalizeOverviewThreadViewerGeometry(
+                {
+                  ...viewer,
+                  x: viewer.x + delta.x,
+                  y: viewer.y + delta.y,
+                },
+                overviewViewerGeometryConstraints(),
+              ),
+            }
+            : viewer
+        ),
+        viewerId,
       )
     );
   };
@@ -1012,20 +1222,23 @@ export function OverviewThreadHero({
       whiteboardTransform,
     );
     setViewers((current) =>
-      current.map((viewer) =>
-        viewer.id === viewerId && !viewer.restoreGeometry
-          ? {
-            ...viewer,
-            ...normalizeOverviewThreadViewerGeometry(
-              {
-                ...viewer,
-                width: viewer.width + delta.x,
-                height: viewer.height + delta.y,
-              },
-              overviewViewerGeometryConstraints(),
-            ),
-          }
-          : viewer
+      separateOverviewThreadViewers(
+        current.map((viewer) =>
+          viewer.id === viewerId && !viewer.restoreGeometry
+            ? {
+              ...viewer,
+              ...normalizeOverviewThreadViewerGeometry(
+                {
+                  ...viewer,
+                  width: viewer.width + delta.x,
+                  height: viewer.height + delta.y,
+                },
+                overviewViewerGeometryConstraints(),
+              ),
+            }
+            : viewer
+        ),
+        viewerId,
       )
     );
   };
@@ -1045,6 +1258,7 @@ export function OverviewThreadHero({
     whiteboardTouchedRef.current = false;
     setLayoutMode(next);
   };
+  fitWhiteboardRef.current = fitWhiteboard;
   const zoomWhiteboard = (factor: number) => {
     const viewport = viewportRef.current;
     const bounds = readOverviewWhiteboardBounds(viewport, worldRef.current);
@@ -1060,6 +1274,7 @@ export function OverviewThreadHero({
     );
   };
   const resetWhiteboard = () => {
+    setFixedGroupKey(undefined);
     setGroupPlacements({});
     setNodePlacements({});
     whiteboardTouchedRef.current = false;
@@ -1158,12 +1373,25 @@ export function OverviewThreadHero({
     : undefined;
   const contextGroup = contextTarget?.kind === "group"
     ? flowLayout.groups.find((group) => group.key === contextTarget.key)
+    : contextNode
+    ? flowLayout.groups.find((group) =>
+      group.key ===
+        overviewThreadD3FlowGroupIdentity(
+          contextNode.lane,
+          contextNode.groupKey,
+        )
+    )
     : undefined;
   const contextActions = contextNode
     ? overviewNodeContextActions(contextNode, viewerSessionsByNodeKey)
     : [];
   const selectNode = (key: string) => {
     if (!nodesByKey.has(key)) return;
+    const session = viewerSessionsByNodeKey.get(key)?.[0];
+    if (session) {
+      openViewer({ kind: "session", nodeKey: key, sessionId: session.id });
+      return;
+    }
     setSelectedKey(key);
     setHoveredKey(key);
     setFocusedKey(key);
@@ -1216,6 +1444,30 @@ export function OverviewThreadHero({
           const value = target?.getAttribute("data-overview-context-target");
           commitContextTargetBeforeOpen(value);
         }}
+        onKeyDownCapture={(event) => {
+          if (
+            event.key !== "ContextMenu" &&
+            !(event.shiftKey && event.key === "F10")
+          ) return;
+          const target = (event.target as Element).closest<HTMLElement>(
+            "[data-overview-context-target]",
+          );
+          if (!target) return;
+          // Chromium on macOS does not synthesize a contextmenu event for
+          // Shift+F10, and Ark's ContextTrigger only listens for that event.
+          // Reuse the exact same capture/dispatch path as a pointer menu.
+          event.preventDefault();
+          event.stopPropagation();
+          const bounds = target.getBoundingClientRect();
+          target.dispatchEvent(
+            new MouseEvent("contextmenu", {
+              bubbles: true,
+              cancelable: true,
+              clientX: bounds.left + bounds.width / 2,
+              clientY: bounds.bottom,
+            }),
+          );
+        }}
         onPointerDownCapture={(event) => {
           const target = event.target as Element;
           const contextValue = target.closest(
@@ -1224,7 +1476,7 @@ export function OverviewThreadHero({
           if (contextValue) setContextTriggerValue(contextValue);
           if (
             !target.closest(
-              ".overview-thread-flow-node, .overview-thread-node, .overview-thread-viewer, .overview-thread-hull-monitor, .overview-thread-layout-switch, [data-part='context-trigger'], button",
+              ".overview-thread-flow-node, .overview-thread-node, .overview-thread-viewer, .overview-thread-hull-monitor, .overview-thread-selection-note, .overview-thread-layout-switch, [data-part='context-trigger'], button",
             )
           ) {
             setSelectedKey(undefined);
@@ -1279,6 +1531,57 @@ export function OverviewThreadHero({
             Reset layout
           </button>
         </div>
+        {selectedItem?.kind === "recorded" && (
+          <OverviewThreadSelectionNote
+            node={selectedItem.node}
+            connections={selectedConnections}
+            onClose={() => {
+              setSelectedKey(undefined);
+              nodeRefs.current.get(selectedItem.key)?.focus();
+            }}
+            onFollow={(reference) => {
+              const key = overviewThreadGraphRefKey(reference);
+              if (nodesByKey.has(key)) selectNode(key);
+              else onOpenEvidence(reference);
+            }}
+            supplement={
+              <OverviewThreadRequirementsBriefTrace
+                reference={selectedItem.node.ref}
+                traces={requirementsBriefTraces}
+                onFollowBriefSource={(key) => selectNode(key)}
+              />
+            }
+          >
+            {overviewNodeContextActions(selectedItem, viewerSessionsByNodeKey)
+              .map((action, index) => (
+                <button
+                  key={overviewContextActionValue(action, index)}
+                  type="button"
+                  data-app={action.kind === "open-session" ? "true" : undefined}
+                  title={action.label}
+                  onClick={() => runContextAction(action)}
+                >
+                  {action.kind === "open-session"
+                    ? "Open viewer"
+                    : action.kind === "open-evidence"
+                    ? "Inspect evidence"
+                    : action.label}
+                </button>
+              ))}
+          </OverviewThreadSelectionNote>
+        )}
+        {selectedItem?.kind === "brief-source" && (
+          <OverviewThreadBriefSourceNote
+            item={selectedItem}
+            onClose={() => {
+              setSelectedKey(undefined);
+              nodeRefs.current.get(selectedItem.key)?.focus();
+            }}
+            onSelectRequirement={(requirementId) =>
+              selectNode(`requirement:${requirementId}`)}
+            onInspectClaim={onOpenEvidence}
+          />
+        )}
         <div
           ref={viewportRef}
           className="overview-thread-viewport"
@@ -1303,7 +1606,23 @@ export function OverviewThreadHero({
               ? (
                 <OverviewThreadD3Flow
                   layout={flowLayout}
+                  hullContents={hullContents}
+                  onOpenStructureSession={(sessionId) => {
+                    const session = viewerSessionsById.get(sessionId);
+                    if (!session || session.anchor.kind === "project-review") {
+                      return;
+                    }
+                    const nodeKey = overviewThreadGraphRefKey(session.anchor);
+                    if (nodesByKey.has(nodeKey)) {
+                      openViewer({
+                        kind: "session",
+                        nodeKey,
+                        sessionId,
+                      });
+                    }
+                  }}
                   nodesByKey={nodesByKey}
+                  viewerNodeKeys={viewerNodeKeys}
                   stages={stages}
                   showLaneStrip={!immersive}
                   activeKey={activeKey}
@@ -1319,22 +1638,13 @@ export function OverviewThreadHero({
                     if (item) toggleSelection(item);
                   }}
                   onMoveGroup={(key, position) => {
-                    setGroupPlacements((current) => ({
-                      ...current,
-                      [key]: { ...current[key], ...position },
-                    }));
+                    changeHullPlacement(key, position);
                   }}
                   onResizeGroup={(key, size) => {
-                    setGroupPlacements((current) => ({
-                      ...current,
-                      [key]: { ...current[key], ...size },
-                    }));
+                    changeHullPlacement(key, size);
                   }}
                   onSetGroupView={(key, view) => {
-                    setGroupPlacements((current) => ({
-                      ...current,
-                      [key]: { ...current[key], view },
-                    }));
+                    changeHullPlacement(key, { view });
                   }}
                   onCycleGroupSort={(key) => {
                     setGroupPlacements((current) => {
@@ -1363,13 +1673,9 @@ export function OverviewThreadHero({
                     }));
                   }}
                   onToggleGroupFold={(key) => {
-                    setGroupPlacements((current) => ({
-                      ...current,
-                      [key]: {
-                        ...current[key],
-                        collapsed: !current[key]?.collapsed,
-                      },
-                    }));
+                    changeHullPlacement(key, {
+                      collapsed: !groupPlacements[key]?.collapsed,
+                    });
                   }}
                   onMoveNode={(key, delta) => {
                     setNodePlacements((current) => ({
@@ -1637,6 +1943,8 @@ export function OverviewThreadHero({
         group={contextGroup}
         nodesByKey={nodesByKey}
         viewerSessionsByNodeKey={viewerSessionsByNodeKey}
+        content={contextGroup ? hullContents.get(contextGroup.key) : undefined}
+        viewerSessionsById={viewerSessionsById}
         actions={contextActions}
         onAction={runContextAction}
         onOpenHullMonitor={(groupKey) => {
@@ -1673,6 +1981,7 @@ function overviewPresentationState(
   >,
   transform: OverviewThreadWhiteboardTransform,
   viewers: readonly OverviewViewerState[],
+  autoShownNodeKeys: readonly string[],
 ): OverviewThreadWhiteboardPresentationState {
   return {
     layoutMode,
@@ -1680,6 +1989,7 @@ function overviewPresentationState(
     nodePlacements,
     transform,
     viewers: viewers.map(overviewViewerToPresentation),
+    autoShownNodeKeys,
   };
 }
 
@@ -2097,18 +2407,22 @@ function HeroNode({
     ? `Project activity · ${item.activity.title} · ${
       activityStatusCaption(item.activity.status)
     }`
+    : item.kind === "brief-source"
+    ? `Brief r${item.brief.revision} · ${item.sourceItem.id} · ${item.sourceItem.statement}`
     : `${item.node.label} · ${item.node.ref.id} · ${item.node.summary}`;
   const ariaLabel = item.kind === "activity"
     ? `Project activity ${item.activity.title}, ${
       activityStatusCaption(item.activity.status)
     }`
+    : item.kind === "brief-source"
+    ? `Read brief source ${item.sourceItem.id}, brief r${item.brief.revision}`
     : `Inspect ${item.node.label}, ${item.node.freshness}, ${item.node.ref.id}`;
   const hitX = position.textAnchor === "start"
     ? position.labelX - 8
     : position.labelX - 208;
-  const markerColor = item.kind === "recorded"
-    ? item.color
-    : activityMarkerColor(item.activity.status);
+  const markerColor = item.kind === "activity"
+    ? activityMarkerColor(item.activity.status)
+    : item.color;
   return (
     <DropdownMenuContextTrigger
       value={overviewThreadNodeContextValue(item.key)}
@@ -2176,6 +2490,14 @@ function HeroNode({
               y={position.anchorY}
             />
           )
+          : item.kind === "brief-source"
+          ? (
+            <BriefSourceMarker
+              item={item}
+              x={position.anchorX}
+              y={position.anchorY}
+            />
+          )
           : (
             <RecordedMarker
               item={item}
@@ -2205,6 +2527,24 @@ function RecordedMarker(
       cx={x}
       cy={y}
       r={item.emphasis ? 5 : 4}
+      fill={item.color}
+      stroke="#ffffff"
+      strokeWidth={item.emphasis ? 2.5 : 1.5}
+      vectorEffect="non-scaling-stroke"
+    />
+  );
+}
+
+function BriefSourceMarker(
+  { item, x, y }: {
+    readonly item: Extract<OverviewHeroNode, { readonly kind: "brief-source" }>;
+    readonly x: number;
+    readonly y: number;
+  },
+): JSX.Element {
+  return (
+    <path
+      d={`M ${x} ${y - 5} L ${x + 5} ${y} L ${x} ${y + 5} L ${x - 5} ${y} Z`}
       fill={item.color}
       stroke="#ffffff"
       strokeWidth={item.emphasis ? 2.5 : 1.5}
@@ -2253,6 +2593,7 @@ function overviewNodeContextActions(
   if (item.kind === "activity") {
     return [{ kind: "open-activity", label: "Open Activity" }];
   }
+  if (item.kind === "brief-source") return [];
 
   const actions: OverviewNodeContextAction[] = [];
   const anchoredSessions = [...(viewerSessionsByNodeKey.get(item.key) ?? [])]
@@ -2266,7 +2607,7 @@ function overviewNodeContextActions(
       kind: "open-session",
       nodeKey: item.key,
       sessionId: session.id,
-      label: `Open App · ${session.app.id}@${session.app.version}`,
+      label: `Open viewer · ${item.label}`,
     });
   }
   actions.push({
@@ -2301,6 +2642,9 @@ function overviewNodeContextMeta(item: OverviewHeroNode): string {
       activityStatusCaption(item.activity.status)
     } · ${item.activity.evidenceCount} evidence`;
   }
+  if (item.kind === "brief-source") {
+    return `brief r${item.brief.revision} · ${item.sourceItem.id}`;
+  }
   return `${item.node.ref.kind}:${item.node.ref.id} · ${
     item.node.artifactKind ?? item.node.entityKind
   }`;
@@ -2325,6 +2669,8 @@ function OverviewThreadContextMenu({
   group,
   nodesByKey,
   viewerSessionsByNodeKey,
+  content,
+  viewerSessionsById,
   actions,
   onAction,
   onOpenHullMonitor,
@@ -2337,6 +2683,8 @@ function OverviewThreadContextMenu({
     string,
     readonly ThreadViewerSession[]
   >;
+  readonly content?: OverviewHullContent;
+  readonly viewerSessionsById: ReadonlyMap<string, ThreadViewerSession>;
   readonly actions: readonly OverviewNodeContextAction[];
   readonly onAction: (action: OverviewNodeContextAction) => void;
   readonly onOpenHullMonitor: (groupKey: string) => void;
@@ -2360,6 +2708,22 @@ function OverviewThreadContextMenu({
     }
   }
   const label = node?.label ?? (group ? flowGroupCaption(group) : "Thread");
+  const hierarchyRows = content?.mode === "structure" ? content.rows : [];
+  const hierarchySessionIds = new Set(
+    hierarchyRows.flatMap((row) => row.sessionIds),
+  );
+  const actionsBySession = new Map<string, OverviewOpenSessionContextAction>();
+  for (const [id, session] of viewerSessionsById) {
+    if (session.anchor.kind === "project-review") continue;
+    const nodeKey = overviewThreadGraphRefKey(session.anchor);
+    if (!nodesByKey.has(nodeKey)) continue;
+    actionsBySession.set(id, {
+      kind: "open-session",
+      nodeKey,
+      sessionId: id,
+      label: `Open viewer · ${nodesByKey.get(nodeKey)!.label}`,
+    });
+  }
   return (
     <DropdownMenuContent
       className="overview-thread-context-menu"
@@ -2402,7 +2766,49 @@ function OverviewThreadContextMenu({
           >
             Open hull monitor
           </DropdownMenuItem>
-          {memberViewerEntries.map(({ member, action }, index) => (
+          {hierarchyRows.length > 0 && (
+            <DropdownMenuLabel>Assemblage · modules · pièces</DropdownMenuLabel>
+          )}
+          {hierarchyRows.map((row) => {
+            const rowActions = row.sessionIds.flatMap((id) =>
+              actionsBySession.has(id) ? [actionsBySession.get(id)!] : []
+            );
+            const style = {
+              paddingInlineStart: `${0.75 + row.depth * 0.9}rem`,
+            };
+            return rowActions.length > 0
+              ? rowActions.map((action) => (
+                <DropdownMenuItem
+                  key={`${row.key}:${action.sessionId}`}
+                  value={`assembly-viewer:${row.key}:${action.sessionId}`}
+                  data-hull-row-key={row.key}
+                  className="overview-thread-context-viewer"
+                  style={style}
+                  onSelect={() => onAction(action)}
+                >
+                  <span>{row.label}</span>
+                  <small>
+                    Viewer · {nodesByKey.get(action.nodeKey)?.label}
+                  </small>
+                </DropdownMenuItem>
+              ))
+              : (
+                <div
+                  key={row.key}
+                  data-hull-row-key={row.key}
+                  className="overview-thread-context-structure"
+                  style={style}
+                >
+                  <span>{row.label}</span>
+                  <small>
+                    Pièce de l’assemblage · pas de viewer individuel enregistré
+                  </small>
+                </div>
+              );
+          })}
+          {memberViewerEntries.filter(({ action }) =>
+            !hierarchySessionIds.has(action.sessionId)
+          ).map(({ member, action }, index) => (
             <DropdownMenuItem
               key={`${member.key}:${overviewContextActionValue(action, index)}`}
               value={`hull-viewer:${member.key}:${action.sessionId}`}
@@ -2410,19 +2816,24 @@ function OverviewThreadContextMenu({
               onSelect={() => onAction(action)}
             >
               <span>{member.label}</span>
-              <small>{action.label.replace("Open App · ", "")}</small>
+              <small>Ouvrir le viewer</small>
             </DropdownMenuItem>
           ))}
+          <DropdownMenuLabel>
+            Enregistrements · captures et historique
+          </DropdownMenuLabel>
           <div className="overview-thread-context-members">
-            {members.map((member) => (
+            {(content?.records ?? []).map((row) => (
               <DropdownMenuItem
-                key={member.key}
-                value={`member:${member.key}`}
+                key={row.key}
+                value={`member:${row.key}`}
+                data-hull-row-key={row.key}
                 className="overview-thread-context-member"
-                onSelect={() => onSelectNode(member.key)}
+                style={{ paddingInlineStart: `${0.75 + row.depth * 0.9}rem` }}
+                onSelect={() => onSelectNode(row.key)}
               >
-                <span>{member.label}</span>
-                <small>{overviewNodeContextMeta(member)}</small>
+                <span>{row.label}</span>
+                <small>{row.detail ?? row.key}</small>
               </DropdownMenuItem>
             ))}
           </div>
@@ -2476,14 +2887,14 @@ function OverviewHullMonitorCard({
     members.filter((member) =>
       member.kind === "activity"
         ? member.activity.status === "active"
-        : member.node.freshness === "running"
+        : member.kind === "recorded" && member.node.freshness === "running"
     ).length;
   const alertCount =
     members.filter((member) =>
       member.kind === "activity"
         ? member.activity.status === "blocked"
-        : member.node.freshness === "failed" ||
-          member.node.freshness === "stale"
+        : member.kind === "recorded" && (member.node.freshness === "failed" ||
+          member.node.freshness === "stale")
     ).length;
   const viewerCount = members.reduce(
     (count, member) =>

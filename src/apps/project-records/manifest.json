@@ -1,0 +1,17 @@
+{
+  "schemaVersion": "io.casys.mcp.view-app-manifest/1.0",
+  "app": {
+    "id": "io.casys.digital-thread.project-records",
+    "title": "Project records",
+    "version": "0.1.0"
+  },
+  "resources": [
+    {
+      "uri": "ui://digital-thread/project-records",
+      "ownership": "whole-view",
+      "resultSchemas": ["approved-brief-baseline-capture/1.1"],
+      "acceptedActions": ["viewer.session.apply"],
+      "sessionSchemas": ["io.casys.digital-thread.project-records-session/1.0"]
+    }
+  ]
+}

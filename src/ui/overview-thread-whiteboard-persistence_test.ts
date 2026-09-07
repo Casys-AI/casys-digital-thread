@@ -30,6 +30,49 @@ const CURRENT: OverviewThreadWhiteboardPresentationReconciliation = {
   },
 };
 
+Deno.test("v4 remembers dismissed defaults without granting or retaining revoked sessions", () => {
+  const state = { ...completeState(), autoShownNodeKeys: [HULL_NODE, STALE_NODE] };
+  const encoded = serializeOverviewThreadWhiteboardPresentation(PROJECT_ID, state)!;
+  assertEquals(
+    parseOverviewThreadWhiteboardPresentation(encoded, PROJECT_ID)?.autoShownNodeKeys,
+    [HULL_NODE, STALE_NODE],
+  );
+  const reconciled = reconcileOverviewThreadWhiteboardPresentation(state, {
+    ...CURRENT,
+    viewerCapabilities: {},
+  });
+  assertEquals(reconciled.viewers, []);
+  assertEquals(reconciled.autoShownNodeKeys, [HULL_NODE]);
+  assertEquals(
+    serializeOverviewThreadWhiteboardPresentation(PROJECT_ID, {
+      ...state,
+      autoShownNodeKeys: [HULL_NODE, HULL_NODE],
+    }),
+    undefined,
+  );
+});
+
+Deno.test("v3 migration preserves current sessions and the explicit tree layout", () => {
+  const storage = new MemoryStorage();
+  const state = {
+    ...completeState(),
+    groupPlacements: { [BUILD_GROUP]: { view: "tree" as const, width: 480 } },
+  };
+  storage.setItem(
+    "casys.project-whiteboard.presentation:v3:project%2Fdemo%20alpha",
+    JSON.stringify({
+      schema: "casys-project-whiteboard-presentation",
+      version: 3,
+      projectId: PROJECT_ID,
+      state,
+    }),
+  );
+  assertEquals(
+    loadOverviewThreadWhiteboardPresentation(storage, PROJECT_ID, CURRENT),
+    state,
+  );
+});
+
 function completeState(): OverviewThreadWhiteboardPresentationState {
   return {
     layoutMode: "hierarchy",
@@ -61,7 +104,7 @@ Deno.test("whiteboard persistence keys are versioned, encoded and project scoped
   const key = overviewThreadWhiteboardPresentationStorageKey(PROJECT_ID);
   assertEquals(
     key,
-    "casys.project-whiteboard.presentation:v3:project%2Fdemo%20alpha",
+    "casys.project-whiteboard.presentation:v4:project%2Fdemo%20alpha",
   );
   assertEquals(
     overviewThreadWhiteboardPresentationStorageKey("project/demo beta") === key,
@@ -93,7 +136,7 @@ Deno.test("whiteboard presentation round-trips every spatial field without grant
     serialized,
     '"schema":"casys-project-whiteboard-presentation"',
   );
-  assertStringIncludes(serialized, '"version":3');
+  assertStringIncludes(serialized, '"version":4');
   assertStringIncludes(serialized, `"sessionId":"${HULL_SESSION}"`);
   assertEquals(serialized.includes('"uri"'), false);
   assertEquals(serialized.includes('"token"'), false);
@@ -333,7 +376,7 @@ Deno.test("local load and save reconcile before storage and contain storage fail
   );
 });
 
-Deno.test("legacy hull geometry migrates to v3 while retired native viewers are discarded", () => {
+Deno.test("legacy hull geometry migrates to v4 while retired native viewers are discarded", () => {
   const storage = new MemoryStorage();
   const legacyKey = "casys.project-whiteboard.presentation:v1:project%2Fdemo%20alpha";
   const legacyState = {

@@ -22,11 +22,15 @@ and the exact project and thread basis; labels are display data and never join k
 That basis is deliberately not advertised as a full SysON model AST. Compilation V1
 reopens the parser-backed `architecture-capture/4.0` Package (`scopeRoot.id`),
 PartDefinitions and PartUsages. It also admits exact RequirementUsage and
-ConstraintUsage identities from an active `requirements-capture/3.0` only after the
-capture bytes, provider identities, architecture basis and Thread artifact lineage have
-all been reread. Each anchor element carries the exact capture artifact fingerprint that
-attests it. An active older requirements capture is unsupported and fail-closed; a
-container, label or capture id is never expanded into fictional per-requirement anchors.
+ConstraintUsage identities from an active `requirements-capture/3.0` produced by
+`model.write-requirements@1`, or `requirements-capture/4.0` produced by
+`model.recapture-requirements@1`. Capture bytes, provider identities, exact current
+architecture basis and Thread artifact lineage must all be reread. Schema 4 also proves
+its exact predecessor; unchanged native identities and criteria do not carry an old
+evaluation or verdict onto the new Thread requirements. Each anchor carries the exact
+capture artifact fingerprint that attests it. Other schema/producer pairs and mismatched
+current bases remain fail-closed; a container, label or capture id is never expanded
+into fictional per-requirement anchors.
 
 The compiler consumes only closed, fingerprinted inputs: the reread SysML basis, exact
 native source bytes with their analysis, explicit source-symbol-to-SysML bindings and a
@@ -70,13 +74,13 @@ contracts even when they consume projections from the same compilation.
 The implementation deliberately shares control-plane contracts, not one universal solver
 protocol. The boundary is split as follows:
 
-| Boundary               | Reusable contract                                                                                                                                              | First concrete binding                                                                                                                                                                                                                                                                                                                      |
-| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Boundary               | Reusable contract                                                                                                                                               | First concrete binding                                                                                                                                                                                                                                                                                                                                                                   |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Admission              | V2 `technical-compilation-input/2.0` / `technical-compilation/2.0`, exact-basis/source readers, content-addressed review draft and provider-free admission seal | The current registered Build123d profile is 3.0.0 over the qualified closed subset with direct scalar-leaf workspace-closure lowering; it additionally requires a finite module-level numeric parameter, unique `parameterizes` binding and causal reachability to `result`. Dead or constructor-only dimensions are unresolved. There is no legacy-profile reader or compatibility path |
-| Isolated execution     | Public `IsolatedCodeRunner`, fail-closed broker and technology-neutral `EphemeralExecutionBackend`; opaque backend lease/output handles stay inside the broker | Microsandbox local 0.6.8 implements the single active backend for one fixed Python wrapper in a digest-pinned OCI microVM                                                                                                                                                                                                                   |
-| Declared outputs       | Code-owned output manifest, injected format validator, external byte count/hash and publication-gated output CAS                                               | `geometry.step`, AP214, `OcctStepOutputValidator` and `FileIsolatedOutputCas`                                                                                                                                                                                                                                                               |
-| Recovery               | Generic run-scoped destruction and tri-state CAS-publication reconciliation                                                                                    | The durable attempt state machine and evidence schemas are Build123d-specific; there is no universal cross-solver WAL                                                                                                                                                                                                                       |
-| Evidence and promotion | An isolation receipt proves only the execution boundary; canonical promotion is a separate reviewed authority transition                                       | Build123d currently publishes a documentary execution capture and noncanonical draft only; its canonical promotion operation does not yet exist                                                                                                                                                                                             |
+| Isolated execution     | Public `IsolatedCodeRunner`, fail-closed broker and technology-neutral `EphemeralExecutionBackend`; opaque backend lease/output handles stay inside the broker  | Microsandbox local 0.6.8 implements the single active backend for one fixed Python wrapper in a digest-pinned OCI microVM                                                                                                                                                                                                                                                                |
+| Declared outputs       | Code-owned output manifest, injected format validator, external byte count/hash and publication-gated output CAS                                                | `geometry.step`, AP214, `OcctStepOutputValidator` and `FileIsolatedOutputCas`                                                                                                                                                                                                                                                                                                            |
+| Recovery               | Generic run-scoped destruction and tri-state CAS-publication reconciliation                                                                                     | The durable attempt state machine and evidence schemas are Build123d-specific; there is no universal cross-solver WAL                                                                                                                                                                                                                                                                    |
+| Evidence and promotion | An isolation receipt proves only the execution boundary; canonical promotion is a separate reviewed authority transition                                        | Build123d currently publishes a documentary execution capture and noncanonical draft only; its canonical promotion operation does not yet exist                                                                                                                                                                                                                                          |
 
 “Interchangeable” therefore applies at explicit seams. A new sandbox backend implements
 `EphemeralExecutionBackend`; a new output format supplies a code-owned manifest and
@@ -219,17 +223,17 @@ with MSL 4.1.0, exact `temperature_final = 22 degC` conformance, atomic
 publication/readback, exit 0, and sandbox destruction). The authority is exact, not
 general: it covers only `linear-thermal-ramp-v1@0.1.0` / `linear-ramp-nominal` and
 accepts no arbitrary Modelica. The generic admitted-source Modelica worker on the same
-image stays unqualified/unknown and does not inherit this scientific claim. The
-separate local product operation descriptor and fail-closed dispatcher entry for
-`simulate.run-qualified-modelica-kit@1` remain registered independently of
-runtime availability. Its read-only review and concrete executor become available only
-when the approved capability-runtime supervisor composes the exact profile, runtime and
-pinned qualification. The review accepts only the exact project and current Thread
-basis; its MRTR has no ROP, provider or caller-selected source. A completed run adds the
-execution capture, normalized `evidence.json`, retained `result.csv` and the one
-`22 degC` observation, never an implicit requirement verdict, evaluation, violation or
-action. Replay reopens the durable claim, inner WAL, evidence and Thread successor
-without another solver call.
+image stays unqualified/unknown and does not inherit this scientific claim. The separate
+local product operation descriptor and fail-closed dispatcher entry for
+`simulate.run-qualified-modelica-kit@1` remain registered independently of runtime
+availability. Its read-only review and concrete executor become available only when the
+approved capability-runtime supervisor composes the exact profile, runtime and pinned
+qualification. The review accepts only the exact project and current Thread basis; its
+MRTR has no ROP, provider or caller-selected source. A completed run adds the execution
+capture, normalized `evidence.json`, retained `result.csv` and the one `22 degC`
+observation, never an implicit requirement verdict, evaluation, violation or action.
+Replay reopens the durable claim, inner WAL, evidence and Thread successor without
+another solver call.
 
 `simulate.run-admitted-modelica@1` is the CAD analog: it reopens
 `compile.seal-admission@3` Modelica v2 closed-subset bytes and executes those bytes. It
@@ -255,16 +259,15 @@ only. The new product operation descriptor and fail-closed dispatcher entry for
 `verify.run-fea-static-proof@3` remain registered independently of runtime availability.
 Its concrete executor becomes available only when the approved capability-runtime
 supervisor composes the exact local profile/runtime and a SysON oracle is available. It
-consumes a newly sealed local
-ROP2 that names `@3`; the executor refuses an `@2` plan before either solve or SysON.
-Its outer WAL separates local evidence capture from the journaled SysON evaluation,
-quarantines an ambiguous oracle outcome without a retry, and on replay reopens both CAS
-captures before reconstructing the same Thread successor. That successor contains the
-nine local output artifacts, one isolated execution-evidence artifact, one SysON
-evaluation capture, observations and evaluations; it never claims `mcp-calculix`
-provenance for local execution. CalculiX never accepts an agent-authored `.inp` deck:
-the local use case constructs the worker bundle from exact reviewed proof and STEP
-bytes, and the fixed wrapper owns mesh/deck lowering and declared outputs.
+consumes a newly sealed local ROP2 that names `@3`; the executor refuses an `@2` plan
+before either solve or SysON. Its outer WAL separates local evidence capture from the
+journaled SysON evaluation, quarantines an ambiguous oracle outcome without a retry, and
+on replay reopens both CAS captures before reconstructing the same Thread successor.
+That successor contains the nine local output artifacts, one isolated execution-evidence
+artifact, one SysON evaluation capture, observations and evaluations; it never claims
+`mcp-calculix` provenance for local execution. CalculiX never accepts an agent-authored
+`.inp` deck: the local use case constructs the worker bundle from exact reviewed proof
+and STEP bytes, and the fixed wrapper owns mesh/deck lowering and declared outputs.
 
 SysON is deliberately different. Its bounded architecture, requirements and evaluation
 operations remain provider MCP calls outside the microVM, with operation-specific WAL,

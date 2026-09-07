@@ -2,7 +2,7 @@
 
 Audience: technical · Diátaxis: reference · Kind: contract
 
-Digital Thread projects exact read-only whole-App descriptors. It does not discover an
+The Workbench projects exact read-only whole-App descriptors. It does not discover an
 App, act as an MCP client, call a provider, interpret a domain payload or render a
 domain result.
 
@@ -20,6 +20,29 @@ review anchor pins review/proposal id, Project revision and input fingerprint; i
 Thread identity and remains `provisional` or `documentary`, never canonical evidence.
 The projector never selects an App from a label, artifact kind, provider, edge or
 proximity.
+
+### Shared read-only hull navigation
+
+The optional `hierarchy` field (`thread-viewer-hierarchy/1.0`) is a separately validated
+navigation projection covered by the complete replacement fingerprint. It preserves
+exact occurrence ids, parent ids and definition ids from the verified current product
+structure. An exact `architectureArtifactId` and per-node `geometryArtifactId` /
+`artifactIds` anchor that same tree to the relevant SysON, canonical geometry and
+exported-asset hulls. Names never select a hull or an App.
+
+The browser constructs one reusable hull-content model for hulls and contextual menus.
+Repeated occurrences stay distinct even when they share a definition or geometry
+artifact. Tree mode shows the current navigation; list and point modes retain all
+immutable records, including historical captures. Other hulls reuse the same
+recorded-parent traversal in their tree and menu. Navigation rows never become Thread
+graph nodes or provenance cable endpoints. They do not recreate provider viewers,
+transfer mesh bytes, or authorize an App; only exact registered `sessionIds` expose
+viewer actions. Unavailable navigation remains unavailable.
+
+Sharing the tree does not share actions across domains. The architecture hull opens only
+its exact registered architecture App at a root occurrence; child occurrences do not
+inherit CAD sessions. Geometry and its verified export hulls may reuse the same exact
+geometry App for their common publication.
 
 Each session contains only:
 
@@ -79,6 +102,57 @@ URL, declared fingerprint, provider endpoint, tool selection, arguments or crede
 Materialization never changes the Workbench boundary: the BFF remains a registry/CAS
 reader only.
 
+### Automatic registration outside the Workbench
+
+`FileThreadViewerAppRegistrar` reconciles committed local evidence with an explicit
+display-package installation. `preview:thread` launches its separate watcher alongside
+the BFF and Vite. A pinned `--project-id` also pins this watcher; otherwise it follows
+all durably published local projects. It has no network, provider, solver or
+command-service access, and its write permission is restricted to
+`state/local/thread-viewer-apps`.
+
+`state/local/thread-viewer-apps/packages.json` is a closed
+`thread-viewer-app-packages/1.0` installation receipt:
+
+```text
+schemaVersion, packages[]
+  app: exact id + SemVer
+  manifest: exact ui:// URI + sha256 fingerprint
+  resources[]: exact whole-view ui:// URI + sha256 fingerprint
+```
+
+Manifest and HTML bytes live in the same immutable viewer CAS. One explicitly installed
+version is allowed per App; no provider discovery, `latest` lookup, or mutable checkout
+path is used. Installation grants display compatibility only, never engineering
+capability. A missing installation leaves automatic registration unavailable.
+
+The registrar reads the current Project and its exact declared Thread head, then reopens
+the immutable captures through their existing domain parsers. Fixed, versioned binding
+factories prepare the provider-owned sessions for compatible installed whole Apps.
+Canonical CAD, approved-brief records, and SysON
+architecture/PartDefinitions/requirements captures are supported. Requirements v4
+requires explicit v4 support in the installed SysON App; it is never relabeled v3.
+Missing or unsupported evidence yields a diagnostic, not a fallback domain view.
+
+The display basis may advance while the exact unarchived evidence remains historical;
+the payload keeps that evidence's original capture/run provenance. Reconciliation
+replaces only its managed registrations for the selected projects and preserves other
+Apps and pending review anchors. It rechecks Project heads and the installation before
+publication. Every materializer writer shares an OS advisory lock and automatic writes
+require the exact observed raw registry predecessor; conflicts retry on a later tick.
+Unchanged materialized bytes are not rewritten. Neither Project nor Thread evidence is
+modified.
+
+For an explicit one-shot reconciliation using that installation:
+
+```bash
+deno run --allow-read=state --allow-write=state/local/thread-viewer-apps \
+  scripts/runners/register-thread-viewer-apps.ts --project-id=PROJECT_ID
+```
+
+Source installation and local recorded-viewer adoption are not provider image
+publication or runtime qualification.
+
 On the Project whiteboard, business-object viewers are these exact recorded MCP Apps:
 left click only selects or manipulates the graph, and right click exposes the contextual
 App choices for a node or hull. The native Hull Monitor is the sole exception because it
@@ -133,14 +207,17 @@ calls/listing, sampling, messages, open-link, model-context updates and App-orig
 compose routing are rejected as unsupported requests or ignored when they are
 notifications. Digital Thread does not forward any of them to an MCP server or provider.
 
-The iframe is created imperatively with its native `load` listener attached before
-insertion. A synchronous or asynchronous initial `about:blank` load is remembered; only
-after the source-locked controller and global message listener exist does that phase
-start the verified fetch and Blob wrapping. The next load is the transformed registered
-App document. Every later load permanently invalidates the host and byte bridge for the
-retained `WindowProxy`; pending reads are dropped and the HTML Blob is revoked. Fetch
-error, stale session, React teardown and abort revoke it too. Teardown does not fake the
-MCP Apps `ui/resource-teardown` request/response exchange while destroying the frame.
+The iframe is created eagerly and imperatively with its native `load` listener attached
+before insertion. Once the source-locked controller and global message listener exist,
+the verified fetch starts without waiting for an initial `about:blank` load. Initial
+loads during that fetch are ignored. The next load after assignment is the transformed
+registered App document. Every later load permanently invalidates the host and byte
+bridge for the retained `WindowProxy`; pending reads are dropped and the HTML Blob is
+revoked. Fetch error, stale session, React teardown and abort revoke it too. Teardown
+does not fake the MCP Apps `ui/resource-teardown` request/response exchange while
+destroying the frame. Known failures show an explicit status and retry creates a new
+frame generation; it never revives the invalidated WindowProxy. Loading and session
+delivery are not reported as proof that the provider's content rendered successfully.
 
 Registry/resolver reads and projection admission are serialized as one factory, then
 assigned a viewer-projection sequence. Revocation or re-attestation therefore replaces

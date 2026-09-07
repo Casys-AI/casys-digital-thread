@@ -6,12 +6,14 @@ import {
 } from "./proposal-validation.ts";
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../domain/architecture/renderer/architecture-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-proposal.ts";
+import { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-proposal.ts";
 import {
   encodeSysonModelSeedProposalParameters,
   SYSON_MODEL_SEED_CANONICAL_MODEL_NAME,
   SYSON_MODEL_SEED_OPERATION,
 } from "../../domain/architecture/seed/syson-model-seed-proposal.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
+import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../domain/record/requirements-brief-trace.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   encodeTechnicalCompilationAdmissionParameters,
@@ -46,6 +48,74 @@ const VALID_ARCHITECTURE = [
   { key: "component.part.name", label: "Part", value: "DemoPart" },
   { key: "component.part.usage", label: "Usage", value: "demoPart" },
   { key: "component.part.parent", label: "Parent", value: "DemoSystem" },
+];
+
+const VALID_TRACED_REQUIREMENTS = [
+  { key: "requirements.containerComponent", label: "Container", value: "Arm" },
+  { key: "requirements.sourceProjectId", label: "Project", value: "project.trace" },
+  {
+    key: "requirements.sourceProjectSnapshotId",
+    label: "Project snapshot",
+    value: "project.snapshot.7",
+  },
+  { key: "requirements.sourceProjectRevision", label: "Project revision", value: 7 },
+  { key: "requirements.sourceBriefId", label: "Brief", value: "brief.trace" },
+  {
+    key: "requirements.sourceBriefSnapshotId",
+    label: "Brief snapshot",
+    value: "brief.snapshot.3",
+  },
+  { key: "requirements.sourceBriefRevision", label: "Brief revision", value: 3 },
+  {
+    key: "requirements.sourceBriefFingerprint",
+    label: "Approved brief fingerprint",
+    value: `sha256:${"a".repeat(64)}`,
+  },
+  {
+    key: "requirements.sourceBriefContentFingerprint",
+    label: "Brief content fingerprint",
+    value: `sha256:${"b".repeat(64)}`,
+  },
+  {
+    key: "requirements.containerSourceItemId",
+    label: "Container source",
+    value: "mission.arm",
+  },
+  { key: "requirement.r1.name", label: "Name", value: "Max displacement" },
+  { key: "requirement.r1.metric", label: "Metric", value: "maxDisplacement" },
+  { key: "requirement.r1.operator", label: "Operator", value: "<=" },
+  { key: "requirement.r1.threshold", label: "Threshold", value: 5, unit: "mm" },
+  {
+    key: "requirement.r1.sourceItemId",
+    label: "Requirement source",
+    value: "success.displacement",
+  },
+  {
+    key: "requirement.r1.declaredThreshold",
+    label: "Declared threshold",
+    value: 5,
+    unit: "mm",
+  },
+];
+
+const VALID_REQUIREMENTS_BRIEF_TRACE = [
+  ...VALID_TRACED_REQUIREMENTS,
+  {
+    key: "trace.artifactId",
+    label: "Requirements capture",
+    value: "requirements-arm-a",
+  },
+  {
+    key: "trace.captureFingerprint",
+    label: "Capture fingerprint",
+    value: `sha256:${"c".repeat(64)}`,
+  },
+  { key: "trace.producerRunId", label: "Producer run", value: "run:requirements" },
+  {
+    key: "trace.captureSchema",
+    label: "Capture schema",
+    value: "requirements-capture/3.0",
+  },
 ];
 
 function fingerprint(character: string) {
@@ -352,6 +422,53 @@ Deno.test("existing architecture and requirements grammars stay gated unchanged"
   );
 });
 
+Deno.test("traced requirements @2 is gated by its closed source grammar while legacy @1 refuses it", () => {
+  assertProposalMatchesOperationGrammar(
+    MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
+    VALID_TRACED_REQUIREMENTS,
+  );
+  const error = assertThrows(
+    () =>
+      assertProposalMatchesOperationGrammar(
+        MODEL_WRITE_REQUIREMENTS_OPERATION,
+        VALID_TRACED_REQUIREMENTS,
+      ),
+    ProposalGrammarError,
+  );
+  assertEquals(error.operationKey, "model.write-requirements@1");
+  assert(error.message.includes("requirements.sourceProjectId"));
+});
+
+Deno.test("retrospective requirements brief traces are gated by their closed record grammar", () => {
+  assertProposalMatchesOperationGrammar(
+    RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
+    VALID_REQUIREMENTS_BRIEF_TRACE,
+  );
+  for (
+    const invalid of [
+      [...VALID_REQUIREMENTS_BRIEF_TRACE, {
+        key: "trace.extra",
+        label: "Extra",
+        value: "forbidden",
+      }],
+      VALID_REQUIREMENTS_BRIEF_TRACE.map((parameter) =>
+        parameter.key === "trace.captureSchema"
+          ? { ...parameter, value: "requirements-capture/7.0" }
+          : parameter
+      ),
+    ]
+  ) {
+    assertThrows(
+      () =>
+        assertProposalMatchesOperationGrammar(
+          RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
+          invalid,
+        ),
+      ProposalGrammarError,
+    );
+  }
+});
+
 Deno.test("technical compilation admission rejects malformed or extra fields before human review", () => {
   const valid = validTechnicalCompilationAdmissionParameters();
   assertProposalMatchesOperationGrammar(
@@ -505,10 +622,14 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
     "design.write-geometry@1",
     "industrialize.run-dfm-checks@1",
     "industrialize.seal-dfm-case@1",
+    "model.recapture-requirements@1",
+    "model.recapture-requirements@2",
     "model.seal-architecture-sysml@1",
     "model.write-architecture@1",
     "model.write-requirements@1",
+    "model.write-requirements@2",
     "record.reconcile-uncertain-writer@1",
+    "record.seal-requirements-brief-trace@1",
     "simulate.run-admitted-modelica@1",
     "simulate.run-admitted-spice@1",
     "simulate.run-qualified-modelica-kit@1",

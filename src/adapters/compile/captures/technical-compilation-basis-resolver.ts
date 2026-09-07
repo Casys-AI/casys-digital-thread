@@ -50,8 +50,12 @@ import {
   REQUIREMENTS_CAPTURE_URI_PREFIX,
 } from "../../shared/cas/file-capture-store.ts";
 import {
+  assertRequirementsRecaptureProvenanceContinuity,
   type ExactRequirementsCapture,
+  isRecaptureRequirementsCapture,
   parseExactRequirementsCapture,
+  requirementsCaptureObservedAt,
+  requirementsCaptureProducerTool,
 } from "../../architecture/requirements/requirements-capture.ts";
 import {
   assertThreadSnapshotLineageIntact,
@@ -612,9 +616,14 @@ async function requirementsElements(
       () => parseExactRequirementsCapture(record),
     );
     assertExactRequirementsArtifact(artifact, capture.containerComponent);
+    if (artifact.producer.tool !== requirementsCaptureProducerTool(capture)) {
+      throw new TechnicalCompilationBasisResolutionError(
+        `requirements capture ${artifact.id} producer is not the exact schema/operation pair`,
+      );
+    }
     if (
       capture.trustedRunId !== artifact.producer.runId ||
-      capture.insertedAt !== artifact.freshness.changedAt
+      requirementsCaptureObservedAt(capture) !== artifact.freshness.changedAt
     ) {
       throw new TechnicalCompilationBasisResolutionError(
         `requirements capture ${artifact.id} has foreign producer or freshness provenance`,
@@ -626,12 +635,13 @@ async function requirementsElements(
       );
     }
     components.add(capture.containerComponent);
-    assertRequirementsInputs(
+    await assertRequirementsInputs(
       snapshot,
       artifact,
       architecture,
-      capture.containerComponent,
-      capture.insertedAt,
+      capture,
+      captures,
+      requirementsCaptureObservedAt(capture),
     );
     if (
       capture.architecture.artifactId !== architecture.id ||
@@ -686,8 +696,7 @@ function assertBasicRequirementsArtifact(artifact: ThreadArtifact): void {
     artifact.fingerprint.algorithm !== "sha256" ||
     artifact.version !== artifact.fingerprint.digest ||
     artifact.mediaType !== "application/json" ||
-    artifact.producer.serverId !== "syson" ||
-    artifact.producer.tool !== "syson_element_insert_sysml"
+    artifact.producer.serverId !== "syson"
   ) {
     throw new TechnicalCompilationBasisResolutionError(
       `requirements artifact ${artifact.id} has a non-exact identity`,
@@ -711,13 +720,15 @@ function assertExactRequirementsArtifact(
   }
 }
 
-function assertRequirementsInputs(
+async function assertRequirementsInputs(
   snapshot: ThreadSnapshot,
   requirements: ThreadArtifact,
   architecture: ThreadArtifact,
-  component: string,
+  capture: ExactRequirementsCapture,
+  captures: Pick<FileCaptureStore<"requirements-capture">, "read">,
   verifiedAt: string,
-): void {
+): Promise<void> {
+  const component = capture.containerComponent;
   if (
     !requirements.inputArtifactIds.includes(architecture.id) ||
     new Set(requirements.inputArtifactIds).size !==
@@ -728,6 +739,68 @@ function assertRequirementsInputs(
     throw new TechnicalCompilationBasisResolutionError(
       `requirements artifact ${requirements.id} inputs are not exact`,
     );
+  }
+  const predecessorInputs = requirements.inputArtifactIds.filter((id) =>
+    id !== architecture.id
+  );
+  if (isRecaptureRequirementsCapture(capture)) {
+    if (predecessorInputs.length !== 1) {
+      throw new TechnicalCompilationBasisResolutionError(
+        `requirements capture ${requirements.id} predecessor is not bound as its exact input`,
+      );
+    }
+    const predecessor = exactArtifactById(snapshot, predecessorInputs[0]!);
+    assertBasicRequirementsArtifact(predecessor);
+    assertExactRequirementsArtifact(predecessor, component);
+    if (
+      predecessor.id !== capture.predecessor.artifactId ||
+      predecessor.producer.runId !== capture.predecessor.producerRunId ||
+      !fingerprintsEqual(
+        predecessor.fingerprint,
+        capture.predecessor.fingerprint,
+      )
+    ) {
+      throw new TechnicalCompilationBasisResolutionError(
+        `requirements capture ${requirements.id} predecessor field is foreign to its Thread input`,
+      );
+    }
+    const predecessorText = await captures.read(predecessor.fingerprint);
+    if (predecessorText === undefined) {
+      throw new TechnicalCompilationBasisResolutionError(
+        `requirements predecessor ${predecessor.id} is not durably readable`,
+      );
+    }
+    const predecessorRecord = await exactCanonicalCapture(
+      predecessorText,
+      predecessor.fingerprint,
+      "requirements predecessor",
+    );
+    const predecessorCapture = integrity(
+      `requirements predecessor ${predecessor.id} is invalid`,
+      () => parseExactRequirementsCapture(predecessorRecord),
+    );
+    if (
+      predecessor.producer.tool !==
+        requirementsCaptureProducerTool(predecessorCapture) ||
+      predecessorCapture.trustedRunId !== predecessor.producer.runId ||
+      predecessorCapture.containerComponent !== component
+    ) {
+      throw new TechnicalCompilationBasisResolutionError(
+        `requirements capture ${requirements.id} predecessor producer is not the exact discriminant pair`,
+      );
+    }
+    try {
+      assertRequirementsRecaptureProvenanceContinuity(
+        capture,
+        predecessorCapture,
+      );
+    } catch (error) {
+      throw new TechnicalCompilationBasisResolutionError(
+        `requirements capture ${requirements.id} predecessor provenance is not continuous: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      );
+    }
   }
   for (const inputId of requirements.inputArtifactIds) {
     const input = exactArtifactById(snapshot, inputId);

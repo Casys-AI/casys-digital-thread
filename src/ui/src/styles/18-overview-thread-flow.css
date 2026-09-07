@@ -453,7 +453,7 @@
   gap: 0.3rem;
   align-items: center;
   width: var(--hull-width, auto);
-  min-height: var(--hull-header, 1.35rem);
+  height: var(--hull-header, 1.75rem);
   padding: 0 0.55rem 0 0.75rem;
   overflow: hidden;
   transform: translate(-50%, -50%);
@@ -480,6 +480,7 @@
   gap: 0.3rem;
   align-items: center;
   min-width: 0;
+  align-self: stretch;
   padding: 0;
   overflow: hidden;
   border: 0;
@@ -512,8 +513,8 @@
 /* Folder control: present, never loud. No traffic lights, no close. */
 .overview-thread-flow-group-fold {
   flex: none;
-  width: 0.85rem;
-  height: 0.85rem;
+  width: 1.25rem;
+  height: 1.5rem;
   padding: 0;
   border: 0;
   border-radius: 0.28rem;
@@ -548,6 +549,21 @@
   cursor: grabbing;
 }
 
+.overview-thread-flow-group-view {
+  flex: none;
+  width: 3.4rem;
+  padding: 0.2rem 0;
+  border: 0;
+  background: transparent;
+  color: color-mix(in srgb, var(--flow-color) 72%, #405158);
+  font: 600 0.55rem var(--font-mono);
+  cursor: pointer;
+}
+
+.overview-thread-flow-group-control[data-view="tree"] {
+  width: 2.6rem;
+}
+
 .overview-thread-flow-group-label[data-draggable="false"] {
   pointer-events: none;
 }
@@ -557,6 +573,48 @@
   inset: 0;
   z-index: 2;
   pointer-events: none;
+}
+
+/* Navigation reuses exact server rows. It is not a provider mesh or graph node. */
+.overview-thread-flow-structure-row {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0 0.45rem 0 calc(0.45rem + var(--structure-depth) * 0.9rem);
+  border: 0;
+  background: transparent;
+  color: var(--thread-ink, #27363d);
+  font: inherit;
+  font-size: 0.6875rem;
+  text-align: left;
+  pointer-events: auto;
+  overflow: hidden;
+  cursor: context-menu;
+}
+.overview-thread-flow-structure-row[data-has-viewer="true"] {
+  cursor: pointer;
+}
+.overview-thread-flow-structure-row:hover,
+.overview-thread-flow-structure-row:focus-visible {
+  background: #eef3f4;
+}
+.overview-thread-flow-structure-mark {
+  color: var(--flow-color);
+  flex: 0 0 auto;
+}
+.overview-thread-flow-structure-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.overview-thread-flow-structure-row small {
+  color: var(--thread-muted, #68767c);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 0.5625rem;
+  margin-left: auto;
 }
 
 .overview-thread-hero .overview-thread-flow-node {
@@ -596,6 +654,21 @@
   border-radius: 999px;
   background: var(--flow-color);
   box-shadow: 0 0 0 2px #fff;
+}
+
+.overview-thread-flow-node[data-has-viewer="true"] .overview-thread-flow-node-dot,
+.overview-thread-flow-node[data-has-viewer="true"] .overview-thread-flow-row-dot {
+  border-radius: 0.125rem;
+  outline: 1.5px solid var(--flow-color);
+  outline-offset: 2px;
+}
+
+.overview-thread-flow-node[data-has-viewer="true"][data-listed="true"]::after {
+  content: "Viewer";
+  color: var(--flow-color);
+  font-family: var(--font-mono);
+  font-size: 0.5rem;
+  padding-inline: 0.3rem;
 }
 
 .overview-thread-flow-node[data-kind="activity"] .overview-thread-flow-node-dot {

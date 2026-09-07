@@ -135,6 +135,14 @@ import {
   registerProjectPrescribedKinematicsReviewTools,
 } from "./project-control/prescribed-kinematics-review-tools.ts";
 import {
+  type ProjectRequirementsRecaptureReviewToolDependencies,
+  registerProjectRequirementsRecaptureReviewTools,
+} from "./project-control/requirements-recapture-review-tools.ts";
+import {
+  type ProjectRequirementsBriefTraceReviewToolDependencies,
+  registerProjectRequirementsBriefTraceReviewTools,
+} from "./project-control/requirements-brief-trace-review-tools.ts";
+import {
   autoConfirms,
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   localYoloRationale,
@@ -170,7 +178,9 @@ export interface ProjectControlToolDependencies
     ProjectAssemblyIntegrityReviewToolDependencies,
     ProjectAssemblyIntegrityEvaluationReviewToolDependencies,
     ProjectAssemblyIntegrityCloseoutReviewToolDependencies,
-    ProjectPrescribedKinematicsReviewToolDependencies {
+    ProjectPrescribedKinematicsReviewToolDependencies,
+    ProjectRequirementsRecaptureReviewToolDependencies,
+    ProjectRequirementsBriefTraceReviewToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
   /** Optional so focused read-only tests need not construct a trusted executor. */
@@ -256,6 +266,8 @@ export function registerProjectControlTools(
   registerProjectAssemblyIntegrityEvaluationReviewTools(app, dependencies);
   registerProjectAssemblyIntegrityCloseoutReviewTools(app, dependencies);
   registerProjectPrescribedKinematicsReviewTools(app, dependencies);
+  registerProjectRequirementsRecaptureReviewTools(app, dependencies);
+  registerProjectRequirementsBriefTraceReviewTools(app, dependencies);
 
   app.registerTool(projectPlanPublishTool, async (args, context) => {
     const common = commonMutation(args);

@@ -20,11 +20,11 @@ import {
  * are admitted only after exact reconciliation with that snapshot.
  */
 
-export const OVERVIEW_THREAD_WHITEBOARD_PRESENTATION_VERSION = 3;
+export const OVERVIEW_THREAD_WHITEBOARD_PRESENTATION_VERSION = 4;
 
 const STORAGE_NAMESPACE = "casys.project-whiteboard.presentation";
 const PRESENTATION_SCHEMA = "casys-project-whiteboard-presentation";
-const LEGACY_PRESENTATION_VERSIONS = [2, 1] as const;
+const LEGACY_PRESENTATION_VERSIONS = [3, 2, 1] as const;
 const MAX_PROJECT_ID_LENGTH = 512;
 const MAX_ID_LENGTH = 4_096;
 const MAX_PLACEMENT_COUNT = 10_000;
@@ -46,6 +46,8 @@ export interface OverviewThreadWhiteboardPresentationState {
   >;
   readonly transform: OverviewThreadWhiteboardTransform;
   readonly viewers: readonly OverviewThreadWhiteboardPresentationViewer[];
+  /** Presentation intent only: do not auto-open the same record again. */
+  readonly autoShownNodeKeys?: readonly string[];
 }
 
 interface OverviewThreadWhiteboardPresentationViewerBase {
@@ -215,6 +217,13 @@ export function reconcileOverviewThreadWhiteboardPresentation(
     nodePlacements,
     transform: state.transform,
     viewers,
+    ...(state.autoShownNodeKeys
+      ? {
+        autoShownNodeKeys: state.autoShownNodeKeys.filter((key) =>
+          nodeKeys.has(key)
+        ),
+      }
+      : {}),
   };
 }
 
@@ -306,6 +315,8 @@ export function saveOverviewThreadWhiteboardPresentation(
 function parsePresentationState(
   candidate: unknown,
 ): OverviewThreadWhiteboardPresentationState | undefined {
+  const hasAutoShown = isRecord(candidate) &&
+    Object.hasOwn(candidate, "autoShownNodeKeys");
   if (
     !isExactRecord(candidate, [
       "layoutMode",
@@ -313,6 +324,7 @@ function parsePresentationState(
       "nodePlacements",
       "transform",
       "viewers",
+      ...(hasAutoShown ? ["autoShownNodeKeys"] : []),
     ]) ||
     (candidate.layoutMode !== "hierarchy" && candidate.layoutMode !== "radial")
   ) {
@@ -322,6 +334,15 @@ function parsePresentationState(
   const nodePlacements = parseNodePlacements(candidate.nodePlacements);
   const transform = parseTransform(candidate.transform);
   const viewers = parseViewers(candidate.viewers);
+  const autoShownNodeKeys = hasAutoShown
+    ? candidate.autoShownNodeKeys
+    : undefined;
+  if (
+    hasAutoShown && (!Array.isArray(autoShownNodeKeys) ||
+      autoShownNodeKeys.length > MAX_PLACEMENT_COUNT ||
+      autoShownNodeKeys.some((key) => !isSafeId(key)) ||
+      new Set(autoShownNodeKeys).size !== autoShownNodeKeys.length)
+  ) return undefined;
   if (!groupPlacements || !nodePlacements || !transform || !viewers) {
     return undefined;
   }
@@ -331,6 +352,9 @@ function parsePresentationState(
     nodePlacements,
     transform,
     viewers,
+    ...(hasAutoShown
+      ? { autoShownNodeKeys: [...autoShownNodeKeys as string[]] }
+      : {}),
   };
 }
 
@@ -381,7 +405,7 @@ function parseLegacyOverviewThreadWhiteboardPresentation(
   for (const value of candidate.state.viewers) {
     if (!isRecord(value) || typeof value.kind !== "string") return undefined;
     if (value.kind === "session") {
-      if (version !== 2) return undefined;
+      if (version !== 2 && version !== 3) return undefined;
       const viewer = parseViewer(value);
       if (!viewer || seenIds.has(viewer.id)) return undefined;
       seenIds.add(viewer.id);
@@ -423,7 +447,7 @@ function parseGroupPlacements(
  * choices: an unknown value rejects the whole entry rather than degrading to a
  * default, so a restored board is exactly what was saved or nothing.
  */
-const HULL_VIEWS: readonly string[] = ["list", "matrix"];
+const HULL_VIEWS: readonly string[] = ["tree", "list", "matrix"];
 const HULL_SORTS: readonly string[] = ["recorded", "recent", "name"];
 
 /**

@@ -60,7 +60,14 @@ import {
   type GeometryPartManifest,
   parseGeometryPartManifest,
 } from "../../../../domain/cad/canonical/geometry-part-manifest.ts";
+import {
+  type GeometryModuleCapture,
+  parseGeometryModuleCapture,
+} from "../../../../domain/cad/canonical/geometry-module-capture.ts";
+import { type GeometryModuleManifest } from "../../../../domain/cad/canonical/geometry-module-manifest.ts";
+import { GEOMETRY_MODULE_MANIFEST_SCHEMA } from "../../../../domain/cad/canonical/geometry-module-identities.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../../../domain/cad/canonical/geometry-proposal.ts";
+import { GEOMETRY_MODULE_CAPTURE_SCHEMA } from "../../../../domain/cad/geometry-capture-contract.ts";
 import {
   archivedRefKeys,
   type ThreadArtifact,
@@ -127,8 +134,9 @@ export interface ArchitecturePartGraphReader {
 
 /**
  * Read-only seam over canonical geometry captures. Targeted P2a uses it only
- * to choose an exact same-target predecessor or reject a V2 bundle conflict;
- * it writes no capture and does not implement any sealing behavior.
+ * to choose an exact same-target part predecessor, skip a proven unrelated
+ * module, or reject a V2 bundle / same-target module conflict; it writes no
+ * capture and does not implement any sealing behavior.
  */
 export interface CanonicalGeometryCaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
@@ -1070,15 +1078,19 @@ class TargetedPartPredecessorError extends Error {
 const GEOMETRY_CAPTURE_URI_PREFIX = "casys://geometry-capture/sha256/";
 const ANALYZED_GEOMETRY_BUNDLE_CAPTURE_SCHEMA = "geometry-capture/2.1" as const;
 
-type TargetedCanonicalManifest = GeometryBundleManifest | GeometryPartManifest;
+type TargetedCanonicalManifest =
+  | GeometryBundleManifest
+  | GeometryPartManifest
+  | GeometryModuleManifest;
 
 interface AttestedCanonicalGeometryCapture {
   readonly manifest: TargetedCanonicalManifest;
 }
 
 /**
- * Targeted preview may coexist with captures for other parts, but it never
- * infers a predecessor from an assembly bundle or a different PartDefinition.
+ * Targeted preview may coexist with captures for other parts and with proven
+ * unrelated modules. It never infers a part predecessor from an assembly
+ * bundle, a geometry module, or a different PartDefinition.
  *
  * The capture reader is deliberately not a source of authority by itself:
  * every active primary is re-hashed and re-attested before even its manifest
@@ -1127,6 +1139,21 @@ async function selectTargetedPartPredecessor(
         );
       }
       continue;
+    }
+    if (manifest.schemaVersion === GEOMETRY_MODULE_MANIFEST_SCHEMA) {
+      if (manifest.target.partDefinitionElementId !== target.elementId) {
+        continue;
+      }
+      if (manifest.target.label !== target.label) {
+        throw new TargetedPartPredecessorError(
+          "geometry_part_target_conflict",
+          "An active geometry-module capture names the represented PartDefinition with a different label.",
+        );
+      }
+      throw new TargetedPartPredecessorError(
+        "geometry_part_target_conflict",
+        "An active geometry-module capture already names the represented PartDefinition.",
+      );
     }
     if (manifest.target.partDefinitionElementId !== target.elementId) continue;
     if (manifest.target.label !== target.label) {
@@ -1199,6 +1226,16 @@ async function readAttestedCanonicalGeometryCapture(
   }
   if (!fingerprintsEqual(observed, artifact.fingerprint)) {
     throw targetedPredecessorUnavailable();
+  }
+
+  if (
+    parsed !== null &&
+    typeof parsed === "object" &&
+    !Array.isArray(parsed) &&
+    (parsed as Record<string, unknown>).schemaVersion ===
+      GEOMETRY_MODULE_CAPTURE_SCHEMA
+  ) {
+    return await readAttestedGeometryModuleCapture(snapshot, artifact, parsed);
   }
 
   let record: Record<string, unknown>;
@@ -1303,6 +1340,54 @@ async function readAttestedCanonicalGeometryCapture(
     throw targetedPredecessorUnavailable();
   }
   throw targetedPredecessorUnavailable();
+}
+
+async function readAttestedGeometryModuleCapture(
+  snapshot: ThreadSnapshot,
+  artifact: ThreadArtifact,
+  parsed: unknown,
+): Promise<AttestedCanonicalGeometryCapture> {
+  let capture: GeometryModuleCapture;
+  try {
+    capture = await parseGeometryModuleCapture(parsed);
+  } catch {
+    throw targetedPredecessorUnavailable();
+  }
+  const architectureFingerprint = capture.architectureBasis.fingerprint;
+  if (
+    capture.trustedRunId !== artifact.producer.runId ||
+    !isNonEmptyText(capture.trustedRunId) ||
+    !isCanonicalInstant(capture.sealedAt) ||
+    artifact.freshness.changedAt !== capture.sealedAt ||
+    snapshot.artifacts.filter((candidate) =>
+        candidate.id === capture.architectureBasis.artifactId &&
+        fingerprintsEqual(candidate.fingerprint, architectureFingerprint) &&
+        candidate.producer.runId === capture.architectureBasis.producerRunId
+      ).length !== 1 ||
+    !Array.isArray(artifact.inputArtifactIds) ||
+    artifact.inputArtifactIds[0] !== capture.architectureBasis.artifactId ||
+    deterministicJson(artifact.inputArtifactIds) !==
+      deterministicJson(geometryModuleCaptureInputIds(capture))
+  ) {
+    throw targetedPredecessorUnavailable();
+  }
+  return { manifest: capture.manifest };
+}
+
+function geometryModuleCaptureInputIds(
+  capture: GeometryModuleCapture,
+): readonly string[] {
+  const childPrimaryIds = [
+    ...new Set(
+      capture.children.map((child) => child.childGeometry.artifactId),
+    ),
+  ];
+  return [
+    capture.architectureBasis.artifactId,
+    capture.structureCapture.artifactId,
+    ...childPrimaryIds,
+    ...(capture.predecessor === undefined ? [] : [capture.predecessor.artifactId]),
+  ];
 }
 
 function canonicalCaptureKeys(value: unknown): readonly string[] {

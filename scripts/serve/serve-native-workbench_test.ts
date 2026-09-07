@@ -7,6 +7,10 @@ import { COCKPIT_FOCUS_SCHEMA_VERSION } from "../../src/domain/project/cockpit-f
 import { MODEL_WRITE_ARCHITECTURE_OPERATION } from "../../src/domain/architecture/renderer/architecture-proposal.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../src/domain/cad/canonical/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-proposal.ts";
+import { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-traced-proposal.ts";
+import { MODEL_RECAPTURE_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-recapture-proposal.ts";
+import { MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-traced-recapture-proposal.ts";
+import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../src/domain/record/requirements-brief-trace.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../src/domain/compile/admission/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../src/domain/cad/isolated/build123d-execution-proposal.ts";
 import {
@@ -306,6 +310,75 @@ Deno.test("native Workbench startup requires a durable focus or explicit target"
     TypeError,
     "--subject requires --project-id.",
   );
+});
+
+Deno.test("native Workbench --project-id pin disables workspace focus follow", () => {
+  assertEquals(
+    resolveNativeWorkbenchStartupTarget({
+      "workspace-id": "primary",
+      "project-id": "modular-sensor-mount-msm01",
+    }),
+    {
+      hostname: "127.0.0.1",
+      port: 5175,
+      noSeed: true,
+      workspaceId: undefined,
+      projectId: "modular-sensor-mount-msm01",
+      explicitSubjectId: undefined,
+    },
+  );
+});
+
+Deno.test("native Workbench GET serves the pinned project instead of durable focus", async () => {
+  const pinned = projectFixture(
+    "modular-sensor-mount-msm01",
+    "project:modular-sensor-mount-msm01",
+  );
+  const focused = projectFixture(
+    "two-piece-tablet-stand-tps03",
+    "project:two-piece-tablet-stand-tps03",
+  );
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([pinned, focused]),
+    projectId: pinned.project.id,
+    workspaceId: "primary",
+    cockpitFocus: new MutableFocus(focusSnapshot(focused.project.id)),
+    html: "unused",
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  assertEquals(response.status, 200);
+  const body = await response.json() as {
+    project: { project: { id: string } };
+  };
+  assertEquals(body.project.project.id, pinned.project.id);
+});
+
+Deno.test("native Workbench GET does not substitute focus when a pin is missing", async () => {
+  const focused = projectFixture(
+    "two-piece-tablet-stand-tps03",
+    "project:two-piece-tablet-stand-tps03",
+  );
+  const handler = createNativeWorkbenchHandler({
+    store: new EmptyThreadStore(),
+    projectStore: new ProjectStore([focused]),
+    projectId: "modular-sensor-mount-msm01",
+    workspaceId: "primary",
+    cockpitFocus: new MutableFocus(focusSnapshot(focused.project.id)),
+    html: "unused",
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  assertEquals(response.status, 404);
+  assertEquals(await response.json(), {
+    error: "engineering_project_not_found",
+    projectId: "modular-sensor-mount-msm01",
+  });
 });
 
 Deno.test("native Workbench rejects a non-loopback bind host", () => {
@@ -1238,6 +1311,10 @@ Deno.test("native Workbench hides durable unattached generic requirements and ge
   for (
     const operation of [
       MODEL_WRITE_REQUIREMENTS_OPERATION,
+      MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
+      MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
+      MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
+      RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
       DESIGN_WRITE_GEOMETRY_OPERATION,
     ]
   ) {
@@ -1319,6 +1396,10 @@ Deno.test("native Workbench classifies every known durable writer before attachm
   const r2 = genericArchitectureThreadSnapshot(2);
   const r3 = genericArchitectureThreadSnapshot(3, r2);
   const operations = [
+    MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
+    MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
+    MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
+    RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
     VERIFY_SEAL_PROOF_CASE_OPERATION,
     VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
     COMPILE_SEAL_ADMISSION_OPERATION,
@@ -1697,6 +1778,59 @@ Deno.test("native Workbench exposes viewer sessions as complete GET and SSE repl
   assertStringIncludes(text, "event: viewer-sessions");
   assertStringIncludes(text, '"schemaVersion":"thread-viewer-sessions/2.0"');
   assertStringIncludes(text, `:${projection.projectionFingerprint}`);
+});
+
+Deno.test("native Workbench viewer hierarchy travels in the same fingerprinted GET and SSE replacement", async () => {
+  const fixture = await verifiedArchitectureNavigationFixture();
+  const projectId = "project.verified-architecture";
+  const base = projectFixture(projectId, fixture.snapshot.subject.id);
+  const project: EngineeringProjectSnapshot = {
+    ...base,
+    threadSnapshots: [{
+      snapshotId: fixture.snapshot.id,
+      revision: fixture.snapshot.revision,
+      subjectId: fixture.snapshot.subject.id,
+    }],
+  };
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([fixture.snapshot]),
+    projectStore: new ProjectStore([project]),
+    projectId,
+    subjectId: fixture.snapshot.subject.id,
+    html: "unused",
+    productStructureCaptures: fixture.reader,
+    sysmlSourceAnalysis: fixture.sourceAnalysis,
+    geometryCaptures: { read: () => Promise.resolve(undefined) },
+  });
+  const response = await handler(
+    new Request("http://localhost/api/thread/viewer-sessions"),
+  );
+  assertEquals(response.status, 200);
+  const projection = await response.json();
+  assertEquals(projection.hierarchy.status, "available");
+  assertEquals(projection.hierarchy.nodes[0].partDefinitionElementId, "sys-def-001");
+  assertEquals(projection.sessions, []);
+  assertEquals(
+    projection.hierarchy.nodes.every((n: { sessionIds: string[] }) =>
+      n.sessionIds.length === 0
+    ),
+    true,
+  );
+  const { projectionFingerprint, ...unsigned } = projection;
+  assertEquals(
+    projectionFingerprint,
+    `sha256:${(await sha256Fingerprint(unsigned)).digest}`,
+  );
+  const events = await handler(
+    new Request("http://localhost/api/thread/viewer-sessions/events"),
+  );
+  const reader = events.body!.getReader();
+  try {
+    const next = viewerSessionsEventReader(reader);
+    assertEquals(await next(), projection);
+  } finally {
+    await reader.cancel();
+  }
 });
 
 Deno.test("native Workbench file registry serves and revokes an exact whole App end to end", async () => {

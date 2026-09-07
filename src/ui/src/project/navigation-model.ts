@@ -1,5 +1,5 @@
 /**
- * Les cinq espaces du cockpit, et leur adressage dans le fragment d'URL.
+ * Les quatre espaces du cockpit, et leur adressage dans le fragment d'URL.
  *
  * Le fragment est la seule chose que le navigateur possede legitimement ici :
  * il ne porte aucune autorite MCP, ne nomme aucun enregistrement et n'atteint
@@ -10,7 +10,6 @@
 export type ProjectWorkspaceView =
   | "overview"
   | "work"
-  | "product"
   | "verification"
   | "operations";
 
@@ -30,11 +29,6 @@ export const PROJECT_VIEWS: readonly ProjectWorkspaceViewDescriptor[] = [
     id: "work",
     label: "Activity",
     description: "Recorded work, reviews and lineage",
-  },
-  {
-    id: "product",
-    label: "Product",
-    description: "Exact registered App handoffs",
   },
   {
     id: "verification",

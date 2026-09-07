@@ -1,0 +1,55 @@
+{
+  "schemaVersion": "cad-immediate-placement-source/1.0",
+  "unitSystem": "mm",
+  "placementConvention": "right-handed-mm-extrinsic-xyz-degrees",
+  "placements": [
+    {
+      "usageElementId": "582266cb-1186-4e5d-9ff0-9342a007f167",
+      "partDefinitionElementId": "e19064f9-3d0c-4052-b025-53468ab864cb",
+      "placement": {
+        "translationMm": [
+          0,
+          22,
+          3
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "usageElementId": "673bebc3-48f5-4cfe-a2eb-e849ff9b50a3",
+      "partDefinitionElementId": "6e2822d9-0894-42c5-a9e4-ad4d96f2294f",
+      "placement": {
+        "translationMm": [
+          0,
+          0,
+          0
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "usageElementId": "8c24a053-7dab-4de6-92c7-005498a989f4",
+      "partDefinitionElementId": "07ad2fb6-3205-4bff-9f7f-7e041d0c58a9",
+      "placement": {
+        "translationMm": [
+          0,
+          -17,
+          3
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          0
+        ]
+      }
+    }
+  ]
+}

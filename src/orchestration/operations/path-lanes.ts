@@ -32,6 +32,9 @@ const PATH_LANE_BY_OPERATION: Readonly<
   "model.capture-part-definitions@1": fixed("system-model"),
   "model.seal-architecture-sysml@1": fixed("system-model"),
   "model.write-requirements@1": fixed("requirements"),
+  "model.write-requirements@2": fixed("requirements"),
+  "model.recapture-requirements@1": fixed("requirements"),
+  "model.recapture-requirements@2": fixed("requirements"),
   "compile.seal-admission@3": contextual(
     ["geometry", "physics"],
     "system-model",
@@ -80,6 +83,7 @@ const PATH_LANE_BY_OPERATION: Readonly<
   "industrialize.seal-dfm-case@1": fixed("physics"),
   "industrialize.run-dfm-checks@1": fixed("physics"),
   "record.reconcile-uncertain-writer@1": fixed("system-model"),
+  "record.seal-requirements-brief-trace@1": fixed("requirements"),
   "record.archive-lineage@1": fixed("system-model"),
 };
 

@@ -44,11 +44,31 @@ export interface McpAppReadOnlyHost {
   invalidate(): void;
 }
 
+export type McpAppHostPresentationReadiness =
+  | { readonly kind: "session-delivered" }
+  | {
+    readonly kind: "resource-read";
+    readonly status: "available" | "unavailable";
+    readonly reason?:
+      | "not-registered"
+      | "fetch-failed"
+      | "identity-mismatch"
+      | "too-large";
+  };
+
 export interface McpAppReadOnlyHostOptions {
   readonly target: McpAppHostPostTarget;
   readonly session: ThreadViewerSession;
   readonly hostContext: McpAppInlineHostContext;
   readonly fetcher?: McpAppHostResourceFetch;
+  /**
+   * Presentation-only. Fired after the exact opaque-origin App identity is
+   * verified and the recorded session is delivered, then after each posted
+   * resource-port read. Never inferred from iframe load or unknown messages.
+   */
+  readonly onPresentationReadiness?: (
+    event: McpAppHostPresentationReadiness,
+  ) => void;
 }
 
 const UNSUPPORTED_AUTHORITY_METHODS = new Set([
@@ -145,6 +165,15 @@ export function createMcpAppReadOnlyHost(
           !active || resourcePort !== port || generation !== pendingGeneration
         ) return;
         port.postMessage(result);
+        options.onPresentationReadiness?.(
+          result.status === "available"
+            ? { kind: "resource-read", status: "available" }
+            : {
+              kind: "resource-read",
+              status: "unavailable",
+              reason: result.reason,
+            },
+        );
       });
     };
     port.start();
@@ -226,6 +255,7 @@ export function createMcpAppReadOnlyHost(
             data: structuredClone(options.session.session.payload),
           },
         });
+        options.onPresentationReadiness?.({ kind: "session-delivered" });
       }
       return true;
     }

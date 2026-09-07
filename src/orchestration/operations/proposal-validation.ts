@@ -43,11 +43,27 @@ import {
   MODEL_WRITE_REQUIREMENTS_OPERATION,
   parseRequirementsProposalParameters,
 } from "../../domain/architecture/requirements/requirements-proposal.ts";
+import {
+  MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION,
+  parseTracedRequirementsProposalParameters,
+} from "../../domain/architecture/requirements/requirements-traced-proposal.ts";
+import {
+  MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
+  parseRequirementsRecaptureParameters,
+} from "../../domain/architecture/requirements/requirements-recapture-proposal.ts";
+import {
+  MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
+  parseTracedRequirementsRecaptureProposalParameters,
+} from "../../domain/architecture/requirements/requirements-traced-recapture-proposal.ts";
 import type { EngineeringDecisionProposalParameter } from "../../domain/project/engineering-project.ts";
 import {
   parseReconcileUncertainWriterProposal,
   RECONCILE_UNCERTAIN_WRITER_OPERATION,
 } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
+import {
+  parseRequirementsBriefTraceParameters,
+  RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
+} from "../../domain/record/requirements-brief-trace.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   parseTechnicalCompilationAdmissionParameters,
@@ -298,6 +314,30 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(MODEL_WRITE_REQUIREMENTS_OPERATION),
     (parameters) => {
       parseRequirementsProposalParameters(parameters);
+    },
+  ],
+  [
+    keyOf(MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION),
+    (parameters) => {
+      parseTracedRequirementsProposalParameters(parameters);
+    },
+  ],
+  [
+    keyOf(RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION),
+    (parameters) => {
+      parseRequirementsBriefTraceParameters(parameters);
+    },
+  ],
+  [
+    keyOf(MODEL_RECAPTURE_REQUIREMENTS_OPERATION),
+    (parameters) => {
+      parseRequirementsRecaptureParameters(parameters);
+    },
+  ],
+  [
+    keyOf(MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION),
+    (parameters) => {
+      parseTracedRequirementsRecaptureProposalParameters(parameters);
     },
   ],
   [

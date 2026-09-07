@@ -1,4 +1,11 @@
 import type { ThreadGraphRef } from "./graph.ts";
+import { isDenseUnadornedArray } from "./dense-unadorned-array.ts";
+import {
+  type ThreadViewerHierarchyProjection,
+  validateThreadViewerHierarchyProjection,
+} from "./viewer-hierarchy.ts";
+
+export { isDenseUnadornedArray } from "./dense-unadorned-array.ts";
 
 export const THREAD_VIEWER_SESSIONS_SCHEMA = "thread-viewer-sessions/2.0" as const;
 export const THREAD_VIEWER_SESSION_ACTION = "viewer.session.apply" as const;
@@ -139,6 +146,8 @@ export interface ThreadViewerSessionsProjection {
   readonly sequence: number;
   readonly projectionFingerprint: string;
   readonly sessions: readonly ThreadViewerSession[];
+  /** Exact occurrence navigation; never an App registration or domain payload. */
+  readonly hierarchy?: ThreadViewerHierarchyProjection;
 }
 
 export function isThreadViewerSessionsProjection(
@@ -151,6 +160,10 @@ export function isThreadViewerSessionsProjection(
       "sequence",
       "projectionFingerprint",
       "sessions",
+      ...(typeof value === "object" && value !== null &&
+          Object.hasOwn(value, "hierarchy")
+        ? ["hierarchy"]
+        : []),
     ])
   ) return false;
   if (value.schemaVersion !== THREAD_VIEWER_SESSIONS_SCHEMA) return false;
@@ -163,6 +176,13 @@ export function isThreadViewerSessionsProjection(
   for (const session of value.sessions) {
     if (!isThreadViewerSession(session) || ids.has(session.id)) return false;
     ids.add(session.id);
+  }
+  if (Object.hasOwn(value, "hierarchy")) {
+    try {
+      validateThreadViewerHierarchyProjection(value.hierarchy, ids);
+    } catch {
+      return false;
+    }
   }
   return true;
 }
@@ -438,27 +458,6 @@ function isJsonValue(value: unknown): value is ThreadViewerSessionJson {
     return isDenseUnadornedArray(value) && value.every(isJsonValue);
   }
   return isRecord(value) && Object.values(value).every(isJsonValue);
-}
-
-/**
- * Admit only ordinary dense arrays whose own keys are exactly `length` and
- * every numeric index. This stays local to the viewer-session boundary so
- * historical deterministic JSON fingerprints elsewhere are not changed.
- */
-export function isDenseUnadornedArray(
-  value: unknown,
-): value is readonly unknown[] {
-  if (!Array.isArray(value)) return false;
-  const keys = Reflect.ownKeys(value);
-  if (keys.length !== value.length + 1 || !keys.includes("length")) {
-    return false;
-  }
-  for (let index = 0; index < value.length; index += 1) {
-    if (!Object.prototype.hasOwnProperty.call(value, String(index))) {
-      return false;
-    }
-  }
-  return true;
 }
 
 function isNonEmptyString(value: unknown): value is string {

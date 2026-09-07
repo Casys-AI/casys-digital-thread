@@ -10,7 +10,7 @@ export const PREVIEW_THREAD_UI_PORT = 5173;
 export const PREVIEW_THREAD_BFF_PORT = 5175;
 
 export interface PreviewThreadCommand {
-  readonly name: "bff" | "ui";
+  readonly name: "bff" | "ui" | "viewer-registrar";
   readonly command: string;
   readonly args: readonly string[];
   readonly env?: Readonly<Record<string, string>>;
@@ -24,6 +24,27 @@ export function previewThreadPorts(): {
     uiPort: PREVIEW_THREAD_UI_PORT,
     bffPort: PREVIEW_THREAD_BFF_PORT,
   };
+}
+
+/**
+ * Default `--workspace-id=primary` is focus-only. An explicit `--project-id`
+ * pins that project and must not also inject workspace follow. Passing both
+ * explicit selectors is refused rather than silently serving another project.
+ */
+export function previewThreadWorkspaceSelectorArgs(
+  passthrough: readonly string[] = [],
+): readonly string[] {
+  const explicitProjectId = lastFlagValue(passthrough, "project-id");
+  const explicitWorkspaceId = lastFlagValue(passthrough, "workspace-id");
+  if (explicitProjectId !== undefined && explicitWorkspaceId !== undefined) {
+    throw new TypeError(
+      "--project-id pins a project and cannot be combined with --workspace-id.",
+    );
+  }
+  if (explicitProjectId !== undefined || explicitWorkspaceId !== undefined) {
+    return [];
+  }
+  return ["--workspace-id=primary"];
 }
 
 export function buildPreviewThreadCommands(
@@ -46,7 +67,7 @@ export function buildPreviewThreadCommands(
         "--allow-env=NAPI_RS_ENFORCE_VERSION_CHECK,NAPI_RS_NATIVE_LIBRARY_PATH,NAPI_RS_FORCE_WASI,NAPI_RS_WASI_FLAVOR,MSB_PATH,MSB_LIBKRUNFW_PATH,MSB_CONFIG_PATH,MSB_HOME,MSB_BACKEND,MSB_API_URL,MSB_API_KEY,MSB_PROFILE",
         "--allow-ffi=node_modules",
         "scripts/serve/serve-native-workbench.ts",
-        "--workspace-id=primary",
+        ...previewThreadWorkspaceSelectorArgs(extra),
         "--no-seed",
         `--port=${PREVIEW_THREAD_BFF_PORT}`,
         "--viewer-app-registry=state/local/thread-viewer-apps/registry.json",
@@ -62,6 +83,22 @@ export function buildPreviewThreadCommands(
         CASYS_COCKPIT_BFF_PORT: String(PREVIEW_THREAD_BFF_PORT),
         CASYS_COCKPIT_UI_PORT: String(PREVIEW_THREAD_UI_PORT),
       },
+    },
+    {
+      name: "viewer-registrar",
+      command: Deno.execPath(),
+      args: [
+        "run",
+        "--no-prompt",
+        "--frozen",
+        "--allow-read=state",
+        "--allow-write=state/local/thread-viewer-apps",
+        "scripts/runners/register-thread-viewer-apps.ts",
+        "--watch",
+        ...(lastFlagValue(extra, "project-id") !== undefined
+          ? [`--project-id=${lastFlagValue(extra, "project-id")}`]
+          : []),
+      ],
     },
   ];
 }
@@ -114,4 +151,25 @@ if (import.meta.main) {
   shutdown();
   const failed = statuses.find((status) => !status.success);
   Deno.exit(failed?.code && failed.code > 0 ? failed.code : failed ? 1 : 0);
+}
+
+function lastFlagValue(
+  args: readonly string[],
+  name: string,
+): string | undefined {
+  const prefix = `--${name}=`;
+  const token = `--${name}`;
+  let value: string | undefined;
+  for (let index = 0; index < args.length; index += 1) {
+    const argument = args[index];
+    if (argument.startsWith(prefix)) {
+      value = argument.slice(prefix.length);
+      continue;
+    }
+    if (argument === token) {
+      const next = args[index + 1];
+      value = next !== undefined && !next.startsWith("--") ? next : "";
+    }
+  }
+  return value;
 }
