@@ -263,26 +263,62 @@ both then received fresh L3/L4/L5, ending at r82. The
 [current rebuild ledger](camera-deck-rebuild-20260907.md) records exact identities and
 five-criterion limits. This closes F09, not a physical-joint or flight requirement.
 
-## F10 — new proof seal reaches an unimplemented lineage-review boundary
+## F10 — former 50-ancestor proof-seal ceiling (closed)
 
-The current recaptured bracket requirement has no evaluation. A successor bench source
-revision 2 preserves all original physics and the unchanged bracket STEP, but explicitly
-requests fresh verification against that current requirement. Source capture and public
-seal review resolved at Thread r82. The exact seal was proposed, approved through local
-YOLO, and queued at project r583 as `run:id01-queue-bench-r2-seal-20260907`.
+The recaptured bracket requirement initially had no evaluation. A successor bench source
+revision 2 preserved all original physics and the unchanged bracket STEP while
+requesting fresh verification against that current requirement. Source capture and
+public seal review resolved at Thread r82. The exact seal was proposed, approved through
+local YOLO, and queued at project r583 as `run:id01-queue-bench-r2-seal-20260907`.
 
 Execution refused before claim with
 `proof_case_lineage_review_required: ancestor traversal exceeded the explicit 50-revision review bound.`
-The anti-removal check for `(subjectId, proofDigest)` must reach the root when the new
-digest is absent from the current snapshot. It scans at most 50 ancestors. No registered
-operation, review capture or continuation implements the operator review named by that
-refusal. This is not a solver failure or a malformed source. The run remains `queued`,
-with no claim or evidence; no new seal, FEA execution or requirement verdict is claimed.
+The anti-removal check for `(subjectId, proofDigest)` had to reach the root when the new
+digest was absent from the current snapshot, but scanned at most 50 ancestors. This was
+not a solver failure or malformed source. The run had no claim or evidence and was
+cancelled through the normal human-YOLO path at project r584; it does not become live
+engineering evidence later.
 
-The existing limit is preserved. A generic, exact-basis lineage-review authority needs
-separate authorization and qualification; raising the constant, inventing a bypass, or
-reusing the historical pass would not supply that authority. Source r1, all old captures
-and the new r2 proposal remain readable. F10 stays open; the pilot is not declared done.
+The generic correction already present in checkpoint `5429a854` replaced the ceiling
+with a full intact-ancestry review while preserving cycle, subject and snapshot-identity
+checks. After the documentary claim advanced the Thread, source revision 3 resumed the
+same unchanged engineering case. Its exact seal completed at project r598 / Thread r84,
+proving the live server crossed the former ceiling. Source revisions 1–3, the cancelled
+r2 proposal and all historical captures remain readable. F10 is closed; this does not
+turn the bench result into a whole-drone or flight proof.
+
+## F11 — repeated isolated FEA outputs collided during Thread publication (closed)
+
+The first r3 `verify.run-fea-static-proof@3` request completed one real CalculiX solve
+and one SysON evaluation, then failed while materializing its Thread successor because
+the reused input STEP had the same digest as the historical r52 branch:
+
+```text
+Thread artifact calculix-isolated-input-step-b821e5598b75449636eb57d0ea7db48ea560260ce56a6872ebeaec0f7691d201 conflicts with an already attached artifact.
+```
+
+At project r603 the public run was `running`, while the product WAL was already
+`evaluation-captured`. Its immutable execution and oracle captures were present. The raw
+worker attempt recorded `dispatchCount: 1`; this was a publication collision, not an
+uncertain solve or oracle call.
+
+The publication path used digest-only artifact identities even when the same bytes were
+produced by a different run. Native Grok prepared bounded candidates; Astra rejected the
+evidence-digest-only strategy and integrated the coherent run-identity strategy, then
+closed its replay and exact-run tests. Checkpoint `0ff72880` preserves the legacy layout
+when no entity conflict exists and scopes the entire eleven-artifact branch by the exact
+producer run id only when a full entity conflict requires it. L5, viewer binding and app
+registration accept only an exact coherent legacy or matching-run layout; malformed,
+mixed and cross-run branches fail closed.
+
+The final gate passed 54 focused tests, whole-repository type checking, formatting and
+an independent Terra `SHIP` review. After controlled local-server adoption, the original
+command, expected revision, issued-at time and run id resumed the existing WAL. It did
+not redispatch CalculiX or SysON: the worker attempt still records one dispatch. The run
+completed at project r605 / Thread r85 with eleven run-scoped artifacts and one linked
+L4 `pass`. The exact bounded L5 closeout then completed at project r612 / Thread r86. No
+provider image, physics input, source byte, proof criterion or captured numeric result
+changed. F11 is closed without broadening the meaning of the accepted bench case.
 
 ## Expected states, not defects
 

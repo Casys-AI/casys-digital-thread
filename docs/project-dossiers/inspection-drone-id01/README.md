@@ -8,12 +8,19 @@ decisions. Re-read the control plane before continuing.
 
 ## Current project truth
 
+Latest resumption: project r612 / Thread r86. The
+[revision 3 bench revalidation ledger](bench-revalidation-r3-20260907.md) supersedes the
+historical F10 status below. The new proof sealed at r84; the exact FEA branch and L4
+`pass` published at r85 after a bounded repeated-artifact identity correction; the
+bounded human-origin L5 acceptance published at r86. Both runs are `completed`. The
+collision at project r603 remains documented as F11 rather than erased.
+
 - Project: `inspection-drone-id01`.
-- Observed project revision: r591. The first provider-free requirements-to-brief claim
-  appended at Thread r83; it did not execute an FEA solver or a native requirements
-  writer.
-- Current Thread at that observation: r83. The prior r583/r82 rebuild state remains
-  historical engineering evidence; the documentary append does not alter it.
+- Observed project revision: r612. The current Thread is r86,
+  `project:inspection-drone-id01:r86:decide-accept-evaluation-closeout-run:id01-queue-bench-r3-closeout-20260907`.
+- The first provider-free requirements-to-brief claim at project r591 / Thread r83
+  remains historical evidence; it did not execute an FEA solver or a native requirements
+  writer. The subsequent bench branch preserved that documentary basis.
 - Human-sourced intent: an unarmed observation/inspection pilot developed through the
   paired chat, with traceable multi-subsystem design and bounded real verification.
   Weapons, targeting, and attack support are excluded.
@@ -124,9 +131,10 @@ decisions. Re-read the control plane before continuing.
   its public seal review selects the recaptured requirement. The queued seal at project
   r583 reached F10's explicit 50-ancestor anti-removal bound. It was cancelled through
   the normal human-YOLO path at project r584 before execution, allowing the later
-  documentary append. F10 remains open; the new requirement still has no current
-  evaluation and the old bench pass is historical. Neither the bound nor prior evidence
-  was changed.
+  documentary append. At that checkpoint F10 was open and the new requirement had no
+  current evaluation. The old bench pass remains historical; neither it nor prior
+  evidence was rewritten. The existing full-ancestry correction in `5429a854` and the
+  later revision 3 live seal close F10 without bypassing the guard.
 - Workspace r124 adds the current rebuild ledger as a captured supporting document on
   InspectionDrone: eight modules, thirty-four active files and fifty-five attachments.
 - The first real provider-free documentary claim appended at project r591 / Thread r83.
@@ -135,6 +143,12 @@ decisions. Re-read the control plane before continuing.
   original `TRACE GAP`. The exact artifact, claim, public-MCP replay and remaining
   boundaries are in the
   [requirements-to-brief claim ledger](requirements-brief-claim-20260907.md).
+- Workspace r126 carries bench proof source revision 3 and its attachment recrossed
+  explicitly against Thread r84. The proof sealed at project r598 / Thread r84. Its
+  actual CalculiX/SysON branch published at project r605 / Thread r85 with one L4
+  `pass`; the exact L5 closeout then completed at project r612 / Thread r86. The
+  [revision 3 ledger](bench-revalidation-r3-20260907.md) records the identities,
+  collision recovery and unchanged proof limits.
 
 Jurisdiction, operational performance criteria, as-built materials, operational loads,
 energy storage, propulsion and flight-safety provisions remain unresolved. Initial
@@ -168,41 +182,42 @@ publication/runtime-adoption evidence.
 ## Next engineering boundary
 
 The larger goal remains ID01, not the initial bracket. The six subsystems and updated
-nested root have exact executed static checks. The camera/deck source successor is now
-canonical, with explicit Airframe/root rebuilds and fresh L3/L4/L5. The remaining
-current-evidence gap is the unchanged bench case's new requirement-linked verification.
-Its F10 queued seal was cancelled before execution; F10 remains an unimplemented
-operator-history review boundary, not a closed result. A generic continuation needs a
-separate review; the pilot is not declared complete. The
+nested root have exact executed static checks. The camera/deck source successor is
+canonical, with explicit Airframe/root rebuilds and fresh L3/L4/L5. The requirement-
+linked bench r3 branch is now also sealed, executed, evaluated and accepted within its
+camera-weight-only limits; F10 and F11 are closed. The next useful engineering boundary
+is an actual physical interface outside that bracket-only proof. Current evidence makes
+the four-hole motor-to-`RadialArm` datum a bounded candidate, but selecting that datum
+is a consequential human design decision and has not been recorded. The
 [remaining-boundary record](remaining-integration-boundaries.md) stays a preserved r70
-capture. Its F08 blocker is closed and the deck holes are now canonical, but its
-unmodeled physical interfaces remain unresolved. F07, F08 and F09 are source-tested and
-live-proven; electrical, aerodynamic and flight-safety evidence remains outside these
-proof meanings.
+capture. Its F08 blocker is closed and the deck holes are canonical, but its unmodeled
+physical interfaces remain unresolved. Electrical, aerodynamic and flight-safety
+evidence remains outside these proof meanings; the pilot is not declared complete.
 
-The latest browser-verified presentation is project r583 / Thread r82. Seven new exact
-whole-App bindings expose the six modules and updated root, preserving all twenty-five
-prior bindings unchanged; the registry contains thirty-two entries. Fresh root and
-Airframe App checks verified their exact GLB digests, rendered canvases and passed
-Fit/zoom and read-only network checks. Both canvases were visually inspected. The
-scripts, screenshots, hashes and presentation-only limits are in the current rebuild
-ledger. Chromium's existing unsupported `webrtc` CSP-directive warning remains. The
-Product tab remains removed as requested; 3D stays on Project. The older r69
-presentation ledger remains historical. Source attachments may be `different-basis`;
-preserved captures and historical admissions are not silently rewritten. Recross only
-through a registered surface when a current authoring capture or closure requires it.
-The BFF now declares the available v1 requirements-to-brief claim while retaining the
-original `TRACE GAP` separately. A fresh separate-profile headless browser audit of
-project r591 / Thread r83 selected the native camera-bracket requirement with no page
-errors and no non-GET API requests. It found the exact brief-r3
-`camera-bracket-bench-stress` source node in the Brief hull, its one direct cable to the
-sole requirement, and no stand-alone retrospective-document wrapper node on that hero
-surface. Requirement-to-source and source-to-requirement navigation both worked; the
-source note stayed readable above restored viewers, and a planned-only detached
-`PENDING` legend was absent without hiding the actual planned activity. This is
-presentation QA only: it does not prove claim semantics, native-writer qualification,
-requirement satisfaction, FEA, or provider runtime. The older literal `TRACE GAP`
-remains separate historical provenance.
+The read-only BFF now serves project r612 / Thread r86. The latest separate-profile
+browser interaction audit remains project r591 / Thread r83; no later visual audit is
+claimed here. The earlier project r583 / Thread r82 presentation established seven exact
+whole-App bindings for the six modules and updated root while preserving all twenty-five
+prior bindings; the registry contains thirty-two entries. Fresh root and Airframe App
+checks verified their exact GLB digests, rendered canvases and passed Fit/zoom and
+read-only network checks. Both canvases were visually inspected. The scripts,
+screenshots, hashes and presentation-only limits are in the current rebuild ledger.
+Chromium's existing unsupported `webrtc` CSP-directive warning remains. The Product tab
+remains removed as requested; 3D stays on Project. The older r69 presentation ledger
+remains historical. Source attachments may be `different-basis`; preserved captures and
+historical admissions are not silently rewritten. Recross only through a registered
+surface when a current authoring capture or closure requires it. The BFF now declares
+the available v1 requirements-to-brief claim while retaining the original `TRACE GAP`
+separately. A fresh separate-profile headless browser audit of project r591 / Thread r83
+selected the native camera-bracket requirement with no page errors and no non-GET API
+requests. It found the exact brief-r3 `camera-bracket-bench-stress` source node in the
+Brief hull, its one direct cable to the sole requirement, and no stand-alone
+retrospective-document wrapper node on that hero surface. Requirement-to-source and
+source-to-requirement navigation both worked; the source note stayed readable above
+restored viewers, and a planned-only detached `PENDING` legend was absent without hiding
+the actual planned activity. This is presentation QA only: it does not prove claim
+semantics, native-writer qualification, requirement satisfaction, FEA, or provider
+runtime. The older literal `TRACE GAP` remains separate historical provenance.
 
 Working split: Astra directly operates Digital Thread and authors the engineering
 proposals/sources; native Grok investigates or implements bounded platform changes under
