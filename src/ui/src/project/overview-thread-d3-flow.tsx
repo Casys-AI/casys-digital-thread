@@ -41,6 +41,7 @@ import {
   overviewThreadNodeContextValue,
 } from "./overview-thread-context-target.ts";
 import { DropdownMenuContextTrigger } from "../ui/dropdown-menu.tsx";
+import type { OverviewHullContent } from "./overview-thread-hull-content.ts";
 
 export type OverviewThreadD3FlowMoveDirection =
   | "ArrowUp"
@@ -58,6 +59,9 @@ export interface OverviewThreadStageSummary {
 export interface OverviewThreadD3FlowProps {
   readonly layout: OverviewThreadD3FlowLayout;
   readonly nodesByKey: ReadonlyMap<string, OverviewHeroNode>;
+  readonly viewerNodeKeys?: ReadonlySet<string>;
+  readonly hullContents?: ReadonlyMap<string, OverviewHullContent>;
+  readonly onOpenStructureSession?: (sessionId: string) => void;
   readonly stages?: readonly OverviewThreadStageSummary[];
   readonly showLaneStrip?: boolean;
   readonly activeKey?: string;
@@ -113,6 +117,8 @@ interface OverviewFlowDragState {
   readonly maximumY: number;
   readonly canvasWidth: number;
   readonly canvasHeight: number;
+  readonly unitsPerPixelX: number;
+  readonly unitsPerPixelY: number;
   appliedX: number;
   appliedY: number;
   pendingX?: number;
@@ -129,6 +135,8 @@ interface OverviewFlowResizeState {
   readonly originHeight: number;
   readonly canvasWidth: number;
   readonly canvasHeight: number;
+  readonly unitsPerPixelX: number;
+  readonly unitsPerPixelY: number;
 }
 
 interface OverviewFlowDragTarget {
@@ -540,7 +548,7 @@ export function overviewFlowMotionPath(
   }
   const generated = curve === "bump" || kind === "node-branch"
     ? flowMotionBumpLine(points)
-    : overviewThreadD3FlowRoundedPath(points);
+    : overviewThreadD3FlowRoundedPath(points, curve === "rack" ? 2 : undefined);
   return generated ?? "";
 }
 
@@ -754,6 +762,9 @@ function nonNegativeFinite(value: number): number {
 export function OverviewThreadD3Flow({
   layout,
   nodesByKey,
+  viewerNodeKeys,
+  hullContents,
+  onOpenStructureSession,
   stages = [],
   showLaneStrip = true,
   activeKey,
@@ -787,7 +798,7 @@ export function OverviewThreadD3Flow({
   // the hull is read by its band alone.
   const controlsVisible = overviewThreadHullControlsVisible(boardScale);
   /** A band narrower than this has room for its name or its controls, not both. */
-  const bandFitsControls = (width: number) => width >= 120;
+  const bandFitsControls = (width: number) => width >= 240;
   const relatedKeys = useMemo(
     () => flowRelatedNodeKeys(layout, activeKey),
     [activeKey, layout],
@@ -803,6 +814,12 @@ export function OverviewThreadD3Flow({
   const activityStatuses = useMemo(
     () => overviewFlowActivityStatuses(nodesByKey),
     [nodesByKey],
+  );
+  // A planned activity already carries its own dashed marker and title. A
+  // legend containing only PENDING is detached from that work item, while
+  // active and blocked entries remain useful board-wide status affordances.
+  const notableActivityStatuses = activityStatuses.filter((status) =>
+    status !== "planned"
   );
   const movingNodeKeys = useMemo(() => {
     if (!dragging) return new Set<string>();
@@ -856,6 +873,8 @@ export function OverviewThreadD3Flow({
       originHeight: group.height,
       canvasWidth: canvasBounds.width,
       canvasHeight: canvasBounds.height,
+      unitsPerPixelX: viewBoxWidth / canvasBounds.width,
+      unitsPerPixelY: viewBoxHeight / canvasBounds.height,
     };
     event.currentTarget.setPointerCapture?.(event.pointerId);
   };
@@ -871,14 +890,12 @@ export function OverviewThreadD3Flow({
       width: Math.max(
         FLOW_HULL_MINIMUM_WIDTH,
         resize.originWidth +
-          (event.clientX - resize.startClientX) * viewBoxWidth /
-            resize.canvasWidth,
+          (event.clientX - resize.startClientX) * resize.unitsPerPixelX,
       ),
       height: Math.max(
         FLOW_HULL_MINIMUM_HEIGHT,
         resize.originHeight +
-          (event.clientY - resize.startClientY) * viewBoxHeight /
-            resize.canvasHeight,
+          (event.clientY - resize.startClientY) * resize.unitsPerPixelY,
       ),
     });
   };
@@ -929,7 +946,7 @@ export function OverviewThreadD3Flow({
       originX = node.x;
       originY = node.y;
       minimumX = group.x;
-      minimumY = group.y;
+      minimumY = group.y + group.headerHeight;
       maximumX = group.x + group.width - node.width;
       maximumY = group.y + group.height - node.height;
     }
@@ -948,6 +965,8 @@ export function OverviewThreadD3Flow({
       maximumY,
       canvasWidth: canvasBounds.width,
       canvasHeight: canvasBounds.height,
+      unitsPerPixelX: viewBoxWidth / canvasBounds.width,
+      unitsPerPixelY: viewBoxHeight / canvasBounds.height,
       appliedX: originX,
       appliedY: originY,
       moved: false,
@@ -968,12 +987,12 @@ export function OverviewThreadD3Flow({
     event.preventDefault();
     event.stopPropagation();
     const nextX = clampNumber(
-      drag.originX + clientDeltaX * viewBoxWidth / drag.canvasWidth,
+      drag.originX + clientDeltaX * drag.unitsPerPixelX,
       drag.minimumX,
       drag.maximumX,
     );
     const nextY = clampNumber(
-      drag.originY + clientDeltaY * viewBoxHeight / drag.canvasHeight,
+      drag.originY + clientDeltaY * drag.unitsPerPixelY,
       drag.minimumY,
       drag.maximumY,
     );
@@ -1116,13 +1135,13 @@ export function OverviewThreadD3Flow({
           aspectRatio: `${viewBoxWidth} / ${viewBoxHeight}`,
         }}
       >
-        {activityStatuses.length > 0 && (
+        {notableActivityStatuses.length > 0 && (
           <div
             className="overview-thread-flow-activity-legend"
             role="list"
             aria-label="Project activity status"
           >
-            {activityStatuses.map((status) => (
+            {notableActivityStatuses.map((status) => (
               <span key={status} role="listitem">
                 <span
                   className="overview-thread-flow-activity-key"
@@ -1199,7 +1218,7 @@ export function OverviewThreadD3Flow({
               key={group.key}
               className="overview-thread-flow-group-band"
               data-lane={group.lane}
-              onWheel={onScrollGroup && group.view === "list" &&
+              onWheel={onScrollGroup && group.view !== "matrix" &&
                   !group.collapsed
                 ? (event) => {
                   if (group.rowCount <= group.visibleRows * group.columns) {
@@ -1291,9 +1310,41 @@ export function OverviewThreadD3Flow({
                   )}
                 </button>
               </DropdownMenuContextTrigger>
+              {controlsVisible && !bandFitsControls(group.width) &&
+                !group.collapsed && onSetGroupView && (
+                <select
+                  className="overview-thread-flow-group-view"
+                  aria-label={`Vue de ${flowGroupCaption(group)}`}
+                  title="Vue du hull : arborescence, liste ou points"
+                  value={group.view}
+                  onChange={(event) =>
+                    onSetGroupView(
+                      group.key,
+                      event.currentTarget.value as OverviewThreadD3FlowHullView,
+                    )}
+                  onPointerDown={(event) => event.stopPropagation()}
+                >
+                  <option value="tree">Arbre</option>
+                  <option value="list">Liste</option>
+                  <option value="matrix">Points</option>
+                </select>
+              )}
               {controlsVisible && bandFitsControls(group.width) &&
                 !group.collapsed && onSetGroupView && (
                 <>
+                  <button
+                    type="button"
+                    className="overview-thread-flow-group-control"
+                    data-view="tree"
+                    data-active={group.view === "tree" ? "true" : "false"}
+                    aria-pressed={group.view === "tree"}
+                    aria-label={`Tree ${flowGroupCaption(group)}`}
+                    title="Arborescence — largeur libre"
+                    onClick={() => onSetGroupView(group.key, "tree")}
+                    onPointerDown={(event) => event.stopPropagation()}
+                  >
+                    Arbre
+                  </button>
                   <button
                     type="button"
                     className="overview-thread-flow-group-control"
@@ -1321,7 +1372,8 @@ export function OverviewThreadD3Flow({
                 </>
               )}
               {controlsVisible && bandFitsControls(group.width) &&
-                !group.collapsed && onCycleGroupSort && (
+                !group.collapsed && !group.structureRowCount &&
+                onCycleGroupSort && (
                 <button
                   type="button"
                   className="overview-thread-flow-group-control"
@@ -1351,7 +1403,7 @@ export function OverviewThreadD3Flow({
             </div>
           ))}
           {layout.groups.filter((group) =>
-            group.view === "list" && !group.collapsed
+            group.view !== "matrix" && !group.collapsed
           )
             .map((group) => (
               <div
@@ -1378,6 +1430,12 @@ export function OverviewThreadD3Flow({
                 {Math.min(group.visibleRows * group.columns, group.rowCount)}
                 {" / "}
                 {group.rowCount}
+                {group.structureRowCount && (
+                  <>
+                    {" "}éléments · {group.nodeKeys.length}{" "}
+                    enregistrements en Liste
+                  </>
+                )}
                 {group.rowCount > group.visibleRows * group.columns &&
                   " — molette dans le hull"}
               </div>
@@ -1443,6 +1501,84 @@ export function OverviewThreadD3Flow({
         </div>
 
         <div className="overview-thread-flow-nodes">
+          {layout.groups.filter((group) =>
+            group.structureRowCount && !group.collapsed
+          )
+            .map((group) => {
+              const content = hullContents?.get(group.key);
+              if (content?.mode !== "structure") return null;
+              const rowHeight =
+                (group.height - group.headerHeight - group.footerHeight) /
+                group.visibleRows;
+              return content.rows.slice(
+                group.scrollRow,
+                group.scrollRow + group.visibleRows,
+              ).map((row, index) => (
+                <DropdownMenuContextTrigger
+                  key={`${group.key}:${row.key}`}
+                  value={overviewThreadGroupContextValue(group.key)}
+                  asChild
+                >
+                  <button
+                    type="button"
+                    className="overview-thread-flow-structure-row"
+                    data-hull-row-key={row.key}
+                    data-hull-group-key={group.key}
+                    data-has-viewer={row.sessionIds.length === 1
+                      ? "true"
+                      : "false"}
+                    aria-label={`${row.label}${
+                      row.detail ? ` · ${row.detail}` : ""
+                    }${
+                      row.sessionIds.length === 1
+                        ? " · Ouvrir le viewer"
+                        : " · Structure, menu contextuel disponible"
+                    }`}
+                    title={`${row.label}${
+                      row.detail ? ` · ${row.detail}` : ""
+                    }\n${row.key}`}
+                    style={{
+                      left: flowXPercent(group.x, layout.viewBox),
+                      top: flowYPercent(
+                        group.y + group.headerHeight + index * rowHeight,
+                        layout.viewBox,
+                      ),
+                      width: flowWidthPercent(group.width, layout.viewBox),
+                      height: flowHeightPercent(rowHeight, layout.viewBox),
+                      "--structure-depth": row.depth,
+                      "--flow-color": laneColorById.get(group.lane) ??
+                        "currentColor",
+                    } as CSSProperties}
+                    onClick={() => {
+                      if (row.sessionIds.length === 1) {
+                        onOpenStructureSession?.(row.sessionIds[0]!);
+                      }
+                    }}
+                    onWheel={group.rowCount > group.visibleRows && onScrollGroup
+                      ? (event) => {
+                        event.preventDefault();
+                        event.stopPropagation();
+                        onScrollGroup(group.key, event.deltaY > 0 ? 1 : -1);
+                      }
+                      : undefined}
+                  >
+                    <span
+                      className="overview-thread-flow-structure-mark"
+                      aria-hidden="true"
+                    >
+                      {row.depth === 0 ? "▾" : "└"}
+                    </span>
+                    <span className="overview-thread-flow-structure-label">
+                      {row.label}
+                    </span>
+                    {row.detail && <small>{row.detail}</small>}
+                    {row.sessionIds.length === 1 && (
+                      <span aria-hidden="true">↗</span>
+                    )}
+                  </button>
+                </DropdownMenuContextTrigger>
+              ));
+            })}
           {layout.nodes.map((position) => {
             const item = nodesByKey.get(position.key);
             if (!item || position.folded) return null;
@@ -1450,6 +1586,7 @@ export function OverviewThreadD3Flow({
               <FlowNode
                 key={position.key}
                 item={item}
+                hasViewer={viewerNodeKeys?.has(item.key) ?? false}
                 position={position}
                 viewBox={layout.viewBox}
                 color={laneColorById.get(position.lane) ?? "currentColor"}
@@ -1489,9 +1626,7 @@ export function OverviewThreadD3Flow({
 function FlowRowBody(
   { item }: { readonly item: OverviewHeroNode },
 ): JSX.Element {
-  const label = item.kind === "activity"
-    ? item.activity.title
-    : item.node.label;
+  const label = item.kind === "activity" ? item.activity.title : item.label;
   const { head, tail } = overviewThreadHullNameParts(label);
   const meta = flowRowMeta(item);
   return (
@@ -1519,6 +1654,7 @@ function FlowRowBody(
 /** The single figure a row carries: what it is doing, or when it settled. */
 function flowRowMeta(item: OverviewHeroNode): string {
   if (item.kind === "activity") return flowStatusCaption(item.activity.status);
+  if (item.kind === "brief-source") return `brief r${item.brief.revision}`;
   if (item.node.freshness === "running") return "RUNNING";
   if (item.node.freshness === "failed") return "échec";
   const at = overviewThreadRecordedTime(item.node.recordedAt);
@@ -1540,6 +1676,7 @@ function overviewThreadRecordedTime(
 
 function FlowNode({
   item,
+  hasViewer,
   position,
   viewBox,
   color,
@@ -1559,6 +1696,7 @@ function FlowNode({
   onMove,
 }: {
   readonly item: OverviewHeroNode;
+  readonly hasViewer: boolean;
   readonly position: OverviewThreadD3FlowNodeLayout;
   readonly viewBox: readonly [number, number, number, number];
   readonly color: string;
@@ -1588,12 +1726,13 @@ function FlowNode({
         ref={refNode}
         type="button"
         tabIndex={tabIndex}
-        aria-label={flowNodeAriaLabel(item)}
+        aria-label={`${flowNodeAriaLabel(item)}${
+          hasViewer ? " · Open viewer" : ""
+        }`}
         aria-pressed={selected}
-        aria-controls={selected ? "overview-thread-selection" : undefined}
-        aria-expanded={selected}
         className="overview-thread-flow-node"
         data-kind={item.kind}
+        data-has-viewer={hasViewer ? "true" : "false"}
         data-status={item.kind === "activity"
           ? item.activity.status
           : undefined}
@@ -1601,11 +1740,12 @@ function FlowNode({
         data-state={selected ? "selected" : related ? "related" : "muted"}
         data-focused={focused ? "true" : "false"}
         data-draggable={draggable ? "true" : "false"}
-        data-emphasis={item.kind === "recorded" && item.emphasis
+        data-emphasis={item.kind !== "activity" && item.emphasis
           ? "true"
           : "false"}
         data-overview-context-target={overviewThreadNodeContextValue(item.key)}
         data-listed={position.listed ? "true" : "false"}
+        data-tree-depth={position.listed ? position.depth : undefined}
         aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"
         style={{
           "--flow-x": position.listed
@@ -2003,6 +2143,9 @@ function flowNodeDescription(item: OverviewHeroNode): string {
   if (item.kind === "activity") {
     return `Current activity \u00b7 ${flowStatusCaption(item.activity.status)}`;
   }
+  if (item.kind === "brief-source") {
+    return `Brief r${item.brief.revision} · ${item.sourceItem.kind}`;
+  }
   return item.node.summary;
 }
 
@@ -2011,6 +2154,9 @@ function flowNodeAriaLabel(item: OverviewHeroNode): string {
     return `Inspect current activity ${item.activity.title}, ${
       flowStatusCaption(item.activity.status)
     }`;
+  }
+  if (item.kind === "brief-source") {
+    return `Read brief source ${item.sourceItem.id}, brief r${item.brief.revision}`;
   }
   return `Inspect ${item.node.label}, ${item.node.freshness}, ${item.node.ref.id}`;
 }

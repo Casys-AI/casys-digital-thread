@@ -2964,6 +2964,8 @@ export async function queueGeometryPartSeal(
     readonly suffix: string;
     readonly predecessor?: "auto" | "omit";
     readonly tamperSource?: boolean;
+    readonly stepBytes?: Uint8Array;
+    readonly glbBytes?: Uint8Array;
   },
 ): Promise<{
   readonly fixture: GeoFixture;
@@ -3055,10 +3057,10 @@ export async function queueGeometryPartSeal(
     unitSystem: "mm",
     exportFormats: ["step", "gltf"],
   };
-  const stepBytes = new TextEncoder().encode(
+  const stepBytes = options.stepBytes ?? new TextEncoder().encode(
     `${options.target} target STEP ${options.suffix}\n`,
   );
-  const glbBytes = new TextEncoder().encode(
+  const glbBytes = options.glbBytes ?? new TextEncoder().encode(
     `${options.target} target GLB ${options.suffix}\n`,
   );
   const bytesByFormat = new Map(

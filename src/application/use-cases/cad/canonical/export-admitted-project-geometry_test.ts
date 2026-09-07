@@ -66,6 +66,26 @@ import {
   GEOMETRY_PART_MANIFEST_SCHEMA,
   parseGeometryPartDecisionParameters,
 } from "../../../../domain/cad/canonical/geometry-part-manifest.ts";
+import { parseGeometryModuleCapture } from "../../../../domain/cad/canonical/geometry-module-capture.ts";
+import {
+  GEOMETRY_MODULE_ARCHITECTURE_CAPTURE_URI_PREFIX,
+  GEOMETRY_MODULE_ASSEMBLY_ASSETS,
+  GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
+  GEOMETRY_MODULE_CAPTURE_SCHEMA,
+  GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
+  GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+  GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+  GEOMETRY_MODULE_MANIFEST_SCHEMA,
+  GEOMETRY_MODULE_PLACEMENT_CONVENTION,
+  GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
+  GEOMETRY_MODULE_STRUCTURE_CAPTURE_URI_PREFIX,
+  GEOMETRY_MODULE_UNIT_SYSTEM,
+} from "../../../../domain/cad/canonical/geometry-module-evidence.ts";
+import {
+  CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,
+  CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
+  CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PREFIX,
+} from "../../../../domain/cad/placement/cad-placement-analysis-capture.ts";
 
 interface Harness {
   readonly service: ExportAdmittedProjectGeometry;
@@ -858,6 +878,146 @@ Deno.test("ambiguous active exact same-target captures fail before the provider"
   assertEquals(fixture.exporter.targetedCalls.length, 0);
 });
 
+Deno.test("an attested same-target part remains the predecessor beside an unrelated module", async () => {
+  const fixture = await harness();
+  fixture.architecture.graph = multiPartArchitecture();
+  const predecessor = await addPartCapture(fixture, "one");
+  await addModuleCapture(fixture);
+
+  await fixture.service.execute(fixture.command);
+
+  assertEquals(fixture.exporter.calls.length, 0);
+  assertEquals(fixture.exporter.targetedCalls.length, 1);
+  assertEquals(fixture.exporter.targetedCalls[0]?.predecessor, predecessor);
+});
+
+Deno.test("an unrelated module alone does not invent a targeted part predecessor", async () => {
+  const fixture = await harness();
+  fixture.architecture.graph = multiPartArchitecture();
+  await addModuleCapture(fixture);
+
+  await fixture.service.execute(fixture.command);
+
+  assertEquals(fixture.exporter.calls.length, 0);
+  assertEquals(fixture.exporter.targetedCalls.length, 1);
+  assertEquals(fixture.exporter.targetedCalls[0]?.predecessor, undefined);
+});
+
+Deno.test("a same-target module is a typed conflict, never a part predecessor", async () => {
+  const fixture = await harness();
+  fixture.architecture.graph = multiPartArchitecture();
+  await addPartCapture(fixture, "one");
+  await addModuleCapture(fixture, {
+    targetId: "sysml.part.box",
+    label: "Box",
+  });
+
+  await assertExportError(
+    () => fixture.service.execute(fixture.command),
+    "geometry_part_target_conflict",
+  );
+  assertEquals(fixture.exporter.calls.length, 0);
+  assertEquals(fixture.exporter.targetedCalls.length, 0);
+});
+
+Deno.test("a same-id module with a different label is a typed target conflict", async () => {
+  const fixture = await harness();
+  fixture.architecture.graph = multiPartArchitecture();
+  await addModuleCapture(fixture, {
+    targetId: "sysml.part.box",
+    label: "Airframe",
+  });
+
+  await assertExportError(
+    () => fixture.service.execute(fixture.command),
+    "geometry_part_target_conflict",
+  );
+  assertEquals(fixture.exporter.calls.length, 0);
+  assertEquals(fixture.exporter.targetedCalls.length, 0);
+});
+
+Deno.test("a forged module producer, hash, lineage or schema stays fail-closed", async () => {
+  for (const forge of ["producer", "hash", "lineage", "schema"] as const) {
+    const fixture = await harness();
+    fixture.architecture.graph = multiPartArchitecture();
+    await addPartCapture(fixture, "one");
+    await addModuleCapture(fixture, { forge });
+
+    await assertExportError(
+      () => fixture.service.execute(fixture.command),
+      "geometry_part_predecessor_unavailable",
+    );
+    assertEquals(fixture.exporter.calls.length, 0);
+    assertEquals(fixture.exporter.targetedCalls.length, 0);
+  }
+});
+
+Deno.test("a completed targeted replay with an unrelated module does not call the exporter again", async () => {
+  const fixture = await harness();
+  fixture.architecture.graph = multiPartArchitecture();
+  const predecessor = await addPartCapture(fixture, "one");
+  await addModuleCapture(fixture);
+  const root = await Deno.makeTempDir();
+  try {
+    const cache = new FileAdmittedGeometryExportReplayCache(`${root}/replay`);
+    const state = { begins: 0, releases: 0, retains: 0, recordedReleases: 0 };
+    const project = {
+      project: { id: fixture.command.projectId },
+      threadSnapshots: [{
+        snapshotId: fixture.command.basis.snapshotId,
+        revision: fixture.command.basis.revision,
+        subjectId: fixture.command.basis.subjectId,
+      }],
+    } as never;
+    const preparation = {
+      begin: () => {
+        state.begins++;
+        return Promise.resolve({
+          lease: { id: "lease:geometry" },
+          releaseSuccess: () => {
+            state.releases++;
+            return Promise.resolve();
+          },
+          retainForRecovery: () => state.retains++,
+        });
+      },
+      releaseRecorded: () => {
+        state.recordedReleases++;
+        return Promise.resolve();
+      },
+    } as never;
+    const compose = () =>
+      new ExportAdmittedProjectGeometry({
+        admissions: fixture.reader,
+        exporter: fixture.exporter,
+        exporterFactory: () => fixture.exporter,
+        projects: { get: () => Promise.resolve(project) },
+        preparation,
+        replayCache: new FileAdmittedGeometryExportReplayCache(`${root}/replay`),
+        architecture: fixture.architecture,
+        snapshots: fixture.snapshots,
+        geometryCaptures: fixture.geometryCaptures,
+      });
+
+    const first = await compose().execute(fixture.command);
+    const second = await compose().execute(fixture.command);
+
+    assertEquals(second, first);
+    assertEquals(state, {
+      begins: 1,
+      releases: 1,
+      retains: 0,
+      recordedReleases: 1,
+    });
+    assertEquals(fixture.exporter.calls.length, 0);
+    assertEquals(fixture.exporter.targetedCalls.length, 1);
+    assertEquals(fixture.exporter.targetedCalls[0]?.predecessor, predecessor);
+    assert((await cache.read(await replayKey(fixture.command))) !== undefined);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("missing architecture stops before provider export", async () => {
   const fixture = await harness();
   fixture.architecture.missing = true;
@@ -1466,6 +1626,239 @@ async function addPartCapture(
     fingerprint,
     partDefinitionElementId: "sysml.part.box",
   };
+}
+
+const MODULE_ARCH = "11".repeat(32);
+const MODULE_STRUCTURE = "22".repeat(32);
+const MODULE_PLACEMENT = "33".repeat(32);
+const MODULE_CHILD = "44".repeat(32);
+const MODULE_CHILD_STEP = "55".repeat(32);
+const MODULE_BUNDLE = "66".repeat(32);
+const MODULE_STEP = "77".repeat(32);
+const MODULE_GLB = "88".repeat(32);
+const MODULE_DRAFT = "99".repeat(32);
+const MODULE_EVIDENCE = "aa".repeat(32);
+
+function moduleFingerprint(digest: string) {
+  return { algorithm: "sha256" as const, digest };
+}
+
+async function addModuleCapture(
+  fixture: Harness,
+  options: {
+    readonly targetId?: string;
+    readonly label?: string;
+    readonly forge?: "producer" | "hash" | "lineage" | "schema";
+  } = {},
+): Promise<void> {
+  const sealedAt = "2026-08-13T08:00:00.000Z";
+  const architectureId = `architecture-${MODULE_ARCH}`;
+  const structureId = `part-definitions-${MODULE_STRUCTURE}`;
+  const childId = `geometry-${MODULE_CHILD}`;
+  const runId = "run.geometry.module.airframe";
+  const targetId = options.targetId ?? "sysml.part.airframe";
+  const label = options.label ?? "Airframe";
+  const child = {
+    usageElementId: "sysml.usage.skin",
+    partDefinitionElementId: "sysml.part.skin",
+    placement: {
+      translationMm: [1, 0, 0],
+      rotationDeg: [0, 90, 0],
+    },
+    placementCapture: moduleFingerprint(MODULE_PLACEMENT),
+    childGeometry: {
+      schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+      artifactId: childId,
+      fingerprint: moduleFingerprint(MODULE_CHILD),
+    },
+    authoritativeStep: {
+      fingerprint: moduleFingerprint(MODULE_CHILD_STEP),
+      bytes: 32,
+    },
+  };
+  const placementAnalysis = {
+    schemaVersion: CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_SCHEMA,
+    kind: CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,
+    fingerprint: moduleFingerprint(MODULE_PLACEMENT),
+    byteCount: 64,
+    casUri: `${CAD_PLACEMENT_ANALYSIS_CAPTURE_URI_PREFIX}${MODULE_PLACEMENT}`,
+  };
+  const structureCapture = {
+    schemaVersion: GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
+    artifactId: structureId,
+    fingerprint: moduleFingerprint(MODULE_STRUCTURE),
+    uri: `${GEOMETRY_MODULE_STRUCTURE_CAPTURE_URI_PREFIX}${MODULE_STRUCTURE}`,
+    byteCount: 512,
+    architecture: {
+      artifactId: architectureId,
+      fingerprint: moduleFingerprint(MODULE_ARCH),
+      uri: `${GEOMETRY_MODULE_ARCHITECTURE_CAPTURE_URI_PREFIX}${MODULE_ARCH}`,
+    },
+  };
+  const inputBundle = {
+    schemaVersion: GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+    fingerprint: moduleFingerprint(MODULE_BUNDLE),
+    byteCount: 128,
+    manifest: {
+      schemaVersion: GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+      unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
+      placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
+      occurrences: [{
+        usageElementId: child.usageElementId,
+        partDefinitionElementId: child.partDefinitionElementId,
+        placement: child.placement,
+        childCapture: child.childGeometry,
+        step: {
+          mediaType: GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
+          byteOffset: 0,
+          byteCount: child.authoritativeStep.bytes,
+          sha256: MODULE_CHILD_STEP,
+        },
+      }],
+    },
+  };
+  const assemblyStep = {
+    fingerprint: moduleFingerprint(MODULE_STEP),
+    bytes: 64,
+  };
+  const assemblyGlb = {
+    fingerprint: moduleFingerprint(MODULE_GLB),
+    bytes: 48,
+  };
+  const receipt = {
+    schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
+    capability: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+    runId: "run.geometry-module.assembly.1",
+    inputBundle: {
+      fingerprint: inputBundle.fingerprint,
+      byteCount: inputBundle.byteCount,
+    },
+    assembly: {
+      step: {
+        ...GEOMETRY_MODULE_ASSEMBLY_ASSETS.step,
+        fingerprint: assemblyStep.fingerprint,
+        byteCount: assemblyStep.bytes,
+      },
+      glb: {
+        ...GEOMETRY_MODULE_ASSEMBLY_ASSETS.glb,
+        fingerprint: assemblyGlb.fingerprint,
+        byteCount: assemblyGlb.bytes,
+      },
+    },
+    implementation: {
+      id: "fixture-neutral-cad-assembler",
+      version: "2026.1",
+      evidenceFingerprint: moduleFingerprint(MODULE_EVIDENCE),
+    },
+  };
+  const manifest = {
+    schemaVersion: GEOMETRY_MODULE_MANIFEST_SCHEMA,
+    architectureBasis: {
+      snapshotId: "snapshot.7",
+      revision: 7,
+      artifactFingerprint: moduleFingerprint(MODULE_ARCH),
+    },
+    structureCapture,
+    target: {
+      partDefinitionElementId: targetId,
+      label,
+    },
+    placementAnalysis,
+    children: [child],
+    unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
+    placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
+    assembly: {
+      inputBundle,
+      step: { fingerprint: assemblyStep.fingerprint },
+      glb: { fingerprint: assemblyGlb.fingerprint },
+    },
+  };
+  const capture = options.forge === "schema"
+    ? { schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA }
+    : {
+      schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
+      operation: { id: "design.write-geometry", version: "1" },
+      trustedRunId: runId,
+      draftDigest: MODULE_DRAFT,
+      manifest,
+      architectureBasis: {
+        artifactId: architectureId,
+        fingerprint: moduleFingerprint(MODULE_ARCH),
+        producerRunId: "run.architecture.module",
+      },
+      structureCapture,
+      placementAnalysis,
+      children: [child],
+      inputBundle,
+      receipt,
+      assemblyStep,
+      assemblyGlb,
+      sealedAt,
+    };
+  if (options.forge !== "schema") {
+    await parseGeometryModuleCapture(capture);
+  }
+  const stored = options.forge === "hash"
+    ? { ...capture, trustedRunId: "run.geometry.module.forged-hash" }
+    : capture;
+  const fingerprint = await sha256Fingerprint(
+    options.forge === "hash" ? capture : stored,
+  );
+  fixture.geometryCaptures.captures.set(
+    fingerprint.digest,
+    deterministicJson(stored),
+  );
+  const prior = fixture.snapshots.snapshot.artifacts as unknown as readonly {
+    readonly id: string;
+  }[];
+  const hasArchitecture = prior.some((artifact) => artifact.id === architectureId);
+  const inputArtifactIds = options.forge === "lineage"
+    ? ["unexpected-input"]
+    : [architectureId, structureId, childId];
+  fixture.snapshots.snapshot = {
+    ...fixture.snapshots.snapshot,
+    artifacts: [
+      ...prior,
+      ...(hasArchitecture ? [] : [{
+        id: architectureId,
+        name: "Architecture",
+        kind: "sysml-model",
+        version: MODULE_ARCH,
+        fingerprint: moduleFingerprint(MODULE_ARCH),
+        producer: {
+          serverId: "digital-thread",
+          tool: "model.write-architecture@1",
+          runId: "run.architecture.module",
+        },
+        inputArtifactIds: [],
+        freshness: {
+          status: "fresh",
+          changedAt: sealedAt,
+          invalidatedByChangeIds: [],
+        },
+      }]),
+      {
+        id: `geometry-${fingerprint.digest}`,
+        name: "Geometry: Airframe",
+        kind: "cad-model",
+        version: fingerprint.digest,
+        fingerprint,
+        uri: `casys://geometry-capture/sha256/${fingerprint.digest}`,
+        mediaType: "application/json",
+        producer: {
+          serverId: "digital-thread",
+          tool: "design.write-geometry@1",
+          runId: options.forge === "producer" ? "run.geometry.module.forged" : runId,
+        },
+        inputArtifactIds,
+        freshness: {
+          status: "fresh",
+          changedAt: sealedAt,
+          invalidatedByChangeIds: [],
+        },
+      },
+    ],
+  } as unknown as ThreadSnapshot;
 }
 
 async function assertExportError(

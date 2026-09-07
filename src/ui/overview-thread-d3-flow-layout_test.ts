@@ -15,6 +15,44 @@ const ROUTE_COUNT = REQUIREMENT_COUNT * GEOMETRY_PART_COUNT;
 const EPSILON = 1e-9;
 const COMPACT_PART_COUNT = 100;
 
+Deno.test("compact hulls reserve a readable header above every node", () => {
+  for (const count of [1, 6, 100]) {
+    const nodes = compactGeometryGroupFixture(count);
+    const identity = overviewThreadD3FlowGroupIdentity(
+      "geometry",
+      "geometry-assembly:compact",
+    );
+    for (
+      const placement of [undefined, { width: 12, height: 12 }, {
+        width: 150,
+        height: 120,
+      }]
+    ) {
+      const layout = buildOverviewThreadD3FlowLayout(nodes, [], {
+        groupPlacements: placement ? { [identity]: placement } : undefined,
+      });
+      const group = layout.groups[0]!;
+      assert(group.width >= 112, "Even one record needs a usable caption");
+      assertEquals(group.view, "matrix");
+      assertEquals(layout.nodes.length, count);
+      assertEquals(group.outHub.x, group.x + group.width + 20);
+      assertEquals(group.topHub.x, group.x + group.width / 2);
+      assertEquals(group.bottomHub.y, group.y + group.height + 20);
+      assertEquals(
+        group.inHub.y,
+        group.y + group.headerHeight +
+          Math.max(0, group.height - group.headerHeight - group.footerHeight) / 2,
+      );
+      for (const node of layout.nodes) {
+        assert(node.y >= group.y + group.headerHeight);
+        assert(node.y + node.height <= group.y + group.height);
+        assert(node.x + node.width <= group.x + group.width);
+      }
+      assertNoNodeBoxOverlap(layout.nodes);
+    }
+  }
+});
+
 Deno.test(
   "D3 flow layout preserves, orders, and shares a 10 by 50 engineering thread",
   () => {
@@ -695,7 +733,8 @@ Deno.test(
     );
     const endpointPlacements = {
       [sourceIdentity]: { x: 430, y: 105 },
-      [targetIdentity]: { x: 430, y: 235 },
+      // Leave room for the foreign hulls between the two immutable hubs.
+      [targetIdentity]: { x: 430, y: 335 },
     };
     const baseline = buildOverviewThreadD3FlowLayout(
       [source, target],
@@ -1284,11 +1323,11 @@ Deno.test(
       groupPlacements: {
         ...endpointPlacements,
         [foreignAIdentity]: {
-          x: coveredInterior.x - 5,
+          x: coveredInterior.x - baseline.groups[0]!.width / 2,
           y: coveredInterior.y - 5,
         },
         [foreignBIdentity]: {
-          x: coveredInterior.x + 8,
+          x: coveredInterior.x - baseline.groups[0]!.width / 2 + 13,
           y: coveredInterior.y - 5,
         },
       },
@@ -1493,7 +1532,7 @@ Deno.test(
     assertEquals(group.x, -10_000);
     assertEquals(group.y, 10_000);
     assertEquals(firstNode.x, group.x);
-    assertEquals(firstNode.y, group.y);
+    assertEquals(firstNode.y, group.y + group.headerHeight);
     assertEquals(secondNode.x, group.x + group.width - secondNode.width);
     assertEquals(secondNode.y, group.y + group.height - secondNode.height);
     for (const node of layout.nodes) {
@@ -2041,7 +2080,7 @@ Deno.test(
     assertEquals(targetGroup.y, 150);
     assertEquals(
       layout.nodes.find((node) => node.key === "blocking-hull")?.y,
-      145,
+      145 + obstacleGroup.headerHeight,
       "Obstacle avoidance must not move the blocking node or its hull",
     );
 
@@ -2344,7 +2383,7 @@ function assertMagneticGroupY(
       assertEquals(group.y, expectedY, `${identity} must keep the requested Y`);
       assertEquals(
         node.y,
-        expectedY,
+        expectedY + group.headerHeight,
         `${node.key} must keep its exact hull-relative placement`,
       );
     }

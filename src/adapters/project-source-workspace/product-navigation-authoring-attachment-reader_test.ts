@@ -168,6 +168,77 @@ Deno.test("authoring attachment reader refuses a cursor under a different inspec
   assertEquals(freshRevisions.length, afterHead + 1);
 });
 
+Deno.test("authoring attachment reader refuses noncanonical base64url encodings before historical read", async () => {
+  const seeded = await seedTwoHeads();
+  const hmacKey = Uint8Array.from({ length: 32 }, (_, index) => index + 1);
+  const freshRevisions: number[] = [];
+  const reader = new ProjectSourceWorkspaceAuthoringAttachmentReader({
+    load: () => Promise.resolve(seeded.head),
+    loadAtFresh: (_projectId, workspaceRevision) => {
+      freshRevisions.push(workspaceRevision);
+      const named = seeded.revisions.get(workspaceRevision);
+      if (!named) {
+        throw new ProjectSourceWorkspaceError(
+          "revision_not_found",
+          `missing ${workspaceRevision}`,
+        );
+      }
+      return Promise.resolve(named);
+    },
+  }, { hmacKey });
+  const first = await reader.listActiveHeads({
+    projectId: PROJECT,
+    target: TARGET,
+    cursorBinding: BINDING,
+    pageSize: 1,
+  });
+  assertEquals(first.nextCursor !== null, true);
+  const afterHead = freshRevisions.length;
+  const [prefix, payload, mac] = first.nextCursor!.split(".");
+  const payloadBytes = decodeBase64Url(payload!);
+  const macBytes = decodeBase64Url(mac!);
+  const noncanonicalPayload = noncanonicalBase64Url(payload!);
+  const noncanonicalMac = noncanonicalBase64Url(mac!);
+  assertEquals([...decodeBase64Url(noncanonicalPayload)], [...payloadBytes]);
+  assertEquals([...decodeBase64Url(noncanonicalMac)], [...macBytes]);
+  assertEquals(noncanonicalPayload === payload, false);
+  assertEquals(noncanonicalMac === mac, false);
+  await assertRejects(
+    () =>
+      reader.listActiveHeads({
+        projectId: PROJECT,
+        target: TARGET,
+        cursorBinding: BINDING,
+        pageSize: 1,
+        cursor: `${prefix}.${noncanonicalPayload}.${mac}`,
+      }),
+    ProjectSourceWorkspaceError,
+    "not a valid opaque cursor",
+  );
+  await assertRejects(
+    () =>
+      reader.listActiveHeads({
+        projectId: PROJECT,
+        target: TARGET,
+        cursorBinding: BINDING,
+        pageSize: 1,
+        cursor: `${prefix}.${payload}.${noncanonicalMac}`,
+      }),
+    ProjectSourceWorkspaceError,
+    "not a valid opaque cursor",
+  );
+  assertEquals(freshRevisions.length, afterHead);
+  const replay = await reader.listActiveHeads({
+    projectId: PROJECT,
+    target: TARGET,
+    cursorBinding: BINDING,
+    pageSize: 1,
+    cursor: first.nextCursor!,
+  });
+  assertEquals(replay.attachments.map((item) => item.attachmentId), ["att-b"]);
+  assertEquals(freshRevisions.length, afterHead + 1);
+});
+
 function encodeBase64Url(bytes: Uint8Array): string {
   let binary = "";
   for (const byte of bytes) binary += String.fromCharCode(byte);
@@ -182,6 +253,19 @@ function decodeBase64Url(value: string): Uint8Array {
     "=".repeat((4 - (value.length % 4)) % 4);
   const binary = atob(padded);
   return Uint8Array.from(binary, (char) => char.charCodeAt(0));
+}
+
+const BASE64URL_ALPHABET =
+  "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
+
+function noncanonicalBase64Url(canonical: string): string {
+  const bytes = decodeBase64Url(canonical);
+  if (bytes.byteLength % 3 === 0) {
+    throw new Error("canonical encoding has no unused trailing bits to flip");
+  }
+  const last = canonical.at(-1)!;
+  const index = BASE64URL_ALPHABET.indexOf(last);
+  return `${canonical.slice(0, -1)}${BASE64URL_ALPHABET[index ^ 1]}`;
 }
 
 async function seedTwoHeads() {

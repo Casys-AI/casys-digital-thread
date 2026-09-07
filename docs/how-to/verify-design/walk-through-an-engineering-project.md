@@ -18,17 +18,18 @@ product records.
 
 ## What you will inspect
 
-One cockpit, five spaces, one conversation:
+One cockpit, four spaces, one conversation:
 
-| Space         | Job                                                       |
-| ------------- | --------------------------------------------------------- |
-| **Project**   | Mission, approved brief, phase gates, “what needs review” |
-| **Activity**  | Live lineage feed: what the agent just persisted          |
-| **Product**   | Exact registered whole-App handoffs for recorded anchors  |
-| **Evidence**  | Full graph, requirements, verdicts, named violations      |
-| **Execution** | Runs, registered work items, contributing systems         |
+| Space              | Job                                                             |
+| ------------------ | --------------------------------------------------------------- |
+| **Project**        | Mission, approved brief, phase gates, whiteboard and exact Apps |
+| **Activity**       | Live lineage feed: what the agent just persisted                |
+| **Evidence**       | Full graph, requirements, verdicts, named violations            |
+| **Systems & runs** | Runs, registered work items, contributing systems               |
 
-![The five Workbench spaces. Conversation owns commands; the cockpit owns inspection.](../../media/workbench-five-spaces.svg)
+There is no separate Product tab. Exact whole Apps, including 3D viewers, open from the
+Project whiteboard's node or hull context menu. Historical `#product` links return to
+Project; the dated screenshots below retain their older navigation labels.
 
 Focused generic candidate `desk-lamp-dl04` (revision 142). Project is the mission and
 approved brief. Activity is the live lineage feed. Neither is a command surface.
@@ -57,7 +58,7 @@ Connect the agent to `http://127.0.0.1:3020/mcp`. Open `http://127.0.0.1:5173/`.
 cockpit focus the page waits; it does not invent a project.
 
 A focused generic vehicle already on disk is `desk-lamp-dl04`. It is useful to learn the
-five spaces. Historical MCP FEA `@1`/`@2` are rejected identities, not registered
+four spaces. Historical MCP FEA `@1`/`@2` are rejected identities, not registered
 routes. Absence of that reread is `unavailable`. A local gitignored Thread revision is
 never current isolated `@3` L3/L4/L5 evidence.
 
@@ -165,18 +166,19 @@ item completed, not that the product is certified.
 On **Activity**, leave **Follow live** on. Cards are persisted facts. Select one to see
 upstream evidence and downstream impact. The feed is not the agent’s private reasoning.
 
-On **Product**, use only the exact whole-App descriptors registered for the current
-Project/Thread basis. A missing or ambiguous binding stays unavailable; do not invent a
-SysON, CAD or ERP join from a part name. Domain presentation belongs to that App, not to
-a native Workbench facet.
+On the **Project whiteboard**, right-click a recorded node or hull to open its exact
+registered whole App. Only descriptors for the current Project/Thread basis are
+available. A missing or ambiguous binding stays unavailable; do not invent a SysON, CAD
+or ERP join from a part name. Domain presentation belongs to that App, not to a native
+Workbench facet or separate Product page.
 
 On **Evidence**, a `fail` verdict with named violations is valid published truth. Do not
 hide it. `unresolved` requirements stay unresolved.
 
 ![Evidence on desk-lamp-dl04: linked entities, requirement counts, and named violations.](../../media/workbench-evidence-dl04.png)
 
-On **Execution**, inspect the run journal. A `queued` run can still be cancelled with
-signed human confirmation. A completed run is replayed from CAS, never blindly
+On **Systems & runs**, inspect the run journal. A `queued` run can still be cancelled
+with signed human confirmation. A completed run is replayed from CAS, never blindly
 re-dispatched.
 
 ![Execution on desk-lamp-dl04: agent run journal and contributing engineering surfaces.](../../media/workbench-execution-dl04.png)

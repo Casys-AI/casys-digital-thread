@@ -1,9 +1,14 @@
 import { hierarchy, type HierarchyNode } from "d3-hierarchy";
 import { curveBumpX, line } from "d3-shape";
 import type { EngineeringPathLaneId } from "../../../domain/project/engineering-path-lane.ts";
-import type { OverviewThreadD3CableObstacle } from "./overview-thread-d3-cable-field.ts";
+import {
+  buildOverviewThreadD3CableFieldRoute,
+  type OverviewThreadD3CableObstacle,
+  overviewThreadD3CableSvgPathClear,
+} from "./overview-thread-d3-cable-field.ts";
 import {
   OverviewThreadD3CableFanInFields,
+  overviewThreadD3CableHub,
   overviewThreadD3CableHullSides,
   type OverviewThreadD3CableTerminal,
   overviewThreadD3CableTerminal,
@@ -19,6 +24,7 @@ import {
   buildOverviewThreadD3JointCorridor,
 } from "./overview-thread-d3-joint-corridor.ts";
 import { OVERVIEW_LANES } from "./overview-lanes.ts";
+import { separateOverviewThreadHulls } from "./overview-thread-hull-physics.ts";
 
 const DEFAULT_WIDTH = 1000;
 const DEFAULT_VIEWPORT_HEIGHT = 520;
@@ -53,6 +59,8 @@ const HULL_LIST_ROW_HEIGHT = 17;
 const HULL_LIST_FOOTER_HEIGHT = 13;
 /** A listed hull is at least this wide: a row must be able to say a name. */
 const HULL_LIST_MINIMUM_WIDTH = 190;
+const HULL_TREE_MINIMUM_WIDTH = 260;
+const HULL_TREE_INDENT = 12;
 /**
  * Width at which the list flows into a second and a third column. Widening a
  * hull first gives the titles more room; only past these does a column appear.
@@ -73,10 +81,12 @@ const HULL_LIST_COLUMN_GAP = 7;
  * Projected hull geometry for its caption and folder controls.
  *
  * The caption/control band is projected hull geometry rather than a pill
- * outside it. List and collapsed views reserve its height; the compact matrix
- * keeps its exact coordinates and placements without an automatic offset.
+ * outside it. Every reading mode reserves it, including a one-record matrix.
+ * A node can move within the contents, never into the drag handle.
  */
-const HULL_HEADER_HEIGHT = 20;
+const HULL_HEADER_HEIGHT = 24;
+/** Keep the caption and fold handle usable even for a single compact record. */
+const HULL_MATRIX_MINIMUM_WIDTH = 112;
 const DEFAULT_OBSTACLE_MARGIN = MINIMUM_OBSTACLE_MARGIN;
 const NODE_FAN_IN_OBSTACLE_MARGIN = 2;
 const ROUTE_CLEARANCE = 1;
@@ -147,6 +157,12 @@ export interface OverviewThreadD3FlowLayoutOptions {
   readonly groupPlacements?: Readonly<
     Record<string, OverviewThreadD3FlowGroupPlacement>
   >;
+  /** Resolve presentation hull collisions before computing any cable routes. */
+  readonly avoidGroupOverlap?: boolean;
+  /** The actively manipulated hull stays under the pointer during separation. */
+  readonly fixedGroupKey?: string;
+  /** Read-only navigation rows; these never become graph nodes or cable endpoints. */
+  readonly groupStructureRowCounts?: Readonly<Record<string, number>>;
   /** Node placements are keyed by the exact input node key. */
   readonly nodePlacements?: Readonly<
     Record<string, OverviewThreadD3FlowNodePlacement>
@@ -185,7 +201,7 @@ export interface OverviewThreadD3FlowGroupPlacement {
  * How a hull presents its own contents. `list` names every row and flows them
  * into columns as the hull widens; `matrix` is the dense field of points.
  */
-export type OverviewThreadD3FlowHullView = "list" | "matrix";
+export type OverviewThreadD3FlowHullView = "tree" | "list" | "matrix";
 
 /**
  * Reading order inside a hull. The graph's own order is not an authority here:
@@ -253,6 +269,8 @@ export interface OverviewThreadD3FlowNodeLayout
   readonly folded: boolean;
   /** Drawn as a named row rather than a point. */
   readonly listed: boolean;
+  /** Exact parent-first presentation depth; zero outside tree mode. */
+  readonly depth: number;
 }
 
 export interface OverviewThreadD3FlowGroupLayout {
@@ -282,6 +300,7 @@ export interface OverviewThreadD3FlowGroupLayout {
   readonly scrollRow: number;
   readonly visibleRows: number;
   readonly rowCount: number;
+  readonly structureRowCount?: number;
   /** Height of the foot that states "shown / total". */
   readonly footerHeight: number;
   readonly inHub: OverviewThreadD3FlowPort;
@@ -327,6 +346,7 @@ export type OverviewThreadD3FlowRouteDirection = Exclude<
 export type OverviewThreadD3FlowCurve =
   | "bump"
   | "rounded"
+  | "rack"
   | "catmull-rom";
 
 export interface OverviewThreadD3FlowSegmentLayout {
@@ -384,6 +404,30 @@ export function overviewThreadD3FlowGroupIdentity(
   groupKey: string,
 ): string {
   return flowGroupKey(lane, normalizedGroupKey(groupKey));
+}
+
+/** Retain the settled hull positions without persisting cables or graph data. */
+export function rememberOverviewThreadHullPositions(
+  placements: Readonly<Record<string, OverviewThreadD3FlowGroupPlacement>>,
+  groups: readonly Pick<OverviewThreadD3FlowGroupLayout, "key" | "x" | "y">[],
+): Readonly<Record<string, OverviewThreadD3FlowGroupPlacement>> {
+  let next: Record<string, OverviewThreadD3FlowGroupPlacement> | undefined;
+  for (const group of groups) {
+    const placement = placements[group.key];
+    if (
+      placement?.x === group.x && placement?.y === group.y &&
+      !placement.offsetX && !placement.offsetY
+    ) continue;
+    next ??= { ...placements };
+    next[group.key] = {
+      ...placement,
+      x: group.x,
+      y: group.y,
+      offsetX: 0,
+      offsetY: 0,
+    };
+  }
+  return next ?? placements;
 }
 
 type LaneTreeDatumKind = "lane" | "group" | "leaf";
@@ -620,16 +664,31 @@ export function buildOverviewThreadD3FlowLayout(
         baseGroupTop,
         groupPlacement,
       );
-      const hull = resolveHullBox(group, groupPlacement, nodeSize, nodeGap);
-      const outline = hullOutlineRows(group.nodes, groupPlacement?.sort);
+      const requestedStructureRows = options.groupStructureRowCounts
+        ?.[groupIdentity];
+      const hull = resolveHullBox(
+        group,
+        groupPlacement,
+        nodeSize,
+        nodeGap,
+        requestedStructureRows,
+      );
+      const structureRowCount = hull.view === "tree" && requestedStructureRows
+        ? requestedStructureRows
+        : undefined;
+      const outline = hullOutlineRows(
+        group.nodes,
+        groupPlacement?.sort,
+        hull.view === "tree",
+      );
       const centerY = placedGroupTop + hull.height / 2;
-      const listed = hull.view === "list" && !hull.collapsed;
+      const listed = hull.view !== "matrix" && !hull.collapsed;
       const listColumnWidth = listed
         ? (hull.width - HULL_LIST_COLUMN_GAP * (hull.columns - 1)) /
           hull.columns
         : 0;
       const listCapacity = listed
-        ? Math.max(1, Math.ceil(group.nodes.length / hull.columns))
+        ? Math.max(1, Math.ceil(outline.rows.length / hull.columns))
         : 0;
       for (const [index, outlineRow] of outline.rows.entries()) {
         const node = outlineRow.node;
@@ -645,28 +704,44 @@ export function buildOverviewThreadD3FlowLayout(
         const column = index % hull.columns;
         const row = Math.floor(index / hull.columns);
         const matrixNodeX = groupLeft + column * (nodeSize + nodeGap);
-        const matrixNodeY = placedGroupTop + row * (nodeSize + nodeGap);
+        const matrixNodeY = placedGroupTop + HULL_HEADER_HEIGHT +
+          row * (nodeSize + nodeGap);
         const nodePlacement = ownPlacement(options.nodePlacements, node.key);
-        const nodeWidth = listed ? listColumnWidth : nodeSize;
-        const nodeHeight = listed ? HULL_LIST_ROW_HEIGHT : nodeSize;
-        const nodeX = hull.collapsed
+        const indentation = listed && hull.view === "tree"
+          ? Math.min(outlineRow.depth * HULL_TREE_INDENT, listColumnWidth - 80)
+          : 0;
+        const nodeWidth = listed && !offWindow && !structureRowCount
+          ? listColumnWidth - indentation
+          : nodeSize;
+        const nodeHeight = listed && !offWindow && !structureRowCount
+          ? HULL_LIST_ROW_HEIGHT
+          : nodeSize;
+        const nodeX = hull.collapsed || structureRowCount
           ? groupLeft + hull.width / 2 - nodeSize / 2
+          : offWindow
+          ? groupLeft + hull.width - nodeSize
           : listed
-          ? groupLeft + listColumn * (listColumnWidth + HULL_LIST_COLUMN_GAP)
+          ? groupLeft + listColumn * (listColumnWidth + HULL_LIST_COLUMN_GAP) +
+            indentation
           : clamp(
             matrixNodeX + finiteOrZero(nodePlacement?.offsetX),
             groupLeft,
             groupLeft + hull.width - nodeSize,
           );
-        const nodeY = hull.collapsed
+        const nodeY = hull.collapsed || structureRowCount
           ? placedGroupTop + HULL_HEADER_HEIGHT / 2 - nodeSize / 2
+          : offWindow
+          ? listRow < 0
+            ? placedGroupTop + HULL_HEADER_HEIGHT / 2 - nodeSize / 2
+            : placedGroupTop + hull.height - HULL_LIST_FOOTER_HEIGHT / 2 -
+              nodeSize / 2
           : listed
           ? placedGroupTop + HULL_HEADER_HEIGHT +
             clamp(listRow, 0, Math.max(0, hull.visibleRows - 1)) *
               HULL_LIST_ROW_HEIGHT
           : clamp(
             matrixNodeY + finiteOrZero(nodePlacement?.offsetY),
-            placedGroupTop,
+            placedGroupTop + HULL_HEADER_HEIGHT,
             placedGroupTop + hull.height - nodeSize,
           );
         const nodeCenterX = nodeX + nodeWidth / 2;
@@ -683,8 +758,9 @@ export function buildOverviewThreadD3FlowLayout(
           rightPort: { x: nodeX + nodeWidth, y: nodeCenterY },
           topPort: { x: nodeCenterX, y: nodeY },
           bottomPort: { x: nodeCenterX, y: nodeY + nodeHeight },
-          folded: hull.collapsed || offWindow,
+          folded: hull.collapsed || offWindow || Boolean(structureRowCount),
           listed,
+          depth: hull.view === "tree" ? outlineRow.depth : 0,
         });
       }
       if (outline.promoted) {
@@ -704,8 +780,22 @@ export function buildOverviewThreadD3FlowLayout(
           bottomPort: { x: bandCenterX, y: bandCenterY + nodeSize / 2 },
           folded: true,
           listed: false,
+          depth: 0,
         });
       }
+      const footerHeight = hull.view !== "matrix" && !hull.collapsed
+        ? HULL_LIST_FOOTER_HEIGHT
+        : 0;
+      const hubHull = {
+        key: groupIdentity,
+        x: groupLeft,
+        y: placedGroupTop,
+        width: hull.width,
+        height: hull.height,
+        headerHeight: HULL_HEADER_HEIGHT,
+        footerHeight,
+        hubMargin: GROUP_HUB_MARGIN,
+      };
       groupLayouts.push({
         key: groupIdentity,
         lane: plan.lane,
@@ -718,7 +808,7 @@ export function buildOverviewThreadD3FlowLayout(
         columns: hull.columns,
         rows: hull.rows,
         centerY,
-        ...(outline.promoted
+        ...(outline.promoted && !structureRowCount
           ? { title: outline.promoted.label, promotedKey: outline.promoted.key }
           : {}),
         headerHeight: HULL_HEADER_HEIGHT,
@@ -726,33 +816,60 @@ export function buildOverviewThreadD3FlowLayout(
         view: hull.view,
         scrollRow: hull.scrollRow,
         visibleRows: hull.visibleRows,
-        rowCount: group.nodes.length,
-        footerHeight: hull.view === "list" && !hull.collapsed
-          ? HULL_LIST_FOOTER_HEIGHT
-          : 0,
-        inHub: {
-          x: groupLeft - GROUP_HUB_MARGIN,
-          y: centerY,
-        },
-        outHub: {
-          x: groupLeft + group.width + GROUP_HUB_MARGIN,
-          y: centerY,
-        },
-        topHub: {
-          x: groupLeft + group.width / 2,
-          y: placedGroupTop - GROUP_HUB_MARGIN,
-        },
-        bottomHub: {
-          x: groupLeft + group.width / 2,
-          y: placedGroupTop + group.height + GROUP_HUB_MARGIN,
-        },
+        rowCount: structureRowCount ?? outline.rows.length,
+        ...(structureRowCount ? { structureRowCount } : {}),
+        footerHeight,
+        inHub: overviewThreadD3CableHub(hubHull, "left"),
+        outHub: overviewThreadD3CableHub(hubHull, "right"),
+        topHub: overviewThreadD3CableHub(hubHull, "top"),
+        bottomHub: overviewThreadD3CableHub(hubHull, "bottom"),
       });
       groupTop += hull.height + groupGap;
     }
   }
 
-  const orderedNodes = nodeLayouts.toSorted(compareNodeLayout);
-  const orderedGroups = groupLayouts.toSorted(compareGroupLayout);
+  // Physics owns hull movement. The cable router sees the resulting immutable
+  // boxes and cannot move a hull to conceal a routing failure.
+  const separatedGroups = options.avoidGroupOverlap
+    ? separateOverviewThreadHulls(groupLayouts, {
+      fixedKey: options.fixedGroupKey,
+    })
+    : groupLayouts;
+  const displacements = new Map<string, OverviewThreadD3FlowPoint>();
+  for (const [index, group] of separatedGroups.entries()) {
+    const original = groupLayouts[index]!;
+    displacements.set(group.key, {
+      x: group.x - original.x,
+      y: group.y - original.y,
+    });
+  }
+  const orderedNodes = nodeLayouts.map((node) => {
+    const delta = displacements.get(
+      overviewThreadD3FlowGroupIdentity(node.lane, node.groupKey),
+    )!;
+    return {
+      ...node,
+      x: node.x + delta.x,
+      y: node.y + delta.y,
+      centerX: node.centerX + delta.x,
+      centerY: node.centerY + delta.y,
+      leftPort: translateFlowPoint(node.leftPort, delta),
+      rightPort: translateFlowPoint(node.rightPort, delta),
+      topPort: translateFlowPoint(node.topPort, delta),
+      bottomPort: translateFlowPoint(node.bottomPort, delta),
+    };
+  }).toSorted(compareNodeLayout);
+  const orderedGroups = separatedGroups.map((group) => {
+    const delta = displacements.get(group.key)!;
+    return {
+      ...group,
+      centerY: group.centerY + delta.y,
+      inHub: translateFlowPoint(group.inHub, delta),
+      outHub: translateFlowPoint(group.outHub, delta),
+      topHub: translateFlowPoint(group.topHub, delta),
+      bottomHub: translateFlowPoint(group.bottomHub, delta),
+    };
+  }).toSorted(compareGroupLayout);
   const routingObstacles = buildRoutingObstacles(
     orderedGroups,
     obstacleMargin,
@@ -918,6 +1035,11 @@ export function buildOverviewThreadD3FlowLayout(
       sourceNode,
       targetNode,
       hull.x + hull.width,
+      orderedNodes.filter((node) =>
+        node.lane === hull.lane && node.groupKey === hull.groupKey &&
+        !node.folded && node.key !== sourceNode.key &&
+        node.key !== targetNode.key
+      ),
       addSegment,
       routeSegmentKeys,
     );
@@ -1154,8 +1276,12 @@ function buildLaneMatrixPlan(
       nodes: groupNodes,
       columns,
       rows,
-      width: columns * nodeSize + Math.max(0, columns - 1) * nodeGap,
-      height: rows * nodeSize + Math.max(0, rows - 1) * nodeGap,
+      width: Math.max(
+        HULL_MATRIX_MINIMUM_WIDTH,
+        columns * nodeSize + Math.max(0, columns - 1) * nodeGap,
+      ),
+      height: HULL_HEADER_HEIGHT + rows * nodeSize +
+        Math.max(0, rows - 1) * nodeGap,
     });
   }
   const laneWidth = Math.max(
@@ -1384,6 +1510,7 @@ function buildNodeFanInObstacles(
  */
 export function overviewThreadD3FlowRoundedPath(
   points: readonly OverviewThreadD3FlowPoint[],
+  maximumRadius = ROUTED_FILLET_MAX_RADIUS,
 ): string {
   const simplified = compactRoutePoints(points);
   if (simplified.length === 0) return "";
@@ -1409,7 +1536,12 @@ export function overviewThreadD3FlowRoundedPath(
     const previous = simplified[index - 1]!;
     const current = simplified[index]!;
     const next = simplified[index + 1]!;
-    const fillet = conservativeQuadraticFillet(previous, current, next);
+    const fillet = conservativeQuadraticFillet(
+      previous,
+      current,
+      next,
+      maximumRadius,
+    );
     if (!fillet) {
       appendRoutedLinear(parts, cursor, current);
       cursor = current;
@@ -1433,6 +1565,7 @@ function conservativeQuadraticFillet(
   previous: OverviewThreadD3FlowPoint,
   current: OverviewThreadD3FlowPoint,
   next: OverviewThreadD3FlowPoint,
+  maximumRadius: number,
 ): {
   readonly start: OverviewThreadD3FlowPoint;
   readonly end: OverviewThreadD3FlowPoint;
@@ -1454,7 +1587,7 @@ function conservativeQuadraticFillet(
     return undefined;
   }
   const radius = Math.min(
-    ROUTED_FILLET_MAX_RADIUS,
+    maximumRadius,
     incomingLength * 0.5,
     outgoingLength * 0.5,
   );
@@ -1753,6 +1886,7 @@ function addIntraGroupRoute(
   sourceNode: OverviewThreadD3FlowNodeLayout,
   targetNode: OverviewThreadD3FlowNodeLayout,
   hullRight: number,
+  otherLeaves: readonly OverviewThreadD3FlowNodeLayout[],
   addSegment: (
     spec: SegmentSpec,
     edge: OverviewThreadD3FlowEdgeInput,
@@ -1769,7 +1903,7 @@ function addIntraGroupRoute(
   // back, the way a cable follows the edge of a rack instead of cutting across
   // the next column of ports.
   const runX = hullRight + INTRA_GROUP_BOW;
-  const points = stacked
+  let points: readonly OverviewThreadD3FlowPoint[] = stacked
     ? [
       sourceNode.rightPort,
       { x: runX, y: sourceNode.centerY },
@@ -1779,13 +1913,94 @@ function addIntraGroupRoute(
     : columnGap > 0
     ? [sourceNode.rightPort, targetNode.leftPort]
     : [sourceNode.leftPort, targetNode.rightPort];
+  let curve: SegmentSpec["curve"] = stacked ? "rounded" : "bump";
+  let d = stacked
+    ? overviewThreadD3FlowRoundedPath(points)
+    : line<OverviewThreadD3FlowPoint>()
+      .x((point: OverviewThreadD3FlowPoint) => point.x)
+      .y((point: OverviewThreadD3FlowPoint) => point.y).curve(curveBumpX)(
+        points,
+      );
+  const obstacles = otherLeaves.map((node) => ({
+    key: node.key,
+    minimumX: node.x - 0.6,
+    maximumX: node.x + node.width + 0.6,
+    minimumY: node.y - 0.6,
+    maximumY: node.y + node.height + 0.6,
+  }));
+  // The compact matrix used to draw its local bows through neighbouring
+  // leaves. Reuse the cable field's validated guides with lateral guards;
+  // neither the ports nor the recorded edge identity can move to make room.
+  if (d && !overviewThreadD3CableSvgPathClear(d, obstacles)) {
+    const source = points[0]!;
+    const target = points.at(-1)!;
+    const sourceSign = source.x < sourceNode.centerX ? -1 : 1;
+    const targetSign = target.x < targetNode.centerX ? -1 : 1;
+    // Listed columns are continuous racks. A smooth visibility guide can
+    // squeeze through a corner and then clip a label; route their inter-rack
+    // cables through the actual side gutters and end trays first.
+    const leaves = [sourceNode, targetNode, ...otherLeaves];
+    const sourceRail = source.x + sourceSign * 3;
+    const targetRail = target.x + targetSign * 3;
+    const trayYs = [
+      source.y,
+      target.y,
+      Math.min(...leaves.map((node) => node.y)) - 3,
+      Math.max(...leaves.map((node) => node.y + node.height)) + 3,
+    ];
+    const rackRoutes = trayYs.map((y) => [
+      source,
+      { x: sourceRail, y: source.y },
+      { x: sourceRail, y },
+      { x: targetRail, y },
+      { x: targetRail, y: target.y },
+      target,
+    ]).map((guide) => ({
+      guide,
+      d: overviewThreadD3FlowRoundedPath(guide, 2),
+      length: guide.slice(1).reduce(
+        (sum, point, index) =>
+          sum + Math.abs(point.x - guide[index]!.x) +
+          Math.abs(point.y - guide[index]!.y),
+        0,
+      ),
+    })).filter((candidate) =>
+      overviewThreadD3CableSvgPathClear(candidate.d, obstacles)
+    )
+      .toSorted((left, right) => left.length - right.length);
+    if (rackRoutes[0]) {
+      points = rackRoutes[0].guide;
+      d = rackRoutes[0].d;
+      curve = "rack";
+    } else {
+      try {
+        const cable = buildOverviewThreadD3CableFieldRoute(
+          source,
+          target,
+          obstacles,
+          {
+            cornerClearance: 0.8,
+            endpointGuardLength: 2,
+            sourceTangentTarget: { x: source.x + sourceSign * 2, y: source.y },
+            targetTangentSource: { x: target.x + targetSign * 2, y: target.y },
+          },
+        );
+        points = cable.points;
+        d = cable.d;
+        curve = cable.curve;
+      } catch {
+        return false;
+      }
+    }
+  }
   const segmentKey = addSegment({
     key,
     kind: "same-lane-trunk",
     role: "shared",
     direction: "same-lane",
     points,
-    curve: stacked ? "rounded" : "bump",
+    curve,
+    ...(d ? { d } : {}),
   }, edge);
   if (!segmentKey) return false;
   pushKey(route, segmentKey);
@@ -1973,6 +2188,7 @@ interface ResolvedHullBox {
 
 interface HullOutlineRow {
   readonly node: OverviewThreadD3FlowNodeInput;
+  readonly depth: number;
 }
 
 interface HullOutline {
@@ -1989,15 +2205,17 @@ interface HullOutline {
 /**
  * Lay one hull's leaves out, and find the container that names it.
  *
- * Rows are flat, in the hull's own reading order. When a single leaf holds
+ * List rows keep the hull's reading order; tree rows traverse exact parents
+ * first and retain their depth for indentation. When a single leaf holds
  * every other one — and only then — it names the hull instead of taking a row
  * inside it: a folder does not list itself. A hull with several roots keeps
  * them all, since promoting one would state a primacy the record never
  * declared.
  */
-function hullOutlineRows(
+export function hullOutlineRows(
   nodes: readonly OverviewThreadD3FlowNodeInput[],
   sort: OverviewThreadD3FlowHullSort | undefined,
+  tree = false,
 ): HullOutline {
   const ordered = sortHullLeaves(nodes, sort);
   const own = new Set(ordered.map((node) => node.key));
@@ -2011,20 +2229,44 @@ function hullOutlineRows(
     contained += 1;
     children.set(parent, [...(children.get(parent) ?? []), node]);
   }
-  const flat = ordered.map((node) => ({ node }));
+  const flat = ordered.map((node) => ({ node, depth: 0 }));
   if (contained === 0) return { rows: flat };
 
   const roots = ordered.filter((node) => {
     const parent = node.parentKey;
-    return parent === undefined || !own.has(parent);
+    return parent === undefined || parent === node.key || !own.has(parent);
   });
-  const promoted = roots.length === 1 &&
+  const visited = new Set<string>();
+  const rows: HullOutlineRow[] = [];
+  const visit = (root: OverviewThreadD3FlowNodeInput): void => {
+    const pending = [{ node: root, depth: 0 }];
+    while (pending.length) {
+      const row = pending.pop()!;
+      if (visited.has(row.node.key)) continue;
+      visited.add(row.node.key);
+      rows.push(row);
+      for (const node of (children.get(row.node.key) ?? []).toReversed()) {
+        pending.push({ node, depth: row.depth + 1 });
+      }
+    }
+  };
+  for (const root of roots) visit(root);
+  // Do not promote an apparent root if a disconnected cycle also exists.
+  const rootedCount = visited.size;
+  for (const node of ordered) if (!visited.has(node.key)) visit(node);
+  const promoted = rootedCount === ordered.length && roots.length === 1 &&
       (children.get(roots[0]!.key) ?? []).length > 0
     ? roots[0]
     : undefined;
-  if (!promoted) return { rows: flat };
+  const readingRows = tree ? rows : flat;
+  if (!promoted) return { rows: readingRows };
   return {
-    rows: flat.filter((row) => row.node.key !== promoted.key),
+    rows: readingRows.filter((row) => row.node.key !== promoted.key).map((
+      row,
+    ) => ({
+      ...row,
+      depth: tree ? Math.max(0, row.depth - 1) : 0,
+    })),
     promoted,
   };
 }
@@ -2073,6 +2315,7 @@ function resolveHullBox(
   placement: OverviewThreadD3FlowGroupPlacement | undefined,
   nodeSize: number,
   nodeGap: number,
+  structureRows?: number,
 ): ResolvedHullBox {
   const requestedWidth = finiteOrUndefined(placement?.width);
   const requestedHeight = finiteOrUndefined(placement?.height);
@@ -2080,12 +2323,20 @@ function resolveHullBox(
   // Resizing is what changes the reading: a hull narrower than a name is a
   // field of points, a wider one is a named list that flows into columns. An
   // explicit choice from the band's control overrides the size.
-  const sizedWidth = Math.max(nodeSize, requestedWidth ?? group.width);
+  const sizedWidth = Math.max(
+    HULL_MATRIX_MINIMUM_WIDTH,
+    nodeSize,
+    requestedWidth ?? group.width,
+  );
   const view: OverviewThreadD3FlowHullView = placement?.view ??
-    (sizedWidth >= HULL_LIST_MINIMUM_WIDTH ? "list" : "matrix");
+    (structureRows
+      ? "tree"
+      : sizedWidth >= HULL_LIST_MINIMUM_WIDTH
+      ? group.nodes.some((node) => node.parentKey) ? "tree" : "list"
+      : "matrix");
   if (collapsed) {
     return {
-      width: Math.max(nodeSize, requestedWidth ?? group.width),
+      width: sizedWidth,
       height: HULL_HEADER_HEIGHT,
       columns: group.columns,
       rows: 0,
@@ -2095,9 +2346,12 @@ function resolveHullBox(
       visibleRows: 0,
     };
   }
-  if (view === "list") {
-    const width = Math.max(HULL_LIST_MINIMUM_WIDTH, sizedWidth);
-    const columns = hullListColumns(width);
+  if (view !== "matrix") {
+    const width = Math.max(
+      view === "tree" ? HULL_TREE_MINIMUM_WIDTH : HULL_LIST_MINIMUM_WIDTH,
+      sizedWidth,
+    );
+    const columns = view === "tree" ? 1 : hullListColumns(width);
     // Height is a window on the list, not a scale: the operator chooses how
     // many rows to see, never how big a row is.
     const requestedRows = requestedHeight === undefined
@@ -2106,7 +2360,16 @@ function resolveHullBox(
         (requestedHeight - HULL_HEADER_HEIGHT - HULL_LIST_FOOTER_HEIGHT) /
           HULL_LIST_ROW_HEIGHT,
       );
-    const capacity = Math.max(1, Math.ceil(group.nodes.length / columns));
+    const capacity = Math.max(
+      1,
+      Math.ceil(
+        (view === "tree" && structureRows
+          ? structureRows
+          : hullOutlineRows(group.nodes, placement?.sort, view === "tree").rows
+            .length) /
+          columns,
+      ),
+    );
     const visibleRows = clamp(
       requestedRows,
       Math.min(HULL_LIST_MINIMUM_ROWS, capacity),
@@ -2141,7 +2404,7 @@ function resolveHullBox(
       visibleRows: group.rows,
     };
   }
-  const width = Math.max(nodeSize, requestedWidth ?? group.width);
+  const width = sizedWidth;
   const columns = Math.max(
     1,
     Math.floor((width + nodeGap) / (nodeSize + nodeGap)),
@@ -2159,6 +2422,13 @@ function resolveHullBox(
     scrollRow: 0,
     visibleRows: rows,
   };
+}
+
+function translateFlowPoint(
+  point: OverviewThreadD3FlowPoint,
+  delta: OverviewThreadD3FlowPoint,
+): OverviewThreadD3FlowPoint {
+  return { x: point.x + delta.x, y: point.y + delta.y };
 }
 
 function resolveGroupOrigin(

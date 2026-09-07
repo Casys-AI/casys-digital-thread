@@ -32,6 +32,9 @@ import { MODEL_CAPTURE_PART_DEFINITIONS_OPERATION } from "../../domain/architect
 import { MODEL_SEAL_ARCHITECTURE_SYSML_OPERATION } from "../../domain/architecture/agent-seal/architecture-sysml-seal-proposal.ts";
 import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/cad/canonical/geometry-proposal.ts";
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-proposal.ts";
+import { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-proposal.ts";
+import { MODEL_RECAPTURE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-recapture-proposal.ts";
+import { MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-recapture-proposal.ts";
 import { COMPILATION_ADMISSION_BINDING_NAME } from "../../domain/compile/admission/compilation-admission-run-operation.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../domain/compile/admission/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
@@ -75,6 +78,7 @@ import {
   DECIDE_REJECT_EVALUATION_CLOSEOUT_OPERATION,
 } from "../../domain/fea/evaluation-closeout/static-mechanical-evaluation-closeout-proposal.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
+import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../domain/record/requirements-brief-trace.ts";
 import { FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS } from "./fea-isolated-static-proof.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
@@ -311,12 +315,39 @@ const OPERATIONS = [
     version: MODEL_WRITE_REQUIREMENTS_OPERATION.version,
     startingPoint: "idea-or-spec",
     allowedBasisKinds: ["thread-snapshot"],
-    title: "Author reviewed requirements in the system model",
+    title: "Retired requirements writer (historical records only)",
     description:
-      "Insert a human-approved native SysML RequirementUsage below the exact target " +
-      "PartDefinition, anchor each integer metric threshold as a typed attribute and required constraint, " +
-      "then verify subject typing and the full set by re-extraction. The RequirementUsage " +
-      "name is server-derived from containerComponent; no SysML text is supplied by the agent.",
+      "Historical descriptor for completed model.write-requirements@1 records. New " +
+      "planning and queueing are refused; use the traced @2 writer for newly reviewed " +
+      "scalar requirements. No raw SysML is supplied by the agent.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    retiredForPlanning: true,
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_AUTHOR_SYSTEM_CAPABILITY),
+    ),
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * The traced successor retains the same server-owned SysON capability
+   * ceiling as @1 but signs the exact approved brief identity and scalar
+   * clause origins in its distinct grammar.
+   */
+  {
+    id: MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION.id,
+    version: MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Author traced reviewed requirements in the system model",
+    description:
+      "Insert human-approved native SysML scalar requirements below the exact target " +
+      "PartDefinition. Every threshold is bound to the signed approved-brief identity, " +
+      "exact brief content and an exact source item; no prose, raw SysML, provider " +
+      "selection or provider arguments are accepted from the agent.",
     workItemKind: "verify",
     riskClass: "consequential",
     execution: "trusted",
@@ -326,6 +357,78 @@ const OPERATIONS = [
     bindings: [{
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Provider-read-only recapture of one existing generic integer-scalar
+   * requirements family after a later monotone architecture. It never
+   * inserts, deletes or evaluates SysON elements.
+   */
+  {
+    id: MODEL_RECAPTURE_REQUIREMENTS_OPERATION.id,
+    version: MODEL_RECAPTURE_REQUIREMENTS_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Recapture unchanged native requirements on the current architecture",
+    description:
+      "Re-read one existing generic integer-scalar requirements family against the " +
+      "current architecture, prove native identities and extracted thresholds are " +
+      "unchanged, and publish a successor requirements capture. No SysML insert, " +
+      "delete, repair, solver call or verdict is granted.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_INSPECT_SYSTEM_CAPABILITY),
+    ),
+    requiresAdditiveChange: true,
+    decisionEvidenceScope: "thread-entity-bindings",
+    threadEntityBindingsMustMatchBasis: true,
+    bindings: [{
+      name: "architecture",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }, {
+      name: "predecessor",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }],
+  },
+  /**
+   * Read-only recapture for requirements-capture/5.0 and /6.0 only. The
+   * parser closes any downgrade to the untraced predecessor schemas.
+   */
+  {
+    id: MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION.id,
+    version: MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Recapture unchanged traced requirements on the current architecture",
+    description:
+      "Re-read one unchanged traced scalar requirements family against the current " +
+      "architecture and publish its successor capture. The operation is read-only: " +
+      "no SysML insert, delete, repair, solver call or verdict is granted.",
+    workItemKind: "verify",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(MODEL_INSPECT_SYSTEM_CAPABILITY),
+    ),
+    requiresAdditiveChange: true,
+    decisionEvidenceScope: "thread-entity-bindings",
+    threadEntityBindingsMustMatchBasis: true,
+    bindings: [{
+      name: "architecture",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
+    }, {
+      name: "predecessor",
+      allowedSourceKinds: ["thread-entity"],
+      cardinality: "one",
+      allowedThreadEntityKinds: ["artifact"],
     }],
   },
   /**
@@ -1569,6 +1672,36 @@ const OPERATIONS = [
    * documents the intent for the planning layer.
    */
   {
+    id: RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION.id,
+    version: RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal retrospective documentary requirement-to-brief links",
+    description:
+      "Append one human-reviewed, versioned documentary claim from one exact captured requirement to one exact approved brief clause and its component clause. " +
+      "A reviewed successor may record a later brief clause or requirement capture without changing prior documents. " +
+      "No SysML, provider, solver, recapture, satisfaction claim, equivalence, or physical proof is changed or granted.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    requiresAdditiveChange: true,
+    decisionEvidenceScope: "thread-entity-bindings",
+    threadEntityBindingsMustMatchBasis: true,
+    bindings: [
+      {
+        name: "approvedBrief",
+        allowedSourceKinds: ["approved-brief"],
+      },
+      {
+        name: "claimInput",
+        allowedSourceKinds: ["thread-entity"],
+        cardinality: "one-or-more",
+        allowedThreadEntityKinds: ["artifact"],
+      },
+    ],
+  },
+  {
     id: RECONCILE_UNCERTAIN_WRITER_OPERATION.id,
     version: RECONCILE_UNCERTAIN_WRITER_OPERATION.version,
     startingPoint: "idea-or-spec",
@@ -1763,6 +1896,14 @@ export function validateRegisteredEngineeringOperationInput(
       `${
         operationLabel(reference)
       } is an internal runtime preparation prerequisite and cannot be ${
+        stage === "planning" ? "planned" : "queued"
+      }.`,
+    );
+  }
+  if (operation.retiredForPlanning) {
+    throw new EngineeringOperationRegistryError(
+      "retired_for_planning",
+      `${operationLabel(reference)} is retained for historic records and cannot be ${
         stage === "planning" ? "planned" : "queued"
       }.`,
     );

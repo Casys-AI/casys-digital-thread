@@ -1,7 +1,8 @@
 import { assertEquals, assertExists } from "@std/assert";
 import type { EngineeringProjectSnapshot } from "../../../../domain/project/engineering-project.ts";
 import type { ProjectBriefItem } from "../../../../domain/project/project-brief.ts";
-import { parseRequirementsProposalParameters } from "../../../../domain/architecture/requirements/requirements-proposal.ts";
+import { sha256Fingerprint } from "../../../../domain/kernel/deterministic-json.ts";
+import { parseTracedRequirementsProposalParameters } from "../../../../domain/architecture/requirements/requirements-traced-proposal.ts";
 import {
   type EngineeringProjectRevisionStore,
   EngineeringProjectStoreConflictError,
@@ -26,7 +27,8 @@ const DISPLACEMENT = {
 Deno.test(
   "brief requirements review compiles parameters the production grammar accepts and traces every one to the approved brief",
   async () => {
-    const review = await reviewFor(await approvedProjectStore());
+    const store = await approvedProjectStore();
+    const review = await reviewFor(store);
 
     const result = await review.execute({
       projectId: PROJECT_ID,
@@ -39,14 +41,29 @@ Deno.test(
     assertEquals(result.diagnostics, []);
     assertExists(result.decisionParameters);
     // The grammar is the authority on the envelope; re-parsing here proves the
-    // compiled parameters are the ones a later MRTR would accept.
-    const parsed = parseRequirementsProposalParameters(result.decisionParameters);
+    // compiled parameters are the ones a later @2 MRTR would accept.
+    const parsed = parseTracedRequirementsProposalParameters(result.decisionParameters);
     assertEquals(parsed.containerComponent, "ArticulatedArm");
     assertEquals(parsed.requirements.length, 1);
+    assertEquals(parsed.briefSource.basis, result.briefBasis);
+    assertEquals(parsed.briefSource.containerSourceItemId, "mission-articulated-arm");
+    assertEquals(parsed.briefSource.requirements, [{
+      requirementId: "arm_max_displacement",
+      sourceItemId: "success-max-displacement",
+      declaredThreshold: { value: 2, unit: "mm" },
+      transformation: "identity",
+    }]);
+    const approvedBrief = (await store.get(PROJECT_ID))!.framing!.currentBrief!;
+    assertEquals(
+      parsed.briefSource.briefContentFingerprint,
+      await sha256Fingerprint(approvedBrief),
+    );
 
-    // Every emitted parameter names the exact brief item it came from.
+    // Every item-derived parameter names the exact brief item it came from;
+    // fixed brief identity fields are derived from the signed approval basis.
     const traced = new Set(result.provenance.map((entry) => entry.parameterKey));
     for (const parameter of result.decisionParameters) {
+      if (parameter.key.startsWith("requirements.source")) continue;
       assertEquals(traced.has(parameter.key), true, parameter.key);
     }
     const threshold = result.provenance.find((entry) =>
@@ -54,6 +71,10 @@ Deno.test(
     );
     assertEquals(threshold?.sourceItemId, "success-max-displacement");
     assertEquals(threshold?.sourceItemKind, "success-criterion");
+    assertEquals(threshold?.sourceRefs, [{
+      kind: "intent",
+      reference: "conversation:turn-1",
+    }]);
   },
 );
 
@@ -125,6 +146,11 @@ Deno.test(
     // server rescales rather than letting the agent do it unrecorded.
     assertEquals(threshold?.value, 90_000_000);
     assertEquals(threshold?.unit, "Pa");
+    const declared = result.decisionParameters.find((parameter) =>
+      parameter.key === "requirement.arm-stress.declaredThreshold"
+    );
+    assertEquals(declared?.value, 90);
+    assertEquals(declared?.unit, "MPa");
     const traced = result.provenance.find((entry) =>
       entry.parameterKey === "requirement.arm-stress.threshold"
     );
@@ -133,6 +159,13 @@ Deno.test(
       entry.parameterKey === "requirement.arm-stress.name"
     );
     assertEquals(name?.transformation, "identity");
+    const source = result.provenance.find((entry) =>
+      entry.parameterKey === "requirement.arm-stress.sourceItemId"
+    );
+    assertEquals(source?.sourceRefs, [{
+      kind: "intent",
+      reference: "conversation:turn-1",
+    }]);
   },
 );
 

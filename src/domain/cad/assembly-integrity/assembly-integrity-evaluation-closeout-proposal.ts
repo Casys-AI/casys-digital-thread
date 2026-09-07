@@ -78,7 +78,13 @@ export interface AssemblyIntegrityEvaluationCloseoutAdmission {
   readonly approvedBriefBasis: EngineeringApprovedBriefBasis;
   /** Fixed semantic verification authority; never a provider/runtime choice. */
   readonly verificationAuthority: typeof ASSEMBLY_INTEGRITY_VERIFICATION_AUTHORITY;
-  /** Exact canonical compatible Brief-gate set, signed with the MRTR. */
+  /**
+   * Signed satisfies/current set. A new unsealed accept carries only the
+   * selected L4 current contributes-to claims recrossed against the Brief.
+   * Empty when that L4 recorded none. A completed historical admission may
+   * retain Brief-derived claims that L4 did not record; replay attests those
+   * signed bytes and does not grant them to a new unsealed accept.
+   */
   readonly gateClaims: readonly EngineeringGateClaim[];
   readonly basis: {
     readonly snapshotId: string;

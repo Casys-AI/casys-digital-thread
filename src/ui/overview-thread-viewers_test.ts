@@ -19,6 +19,13 @@ Deno.test("overview context menus expose every exact registered App", async () =
   assertStringIncludes(flow, "overviewThreadNodeContextValue(item.key)");
   assertStringIncludes(flow, "overviewThreadGroupContextValue(group.key)");
   assertStringIncludes(hero, "onContextMenuCapture={(event) =>");
+  assertStringIncludes(hero, "onKeyDownCapture={(event) =>");
+  assertStringIncludes(hero, 'event.key !== "ContextMenu"');
+  assertStringIncludes(hero, 'event.shiftKey && event.key === "F10"');
+  assertStringIncludes(
+    hero,
+    'new MouseEvent("contextmenu"',
+  );
   assertStringIncludes(hero, "parseOverviewThreadContextTarget");
   assertStringIncludes(
     hero,
@@ -27,6 +34,11 @@ Deno.test("overview context menus expose every exact registered App", async () =
   assertStringIncludes(hero, "memberViewerEntries");
   assertStringIncludes(hero, "overviewGroupMembers(group, nodesByKey)");
   assertStringIncludes(hero, "Open hull monitor");
+  assertEquals(hero.includes("Vue Arbre"), false);
+  assertEquals(hero.includes("hull-view:"), false);
+  assertStringIncludes(flow, 'className="overview-thread-flow-group-view"');
+  assertStringIncludes(flow, 'value="tree">Arbre');
+  assertStringIncludes(flow, "aria-label={`Tree ${flowGroupCaption(group)}`}");
   assertEquals(flow.includes("OverviewThreadInstrument"), false);
   assertEquals(flow.includes("onOpenInstrument"), false);
   assertStringIncludes(hero, "OverviewThreadContextMenu");
@@ -35,7 +47,7 @@ Deno.test("overview context menus expose every exact registered App", async () =
   assertStringIncludes(flow, "Shift+F10");
 });
 
-Deno.test("left-click selection stays graph-only and never opens a native viewer", async () => {
+Deno.test("click opens an exact registered viewer and other records retain their selection note", async () => {
   const hero = await Deno.readTextFile(
     new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
   );
@@ -72,10 +84,16 @@ Deno.test("left-click selection stays graph-only and never opens a native viewer
 
   assertEquals(canvasStyles.includes(".overview-thread-selection-card"), false);
   assertEquals(canvasStyles.includes(".overview-thread-selection-copy"), false);
-  assertEquals(
-    canvasStyles.includes(".overview-thread-selection-actions"),
-    false,
+  assertStringIncludes(canvasStyles, ".overview-thread-selection-note");
+  assertStringIncludes(hero, "<OverviewThreadSelectionNote");
+  assertStringIncludes(hero, "onClick={() => runContextAction(action)}");
+  const toggle = hero.slice(
+    hero.indexOf("const toggleSelection ="),
+    hero.indexOf("const bringViewerFront ="),
   );
+  assertStringIncludes(toggle, "viewerSessionsByNodeKey.get(item.key)?.[0]");
+  assertEquals(toggle.includes("openViewer("), true);
+  assertEquals(toggle.includes("runContextAction("), false);
   assertStringIncludes(canvasStyles, ".overview-thread-selection-connector");
   assertStringIncludes(canvasStyles, ".overview-thread-context-menu");
   assertStringIncludes(canvasStyles, ".overview-thread-hull-monitor");
@@ -194,7 +212,7 @@ Deno.test("viewer-session cards host only current exact whole-App descriptors", 
   );
   assertStringIncludes(
     hero,
-    "Open App · ${session.app.id}@${session.app.version}",
+    "Open viewer · ${item.label}",
   );
   assertStringIncludes(hero, 'viewerSession?.kind === "mcp-app"');
   assertEquals(hero.includes("<GltfAssetCanvas"), false);

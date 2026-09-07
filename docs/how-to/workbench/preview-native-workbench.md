@@ -76,15 +76,42 @@ To open an already-created V3 project, name its project ID alone:
 deno task preview:thread --project-id=<project-id>
 ```
 
-The BFF resolves the persisted project's subject (normally `project:<project-id>`) after
-opening its active revision. `--subject=<subject-id>` remains an explicit operator
-override. No-argument preview remains focus-only and never falls back to retired
-evidence.
+That pin is the served project: the BFF does not follow durable cockpit focus and does
+not inject `--workspace-id=primary`. If the named project is absent, the read is
+`unavailable` (`engineering_project_not_found`); it does not substitute the focused
+project. `--workspace-id` remains the explicit focus-only selector and cannot be
+combined with `--project-id` on this task. `--subject=<subject-id>` remains an explicit
+operator override. No-argument preview remains focus-only and never falls back to
+retired evidence.
 
 Refreshing the page performs one ordinary HTTP GET and opens one same-origin server-sent
 event stream. Neither path mutates project state nor reruns assembly, build123d,
 CalculiX, or Modelica. Provider MCP calls happen only in an explicit backend runner or
 in a separately orchestrated agent workflow.
+
+### Read and arrange the whiteboard
+
+An outlined square marks a record with an exact registered viewer. Clicking it opens
+that viewer directly. Newly available top-level viewers open once by default; closing
+one is remembered for that record in project-scoped local presentation state. The
+assembly opens as a whole, without also opening all of its child modules.
+
+The hull context menu follows verified assembly occurrences: whole assembly, modules,
+then pieces. It joins only exact registered sessions. A piece without an individual App
+stays a structural row, explicitly labelled as such. Historical module captures can
+appear as assembled children of the current root; this does not make them independent
+current-architecture CAD bindings. The optional `thread-viewer-hierarchy/1.0` navigation
+travels inside the same fingerprinted viewer-sessions GET/SSE replacement.
+
+View controls belong in each hull **header**, not its context menu. `Arbre` retains
+parent-first indentation in a single resizable column; `Liste` flows into columns;
+`Points` is compact. Narrow headers expose the same choices in their view selector.
+Resize pushes neighboring hulls apart before cables are routed. Off-window rows retain
+their links at the header/footer; they do not cover the last visible row.
+
+Digital Thread's documentary `project-records` App can read an exactly registered
+approved-brief capture, including its original items and provenance. It does not invent
+formal requirements or links from that brief to the technical model.
 
 ## Follow the agent-selected workspace
 
@@ -345,20 +372,21 @@ manufacturing, and certification still need their own reviewed executors and evi
 contracts.
 
 The page opens on **Project**, which answers what the focused project is trying to
-achieve, what needs attention, and where to go next. The five product sections have
-distinct jobs.
+achieve, what needs attention, and where to go next. Its whiteboard hosts exact whole
+Apps, including 3D viewers, through the recorded node or hull context menu. There is no
+separate **Product** workspace; retired `#product` links open Project. The four sections
+have distinct jobs.
 
 ```mermaid
 flowchart LR
-  project["Project\nmission, brief, gates"]
+  project["Project\nmission, brief, whiteboard Apps"]
   activity["Activity\nlive lineage feed"]
-  product["Product\nexact App handoff"]
   evidence["Evidence\ngraph and verdicts"]
-  execution["Execution\nruns and tools"]
-  project --- activity --- product --- evidence --- execution
+  execution["Systems & runs\nruns and tools"]
+  project --- activity --- evidence --- execution
 ```
 
-![Five Workbench spaces. The cockpit is GET and SSE only.](../../media/workbench-five-spaces.svg)
+The dated screenshots below retain their historical navigation labels.
 
 ![Project on desk-lamp-dl04: approved brief and phase-gate summary.](../../media/workbench-project-dl04.png)
 
@@ -374,14 +402,12 @@ Agents that must not confuse write/seal/compile paths should read
 [agent workspace](../../reference/agent/agent-workspace.md) before calling tools.
 
 - **Project** — objective, lightweight notifications, derived phase gates, current work,
-  next work, blockers, and routes into the relevant context;
+  next work, blockers, and exact whole Apps hosted on the whiteboard;
 - **Activity** — agent work plus the live lineage feed: the primary evidence and impact
   context for a review, never private chain-of-thought;
-- **Product** — a read-only handoff to the exact whole Apps registered for this Thread
-  basis; domain presentation opens spatially on the Project whiteboard;
 - **Evidence** — full graph, causal impact, requirements, verdicts and named violations;
-- **Execution** — agent-run journal, declared work items and engineering systems that
-  contributed evidence.
+- **Systems & runs** — agent-run journal, declared work items and engineering systems
+  that contributed evidence.
 
 In **Activity**:
 
@@ -397,19 +423,15 @@ In **Activity**:
   implementation artifacts and consumption proof nodes are needed;
 - treat separate component frames as missing causal links, not layout errors.
 
-Use **Product** as the explicit handoff when navigation starts from a physical component
-instead of a thread event. It lists only exact whole-App descriptors already accepted
-for the current project/Thread basis and returns to the Project whiteboard to open one.
-It does not reconstruct a SysML tree, geometry canvas, solver surface or ERP table.
-
 On the Project whiteboard, right-click the exact recorded anchor, or focus it and press
-the Context Menu key / Shift+F10. When exactly one whole App is registered the gesture
-opens it directly, with no intermediate menu. Zero matches stays `Unavailable`; more
-than one stays `Ambiguous`, and the browser chooses neither. It never infers an App from
-a provider label or artifact kind. The floating window remains sandboxed with scripts
-only. An App that needs exact binary bytes requests the registered `sha256:<digest>`
-over its one-shot document-scoped MessagePort; it never raw-fetches a provider or
-chooses a URI.
+the Context Menu key / Shift+F10, then select the registered `Open App` action. A hull's
+context menu also exposes the exact Apps of its recorded members. Only whole-App
+descriptors admitted for the current Project/Thread basis are offered; no App is
+inferred from a provider label or artifact kind. The Workbench does not reconstruct a
+SysML tree, geometry canvas, solver surface or ERP table. The floating App window
+remains sandboxed with scripts only. An App that needs exact binary bytes requests the
+registered `sha256:<digest>` over its one-shot document-scoped MessagePort; it never
+raw-fetches a provider or chooses a URI.
 
 The local snapshot records its exact provider revisions and capture timestamps. Treat it
 as integration evidence unless those provider revisions are released and reproduced in

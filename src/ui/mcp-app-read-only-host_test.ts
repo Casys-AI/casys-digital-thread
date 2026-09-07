@@ -10,7 +10,16 @@ import {
   MCP_APP_HOST_RESOURCE_READ_REQUEST,
   MCP_APP_HOST_RESOURCE_READ_SCHEMA,
 } from "./src/thread/mcp-app-resource-bridge.ts";
-import { advanceMcpAppFrameLoad } from "./src/thread/mcp-app-frame-lifecycle.ts";
+import {
+  advanceMcpAppFrameLoad,
+  assignMcpAppFrameDocument,
+  beginMcpAppFrameLaunch,
+  bindMcpAppFrameGeneration,
+  type McpAppFrameNode,
+  startMcpAppFrame,
+} from "./src/thread/mcp-app-frame-lifecycle.ts";
+import type { LoadedMcpAppDocument } from "./src/thread/mcp-app-document-loader.ts";
+import type { McpAppFrameStatus } from "./src/thread/mcp-app-frame-status.ts";
 import { resolveMcpAppTheme } from "./src/thread/mcp-app-frame-theme.ts";
 
 const RESOURCE_BYTES = new TextEncoder().encode("registered bytes");
@@ -420,7 +429,8 @@ Deno.test("read-only App host binds only the first App-created resource port", a
   await new Promise((resolve) => setTimeout(resolve, 0));
   assertEquals(fetches, 1);
   assertEquals(
-    target.posts.filter((post) => methodOf(post.message) === "ui/compose/event").length,
+    target.posts.filter((post) => methodOf(post.message) === "ui/compose/event")
+      .length,
     1,
   );
 
@@ -473,9 +483,14 @@ Deno.test("opaque App frame separates blank, App and secondary loads", async () 
     "waiting-controller",
     "ignore",
   ]);
-  assertEquals(advanceMcpAppFrameLoad("waiting-blank-load"), [
-    "loading-app",
+  assertEquals(advanceMcpAppFrameLoad("starting"), ["starting", "ignore"]);
+  assertEquals(beginMcpAppFrameLaunch("waiting-controller"), [
+    "starting",
     "launch",
+  ]);
+  assertEquals(assignMcpAppFrameDocument("starting"), [
+    "loading-app",
+    "arm",
   ]);
   assertEquals(advanceMcpAppFrameLoad("loading-app"), [
     "app-loaded",
@@ -490,31 +505,42 @@ Deno.test("opaque App frame separates blank, App and secondary loads", async () 
   const source = await Deno.readTextFile(
     new URL("./src/thread/mcp-app-frame.tsx", import.meta.url),
   );
+  const lifecycle = await Deno.readTextFile(
+    new URL("./src/thread/mcp-app-frame-lifecycle.ts", import.meta.url),
+  );
   assertEquals(
     source.includes('setAttribute("sandbox", "allow-scripts")'),
     true,
   );
   assertEquals(source.includes("allow-same-origin"), false);
+  assertEquals(lifecycle.includes("allow-same-origin"), false);
   assertEquals(source.includes("event.origin"), false);
   assertEquals(source.includes("useLayoutEffect"), true);
   assertEquals(source.includes('document.createElement("iframe")'), true);
-  assertEquals(
-    source.indexOf('addEventListener("load", advanceLoad)') <
-      source.indexOf("mountNode.append(frameNode)"),
-    true,
-  );
-  assertEquals(source.includes("blankLoadObserved"), true);
-  assertEquals(source.includes('phase = "waiting-blank-load"'), true);
+  assertEquals(source.includes('frameNode.loading = "eager"'), true);
+  assertEquals(source.includes('loading = "lazy"'), false);
+  assertEquals(lifecycle.includes('loading = "lazy"'), false);
+  assertEquals(source.includes("blankLoadObserved"), false);
+  assertEquals(source.includes("waiting-blank-load"), false);
+  assertEquals(lifecycle.includes("waiting-blank-load"), false);
   assertEquals(source.includes("loadVerifiedMcpAppDocument"), true);
   assertEquals(source.includes("frameNode.src = document.url"), true);
   assertEquals(source.includes("frameNode.src = session.launchUri"), false);
   assertEquals(source.includes("src={session.launchUri}"), false);
-  assertEquals(source.includes("document.revoke()"), true);
-  assertEquals(source.includes("revokeLoadedDocument()"), true);
-  assertEquals(source.includes("controller?.invalidate()"), true);
+  assertEquals(
+    lifecycle.indexOf('addEventListener("load", advanceLoad)') <
+      lifecycle.indexOf("options.frame.src"),
+    true,
+  );
+  assertEquals(lifecycle.includes("document.revoke()"), true);
+  assertEquals(lifecycle.includes("revokeLoadedDocument()"), true);
+  assertEquals(lifecycle.includes("host?.invalidate()"), true);
   assertEquals(source.includes("callTool("), false);
   assertEquals(source.includes("providerEndpoint"), false);
   assertEquals(source.includes("ui/resource-teardown"), false);
+  assertEquals(lifecycle.includes("callTool("), false);
+  assertEquals(lifecycle.includes("providerEndpoint"), false);
+  assertEquals(lifecycle.includes("ui/resource-teardown"), false);
 });
 
 Deno.test("App offer delivered after its load works and a replacement document is revoked", async () => {
@@ -536,8 +562,11 @@ Deno.test("App offer delivered after its load works and a replacement document i
       );
     },
   });
-  let phase: Parameters<typeof advanceMcpAppFrameLoad>[0] = "waiting-blank-load";
-  [phase] = advanceMcpAppFrameLoad(phase);
+  let phase: Parameters<typeof advanceMcpAppFrameLoad>[0] = "waiting-controller";
+  [phase] = beginMcpAppFrameLaunch(phase);
+  assertEquals(phase, "starting");
+  assertEquals(advanceMcpAppFrameLoad(phase), ["starting", "ignore"]);
+  [phase] = assignMcpAppFrameDocument(phase);
   assertEquals(phase, "loading-app");
   [phase] = advanceMcpAppFrameLoad(phase);
   assertEquals(phase, "app-loaded");
@@ -576,6 +605,159 @@ Deno.test("App offer delivered after its load works and a replacement document i
   assertEquals(fetches, 1);
   first.port1.close();
   replacement.port1.close();
+});
+
+Deno.test("read-only App host publishes presentation readiness only after verified session delivery", async () => {
+  const events: unknown[] = [];
+  let resourceRead: (() => void) | undefined;
+  const resourceReadSeen = new Promise<void>((resolve) => {
+    resourceRead = resolve;
+  });
+  const target = new FakeTarget();
+  let fetches = 0;
+  const host = createMcpAppReadOnlyHost({
+    target,
+    session: SESSION,
+    hostContext: {
+      theme: "dark",
+      displayMode: "inline",
+      availableDisplayModes: ["inline"],
+    },
+    fetcher: () => {
+      fetches += 1;
+      return Promise.resolve(
+        new Response(RESOURCE_BYTES, {
+          headers: {
+            "Content-Type": "application/octet-stream",
+            "Content-Length": String(RESOURCE_BYTES.byteLength),
+          },
+        }),
+      );
+    },
+    onPresentationReadiness: (event) => {
+      events.push(event);
+      if (event.kind === "resource-read") resourceRead?.();
+    },
+  });
+  const resources = new MessageChannel();
+  host.handleMessage(portOffer(target, resources.port2));
+  host.handleMessage(event(target, {
+    jsonrpc: "2.0",
+    method: "ui/notifications/size-changed",
+    params: {},
+  }));
+  assertEquals(events, []);
+  host.handleMessage(event(target, initialize("init")));
+  assertEquals(events, []);
+  host.handleMessage(event(target, initialized()));
+  assertEquals(events, [{ kind: "session-delivered" }]);
+
+  const resourcePort = resources.port1;
+  resourcePort.start();
+  resourcePort.postMessage({
+    schemaVersion: MCP_APP_HOST_RESOURCE_READ_SCHEMA,
+    type: MCP_APP_HOST_RESOURCE_READ_REQUEST,
+    requestId: "readiness-resource",
+    fingerprint: RESOURCE_FINGERPRINT,
+  });
+  await resourceReadSeen;
+  assertEquals(fetches, 1);
+  assertEquals(events[1], { kind: "resource-read", status: "available" });
+  host.invalidate();
+  resourcePort.close();
+});
+
+Deno.test("frame generation launches without a blank load and ignores a late blank", async () => {
+  const frame = new FakeFrame();
+  const revoked: string[] = [];
+  const statuses: McpAppFrameStatus[] = [];
+  let release: ((document: LoadedMcpAppDocument) => void) | undefined;
+  const generation = bindMcpAppFrameGeneration({
+    frame,
+    session: SESSION,
+    hostContext: { theme: "dark" },
+    onStatus: (status) => statuses.push(status),
+    readNonce: () => "A".repeat(43),
+    loadDocument: () =>
+      new Promise((resolve) => {
+        release = resolve;
+      }),
+  });
+  await Promise.resolve();
+  assertEquals(frame.src, "");
+  assertEquals(statuses[0], { kind: "loading", stage: "fetching-document" });
+  frame.dispatch("load");
+  assertEquals(frame.src, "");
+  assertEquals(statuses.some((status) => status.kind === "error"), false);
+  release?.({
+    url: "blob:test/1",
+    revoke: () => revoked.push("blob:test/1"),
+  });
+  await Promise.resolve();
+  await Promise.resolve();
+  assertEquals(frame.src, "blob:test/1");
+  assertEquals(statuses.at(-1), {
+    kind: "loading",
+    stage: "loading-document",
+  });
+  frame.dispatch("load");
+  assertEquals(statuses.at(-1), {
+    kind: "loading",
+    stage: "awaiting-session",
+  });
+  frame.dispatch("load");
+  assertEquals(statuses.at(-1), {
+    kind: "error",
+    reason: "document-replaced",
+  });
+  generation.dispose();
+  assertEquals(revoked, ["blob:test/1"]);
+});
+
+Deno.test("frame generation surfaces document fetch refusal and retries a new generation", async () => {
+  const frames: FakeFrame[] = [];
+  const removed: FakeFrame[] = [];
+  const statuses: McpAppFrameStatus[] = [];
+  let attempts = 0;
+  const handle = startMcpAppFrame({
+    session: SESSION,
+    hostContext: () => ({ theme: "dark" }),
+    onStatus: (status) => statuses.push(status),
+    readNonce: () => "A".repeat(43),
+    createFrame() {
+      const frame = new FakeFrame();
+      frames.push(frame);
+      return frame;
+    },
+    disposeFrame(frame) {
+      removed.push(frame as FakeFrame);
+    },
+    loadDocument() {
+      attempts += 1;
+      if (attempts === 1) {
+        return Promise.reject(
+          new Error("The registered MCP App document is unavailable."),
+        );
+      }
+      return Promise.resolve({
+        url: `blob:test/${attempts}`,
+        revoke() {},
+      });
+    },
+  });
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEquals(attempts, 1);
+  assertEquals(statuses.at(-1), {
+    kind: "unavailable",
+    reason: "document-unavailable",
+  });
+  handle.retry();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assertEquals(attempts, 2);
+  assertEquals(removed.length, 1);
+  assertEquals(frames.at(-1)?.src, "blob:test/2");
+  handle.dispose();
+  assertEquals(removed.length, 2);
 });
 
 function createHost(target: FakeTarget) {
@@ -622,6 +804,37 @@ function methodOf(value: unknown): unknown {
   return typeof value === "object" && value !== null && "method" in value
     ? value.method
     : undefined;
+}
+
+class FakeFrame implements McpAppFrameNode {
+  src = "";
+  loading = "";
+  className = "";
+  title = "";
+  referrerPolicy = "";
+  contentWindow: FakeTarget | null = new FakeTarget();
+  readonly attributes = new Map<string, string>();
+  readonly listeners = new Map<string, Set<() => void>>();
+
+  setAttribute(name: string, value: string): void {
+    this.attributes.set(name, value);
+  }
+
+  addEventListener(type: "load" | "error", listener: () => void): void {
+    const set = this.listeners.get(type) ?? new Set();
+    set.add(listener);
+    this.listeners.set(type, set);
+  }
+
+  removeEventListener(type: "load" | "error", listener: () => void): void {
+    this.listeners.get(type)?.delete(listener);
+  }
+
+  dispatch(type: "load" | "error"): void {
+    for (const listener of this.listeners.get(type) ?? []) listener();
+  }
+
+  remove(): void {}
 }
 
 class FakeTarget implements McpAppHostPostTarget {

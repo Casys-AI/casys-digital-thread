@@ -32,6 +32,12 @@ export interface OverviewThreadD3CableHull extends OverviewThreadD3CableBox {
   readonly key: string;
   /** Clearance between the hull edge and its cable hubs. */
   readonly hubMargin: number;
+  /**
+   * Caption band reserved above the leaves. Left/right hubs sit on the
+   * content, not on this band; top/bottom hubs stay on the outer hull.
+   */
+  readonly headerHeight?: number;
+  readonly footerHeight?: number;
 }
 
 /** A leaf inside a hull: one node's rectangle. */
@@ -79,12 +85,38 @@ export function overviewThreadD3CableTerminal<
     side,
     role,
     port: overviewThreadD3CableAnchor(leaf, side),
-    hub: overviewThreadD3CableAnchor(hull, side, hull.hubMargin),
+    hub: overviewThreadD3CableHub(hull, side),
     departureTangent: overviewThreadD3CableDepartureTangent(side),
     arrivalTangent: overviewThreadD3CableArrivalTangent(side),
     fieldKey,
     branchKey: `${fieldKey}|${leaf.key}`,
   };
+}
+
+/** Shared junction just clear of `hull`, on the side the cables actually use. */
+export function overviewThreadD3CableHub(
+  hull: OverviewThreadD3CableHull,
+  side: OverviewThreadD3CableSide,
+): OverviewThreadD3CableVector {
+  if (side === "top" || side === "bottom") {
+    return overviewThreadD3CableAnchor(hull, side, hull.hubMargin);
+  }
+  const header = nonNegative(hull.headerHeight);
+  const footer = nonNegative(hull.footerHeight);
+  return overviewThreadD3CableAnchor(
+    {
+      x: hull.x,
+      y: hull.y + header,
+      width: hull.width,
+      height: Math.max(0, hull.height - header - footer),
+    },
+    side,
+    hull.hubMargin,
+  );
+}
+
+function nonNegative(value: number | undefined): number {
+  return Number.isFinite(value) && value! > 0 ? value! : 0;
 }
 
 /** Sides two hulls exchange over, from where they actually sit on the board. */

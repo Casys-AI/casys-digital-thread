@@ -78,6 +78,153 @@ export interface GenericGeometryCaptureReader {
   read(fingerprint: ContentFingerprint): Promise<string | undefined>;
 }
 
+/**
+ * Read-only navigation to this exact capture's sealed binaries, including an
+ * as-assembled historical child. This does not claim current-architecture CAD.
+ * Reuse the canonical binary validator; provenance alone cannot grant an anchor.
+ * The caller owns primary selection. This verifies each signed binary identity
+ * and its publication, not source admission or complete family health; it grants
+ * neither a viewer session nor permission to serve resource bytes.
+ */
+export async function exactGeometryBinaryNavigationArtifacts(
+  snapshot: ThreadSnapshot,
+  primary: ThreadArtifact,
+  captures: GenericGeometryCaptureReader,
+): Promise<readonly ThreadArtifact[]> {
+  try {
+    const text = await captures.read(primary.fingerprint);
+    if (!text) return [];
+    const capture = object(JSON.parse(text), "geometry capture");
+    if (!fingerprintsEqual(await sha256Fingerprint(capture), primary.fingerprint)) {
+      return [];
+    }
+    const operation = exactObject(capture.operation, ["id", "version"], "operation");
+    if (operation.id !== "design.write-geometry" || operation.version !== "1") {
+      return [];
+    }
+    const sealedAt = canonicalInstant(capture.sealedAt, "sealedAt");
+    assertExactPrimary(
+      primary,
+      nonEmpty(capture.trustedRunId, "trustedRunId"),
+      sealedAt,
+    );
+    type Expected = {
+      file: {
+        format: GeometryBundleExportFormat | "step" | "gltf" | "stl";
+        fingerprint: ContentFingerprint;
+      };
+      id: string;
+      name: string;
+      producer: ThreadOperationRef;
+      scope: "assembly" | "part-definition" | "module";
+    };
+    const expected: Expected[] = [];
+    if (capture.schemaVersion === GEOMETRY_MODULE_CAPTURE_SCHEMA) {
+      const parsed = await parseGeometryModuleCapture(capture);
+      if (!fingerprintsEqual(await sha256Fingerprint(parsed), primary.fingerprint)) {
+        return [];
+      }
+      const manifest = normalizeCompletedModuleManifest(
+        parsed.manifest,
+        parsed.draftDigest,
+      );
+      const producer = geometryModuleBinaryProducer(parsed.receipt);
+      expected.push(
+        {
+          file: { format: "step", fingerprint: parsed.assemblyStep.fingerprint },
+          id: geometryModuleAssemblyStepArtifactId(
+            primary.fingerprint.digest,
+            parsed.assemblyStep.fingerprint.digest,
+          ),
+          name: `Authoritative STEP: ${manifest.target.label}`,
+          producer,
+          scope: "module",
+        },
+        {
+          file: { format: "gltf", fingerprint: parsed.assemblyGlb.fingerprint },
+          id: geometryModuleAssemblyGlbArtifactId(
+            primary.fingerprint.digest,
+            parsed.assemblyGlb.fingerprint.digest,
+          ),
+          name: `GLB: ${manifest.target.label}`,
+          producer,
+          scope: "module",
+        },
+      );
+    } else if (capture.schemaVersion === GEOMETRY_PART_CAPTURE_SCHEMA) {
+      const manifest = normalizeCompletedTargetManifest(
+        capture.manifest,
+        digest(capture.draftDigest, "draftDigest"),
+      );
+      const producer = exactPreviewProducer(capture.previewProducer);
+      for (const [index, file] of (manifest.target.files ?? []).entries()) {
+        expected.push({
+          file,
+          id:
+            `cad-asset-${primary.fingerprint.digest}-target-${index}-${file.fingerprint.digest}`,
+          name: `${
+            file.format === "step" ? "Authoritative STEP" : file.format.toUpperCase()
+          }: ${manifest.target.label}`,
+          producer,
+          scope: "part-definition",
+        });
+      }
+    } else if (capture.schemaVersion === GEOMETRY_BUNDLE_CAPTURE_SCHEMA) {
+      const manifest = normalizeCompletedManifest(
+        capture.manifest,
+        digest(capture.draftDigest, "draftDigest"),
+      );
+      const producer = exactPreviewProducer(capture.previewProducer);
+      for (
+        const [index, file] of (manifest.artifactHashes?.assemblyFiles ?? []).entries()
+      ) {
+        expected.push({
+          file,
+          id:
+            `cad-asset-${primary.fingerprint.digest}-assembly-${index}-${file.fingerprint.digest}`,
+          name: `${file.format.toUpperCase()}: ${file.name}`,
+          producer,
+          scope: "assembly",
+        });
+      }
+      for (const [definitionIndex, definition] of manifest.partDefinitions.entries()) {
+        for (const [index, file] of (definition.files ?? []).entries()) {
+          expected.push({
+            file,
+            id:
+              `cad-asset-${primary.fingerprint.digest}-definition-${definitionIndex}-${index}-${file.fingerprint.digest}`,
+            name: `${
+              file.format === "step" ? "Authoritative STEP" : file.format.toUpperCase()
+            }: ${definition.label}`,
+            producer,
+            scope: "part-definition",
+          });
+        }
+      }
+    }
+    return expected.flatMap(({ file, id, name, producer, scope }) => {
+      try {
+        return [
+          requireExactBinary(
+            snapshot,
+            primary,
+            file,
+            id,
+            name,
+            producer,
+            sealedAt,
+            scope,
+          ),
+        ];
+      } catch {
+        return [];
+      }
+    });
+  } catch {
+    return [];
+  }
+}
+
 type GeometrySelection =
   | { readonly kind: "absent" }
   | { readonly kind: "retired" }

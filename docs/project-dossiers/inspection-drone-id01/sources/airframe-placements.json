@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "cad-immediate-placement-source/1.0",
+  "unitSystem": "mm",
+  "placementConvention": "right-handed-mm-extrinsic-xyz-degrees",
+  "placements": [
+    {
+      "usageElementId": "1f4bbc1e-d53b-4728-b184-cdc44659c01b",
+      "partDefinitionElementId": "444df600-019b-45d5-ac36-617ff0a0f791",
+      "placement": {
+        "translationMm": [
+          60,
+          0,
+          3
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "usageElementId": "3ab9e02f-8fdd-44d9-9241-650f4ec8439c",
+      "partDefinitionElementId": "3569666d-a105-47b5-87ac-c42c7bcdaa0a",
+      "placement": {
+        "translationMm": [
+          0,
+          0,
+          0
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "usageElementId": "53a90253-4ac0-4ad4-9fad-2a45697b8654",
+      "partDefinitionElementId": "444df600-019b-45d5-ac36-617ff0a0f791",
+      "placement": {
+        "translationMm": [
+          0,
+          -60,
+          3
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          -90
+        ]
+      }
+    },
+    {
+      "usageElementId": "a06fd9ac-494e-4669-914f-fe2c33f409c7",
+      "partDefinitionElementId": "444df600-019b-45d5-ac36-617ff0a0f791",
+      "placement": {
+        "translationMm": [
+          0,
+          60,
+          3
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          90
+        ]
+      }
+    },
+    {
+      "usageElementId": "b19446b5-d5d5-4b9b-a215-d2840e21332e",
+      "partDefinitionElementId": "444df600-019b-45d5-ac36-617ff0a0f791",
+      "placement": {
+        "translationMm": [
+          -60,
+          0,
+          3
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          180
+        ]
+      }
+    }
+  ]
+}

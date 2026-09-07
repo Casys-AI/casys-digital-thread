@@ -98,17 +98,12 @@ export function ProjectCockpitHeader({
   );
 }
 
-/** Pictogrammes 16px des cinq espaces, trait 1.5 sur currentColor. */
+/** Pictogrammes 16px des quatre espaces, trait 1.5 sur currentColor. */
 const VIEW_ICON_PATHS: Record<ProjectWorkspaceView, string[]> = {
   overview: [
     "M2.5 6.5 8 2l5.5 4.5V13a1 1 0 0 1-1 1H9.5v-4h-3v4H3.5a1 1 0 0 1-1-1Z",
   ],
   work: ["M1.5 8h2.6l1.9-4.8L9 12.8 10.9 8h3.6"],
-  product: [
-    "M8 1.5 14 5v6l-6 3.5L2 11V5Z",
-    "M2 5l6 3.5L14 5",
-    "M8 8.5v6",
-  ],
   verification: [
     "M8 1.5 13.5 3.5v4c0 3.4-2.4 5.8-5.5 7-3.1-1.2-5.5-3.6-5.5-7v-4Z",
     "m5.6 7.9 1.7 1.7 3.1-3.2",

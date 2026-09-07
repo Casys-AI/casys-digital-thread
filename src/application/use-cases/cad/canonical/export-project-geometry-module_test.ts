@@ -14,11 +14,16 @@ import {
 } from "../../../../domain/cad/placement/cad-placement-analysis-capture.ts";
 import { CadPlacementAnalysisCaptureStoreError } from "../../../ports/out/cad/placement/cad-placement-analysis-capture-store.ts";
 import {
+  GEOMETRY_MODULE_CAPTURE_SCHEMA,
+  GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+  GEOMETRY_MODULE_PLACEMENT_CONVENTION,
+  GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
+  GEOMETRY_MODULE_UNIT_SYSTEM,
   type GeometryModuleDraftCapture,
   parseGeometryModuleDecisionParameters,
 } from "../../../../domain/cad/canonical/geometry-module-evidence.ts";
+import { createGeometryModuleInputBundle } from "../../../../domain/cad/module-assembly/geometry-module-input-bundle.ts";
 import type { CadPlacementAnalysisDocument } from "../../../../domain/cad/placement/cad-placement-analysis-capture.ts";
-import { GEOMETRY_MODULE_CAPTURE_SCHEMA } from "../../../../domain/cad/canonical/geometry-module-evidence.ts";
 import { geometrySourceIdFor } from "../../../../domain/cad/source/geometry-source-analysis-reference.ts";
 import { GEOMETRY_PART_CAPTURE_SCHEMA } from "../../../../domain/cad/canonical/geometry-part-manifest.ts";
 import { GEOMETRY_PART_MANIFEST_SCHEMA } from "../../../../domain/cad/canonical/geometry-part-manifest.ts";
@@ -62,6 +67,12 @@ const TARGET_STEP = encoder.encode(
 );
 const ASSEMBLY_STEP = encoder.encode(
   "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=ASSEMBLY;\nENDSEC;\nEND-ISO-10303-21;\n",
+);
+const MODULE_STEP = encoder.encode(
+  "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=BASE-MODULE;\nENDSEC;\nEND-ISO-10303-21;\n",
+);
+const INNER_STEP = encoder.encode(
+  "ISO-10303-21;\nHEADER;\nENDSEC;\nDATA;\n#1=INNER;\nENDSEC;\nEND-ISO-10303-21;\n",
 );
 const ASSEMBLY_GLB = new Uint8Array([0x67, 0x6c, 0x54, 0x46, 1, 2, 3, 4]);
 
@@ -181,6 +192,60 @@ Deno.test("geometry-module export treats a provider PartDefinition id as opaque"
       ProjectGeometryModuleExportError,
     );
     assertEquals(error.code, "unavailable");
+  });
+});
+
+Deno.test("geometry-module export resolves a canonical module child to assemblyStep and a closed bundle", async () => {
+  await withHarness(async (harness) => {
+    const moduleRunId = "run.geometry.base-module";
+    const module = await moduleCapture(BASE, "Base", MODULE_STEP, ASSEMBLY_GLB, {
+      trustedRunId: moduleRunId,
+    });
+    harness.geometryCaptures.captures.delete(harness.baseCaptureDigest);
+    harness.geometryCaptures.captures.set(module.fingerprint.digest, module.text);
+    harness.stepAssets.bytes.set(module.assemblyStepDigest, MODULE_STEP);
+    harness.snapshots.artifacts = harness.snapshots.artifacts.map((artifact) =>
+      artifact.fingerprint.digest === harness.baseCaptureDigest
+        ? geometryArtifact(module.fingerprint, moduleRunId)
+        : artifact
+    );
+    harness.snapshots.sync();
+
+    const result = await harness.service.execute(harness.command);
+    assertEquals(result.grants, "none");
+    const baseChild = harness.draftStore.lastUnsigned?.children.find((child) =>
+      child.partDefinitionElementId === BASE
+    );
+    assertEquals(
+      baseChild?.childGeometry.schemaVersion,
+      GEOMETRY_MODULE_CAPTURE_SCHEMA,
+    );
+    assertEquals(
+      baseChild?.childGeometry.artifactId,
+      `geometry-${module.fingerprint.digest}`,
+    );
+    assertEquals(
+      baseChild?.authoritativeStep.fingerprint.digest,
+      module.assemblyStepDigest,
+    );
+    assertEquals(baseChild?.authoritativeStep.bytes, MODULE_STEP.byteLength);
+    assertEquals(
+      harness.draftStore.lastUnsigned?.inputBundle.manifest.occurrences.find(
+        (item) => item.partDefinitionElementId === BASE,
+      )?.childCapture.schemaVersion,
+      GEOMETRY_MODULE_CAPTURE_SCHEMA,
+    );
+    assertEquals(
+      harness.stepAssets.calls.includes(module.assemblyStepDigest),
+      true,
+    );
+    assertEquals(harness.assembler.calls.length, 1);
+    assertEquals(harness.draftStore.saveCalls, 1);
+    const parsed = parseGeometryModuleDecisionParameters(
+      new Map(result.decisionParameters.map((item) => [item.key, item.value])),
+    );
+    assertEquals(parsed.draftDigest, result.draftDigest);
+    assertEquals(parsed.manifest.target.partDefinitionElementId, TARGET);
   });
 });
 
@@ -419,6 +484,7 @@ interface Harness {
   readonly armStepDigest: string;
   readonly baseStepDigest: string;
   readonly armCaptureDigest: string;
+  readonly baseCaptureDigest: string;
   readonly armRunId: string;
 }
 
@@ -490,6 +556,7 @@ async function createHarness(): Promise<Harness> {
     armStepDigest,
     baseStepDigest,
     armCaptureDigest: armCapture.fingerprint.digest,
+    baseCaptureDigest: baseCapture.fingerprint.digest,
     armRunId,
   };
 }
@@ -930,6 +997,128 @@ async function partCapture(
     },
     sealedAt: "2026-08-25T10:00:00.000Z",
   });
+}
+
+async function moduleCapture(
+  targetId: string,
+  label: string,
+  assemblyStep: Uint8Array,
+  assemblyGlb: Uint8Array,
+  options: { readonly trustedRunId: string },
+) {
+  const innerDigest = await fingerprintResourceBytes(INNER_STEP);
+  const childCapture = {
+    schemaVersion: GEOMETRY_PART_CAPTURE_SCHEMA,
+    artifactId: `geometry-${"d".repeat(64)}`,
+    fingerprint: fp("d".repeat(64)),
+  };
+  const placement = placementLocator("b".repeat(64));
+  const bundle = await createGeometryModuleInputBundle([{
+    usageElementId: "sysml.usage.inner",
+    partDefinitionElementId: "sysml.part.inner",
+    placement: { translationMm: [0, 0, 0], rotationDeg: [0, 0, 0] },
+    childCapture,
+    stepBytes: INNER_STEP,
+  }]);
+  const stepDigest = await fingerprintResourceBytes(assemblyStep);
+  const glbDigest = await fingerprintResourceBytes(assemblyGlb);
+  const structureFingerprint = fp("9".repeat(64));
+  const children = [{
+    usageElementId: "sysml.usage.inner",
+    partDefinitionElementId: "sysml.part.inner",
+    placement: {
+      translationMm: [0, 0, 0] as const,
+      rotationDeg: [0, 0, 0] as const,
+    },
+    placementCapture: placement.fingerprint,
+    childGeometry: childCapture,
+    authoritativeStep: {
+      fingerprint: fp(innerDigest),
+      bytes: INNER_STEP.byteLength,
+    },
+  }];
+  const inputBundle = {
+    schemaVersion: GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
+    fingerprint: bundle.fingerprint,
+    byteCount: bundle.bytes.byteLength,
+    manifest: bundle.manifest,
+  };
+  const structureCapture = {
+    schemaVersion: GEOMETRY_MODULE_STRUCTURE_CAPTURE_SCHEMA,
+    artifactId: `part-definitions-${structureFingerprint.digest}`,
+    fingerprint: structureFingerprint,
+    uri: `casys://part-definitions-capture/sha256/${structureFingerprint.digest}`,
+    byteCount: 512,
+    architecture: {
+      artifactId: ARCH_ID,
+      fingerprint: fp(ARCH_DIGEST),
+      uri: `casys://architecture-capture/sha256/${ARCH_DIGEST}`,
+    },
+  };
+  const stored = await storedJson({
+    schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
+    operation: { id: "design.write-geometry", version: "1" },
+    trustedRunId: options.trustedRunId,
+    draftDigest: "f".repeat(64),
+    manifest: {
+      schemaVersion: "geometry-module-manifest/1.0",
+      architectureBasis: {
+        snapshotId: SNAPSHOT,
+        revision: 12,
+        artifactFingerprint: fp(ARCH_DIGEST),
+      },
+      structureCapture,
+      target: { partDefinitionElementId: targetId, label },
+      placementAnalysis: placement,
+      children,
+      unitSystem: GEOMETRY_MODULE_UNIT_SYSTEM,
+      placementConvention: GEOMETRY_MODULE_PLACEMENT_CONVENTION,
+      assembly: {
+        inputBundle,
+        step: { fingerprint: fp(stepDigest) },
+        glb: { fingerprint: fp(glbDigest) },
+      },
+    },
+    architectureBasis: {
+      artifactId: ARCH_ID,
+      fingerprint: fp(ARCH_DIGEST),
+      producerRunId: "run.architecture.12",
+    },
+    structureCapture,
+    placementAnalysis: placement,
+    children,
+    inputBundle,
+    receipt: {
+      schemaVersion: GEOMETRY_MODULE_ASSEMBLY_RECEIPT_SCHEMA,
+      capability: GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
+      runId: "run.geometry-module.assembly.child",
+      inputBundle: {
+        fingerprint: bundle.fingerprint,
+        byteCount: bundle.bytes.byteLength,
+      },
+      assembly: {
+        step: {
+          ...GEOMETRY_MODULE_ASSEMBLY_ASSETS.step,
+          fingerprint: fp(stepDigest),
+          byteCount: assemblyStep.byteLength,
+        },
+        glb: {
+          ...GEOMETRY_MODULE_ASSEMBLY_ASSETS.glb,
+          fingerprint: fp(glbDigest),
+          byteCount: assemblyGlb.byteLength,
+        },
+      },
+      implementation: {
+        id: "fixture-neutral-cad-assembler",
+        version: "2026.1",
+        evidenceFingerprint: fp("f".repeat(64)),
+      },
+    },
+    assemblyStep: { fingerprint: fp(stepDigest), bytes: assemblyStep.byteLength },
+    assemblyGlb: { fingerprint: fp(glbDigest), bytes: assemblyGlb.byteLength },
+    sealedAt: "2026-08-25T10:00:00.000Z",
+  });
+  return { ...stored, assemblyStepDigest: stepDigest };
 }
 
 async function storedJson(value: unknown) {

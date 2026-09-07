@@ -2,6 +2,7 @@ import { assertEquals, assertRejects } from "@std/assert";
 import { fingerprintResourceBytes } from "../../compile/source/provider-resource-reader.ts";
 import { deterministicJson } from "../../kernel/deterministic-json.ts";
 import {
+  GEOMETRY_MODULE_CAPTURE_SCHEMA,
   GEOMETRY_MODULE_CHILD_STEP_MEDIA_TYPE,
   GEOMETRY_MODULE_INPUT_BUNDLE_SCHEMA,
   GEOMETRY_MODULE_PLACEMENT_CONVENTION,
@@ -10,6 +11,7 @@ import {
   createGeometryModuleInputBundle,
   GEOMETRY_MODULE_INPUT_BUNDLE_MAGIC,
   GEOMETRY_MODULE_MAXIMUM_OCCURRENCES,
+  type GeometryModuleChildCaptureIdentity,
   type GeometryModuleInputOccurrenceInput,
   parseGeometryModuleInputBundle,
   rehashGeometryModuleInputBundleSteps,
@@ -63,6 +65,35 @@ Deno.test("geometry-module input bundle encodes ordered occurrences, placements 
     TypeError,
     "failed exact rehash",
   );
+});
+
+Deno.test("geometry-module input bundle preserves an accepted module-child schema, exact STEP bytes and hashes", async () => {
+  const childCapture: GeometryModuleChildCaptureIdentity = {
+    schemaVersion: GEOMETRY_MODULE_CAPTURE_SCHEMA,
+    artifactId: "geometry-module-airframe",
+    fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+  };
+  const bundle = await createGeometryModuleInputBundle([
+    occurrence(
+      "usage-airframe",
+      "def-airframe",
+      STEP_A,
+      [4, 0, 0],
+      [0, 0, 90],
+      childCapture,
+    ),
+  ]);
+  const reopened = await parseGeometryModuleInputBundle(bundle.bytes.copy());
+
+  assertEquals(reopened.manifest.occurrences[0]?.childCapture, childCapture);
+  assertEquals(reopened.stepBytes[0]?.copy(), STEP_A);
+  assertEquals(
+    reopened.manifest.occurrences[0]?.step.sha256,
+    await fingerprintResourceBytes(STEP_A),
+  );
+  assertEquals(reopened.manifest.occurrences[0]?.step.byteCount, STEP_A.byteLength);
+  assertEquals(reopened.fingerprint, bundle.fingerprint);
+  await rehashGeometryModuleInputBundleSteps(reopened);
 });
 
 Deno.test("geometry-module input bundle refuses extra fields, unsorted identities and non-finite placements", async () => {
@@ -170,16 +201,17 @@ function occurrence(
   stepBytes: Uint8Array,
   translationMm: readonly [number, number, number],
   rotationDeg: readonly [number, number, number],
+  childCapture: GeometryModuleChildCaptureIdentity = {
+    schemaVersion: "geometry-part-capture/1.0",
+    artifactId: `geometry-part-${usageElementId}`,
+    fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+  },
 ): GeometryModuleInputOccurrenceInput {
   return {
     usageElementId,
     partDefinitionElementId,
     placement: { translationMm, rotationDeg },
-    childCapture: {
-      schemaVersion: "geometry-part-capture/1.0",
-      artifactId: `geometry-part-${usageElementId}`,
-      fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
-    },
+    childCapture,
     stepBytes,
   };
 }

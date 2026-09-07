@@ -324,7 +324,7 @@ export function overviewThreadD3CablePolylineClear(
 }
 
 /**
- * Samples the actual M/L/C commands emitted by D3. Cubics are adaptively
+ * Samples the actual M/L/C/Q commands emitted by D3 and the rack fillets. Cubics are adaptively
  * flattened, so the collision check follows rendered geometry rather than
  * assuming that safe control points imply a safe curve.
  */
@@ -1078,7 +1078,7 @@ function pointInsideClosedRectangle(
 
 function parseSvgPath(d: string): readonly SvgSegment[] {
   const tokens = d.match(
-    /[MLC]|[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi,
+    /[MLCQ]|[-+]?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?/gi,
   );
   if (!tokens || tokens.length < 3) return [];
   let index = 0;
@@ -1109,6 +1109,27 @@ function parseSvgPath(d: string): readonly SvgSegment[] {
         source: current,
         control1,
         control2,
+        target,
+      });
+      current = target;
+      continue;
+    }
+    if (command === "Q") {
+      const control = readSvgPoint(tokens, index);
+      const target = readSvgPoint(tokens, index + 2);
+      index += 4;
+      // Exact quadratic-to-cubic conversion, not endpoint-only validation.
+      segments.push({
+        kind: "cubic",
+        source: current,
+        control1: {
+          x: current.x + (control.x - current.x) * 2 / 3,
+          y: current.y + (control.y - current.y) * 2 / 3,
+        },
+        control2: {
+          x: target.x + (control.x - target.x) * 2 / 3,
+          y: target.y + (control.y - target.y) * 2 / 3,
+        },
         target,
       });
       current = target;

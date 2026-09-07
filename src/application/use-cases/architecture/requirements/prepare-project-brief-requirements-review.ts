@@ -1,6 +1,6 @@
 /**
  * Provider-free compilation of reviewed brief criteria into the canonical
- * `model.write-requirements@1` MRTR parameters.
+ * `model.write-requirements@2` MRTR parameters.
  *
  * The server owns the parameter envelope: the caller declares typed criteria
  * and the exact brief item that states each one, and this use case reopens the
@@ -38,7 +38,11 @@ import type {
   EngineeringApprovedBriefBasis,
   EngineeringDecisionProposalParameter,
 } from "../../../../domain/project/engineering-project.ts";
-import { parseRequirementsProposalParameters } from "../../../../domain/architecture/requirements/requirements-proposal.ts";
+import {
+  parseTracedRequirementsProposalParameters,
+} from "../../../../domain/architecture/requirements/requirements-traced-proposal.ts";
+import { sha256Fingerprint } from "../../../../domain/kernel/deterministic-json.ts";
+import { buildRequirementsBriefProvenance } from "../../../../domain/architecture/requirements/requirements-brief-provenance.ts";
 import { normaliseThreshold } from "../../../../domain/kernel/unit-normalisation.ts";
 import {
   isProjectBriefGateKind,
@@ -109,10 +113,17 @@ export class PrepareProjectBriefRequirementsReview
         "The project has no exact human-approved canonical brief to compile from.",
       );
     }
+    const briefContentFingerprint = await sha256Fingerprint(brief);
 
     const diagnostics: BriefRequirementsDiagnostic[] = [];
     const provenance: BriefRequirementsProvenanceEntry[] = [];
-    const parameters: EngineeringDecisionProposalParameter[] = [];
+    const parameters: EngineeringDecisionProposalParameter[] = [
+      ...sourceIdentityParameters(
+        briefBasis,
+        briefContentFingerprint,
+        command.containerSourceItemId,
+      ),
+    ];
 
     const container = resolveItem(brief, command.containerSourceItemId);
     if (!container) {
@@ -130,6 +141,9 @@ export class PrepareProjectBriefRequirementsReview
         value: command.containerComponent,
       });
       provenance.push(provenanceFor("requirements.containerComponent", container));
+      provenance.push(
+        provenanceFor("requirements.containerSourceItemId", container),
+      );
       collectItemDiagnostics(container, null, diagnostics, { requireGate: false });
     }
 
@@ -191,7 +205,8 @@ export class PrepareProjectBriefRequirementsReview
      */
     if (diagnostics.length === 0) {
       try {
-        parseRequirementsProposalParameters(parameters);
+        const proposal = parseTracedRequirementsProposalParameters(parameters);
+        await buildRequirementsBriefProvenance({ brief, basis: briefBasis, proposal });
       } catch (error) {
         diagnostics.push({
           code: "proposal-grammar-rejected",
@@ -287,6 +302,71 @@ function requirementParameters(
       label: `Requirement ${requirement.slug} threshold`,
       value: thresholdValue,
       unit: thresholdUnit,
+    },
+    {
+      key: `requirement.${requirement.slug}.sourceItemId`,
+      label: `Requirement ${requirement.slug} brief source item`,
+      value: requirement.sourceItemId,
+    },
+    {
+      key: `requirement.${requirement.slug}.declaredThreshold`,
+      label: `Requirement ${requirement.slug} declared threshold`,
+      value: requirement.threshold,
+      unit: requirement.unit,
+    },
+  ];
+}
+
+function sourceIdentityParameters(
+  basis: EngineeringApprovedBriefBasis,
+  briefContentFingerprint: { readonly algorithm: "sha256"; readonly digest: string },
+  containerSourceItemId: string,
+): readonly EngineeringDecisionProposalParameter[] {
+  return [
+    {
+      key: "requirements.sourceProjectId",
+      label: "Approved brief project id",
+      value: basis.projectId,
+    },
+    {
+      key: "requirements.sourceProjectSnapshotId",
+      label: "Approved brief project snapshot id",
+      value: basis.projectSnapshotId,
+    },
+    {
+      key: "requirements.sourceProjectRevision",
+      label: "Approved brief project revision",
+      value: basis.projectRevision,
+    },
+    {
+      key: "requirements.sourceBriefId",
+      label: "Approved brief id",
+      value: basis.briefId,
+    },
+    {
+      key: "requirements.sourceBriefSnapshotId",
+      label: "Approved brief snapshot id",
+      value: basis.briefSnapshotId,
+    },
+    {
+      key: "requirements.sourceBriefRevision",
+      label: "Approved brief revision",
+      value: basis.briefRevision,
+    },
+    {
+      key: "requirements.sourceBriefFingerprint",
+      label: "Approved brief fingerprint",
+      value: `sha256:${basis.approvedBriefFingerprint.digest}`,
+    },
+    {
+      key: "requirements.sourceBriefContentFingerprint",
+      label: "Approved brief content fingerprint",
+      value: `sha256:${briefContentFingerprint.digest}`,
+    },
+    {
+      key: "requirements.containerSourceItemId",
+      label: "Requirements container brief source item",
+      value: containerSourceItemId,
     },
   ];
 }

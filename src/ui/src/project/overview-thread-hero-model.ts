@@ -1,4 +1,5 @@
 import type {
+  EngineeringWorkbenchRequirementsBriefTrace,
   ThreadArtifact,
   ThreadGraphEdge,
   ThreadGraphNode,
@@ -10,6 +11,15 @@ import { OVERVIEW_LANES, type OverviewLane } from "./overview-lanes.ts";
 import { condenseEdgesThroughHiddenNodes } from "./overview-condensed-edges.ts";
 import { redundantTypedUsageKeys } from "./overview-typed-facets.ts";
 import type { ProjectPathActivityView } from "./model.ts";
+import {
+  buildOverviewBriefCorrespondences,
+  isRequirementsBriefClaimArtifact,
+  type OverviewBriefSourceHeroNode,
+} from "./overview-thread-brief-correspondence.ts";
+export type {
+  OverviewBriefSourceHeroNode,
+  OverviewBriefTrace,
+} from "./overview-thread-brief-correspondence.ts";
 
 export type OverviewLaneId = EngineeringPathLaneId;
 export { OVERVIEW_LANES } from "./overview-lanes.ts";
@@ -83,14 +93,15 @@ export interface OverviewActivityHeroNode extends OverviewHeroIdentity {
 
 export type OverviewHeroNode =
   | OverviewRecordedHeroNode
-  | OverviewActivityHeroNode;
+  | OverviewActivityHeroNode
+  | OverviewBriefSourceHeroNode;
 
 export interface OverviewHeroEdge {
   readonly key: string;
   readonly fromKey: string;
   readonly toKey: string;
-  /** Project dependencies are presentation joins, never recorded Thread edges. */
-  readonly kind: "thread-path" | "project-dependency";
+  /** Dependency and brief-correspondence joins are not recorded Thread edges. */
+  readonly kind: "thread-path" | "project-dependency" | "brief-correspondence";
   readonly emphasis: boolean;
   readonly pathCount: number;
   readonly pathKeys: readonly string[];
@@ -116,6 +127,8 @@ export interface OverviewThreadHeroView {
 export function buildOverviewThreadHero(
   thread: ThreadWorkbenchSnapshot,
   activities: readonly ProjectPathActivityView[] = [],
+  requirementsBriefTraces:
+    readonly EngineeringWorkbenchRequirementsBriefTrace[] = [],
 ): OverviewThreadHeroView {
   const artifactsById = new Map(
     thread.artifacts.map((artifact) => [artifact.id, artifact]),
@@ -129,13 +142,19 @@ export function buildOverviewThreadHero(
     thread.graph.edges,
   );
   const visibleNodes = thread.graph.nodes.filter((node) =>
-    !redundantUsages.has(refKey(node.ref))
+    !redundantUsages.has(refKey(node.ref)) &&
+    !(node.ref.kind === "artifact" &&
+      isRequirementsBriefClaimArtifact(artifactsById.get(node.ref.id)))
   );
 
   const placed: OverviewHeroNode[] = [];
   for (const node of visibleNodes) {
     const key = refKey(node.ref);
-    const lane = activityEvidenceLanes.get(key) ?? overviewLaneFor(node);
+    const artifact = node.ref.kind === "artifact"
+      ? artifactsById.get(node.ref.id)
+      : undefined;
+    const lane = activityEvidenceLanes.get(key) ??
+      overviewLaneFor(node, artifact);
     if (!lane) continue;
     const column = OVERVIEW_LANES.find((item) => item.id === lane)!;
     placed.push({
@@ -178,6 +197,12 @@ export function buildOverviewThreadHero(
     return parentKey ? { ...item, parentKey } : item;
   });
   const recorded = filed.filter(isRecordedOverviewHeroNode);
+  const briefCorrespondences = buildOverviewBriefCorrespondences(
+    thread,
+    requirementsBriefTraces,
+    new Set(recorded.map((item) => item.key)),
+  );
+  filed.push(...briefCorrespondences.nodes);
   const byKey = new Map(recorded.map((item) => [item.key, item]));
   const condensed = condenseEdgesThroughHiddenNodes(
     new Set(recorded.map((item) => item.key)),
@@ -249,6 +274,7 @@ export function buildOverviewThreadHero(
       });
     }
   }
+  edges.push(...briefCorrespondences.edges);
   edges.sort((left, right) => left.key.localeCompare(right.key));
 
   return {
@@ -262,7 +288,7 @@ export function buildOverviewThreadHero(
     })),
     nodes: filed,
     edges,
-    projectedPathCount: condensed.length,
+    projectedPathCount: condensed.length + briefCorrespondences.edges.length,
   };
 }
 
@@ -274,7 +300,9 @@ export function isRecordedOverviewHeroNode(
 
 export function overviewLaneFor(
   node: ThreadGraphNode,
+  artifact?: ThreadArtifact,
 ): OverviewLaneId | undefined {
+  if (isApprovedBriefDocument(node, artifact)) return "requirements";
   if (
     node.entityKind === "analysis-node" && node.system === "brief" &&
     node.analysis?.semanticRef.domain === "brief" &&
@@ -309,6 +337,7 @@ export function overviewGroupKeyFor(
   node: ThreadGraphNode,
   artifact?: ThreadArtifact,
 ): string {
+  if (isApprovedBriefDocument(node, artifact)) return "brief";
   if (artifact?.id === node.ref.id) {
     const operation = artifact.producer?.tool ?? artifact.producedBy;
     const semanticGroup = operation
@@ -317,6 +346,16 @@ export function overviewGroupKeyFor(
     if (semanticGroup) return semanticGroup;
   }
   return node.system || "unassigned";
+}
+
+function isApprovedBriefDocument(
+  node: ThreadGraphNode,
+  artifact?: ThreadArtifact,
+): boolean {
+  return node.ref.kind === "artifact" && artifact?.id === node.ref.id &&
+    artifact.kind === "document" &&
+    artifact.producer?.serverId === "casys-digital-thread" &&
+    artifact.producer.tool === "baseline_from_approved_brief";
 }
 
 /** Presentation-only caption for a recorded group identity. */
@@ -354,7 +393,9 @@ export function overviewGroupCaption(
       ? "Prescribed kinematics verdict"
       : "Prescribed kinematics";
   }
-  if (normalized.toLowerCase() === "syson") return "SysON model";
+  if (normalized.toLowerCase() === "syson") {
+    return lane === "requirements" ? "SysON requirements" : "SysON model";
+  }
   const leaf = normalized.split(/[/:]/).filter(Boolean).at(-1) ?? normalized;
   return leaf.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
 }

@@ -38,6 +38,9 @@ const DEMANDING_OPERATIONS = new Map<string, readonly ReturnType<typeof qualifie
   ["architecture.seed-syson-model@2", [qualified(MODEL_AUTHOR_SYSTEM_CAPABILITY)]],
   ["model.write-architecture@1", [qualified(MODEL_AUTHOR_SYSTEM_CAPABILITY)]],
   ["model.write-requirements@1", [qualified(MODEL_AUTHOR_SYSTEM_CAPABILITY)]],
+  ["model.write-requirements@2", [qualified(MODEL_AUTHOR_SYSTEM_CAPABILITY)]],
+  ["model.recapture-requirements@1", [qualified(MODEL_INSPECT_SYSTEM_CAPABILITY)]],
+  ["model.recapture-requirements@2", [qualified(MODEL_INSPECT_SYSTEM_CAPABILITY)]],
   ["model.write-sensitivity-edges@1", [qualified(MODEL_AUTHOR_SYSTEM_CAPABILITY)]],
   ["model.capture-part-definitions@1", [qualified(MODEL_INSPECT_SYSTEM_CAPABILITY)]],
   ["design.execute-build123d@1", [
@@ -97,7 +100,7 @@ const DEMANDING_OPERATIONS = new Map<string, readonly ReturnType<typeof qualifie
 
 Deno.test("runtime demand is an exhaustive provider-neutral registry projection", async () => {
   const operations = engineeringOperationRegistry.list();
-  assertEquals(operations.length, 53);
+  assertEquals(operations.length, 57);
   assertEquals(Object.isFrozen(operations), true);
   assertEquals(operations.every((operation) => Object.isFrozen(operation)), true);
   assertEquals(
@@ -132,7 +135,7 @@ Deno.test("runtime demand is an exhaustive provider-neutral registry projection"
     [...seenDemanding].toSorted(),
     [...DEMANDING_OPERATIONS.keys()].toSorted(),
   );
-  assertEquals(noneCount, 33);
+  assertEquals(noneCount, 34);
 
   const preparation = engineeringOperationRegistry.require(
     DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION,

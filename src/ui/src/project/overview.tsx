@@ -12,6 +12,7 @@ import type {
   EngineeringWorkbenchActivity,
   EngineeringWorkbenchCaseActivityJoin,
   EngineeringWorkbenchPhaseLane,
+  EngineeringWorkbenchRequirementsBriefTrace,
   ThreadGraphNode,
   ThreadGraphRef,
   ThreadWorkbenchSnapshot,
@@ -71,8 +72,12 @@ export interface ProjectOverviewProps {
   readonly phaseLanes: readonly EngineeringWorkbenchPhaseLane[];
   readonly activities: readonly EngineeringWorkbenchActivity[];
   readonly caseActivityJoins: readonly EngineeringWorkbenchCaseActivityJoin[];
+  /** Server-sealed, read-only clause provenance for requirements captures. */
+  readonly requirementsBriefTraces?:
+    readonly EngineeringWorkbenchRequirementsBriefTrace[];
   /** Exact browser-safe session descriptors from the read-only Workbench BFF. */
   readonly viewerSessions?: ThreadViewerSessionsProjection;
+  readonly viewerSessionsReady?: boolean;
   readonly onNavigate: (view: ProjectWorkspaceView) => void;
   readonly onOpenActivity?: (decisionId?: string) => void;
   readonly onOpenDeepLink?: (target: ProjectDeepLinkTarget) => void;
@@ -90,7 +95,9 @@ export function ProjectOverview({
   phaseLanes,
   activities,
   caseActivityJoins,
+  requirementsBriefTraces,
   viewerSessions,
+  viewerSessionsReady,
   onNavigate,
   onOpenActivity,
   onOpenDeepLink,
@@ -162,8 +169,11 @@ export function ProjectOverview({
           <div className="project-thread-top-hud">
             <header className="project-thread-hud">
               <div className="project-thread-mission">
-                <p className={cn("m-0", PAGE_EYEBROW)}>
-                  Project control
+                <p
+                  className={cn("m-0", PAGE_EYEBROW)}
+                  title={project.project.id}
+                >
+                  {project.project.name} · r{project.revision}
                 </p>
                 <h2 id="project-objective-title">
                   {project.project.objective.title}
@@ -250,12 +260,6 @@ export function ProjectOverview({
                 >
                   <button
                     type="button"
-                    onClick={() => onNavigate("product")}
-                  >
-                    Product
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => onNavigate("verification")}
                   >
                     Evidence
@@ -282,6 +286,8 @@ export function ProjectOverview({
             thread={thread}
             projectId={project.project.id}
             viewerSessions={viewerSessions}
+            viewerSessionsReady={viewerSessionsReady}
+            requirementsBriefTraces={requirementsBriefTraces}
             activities={projectPath.activities}
             immersive
             stages={overviewStages}
@@ -600,39 +606,39 @@ function OverviewRecordChip({
 /**
  * Le pouls en feed mono 4 colonnes. Review est la bannière au-dessus —
  * Now expose les entrées enregistrées : run actif, dernier run settled,
- * prochain work item, blocker ouvert. Glyphes : ▸ brand (running),
- * ✓ success (settled/sealed), ⧗ muted (queued), • destructive (blocked).
+ * prochain work item, blocker ouvert. Le prochain work reste explicitement
+ * prêt à mettre en file : il ne reprend jamais le sablier d'un run queued.
+ * Glyphes : ▸ brand (running), ✓ success (settled/sealed), → muted (ready),
+ * ⧗ muted (queued), • destructive (blocked).
  */
-function NowPanel({
+export type NowFeedEntry = {
+  readonly time?: string;
+  readonly glyph: "running" | "settled" | "ready" | "queued" | "blocked";
+  readonly description: string;
+  readonly tag?: string;
+};
+
+/**
+ * Keep projected next work visible without presenting it as an agent run.
+ * A pre-claim cancellation leaves the work item ready by contract; it must
+ * remain distinguishable from a queued execution in the compact NOW dock.
+ */
+export function buildNowFeed({
   project,
   activeRun,
   focusWork,
   lastSettledRun,
   nextWork,
   openBlocker,
-  onNavigate,
-  compact = false,
 }: {
-  project: EngineeringProjectSnapshot;
-  activeRun?: EngineeringAgentRun;
-  focusWork?: EngineeringWorkItem;
-  lastSettledRun?: EngineeringAgentRun;
-  nextWork?: EngineeringWorkItem;
-  openBlocker?: EngineeringBlocker;
-  onNavigate: (view: ProjectWorkspaceView) => void;
-  compact?: boolean;
-}): JSX.Element {
-  const liveRunCount = project.agentRuns.filter(
-    (r) => r.status === "running",
-  ).length;
-
-  type FeedEntry = {
-    time?: string;
-    glyph: "running" | "settled" | "queued" | "blocked";
-    description: string;
-    tag?: string;
-  };
-  const feed: FeedEntry[] = [];
+  readonly project: EngineeringProjectSnapshot;
+  readonly activeRun?: EngineeringAgentRun;
+  readonly focusWork?: EngineeringWorkItem;
+  readonly lastSettledRun?: EngineeringAgentRun;
+  readonly nextWork?: EngineeringWorkItem;
+  readonly openBlocker?: EngineeringBlocker;
+}): readonly NowFeedEntry[] {
+  const feed: NowFeedEntry[] = [];
 
   if (activeRun) {
     const wi = project.workItems.find((w) => w.id === activeRun.workItemId);
@@ -665,9 +671,9 @@ function NowPanel({
 
   if (nextWork) {
     feed.push({
-      glyph: "queued",
+      glyph: "ready",
       description: nextWork.title,
-      tag: workOwnerLabel(nextWork.owner),
+      tag: `Up next · Ready to queue · ${workOwnerLabel(nextWork.owner)}`,
     });
   }
 
@@ -678,6 +684,41 @@ function NowPanel({
       tag: sentenceLabel(openBlocker.kind),
     });
   }
+
+  return feed;
+}
+
+function NowPanel({
+  project,
+  activeRun,
+  focusWork,
+  lastSettledRun,
+  nextWork,
+  openBlocker,
+  onNavigate,
+  compact = false,
+}: {
+  project: EngineeringProjectSnapshot;
+  activeRun?: EngineeringAgentRun;
+  focusWork?: EngineeringWorkItem;
+  lastSettledRun?: EngineeringAgentRun;
+  nextWork?: EngineeringWorkItem;
+  openBlocker?: EngineeringBlocker;
+  onNavigate: (view: ProjectWorkspaceView) => void;
+  compact?: boolean;
+}): JSX.Element {
+  const liveRunCount = project.agentRuns.filter(
+    (r) => r.status === "running",
+  ).length;
+
+  const feed = buildNowFeed({
+    project,
+    activeRun,
+    focusWork,
+    lastSettledRun,
+    nextWork,
+    openBlocker,
+  });
 
   const openActivity = (event: MouseEvent<HTMLAnchorElement>) => {
     if (event.metaKey || event.ctrlKey || event.shiftKey) return;
@@ -714,6 +755,8 @@ function NowPanel({
                 ? "✓"
                 : entry.glyph === "blocked"
                 ? "•"
+                : entry.glyph === "ready"
+                ? "→"
                 : "⧗";
               return (
                 <span
@@ -786,20 +829,15 @@ function NowPanel({
   );
 }
 
-function NowFeedRow({ entry }: {
-  entry: {
-    time?: string;
-    glyph: "running" | "settled" | "queued" | "blocked";
-    description: string;
-    tag?: string;
-  };
-}): JSX.Element {
+function NowFeedRow({ entry }: { entry: NowFeedEntry }): JSX.Element {
   const glyph = entry.glyph === "running"
     ? "▸"
     : entry.glyph === "settled"
     ? "✓"
     : entry.glyph === "blocked"
     ? "•"
+    : entry.glyph === "ready"
+    ? "→"
     : "⧗";
   return (
     <div className="grid grid-cols-[42px_14px_minmax(0,1fr)_auto] items-baseline gap-x-2 px-3.5 py-[5px]">
@@ -811,6 +849,7 @@ function NowFeedRow({ entry }: {
           "font-mono text-[10.5px] font-medium",
           entry.glyph === "running" && "text-brand",
           entry.glyph === "settled" && "text-success",
+          entry.glyph === "ready" && "text-muted-foreground",
           entry.glyph === "queued" && "text-muted-foreground",
           entry.glyph === "blocked" && "text-destructive",
         )}

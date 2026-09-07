@@ -1,6 +1,6 @@
 /**
  * Inward port for compiling reviewed brief criteria into the canonical
- * `model.write-requirements@1` MRTR parameters.
+ * `model.write-requirements@2` MRTR parameters.
  *
  * The caller declares one typed criterion per requirement and names the exact
  * brief item that states it. The server reopens the human-approved canonical

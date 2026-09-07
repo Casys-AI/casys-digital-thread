@@ -5,7 +5,7 @@ import type { JSX, ReactNode } from "react";
 import { Badge, type BadgeProps } from "../ui/badge.tsx";
 import { Button } from "../ui/button.tsx";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card.tsx";
-import { EmptyNotice, Notice } from "../ui/notice.tsx";
+import { Notice } from "../ui/notice.tsx";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -1221,10 +1221,18 @@ export function ThreadWorkbench({
           <ProjectOverview
             project={project}
             thread={snapshot}
-            viewerSessions={viewerSessions}
+            viewerSessions={viewerSessions &&
+                viewerSessionsMatchWorkbench(viewerSessions, workbench)
+              ? viewerSessions
+              : undefined}
+            viewerSessionsReady={!viewerSessionsClient || Boolean(
+              viewerSessions &&
+                viewerSessionsMatchWorkbench(viewerSessions, workbench),
+            )}
             phaseLanes={workbench.projectPath.phaseLanes}
             activities={workbench.projectPath.activities}
             caseActivityJoins={workbench.caseActivityJoins}
+            requirementsBriefTraces={workbench.requirementsBriefTraces}
             onNavigate={changeView}
             onOpenActivity={openDecisionActivity}
             onOpenDeepLink={openProjectDeepLink}
@@ -1482,13 +1490,6 @@ export function ThreadWorkbench({
                       />
                     </section>
                   )
-                  : activeView === "product"
-                  ? (
-                    <McpAppProductHandoff
-                      projection={viewerSessions}
-                      onOpenWhiteboard={() => changeView("overview")}
-                    />
-                  )
                   : (
                     <ProjectOperations
                       project={project}
@@ -1503,71 +1504,6 @@ export function ThreadWorkbench({
           </main>
         )}
     </div>
-  );
-}
-
-function McpAppProductHandoff({
-  projection,
-  onOpenWhiteboard,
-}: {
-  projection?: ThreadViewerSessionsProjection;
-  onOpenWhiteboard: () => void;
-}): JSX.Element {
-  const sessions = projection?.sessions ?? [];
-  return (
-    <Card data-surface="mcp-app-product-handoff">
-      <CardHeader className="flex-row items-start justify-between gap-4 max-md:flex-col">
-        <div className="min-w-0 space-y-1.5">
-          <p className={PAGE_EYEBROW}>Whole MCP Apps</p>
-          <CardTitle className="text-base">
-            Domain presentations live on the Project whiteboard
-          </CardTitle>
-          <p className="text-sm text-muted-foreground">
-            Digital Thread keeps no native CAD, SysML, simulation or ERP
-            renderer. It can host only an explicitly registered exact App for
-            this Thread basis.
-          </p>
-        </div>
-        <Badge variant={sessions.length > 0 ? "success" : "secondary"}>
-          {sessions.length > 0
-            ? `${sessions.length} exact App${sessions.length === 1 ? "" : "s"}`
-            : "unavailable"}
-        </Badge>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        {sessions.length === 0
-          ? (
-            <EmptyNotice>
-              Unavailable — no exact whole-App binding is registered for this
-              Thread basis. Digital Thread will not infer one from labels,
-              artifact kinds, providers or graph proximity.
-            </EmptyNotice>
-          )
-          : (
-            <ul className="divide-y divide-border rounded-md border border-border">
-              {sessions.map((viewer) => (
-                <li className="space-y-1.5 px-3 py-3" key={viewer.id}>
-                  <strong className="block text-sm font-medium">
-                    {viewer.app.id}@{viewer.app.version}
-                  </strong>
-                  <code className="block break-all font-mono text-xs text-muted-foreground">
-                    {viewer.resource.uri}
-                  </code>
-                  <span className="block text-xs text-muted-foreground">
-                    {viewer.anchor.kind}:{viewer.anchor.id} ·{" "}
-                    {viewer.session.schema}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          )}
-        <div>
-          <Button type="button" variant="outline" onClick={onOpenWhiteboard}>
-            Open Project whiteboard
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 
@@ -1588,7 +1524,6 @@ function workspaceEyebrow(
   view: Exclude<ProjectWorkspaceView, "overview">,
 ): string {
   if (view === "work") return "Project · recorded activity";
-  if (view === "product") return "Product dossier";
   if (view === "verification") return "Evidence · verification";
   return "Utility · systems and runs";
 }
@@ -1614,7 +1549,6 @@ function workspaceTitle(
   view: Exclude<ProjectWorkspaceView, "overview">,
 ): string {
   if (view === "work") return "Activity";
-  if (view === "product") return "Product";
   if (view === "verification") return "Evidence";
   return "Systems & runs";
 }
@@ -1624,9 +1558,6 @@ function workspaceDescription(
 ): string {
   if (view === "work") {
     return "Recorded activity, reviews and lineage.";
-  }
-  if (view === "product") {
-    return "Exact whole MCP Apps registered for the current Thread basis.";
   }
   if (view === "verification") {
     return "Start from a verification case, then inspect its exact evidence chain.";

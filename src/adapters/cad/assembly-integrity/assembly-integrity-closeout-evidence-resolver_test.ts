@@ -37,6 +37,8 @@ Deno.test("L5 resolver selects the L4 artifact from the exact current producer r
   );
 
   assertEquals(resolved.l4Run.id, "run-l4-current");
+  assertEquals(resolved.l4Work.id, "work-l4-current");
+  assertEquals(resolved.l4Run.workItemId, resolved.l4Work.id);
   assertEquals(
     resolved.evaluationCapture.id,
     `assembly-integrity-evaluation-${fixture.captureFingerprint.digest}`,

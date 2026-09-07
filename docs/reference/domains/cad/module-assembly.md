@@ -83,6 +83,17 @@ It cannot substitute the active-pin authority, does not write
 
 ## Authority limit
 
+The dated
+[ID01 canary](../../../project-dossiers/inspection-drone-id01/nested-root-canary-20260907.md)
+qualifies manual two-level composition: immediate child captures can themselves be
+canonical modules, whose exact assembly STEP bytes are imported without reopening or
+flattening descendant manifests. It changes no schema, operation, unit, placement
+convention or per-invocation limit. Separate source tests cover two-hop retirement, not
+automatic ancestor rebuilding. Mixed immediate part/module runtime inputs and
+deeper/unbounded trees remain outside that canary's claim. The
+[qualification route](../../../how-to/extend/qualify-nested-cad-modules.md) governs
+further promotion; the project run is not a new runtime-host qualification attestation.
+
 Successful assembly proves that the registered adapter produced a parseable STEP/GLB
 pair for the exact closed bundle. It does not prove collision freedom, clearances,
 joints, motion, loads, manufacturability, safety, or certification. Those questions use

@@ -3,6 +3,8 @@
 Audience: both · Diátaxis: how-to · Kind: index
 
 - [Extend the generic SysML surface](extend-generic-sysml-surface.md)
+- [Qualify unchanged requirements recapture](qualify-requirements-recapture.md)
+- [Qualify mandatory requirements brief trace](qualify-requirements-brief-trace.md)
 - [Extend the CAD closed subset](extend-cad-closed-subset.md)
 - [Extend the FEA product surface](extend-fea-product-surface.md)
 - [Extend admitted Modelica coverage](extend-admitted-modelica-coverage.md)

@@ -8,6 +8,8 @@ import {
   overviewThreadViewerScreenDeltaToWorld,
   overviewThreadViewerScreenPointToWorld,
   resizeOverviewThreadViewerByScreenDelta,
+  separateOverviewThreadInitialViewer,
+  separateOverviewThreadViewers,
 } from "./src/project/overview-thread-viewer-geometry.ts";
 
 const BOUNDS: OverviewThreadViewerGeometryBounds = {
@@ -16,6 +18,94 @@ const BOUNDS: OverviewThreadViewerGeometryBounds = {
   minWidth: 260,
   minHeight: 180,
 };
+
+Deno.test("viewer repulsion keeps the dragged window fixed and pushes a whole chain", () => {
+  const windows = [0, 1, 2].map((index) => ({
+    id: `viewer-${index}`,
+    sessionId: `registered-${index}`,
+    x: index * 644,
+    y: 40,
+    width: 620,
+    height: 460,
+    z: index,
+  }));
+  const moved = windows.map((window, index) =>
+    index === 0 ? { ...window, x: 500 } : window
+  );
+  const before = structuredClone(moved);
+  const settled = separateOverviewThreadViewers(moved, "viewer-0");
+  assert(settled[0] === moved[0]);
+  assertEquals(moved, before);
+  assertEquals(
+    settled.map((window) => [window.id, window.sessionId, window.z]),
+    moved.map((window) => [window.id, window.sessionId, window.z]),
+  );
+  assertViewerWindowsSeparate(settled);
+  assertEquals(separateOverviewThreadViewers(settled, "viewer-0"), settled);
+});
+
+Deno.test("resized and restored overlapping viewers separate without losing content geometry", () => {
+  const windows = [
+    { id: "cad", x: -600, y: -500, width: 950, height: 700 },
+    { id: "brief", x: -150, y: -400, width: 620, height: 460 },
+    { id: "module", x: 20, y: -350, width: 620, height: 460 },
+  ];
+  const resized = separateOverviewThreadViewers(windows, "cad");
+  assert(resized[0] === windows[0]);
+  assertViewerWindowsSeparate(resized);
+  assertViewerWindowsSeparate(separateOverviewThreadViewers(windows));
+  assertEquals(
+    resized.map(({ width, height }) => ({ width, height })),
+    windows.map(({ width, height }) => ({ width, height })),
+  );
+});
+
+Deno.test("expanded viewer focus does not displace ordinary windows until restored", () => {
+  const restoreGeometry = { x: 0, y: 0, width: 620, height: 460 };
+  const expanded = {
+    id: "cad",
+    x: -200,
+    y: -200,
+    width: 1600,
+    height: 1000,
+    restoreGeometry,
+  };
+  const brief = { id: "brief", x: 200, y: 100, width: 620, height: 460 };
+  const focused = separateOverviewThreadViewers([expanded, brief], "cad");
+  assert(focused[0] === expanded);
+  assert(focused[1] === brief);
+  assertViewerWindowsSeparate(separateOverviewThreadViewers([
+    { ...expanded, ...restoreGeometry, restoreGeometry: undefined },
+    brief,
+  ], "cad"));
+});
+
+function assertViewerWindowsSeparate(
+  windows: readonly { x: number; y: number; width: number; height: number }[],
+): void {
+  for (const [index, left] of windows.entries()) {
+    for (const right of windows.slice(index + 1)) {
+      assert(
+        !(left.x < right.x + right.width + 24 &&
+          right.x < left.x + left.width + 24 &&
+          left.y < right.y + right.height + 24 &&
+          right.y < left.y + left.height + 24),
+      );
+    }
+  }
+}
+
+Deno.test("automatic viewers open beside existing panels without moving them", () => {
+  const brief = { x: 60, y: 100, width: 620, height: 460 };
+  const drone = { x: 53, y: 260, width: 620, height: 460 };
+  assertEquals(separateOverviewThreadInitialViewer(drone, [brief], 1388), {
+    ...drone,
+    x: 704,
+  });
+  assertEquals(brief, { x: 60, y: 100, width: 620, height: 460 });
+  const free = { ...drone, y: 700 };
+  assert(separateOverviewThreadInitialViewer(free, [brief], 1388) === free);
+});
 
 Deno.test("viewer screen coordinates convert to stable world coordinates under pan and zoom", () => {
   assertEquals(

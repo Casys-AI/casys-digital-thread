@@ -1,4 +1,5 @@
 import { curveBumpX, line } from "d3-shape";
+import { separateOverviewThreadHulls } from "./overview-thread-hull-physics.ts";
 import type {
   OverviewThreadWhiteboardPoint,
   OverviewThreadWhiteboardSize,
@@ -61,6 +62,61 @@ export const OVERVIEW_THREAD_VIEWER_EDGE_INSET = 18;
 export const OVERVIEW_THREAD_VIEWER_MAX_ABSOLUTE_COORDINATE = 10_000_000;
 
 const GEOMETRY_PRECISION = 1_000_000;
+
+/** Move neighboring windows without changing their registered session identity. */
+export function separateOverviewThreadViewers<
+  T extends OverviewThreadViewerGeometry & {
+    readonly id: string;
+    readonly restoreGeometry?: OverviewThreadViewerGeometry;
+  },
+>(viewers: readonly T[], fixedId?: string): T[] {
+  // Expanded focus is an intentional overlay, not a window to shove across
+  // the canvas. Restoring it participates in separation again.
+  const windows = viewers.filter((viewer) => !viewer.restoreGeometry);
+  const separated = separateOverviewThreadHulls(
+    windows.map((viewer) => ({ ...viewer, key: viewer.id })),
+    { fixedKey: fixedId, gap: OVERVIEW_THREAD_VIEWER_WORLD_PADDING },
+  );
+  const byId = new Map(separated.map((viewer) => [viewer.id, viewer]));
+  return viewers.map((viewer) => {
+    const next = byId.get(viewer.id);
+    return !next || (next.x === viewer.x && next.y === viewer.y)
+      ? viewer
+      : { ...viewer, x: next.x, y: next.y };
+  });
+}
+
+/** Automatic panels open beside one another; manually moved panels stay put. */
+export function separateOverviewThreadInitialViewer(
+  geometry: OverviewThreadViewerGeometry,
+  occupied: readonly OverviewThreadViewerGeometry[],
+  worldWidth: number,
+): OverviewThreadViewerGeometry {
+  const gap = OVERVIEW_THREAD_VIEWER_WORLD_PADDING;
+  const overlaps = (candidate: OverviewThreadViewerGeometry) =>
+    occupied.some((other) =>
+      candidate.x < other.x + other.width + gap &&
+      other.x < candidate.x + candidate.width + gap &&
+      candidate.y < other.y + other.height + gap &&
+      other.y < candidate.y + candidate.height + gap
+    );
+  if (!overlaps(geometry)) return geometry;
+  const candidates = occupied.flatMap(
+    (other) => [other.x - gap - geometry.width, other.x + other.width + gap],
+  )
+    .map((x) => ({ ...geometry, x })).filter((candidate) =>
+      !overlaps(candidate)
+    );
+  const outside = (candidate: OverviewThreadViewerGeometry) =>
+    candidate.x < gap || candidate.x + candidate.width > worldWidth - gap
+      ? 1
+      : 0;
+  candidates.sort((a, b) =>
+    outside(a) - outside(b) ||
+    Math.abs(a.x - geometry.x) - Math.abs(b.x - geometry.x) || b.x - a.x
+  );
+  return candidates[0] ?? geometry;
+}
 
 const viewerConnectorLine = line<OverviewThreadWhiteboardPoint>()
   .x((point: OverviewThreadWhiteboardPoint) => point.x)

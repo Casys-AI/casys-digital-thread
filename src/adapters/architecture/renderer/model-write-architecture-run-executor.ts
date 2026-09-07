@@ -115,6 +115,7 @@ import {
   extractArchitectureStructure,
 } from "./architecture-structure-extractor.ts";
 import { writeSysonTypedPartUsage } from "./syson-typed-part-usage-writer.ts";
+import { assertArchitectureCaptureSeedAndInputs } from "./exact-architecture-capture-inputs.ts";
 import {
   requireBasis,
   requiredStart,
@@ -1909,64 +1910,13 @@ export class ModelWriteArchitectureRunExecutor {
         "The predecessor architecture capture is not exact architecture-capture/4.0 evidence.",
       );
     }
-    const captureSeed = capture.seed;
-    if (
-      captureSeed.artifactId !== seedArtifact.id ||
-      !fingerprintsEqual(captureSeed.fingerprint, seedArtifact.fingerprint) ||
-      captureSeed.producerRunId !== seedArtifact.producer.runId
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_input",
-        "The predecessor architecture capture does not name the exact SysON seed consumed by its Thread artifact.",
-      );
-    }
-
-    const capturePredecessor = capture.predecessor;
-    let declaredPredecessor: ThreadArtifact | undefined;
-    if (capturePredecessor) {
-      declaredPredecessor = base.artifacts.find((artifact) =>
-        artifact.id === capturePredecessor.artifactId
-      );
-      if (
-        !declaredPredecessor ||
-        !isGenericArchitectureArtifact(declaredPredecessor) ||
-        declaredPredecessor.id !==
-          `architecture-${declaredPredecessor.fingerprint.digest}` ||
-        declaredPredecessor.version !==
-          declaredPredecessor.fingerprint.digest ||
-        declaredPredecessor.uri !==
-          `${ARCHITECTURE_CAPTURE_URI_PREFIX}sha256/${declaredPredecessor.fingerprint.digest}` ||
-        declaredPredecessor.mediaType !== "application/json" ||
-        declaredPredecessor.producer.serverId !== "syson" ||
-        declaredPredecessor.producer.tool !== "syson_element_insert_sysml" ||
-        !fingerprintsEqual(
-          capturePredecessor.fingerprint,
-          declaredPredecessor.fingerprint,
-        ) ||
-        capturePredecessor.producerRunId !== declaredPredecessor.producer.runId
-      ) {
-        throw new EngineeringProjectCommandError(
-          "invalid_input",
-          "The predecessor architecture capture does not name one exact prior architecture artifact.",
-        );
-      }
-    }
-
-    const expectedInputs = [
-      seedArtifact.id,
-      ...(declaredPredecessor ? [declaredPredecessor.id] : []),
-    ];
-    if (
-      predecessor.inputArtifactIds.length !== expectedInputs.length ||
-      new Set(predecessor.inputArtifactIds).size !==
-        predecessor.inputArtifactIds.length ||
-      expectedInputs.some((id) => !predecessor.inputArtifactIds.includes(id))
-    ) {
-      throw new EngineeringProjectCommandError(
-        "invalid_input",
-        "The predecessor architecture capture declarations and Thread artifact inputs are not bijective.",
-      );
-    }
+    assertArchitectureCaptureSeedAndInputs(
+      base,
+      predecessor,
+      capture,
+      seedArtifact,
+      "predecessor",
+    );
     return capture;
   }
 

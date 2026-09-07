@@ -67,6 +67,89 @@ Deno.test(
 );
 
 Deno.test(
+  "requirements-target enricher recrosses a recapture-produced v4 tip",
+  async () => {
+    const snapshot = workbenchFor();
+    snapshot.artifacts[1]!.producedBy = "model.recapture-requirements@1";
+    const recaptureCapture = {
+      ...capture(),
+      schemaVersion: "requirements-capture/4.0",
+      operation: { id: "model.recapture-requirements", version: "1" },
+      predecessor: {
+        artifactId: "requirements-capture-wing-old",
+        fingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+        producerRunId: "run:requirements",
+      },
+      capturedAt: "2026-09-07T12:00:00.000Z",
+      subject: {
+        id: "reference-usage:wing-target",
+        kind: "ReferenceUsage",
+        name: "target",
+      },
+    };
+    delete (recaptureCapture as { insertedAt?: string }).insertedAt;
+    const enriched = await enrichThreadWorkbenchWithRequirementsTargets(
+      snapshot,
+      { read: () => Promise.resolve(deterministicJson(recaptureCapture)) },
+      threadFor(snapshot),
+    );
+    assertEquals(enriched.requirements[0]?.targetElementId, TARGET);
+  },
+);
+
+Deno.test(
+  "requirements-target enricher refuses a v4 capture projected as write@1",
+  async () => {
+    const snapshot = workbenchFor();
+    const recaptureCapture = {
+      ...capture(),
+      schemaVersion: "requirements-capture/4.0",
+      operation: { id: "model.recapture-requirements", version: "1" },
+      predecessor: {
+        artifactId: "requirements-capture-wing-old",
+        fingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+        producerRunId: "run:requirements",
+      },
+      capturedAt: "2026-09-07T12:00:00.000Z",
+      subject: {
+        id: "reference-usage:wing-target",
+        kind: "ReferenceUsage",
+        name: "target",
+      },
+    };
+    delete (recaptureCapture as { insertedAt?: string }).insertedAt;
+    const enriched = await enrichThreadWorkbenchWithRequirementsTargets(
+      snapshot,
+      { read: () => Promise.resolve(deterministicJson(recaptureCapture)) },
+      threadFor(snapshot),
+    );
+    assertEquals(enriched.requirements[0]?.targetElementId, undefined);
+    assertEquals(
+      enriched.graph.edges.filter((edge) => edge.relation === "constrained_by"),
+      [],
+    );
+  },
+);
+
+Deno.test(
+  "requirements-target enricher refuses a v3 capture projected as recapture@1",
+  async () => {
+    const snapshot = workbenchFor();
+    snapshot.artifacts[1]!.producedBy = "model.recapture-requirements@1";
+    const enriched = await enrichThreadWorkbenchWithRequirementsTargets(
+      snapshot,
+      { read: () => Promise.resolve(deterministicJson(capture())) },
+      threadFor(snapshot),
+    );
+    assertEquals(enriched.requirements[0]?.targetElementId, undefined);
+    assertEquals(
+      enriched.graph.edges.filter((edge) => edge.relation === "constrained_by"),
+      [],
+    );
+  },
+);
+
+Deno.test(
   "requirements-target enricher does not parse rationale to invent a target",
   async () => {
     const snapshot = workbenchFor();

@@ -291,7 +291,7 @@ Deno.test("Overview opens registered whole Apps without a native CAD fallback", 
   assertStringIncludes(hero, "sessionId: session.id");
   assertStringIncludes(
     hero,
-    "label: `Open App · ${session.app.id}@${session.app.version}`",
+    "label: `Open viewer · ${item.label}`",
   );
   assertEquals(hero.includes('kind: "open-cad"'), false);
   assertEquals(hero.includes("capabilities.cadAssets"), false);

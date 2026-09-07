@@ -5,6 +5,7 @@ import {
 import type {
   EngineeringAgentRun,
   EngineeringProjectSnapshot,
+  EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
 import {
   assemblyIntegrityCloseoutAuthorization,
@@ -13,18 +14,31 @@ import {
 } from "./assembly-integrity-closeout-evidence-resolver.ts";
 import {
   ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_SCHEMA,
+  ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_URI_PREFIX,
   type AssemblyIntegrityEvaluationCapture,
   assemblyIntegrityEvaluationCaptureUri,
   assemblyIntegrityEvaluationMethod,
   validateAssemblyIntegrityEvaluationCapture,
 } from "../../../domain/cad/assembly-integrity/assembly-integrity-evaluation.ts";
 import {
+  ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_SCHEMA,
+  type AssemblyIntegrityEvaluationCloseoutAdmission,
   assemblyIntegrityEvaluationCloseoutWorkItemOperation,
+  DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION,
   encodeAssemblyIntegrityEvaluationCloseoutAdmission,
 } from "../../../domain/cad/assembly-integrity/assembly-integrity-evaluation-closeout-proposal.ts";
 import { ASSEMBLY_INTEGRITY_VERIFICATION_AUTHORITY } from "../../../domain/cad/assembly-integrity/assembly-integrity-verification-authority.ts";
 import { VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION } from "../../../domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
-import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../../domain/kernel/deterministic-json.ts";
+import {
+  ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_CAPTURE_URI_PREFIX,
+  ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_LIMITS,
+  canonicalAssemblyIntegrityEvaluationCloseoutCaptureText,
+  validateAssemblyIntegrityEvaluationCloseoutCapture,
+} from "./assembly-integrity-evaluation-closeout-capture.ts";
 import type {
   EngineeringProjectCommandOrigin,
 } from "../../../application/ports/in/engineering-project-command-origin.ts";
@@ -38,6 +52,7 @@ import type {
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import {
   applyThreadSnapshotExtension,
+  applyThreadSnapshotExtensionIfNew,
 } from "../../../domain/thread/thread-snapshot-extension.ts";
 import type {
   ThreadArtifact,
@@ -55,12 +70,21 @@ const DIGEST_F = "f".repeat(64);
 const AT = "2026-08-26T10:00:00.000Z";
 const HUMAN = { kind: "human" as const, actorId: "human:assembly-reviewer" };
 
-Deno.test("assembly-integrity L5 admits all and only canonical compatible Brief gates", async () => {
+Deno.test("assembly-integrity L5 accept satisfies only recorded L4 contributes-to claims in canonical order", async () => {
   const fixture = await executableFixture({
     matchingGateIds: ["gate-assembly-z", "gate-assembly-a"],
+    l4GateClaimIds: ["gate-assembly-z", "gate-assembly-a"],
   });
-  const accept = assemblyIntegrityCloseoutAuthorization(fixture.current(), "accept");
-  const reject = assemblyIntegrityCloseoutAuthorization(fixture.current(), "reject");
+  const accept = assemblyIntegrityCloseoutAuthorization(
+    fixture.current(),
+    "accept",
+    fixture.l4Work(),
+  );
+  const reject = assemblyIntegrityCloseoutAuthorization(
+    fixture.current(),
+    "reject",
+    fixture.l4Work(),
+  );
 
   assertEquals(accept.verificationAuthority, ASSEMBLY_INTEGRITY_VERIFICATION_AUTHORITY);
   assertEquals(accept.gateClaims, [
@@ -70,10 +94,45 @@ Deno.test("assembly-integrity L5 admits all and only canonical compatible Brief 
   assertEquals(reject.gateClaims, []);
 });
 
-Deno.test("assembly-integrity L5 accepts a zero-gate compatible Brief without caller selection", async () => {
-  const fixture = await executableFixture({ matchingGateIds: [] });
+Deno.test("zero-claim L4 does not let L5 invent satisfaction of current Brief assembly-integrity gates", async () => {
+  const fixture = await executableFixture({
+    matchingGateIds: ["gate-assembly-z", "gate-assembly-a"],
+    l4GateClaimIds: [],
+    l3GateClaimIds: ["gate-assembly-z", "gate-assembly-a"],
+  });
   assertEquals(
-    assemblyIntegrityCloseoutAuthorization(fixture.current(), "accept").gateClaims,
+    assemblyIntegrityCloseoutAuthorization(
+      fixture.current(),
+      "accept",
+      fixture.l4Work(),
+    ).gateClaims,
+    [],
+  );
+});
+
+Deno.test("assembly-integrity L5 satisfies only one declared current L4 gate among multiple compatible Brief gates", async () => {
+  const fixture = await executableFixture({
+    matchingGateIds: ["gate-assembly-z", "gate-assembly-a"],
+    l4GateClaimIds: ["gate-assembly-a"],
+  });
+  assertEquals(
+    assemblyIntegrityCloseoutAuthorization(
+      fixture.current(),
+      "accept",
+      fixture.l4Work(),
+    ).gateClaims,
+    [{ gateItemId: "gate-assembly-a", role: "satisfies", status: "current" }],
+  );
+});
+
+Deno.test("assembly-integrity L5 accepts a zero-gate compatible Brief without caller selection", async () => {
+  const fixture = await executableFixture({ matchingGateIds: [], l4GateClaimIds: [] });
+  assertEquals(
+    assemblyIntegrityCloseoutAuthorization(
+      fixture.current(),
+      "accept",
+      fixture.l4Work(),
+    ).gateClaims,
     [],
   );
 });
@@ -169,6 +228,109 @@ Deno.test("assembly-integrity L5 refuses a current Brief authority change after 
   await assertRejects(
     () => fixture.executor.execute(HUMAN, fixture.command()),
     Error,
+    "current contributes-to claims targeting current approved Brief V2",
+  );
+});
+
+Deno.test("assembly-integrity L5 refuses a stale or incompatible selected L4 claim", async () => {
+  const stale = await executableFixture();
+  stale.mutate((project) =>
+    ({
+      ...project,
+      workItems: project.workItems.map((work) =>
+        work.id === "work-l4"
+          ? {
+            ...work,
+            gateClaims: [{
+              gateItemId: "gate-removed",
+              role: "contributes-to" as const,
+              status: "current" as const,
+            }],
+          }
+          : work
+      ),
+    }) as EngineeringProjectSnapshot
+  );
+  await assertRejects(
+    () => stale.executor.execute(HUMAN, stale.command()),
+    Error,
+    "current contributes-to claims targeting current approved Brief V2",
+  );
+
+  const incompatible = await executableFixture();
+  incompatible.mutate((project) =>
+    ({
+      ...project,
+      workItems: project.workItems.map((work) =>
+        work.id === "work-l4"
+          ? {
+            ...work,
+            gateClaims: [{
+              gateItemId: "safety-gate",
+              role: "contributes-to" as const,
+              status: "current" as const,
+            }],
+          }
+          : work
+      ),
+    }) as EngineeringProjectSnapshot
+  );
+  await assertRejects(
+    () => incompatible.executor.execute(HUMAN, incompatible.command()),
+    Error,
+    "current contributes-to claims targeting current approved Brief V2",
+  );
+});
+
+Deno.test("assembly-integrity L5 refuses forged added or omitted L4 claims after MRTR", async () => {
+  const added = await executableFixture({
+    matchingGateIds: ["gate-assembly-a", "gate-assembly-z"],
+    l4GateClaimIds: ["gate-assembly-a"],
+  });
+  added.mutate((project) =>
+    ({
+      ...project,
+      workItems: project.workItems.map((work) =>
+        work.id === "work-l4"
+          ? {
+            ...work,
+            gateClaims: [
+              {
+                gateItemId: "gate-assembly-a",
+                role: "contributes-to",
+                status: "current",
+              },
+              {
+                gateItemId: "gate-assembly-z",
+                role: "contributes-to",
+                status: "current",
+              },
+            ],
+          }
+          : work
+      ),
+    }) as EngineeringProjectSnapshot
+  );
+  await assertRejects(
+    () => added.executor.execute(HUMAN, added.command()),
+    Error,
+    "no longer matches the exact current fresh L4 capture and limits",
+  );
+
+  const omitted = await executableFixture();
+  omitted.mutate((project) =>
+    ({
+      ...project,
+      workItems: project.workItems.map((work) => {
+        if (work.id !== "work-l4") return work;
+        const { gateClaims: _omitted, ...leaf } = work;
+        return leaf;
+      }),
+    }) as EngineeringProjectSnapshot
+  );
+  await assertRejects(
+    () => omitted.executor.execute(HUMAN, omitted.command()),
+    Error,
     "no longer matches the exact current fresh L4 capture and limits",
   );
 });
@@ -253,8 +415,201 @@ Deno.test("assembly-integrity L5 persists one recovered documentary successor wi
   assertEquals(fixture.snapshotCount(), 3);
 });
 
+Deno.test("zero-claim L5 accept completed replay reopens evidence without Thread or capture writes", async () => {
+  const fixture = await executableFixture({
+    matchingGateIds: ["gate-assembly"],
+    l4GateClaimIds: [],
+  });
+  assertEquals(fixture.admission.gateClaims, []);
+  const command = {
+    commandId: "execute-assembly-l5",
+    projectId: "project-assembly",
+    expectedRevision: fixture.current().revision,
+    issuedAt: AT,
+    runId: "run-l5",
+  };
+  const completed = await fixture.executor.execute(HUMAN, command);
+  const recovered = await fixture.executor.execute(HUMAN, {
+    ...command,
+    expectedRevision: completed.revision,
+  });
+  assertEquals(recovered.revision, completed.revision);
+  assertEquals(fixture.closeoutCaptureCount(), 1);
+  assertEquals(fixture.snapshotCount(), 3);
+});
+
+Deno.test("historical completed L5 with Brief-derived satisfies and zero L4 claims reopens identical bytes without writes", async () => {
+  const fixture = await executableFixture({
+    matchingGateIds: ["gate-assembly"],
+    l4GateClaimIds: [],
+    legacyBriefDerivedAccept: true,
+    alreadyCompleted: true,
+  });
+  assertEquals(fixture.l4Work().gateClaims, undefined);
+  assertEquals(fixture.admission.gateClaims, [{
+    gateItemId: "gate-assembly",
+    role: "satisfies",
+    status: "current",
+  }]);
+  const run = fixture.current().agentRuns.find((item) => item.id === "run-l5")!;
+  const successorId = run.resultSnapshot!.snapshotId;
+  const captureBefore = fixture.closeoutCaptureText();
+  const successorBefore = deterministicJson(
+    await fixture.snapshots.getFresh(successorId),
+  );
+
+  const recovered = await fixture.executor.execute(HUMAN, fixture.command());
+
+  assertEquals(recovered.revision, fixture.current().revision);
+  assertEquals(
+    recovered.agentRuns.find((item) => item.id === "run-l5")?.resultSnapshot,
+    run.resultSnapshot,
+  );
+  assertEquals(fixture.closeoutCaptureText(), captureBefore);
+  assertEquals(
+    deterministicJson(await fixture.snapshots.getFresh(successorId)),
+    successorBefore,
+  );
+  assertEquals(fixture.commandCalls(), []);
+  assertEquals(fixture.captureSaves(), 0);
+  assertEquals(fixture.snapshotSaves(), 0);
+  assertEquals(fixture.closeoutCaptureCount(), 1);
+  assertEquals(fixture.snapshotCount(), 3);
+});
+
+Deno.test("historical publishing recovery attests the signed closeout and completes without new capture or successor writes", async () => {
+  const fixture = await executableFixture({
+    matchingGateIds: ["gate-assembly"],
+    l4GateClaimIds: [],
+    legacyBriefDerivedAccept: true,
+    alreadyPublishing: true,
+  });
+  const captureBefore = fixture.closeoutCaptureText();
+  const snapshotsBefore = fixture.snapshotBytes();
+
+  const recovered = await fixture.executor.execute(HUMAN, fixture.command());
+  const run = recovered.agentRuns.find((item) => item.id === "run-l5")!;
+
+  assertEquals(run.status, "completed");
+  assertEquals(fixture.admission.gateClaims, [{
+    gateItemId: "gate-assembly",
+    role: "satisfies",
+    status: "current",
+  }]);
+  assertEquals(fixture.closeoutCaptureText(), captureBefore);
+  assertEquals(fixture.snapshotBytes(), snapshotsBefore);
+  assertEquals(fixture.commandCalls(), ["completeRun"]);
+  assertEquals(fixture.captureSaves(), 0);
+  assertEquals(fixture.snapshotSaves(), 0);
+});
+
+Deno.test("the same unsealed queued legacy Brief-derived L5 accept is refused", async () => {
+  const fixture = await executableFixture({
+    matchingGateIds: ["gate-assembly"],
+    l4GateClaimIds: [],
+    legacyBriefDerivedAccept: true,
+  });
+  assertEquals(
+    fixture.current().agentRuns.find((item) => item.id === "run-l5")?.status,
+    "queued",
+  );
+  assertEquals(fixture.admission.gateClaims, [{
+    gateItemId: "gate-assembly",
+    role: "satisfies",
+    status: "current",
+  }]);
+  assertEquals(fixture.l4Work().gateClaims, undefined);
+
+  await assertRejects(
+    () => fixture.executor.execute(HUMAN, fixture.command()),
+    Error,
+    "no longer matches the exact current fresh L4 capture and limits",
+  );
+  assertEquals(fixture.commandCalls(), []);
+  assertEquals(fixture.captureSaves(), 0);
+  assertEquals(fixture.snapshotSaves(), 0);
+  assertEquals(fixture.closeoutCaptureCount(), 0);
+});
+
+Deno.test("historical completed L5 reopen stays fail-closed on tampered capture, missing successor, forged result, and mismatched work", async () => {
+  const tampered = await executableFixture({
+    matchingGateIds: ["gate-assembly"],
+    l4GateClaimIds: [],
+    legacyBriefDerivedAccept: true,
+    alreadyCompleted: true,
+  });
+  tampered.tamperCloseoutCapture();
+  await assertRejects(
+    () => tampered.executor.execute(HUMAN, tampered.command()),
+    Error,
+    "no exact durable capture for recovery",
+  );
+
+  const missingSuccessor = await executableFixture({
+    matchingGateIds: ["gate-assembly"],
+    l4GateClaimIds: [],
+    legacyBriefDerivedAccept: true,
+    alreadyCompleted: true,
+  });
+  missingSuccessor.dropSuccessor();
+  await assertRejects(
+    () => missingSuccessor.executor.execute(HUMAN, missingSuccessor.command()),
+    Error,
+    "no exact saved Thread successor",
+  );
+
+  const forged = await executableFixture({
+    matchingGateIds: ["gate-assembly"],
+    l4GateClaimIds: [],
+    legacyBriefDerivedAccept: true,
+    alreadyCompleted: true,
+  });
+  forged.mutate((project) =>
+    ({
+      ...project,
+      agentRuns: project.agentRuns.map((run) =>
+        run.id === "run-l5"
+          ? { ...run, resultSnapshot: threadRef(forged.l4Snapshot) }
+          : run
+      ),
+    }) as EngineeringProjectSnapshot
+  );
+  await assertRejects(
+    () => forged.executor.execute(HUMAN, forged.command()),
+    Error,
+    "does not retain its exact successor evidence",
+  );
+
+  const mismatchedWork = await executableFixture({
+    matchingGateIds: ["gate-assembly"],
+    l4GateClaimIds: [],
+    legacyBriefDerivedAccept: true,
+    alreadyCompleted: true,
+  });
+  mismatchedWork.mutate((project) =>
+    ({
+      ...project,
+      workItems: project.workItems.map((work) => {
+        if (work.id !== "work-l5") return work;
+        const { gateClaims: _omitted, ...leaf } = work;
+        return leaf;
+      }),
+    }) as EngineeringProjectSnapshot
+  );
+  await assertRejects(
+    () => mismatchedWork.executor.execute(HUMAN, mismatchedWork.command()),
+    Error,
+    "exactly equal the signed canonical admission claims",
+  );
+});
+
 async function executableFixture(options: {
   readonly matchingGateIds?: readonly string[];
+  readonly l4GateClaimIds?: readonly string[];
+  readonly l3GateClaimIds?: readonly string[];
+  readonly legacyBriefDerivedAccept?: boolean;
+  readonly alreadyCompleted?: boolean;
+  readonly alreadyPublishing?: boolean;
 } = {}) {
   const root = rootSnapshot();
   const l4Capture = await l4CaptureFixture(threadBasis(root));
@@ -320,13 +675,32 @@ async function executableFixture(options: {
     }],
     resultSnapshot: l4Result,
   } as EngineeringAgentRun;
+  const matchingGateIds = options.matchingGateIds ?? ["gate-assembly"];
+  const l4GateClaimIds = options.l4GateClaimIds ?? matchingGateIds;
   const l4Work = {
     id: "work-l4",
     activityId: "activity-l4",
     status: "completed",
     operation: VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION,
+    ...(l4GateClaimIds.length === 0 ? {} : {
+      gateClaims: l4GateClaimIds.map((gateItemId) => ({
+        gateItemId,
+        role: "contributes-to" as const,
+        status: "current" as const,
+      })),
+    }),
   };
-  const matchingGateIds = options.matchingGateIds ?? ["gate-assembly"];
+  const l3Work = options.l3GateClaimIds === undefined ? undefined : {
+    id: "work-l3",
+    activityId: "activity-l3",
+    status: "completed",
+    operation: { id: "verify.observe-assembly-integrity", version: "1" },
+    gateClaims: options.l3GateClaimIds.map((gateItemId) => ({
+      gateItemId,
+      role: "contributes-to" as const,
+      status: "current" as const,
+    })),
+  };
   const briefFingerprint = fp(DIGEST_F);
   const approvedBriefBasis = {
     kind: "approved-brief" as const,
@@ -382,7 +756,7 @@ async function executableFixture(options: {
     project: { id: "project-assembly", subjectId: root.subject.id },
     revision: 1,
     threadSnapshots: [l4Result],
-    workItems: [l4Work],
+    workItems: l3Work === undefined ? [l4Work] : [l3Work, l4Work],
     agentRuns: [l4Run],
     framing: {
       currentBrief,
@@ -417,7 +791,17 @@ async function executableFixture(options: {
     { evaluationCaptures },
     { project, basis: threadBasis(l4Snapshot), snapshot: l4Snapshot },
   );
-  const authorization = assemblyIntegrityCloseoutAuthorization(project, "accept");
+  const derivedAuthorization = assemblyIntegrityCloseoutAuthorization(
+    project,
+    "accept",
+    l4Work as EngineeringWorkItem,
+  );
+  const authorization = options.legacyBriefDerivedAccept === true
+    ? {
+      ...derivedAuthorization,
+      gateClaims: briefDerivedSatisfiesClaims(matchingGateIds),
+    }
+    : derivedAuthorization;
   const admission = assemblyIntegrityEvaluationCloseoutAdmission(
     resolved,
     "accept",
@@ -474,7 +858,12 @@ async function executableFixture(options: {
   } as EngineeringAgentRun;
   project = {
     ...project,
-    workItems: [l4Work, l5Work] as unknown as EngineeringProjectSnapshot["workItems"],
+    workItems:
+      (l3Work === undefined
+        ? [l4Work, l5Work]
+        : [l3Work, l4Work, l5Work]) as unknown as EngineeringProjectSnapshot[
+          "workItems"
+        ],
     agentRuns: [l4Run, l5Run],
     decisions: [decision],
     approvals: [{
@@ -499,16 +888,58 @@ async function executableFixture(options: {
     [root.id, root],
     [l4Snapshot.id, l4Snapshot],
   ]);
+  const closeoutCaptures = new Map<string, string>();
+  if (options.alreadyCompleted === true || options.alreadyPublishing === true) {
+    const seeded = await seedCompletedCloseout({
+      admission,
+      l4Snapshot,
+      snapshotsById,
+      closeoutCaptures,
+    });
+    const successorRef = threadRef(seeded.snapshot);
+    const evidenceRefs = [{
+      snapshotId: successorRef.snapshotId,
+      snapshotRevision: successorRef.revision,
+      kind: "artifact" as const,
+      id: seeded.artifact.id,
+    }];
+    project = options.alreadyCompleted === true
+      ? {
+        ...project,
+        threadSnapshots: [l4Result, successorRef],
+        agentRuns: [l4Run, {
+          ...l5Run,
+          status: "completed",
+          startedAt: AT,
+          completedAt: AT,
+          resultSnapshot: successorRef,
+          evidenceRefs,
+        }],
+      } as unknown as EngineeringProjectSnapshot
+      : {
+        ...project,
+        agentRuns: [l4Run, {
+          ...l5Run,
+          status: "publishing",
+          startedAt: AT,
+          claimedAt: AT,
+          claimedBy: { origin: "human" as const, id: HUMAN.actorId },
+        }],
+      } as unknown as EngineeringProjectSnapshot;
+  }
+  const commandCalls: string[] = [];
+  let snapshotSaves = 0;
+  let captureSaves = 0;
   const snapshots = {
     get: (id: string) => Promise.resolve(snapshotsById.get(id)),
     getFresh: (id: string) => Promise.resolve(snapshotsById.get(id)),
     latest: () => Promise.resolve(l4Snapshot),
     save: (snapshot: ThreadSnapshot) => {
+      snapshotSaves++;
       snapshotsById.set(snapshot.id, snapshot);
       return Promise.resolve();
     },
   };
-  const closeoutCaptures = new Map<string, string>();
   const commands: Pick<
     EngineeringProjectCommandService,
     "claimRun" | "publishRun" | "completeRun" | "failRun"
@@ -517,6 +948,7 @@ async function executableFixture(options: {
       origin: EngineeringProjectCommandOrigin,
       command: RunCommand,
     ) => {
+      commandCalls.push("claimRun");
       project = replaceRun(project, command.runId, {
         status: "running",
         startedAt: AT,
@@ -526,10 +958,12 @@ async function executableFixture(options: {
       return Promise.resolve(project);
     },
     publishRun: (_origin, command: RunCommand) => {
+      commandCalls.push("publishRun");
       project = replaceRun(project, command.runId, { status: "publishing" });
       return Promise.resolve(project);
     },
     completeRun: (_origin, command: CompleteRunCommand) => {
+      commandCalls.push("completeRun");
       project = replaceRun(project, command.runId, {
         status: "completed",
         completedAt: AT,
@@ -542,6 +976,7 @@ async function executableFixture(options: {
       _origin,
       command: RunCommand & { readonly code: string; readonly message: string },
     ) => {
+      commandCalls.push("failRun");
       project = replaceRun(project, command.runId, {
         status: "failed",
         failure: { code: command.code, message: command.message },
@@ -558,6 +993,7 @@ async function executableFixture(options: {
     evaluationCaptures,
     closeoutCaptures: {
       save: (fingerprint, text) => {
+        captureSaves++;
         closeoutCaptures.set(fingerprint.digest, text);
         return Promise.resolve();
       },
@@ -576,6 +1012,8 @@ async function executableFixture(options: {
     l4Snapshot,
     snapshots,
     current: () => project,
+    l4Work: () =>
+      project.workItems.find((item) => item.id === "work-l4") as EngineeringWorkItem,
     mutate: (
       change: (current: EngineeringProjectSnapshot) => EngineeringProjectSnapshot,
     ) => {
@@ -589,7 +1027,24 @@ async function executableFixture(options: {
       runId: "run-l5",
     }),
     closeoutCaptureCount: () => closeoutCaptures.size,
+    closeoutCaptureText: () => [...closeoutCaptures.values()].join("\n"),
     snapshotCount: () => snapshotsById.size,
+    snapshotBytes: () =>
+      [...snapshotsById.entries()]
+        .toSorted(([left], [right]) => left.localeCompare(right))
+        .map(([id, snapshot]) => `${id}:${deterministicJson(snapshot)}`),
+    commandCalls: () => [...commandCalls],
+    captureSaves: () => captureSaves,
+    snapshotSaves: () => snapshotSaves,
+    tamperCloseoutCapture: () => {
+      const [digest, text] = [...closeoutCaptures.entries()][0]!;
+      closeoutCaptures.set(digest, `${text}\n`);
+    },
+    dropSuccessor: () => {
+      for (const id of [...snapshotsById.keys()]) {
+        if (id !== root.id && id !== l4Snapshot.id) snapshotsById.delete(id);
+      }
+    },
   };
 }
 
@@ -784,4 +1239,119 @@ function threadRef(snapshot: ThreadSnapshot) {
 
 function fp(digest: string) {
   return { algorithm: "sha256" as const, digest };
+}
+
+function briefDerivedSatisfiesClaims(gateIds: readonly string[]) {
+  return [...gateIds].toSorted((left, right) => left.localeCompare(right)).map(
+    (gateItemId) => ({
+      gateItemId,
+      role: "satisfies" as const,
+      status: "current" as const,
+    }),
+  );
+}
+
+async function seedCompletedCloseout(input: {
+  readonly admission: AssemblyIntegrityEvaluationCloseoutAdmission;
+  readonly l4Snapshot: ThreadSnapshot;
+  readonly snapshotsById: Map<string, ThreadSnapshot>;
+  readonly closeoutCaptures: Map<string, string>;
+}): Promise<{
+  readonly snapshot: ThreadSnapshot;
+  readonly artifact: ThreadArtifact;
+}> {
+  const operation = DECIDE_ACCEPT_ASSEMBLY_INTEGRITY_EVALUATION_OPERATION;
+  const capture = validateAssemblyIntegrityEvaluationCloseoutCapture({
+    schemaVersion: ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_SCHEMA,
+    kind: "assembly-integrity-evaluation-closeout",
+    operation,
+    trustedRunId: "run-l5",
+    decisionId: "decision-l5",
+    sealedAt: AT,
+    admission: input.admission,
+    evaluationCapture: {
+      id: input.admission.evaluationCapture.id,
+      fingerprint: input.admission.evaluationCapture.fingerprint,
+      uri:
+        `${ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_URI_PREFIX}${input.admission.evaluationCapture.fingerprint.digest}`,
+    },
+    l4Limitations: input.admission.limitations,
+    limits: ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_LIMITS,
+  });
+  const text = canonicalAssemblyIntegrityEvaluationCloseoutCaptureText(capture);
+  const captureFingerprint = await sha256Fingerprint(capture);
+  input.closeoutCaptures.set(captureFingerprint.digest, text);
+  const artifactId =
+    `assembly-integrity-evaluation-closeout-${captureFingerprint.digest}`;
+  const operationRef = {
+    serverId: "digital-thread",
+    tool: `${operation.id}@${operation.version}`,
+    runId: "run-l5",
+  };
+  const artifact: ThreadArtifact = {
+    id: artifactId,
+    name: "Accepted assembly-integrity evaluation closeout",
+    kind: "document",
+    version: captureFingerprint.digest,
+    fingerprint: captureFingerprint,
+    uri:
+      `${ASSEMBLY_INTEGRITY_EVALUATION_CLOSEOUT_CAPTURE_URI_PREFIX}sha256/${captureFingerprint.digest}`,
+    mediaType: "application/json",
+    producer: operationRef,
+    inputArtifactIds: [input.admission.evaluationCapture.id],
+    freshness: {
+      status: "fresh",
+      changedAt: AT,
+      invalidatedByChangeIds: [],
+    },
+  };
+  const consumption = {
+    id: `consume-${input.admission.evaluationCapture.id}-by-${artifact.id}`,
+    artifactId: input.admission.evaluationCapture.id,
+    consumer: operationRef,
+    observedFingerprint: input.admission.evaluationCapture.fingerprint,
+    verifiedAt: AT,
+    status: "verified" as const,
+  };
+  const applied = applyThreadSnapshotExtensionIfNew(
+    input.l4Snapshot,
+    {
+      id: `${operation.id.replaceAll(".", "-")}-run-l5`,
+      name: "Accept assembly-integrity evaluation",
+      subjectId: input.l4Snapshot.subject.id,
+      capturedAt: AT,
+      artifacts: [artifact],
+      consumptions: [consumption],
+      observations: [],
+      requirements: [],
+      evaluations: [],
+      violations: [],
+      provenance: [
+        {
+          id: `${artifact.id}-derived-from-${input.admission.evaluationCapture.id}`,
+          relation: "derived_from",
+          from: { kind: "artifact", id: artifact.id },
+          to: { kind: "artifact", id: input.admission.evaluationCapture.id },
+          rationale:
+            "The human L5 closeout document is derived from this exact reopened L4 evaluation capture.",
+        },
+        {
+          id: `${consumption.id}-uses`,
+          relation: "uses",
+          from: { kind: "consumption", id: consumption.id },
+          to: { kind: "artifact", id: consumption.artifactId },
+          rationale:
+            "The closeout executor reread and fingerprint-attested the exact direct L4 input.",
+        },
+      ],
+      proposedActions: [],
+    },
+    { appliedAt: AT },
+  );
+  if (!applied.applied) {
+    throw new Error("Historical closeout successor must be a new Thread revision.");
+  }
+  const snapshot = validateThreadSnapshot(applied.snapshot);
+  input.snapshotsById.set(snapshot.id, snapshot);
+  return { snapshot, artifact };
 }

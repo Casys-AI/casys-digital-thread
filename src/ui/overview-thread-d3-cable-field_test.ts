@@ -16,6 +16,19 @@ import {
 
 const EPSILON = 1e-9;
 
+Deno.test("cable sampling checks the actual quadratic rack fillet", () => {
+  const d = "M 0 0 L 10 0 Q 20 0 20 10 L 20 30";
+  assert(overviewThreadD3CableSvgPathClear(d, []));
+  assert(
+    overviewThreadD3CableSvgPathClear(d, [rectangle("clear", 11, 14, 7, 9)]),
+  );
+  assertEquals(
+    overviewThreadD3CableSvgPathClear(d, [rectangle("hit", 17, 18, 2, 4)]),
+    false,
+  );
+  assertEquals(sampleOverviewThreadD3CableSvgPath(d).at(-1), { x: 20, y: 30 });
+});
+
 Deno.test("cable field leaves a visible direct edge on its shortest chord", () => {
   const route = buildOverviewThreadD3CableFieldRoute(
     { x: 5, y: 8 },

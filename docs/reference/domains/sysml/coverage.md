@@ -8,15 +8,25 @@ general SysML v2 support, nor the full native feature set of SysON.
 
 ## Surface implemented today
 
-| Boundary               | What the Digital Thread actually admits or reads                                                                                                                                                                                                                                                                                                             |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| Seed                   | `architecture.seed-syson-model@2` creates one SysON project, empty document and root package, then seals normalized identities in `syson-model-seed-capture/2.0`. This is a container, not architecture.                                                                                                                                                     |
-| Architecture proposal  | `model.write-architecture@1` accepts only human-approved flat string parameters: `architecture.package`, `system.name`, `component.<slug>.(name\|usage\|parent)` and `attribute.<slug>.(name\|parent)`. The server owns parsing and SysML text.                                                                                                              |
-| Architecture renderer  | One package; one root `PartDefinition`; zero or more target `PartDefinition`s; typed `PartUsage` occurrences `part usage : Target;`; and bare `AttributeUsage` declarations `attribute name;`. Definitions and attributes use bounded textual insertion. Each usage is lowered natively as `PartUsage` plus `FeatureTyping`, then typed through code-owned AQL. |
-| Architecture readback  | The adapter rereads the exact package, its `PartDefinition`s and one-level owned `PartUsage`/`AttributeUsage` children. It resolves each usage target through the pinned `FeatureTyping.type` AQL expression, then saves `architecture-capture/4.0` with sealed `scopeRoot` and `semanticRoot` ids.                                                          |
-| PartDefinition capture | `model.capture-part-definitions@1` rereads only the identities sealed by the active generic architecture capture and publishes `part-definitions-capture/1.0`; it is not a live whole-model inventory.                                                                                                                                                       |
-| Scalar requirements    | `model.write-requirements@1` writes native per-metric typed attributes, `require constraint`, a subject relation and qualified SI imports against one exact captured `PartDefinition`. Current thresholds are safe integers with `<=` or `>=` and a qualified unit; extraction must round-trip every metric, operator, value, unit and identity.             |
-| Agent-authored source  | Profile `sysml-architecture-closed-subset-v1`. Public capture takes `profileId`, `sourceId`, and a full `resourceRef` from `project_resource_capture` (no `sourceText`). Preview takes that opaque `sourceRef` only. Tokens, one-form rule, and 262144-byte bound: [language](language.md). Documentary Thread only after `model.seal-architecture-sysml@1`. |
+**Requirements version transition:** the historical @1 write and recapture proofs below
+do not qualify the new traced route. The local source now registers
+`model.write-requirements@2` (schema 5) and `model.recapture-requirements@2` (schema 6),
+with mandatory approved-brief provenance and preserved native scalar grammar. New @1
+writing is retired; historical reads/completed replay and untraced recapture @1 remain.
+The local source runtime and compatible whole App are activated; the @2 native
+write/recapture path still needs qualification:
+[exact scope and remaining gate](../../../how-to/extend/qualify-requirements-brief-trace.md).
+
+| Boundary               | What the Digital Thread actually admits or reads                                                                                                                                                                                                                                                                                                                                        |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Seed                   | `architecture.seed-syson-model@2` creates one SysON project, empty document and root package, then seals normalized identities in `syson-model-seed-capture/2.0`. This is a container, not architecture.                                                                                                                                                                                |
+| Architecture proposal  | `model.write-architecture@1` accepts only human-approved flat string parameters: `architecture.package`, `system.name`, `component.<slug>.(name\|usage\|parent)` and `attribute.<slug>.(name\|parent)`. The server owns parsing and SysML text.                                                                                                                                         |
+| Architecture renderer  | One package; one root `PartDefinition`; zero or more target `PartDefinition`s; typed `PartUsage` occurrences `part usage : Target;`; and bare `AttributeUsage` declarations `attribute name;`. Definitions and attributes use bounded textual insertion. Each usage is lowered natively as `PartUsage` plus `FeatureTyping`, then typed through code-owned AQL.                         |
+| Architecture readback  | The adapter rereads the exact package, its `PartDefinition`s and one-level owned `PartUsage`/`AttributeUsage` children. It resolves each usage target through the pinned `FeatureTyping.type` AQL expression, then saves `architecture-capture/4.0` with sealed `scopeRoot` and `semanticRoot` ids.                                                                                     |
+| PartDefinition capture | `model.capture-part-definitions@1` rereads only the identities sealed by the active generic architecture capture and publishes `part-definitions-capture/1.0`; it is not a live whole-model inventory.                                                                                                                                                                                  |
+| Scalar requirements    | `model.write-requirements@1` writes native per-metric typed attributes, `require constraint`, a subject relation and qualified SI imports against one exact captured `PartDefinition`. Current thresholds are safe integers with `<=` or `>=` and a qualified unit; extraction must round-trip every metric, operator, value, unit and identity.                                        |
+| Agent-authored source  | Profile `sysml-architecture-closed-subset-v1`. Public capture takes `profileId`, `sourceId`, and a full `resourceRef` from `project_resource_capture` (no `sourceText`). Preview takes that opaque `sourceRef` only. Tokens, one-form rule, and 262144-byte bound: [language](language.md). Documentary Thread only after `model.seal-architecture-sysml@1`.                            |
+| Requirements recapture | `model.recapture-requirements@1` rereads one complete unchanged integer-scalar family on the exact current architecture after a new MRTR. It publishes `requirements-capture/4.0` with its exact predecessor; historical schema 3 is accepted only from `model.write-requirements@1`, schema 4 only from this recapture operation. No native mutation, evaluation or inherited verdict. |
 
 ### Structural rules and ratchets
 
@@ -46,14 +56,14 @@ surface.
 Named runtime proof: MCS-02 used `architecture-capture/4.0` to navigate eight separate
 product definitions, attach exact CAD/Modelica/SPICE sources to three of them, and write
 system plus RailFrame scalar requirements. See
-[MCS-02 SysML](../../../project-dossiers/motorized-camera-slider-mcs02/domains/sysml.md). This
-does not add placements, ports, flows or behavioral SysML to the covered grammar.
+[MCS-02 SysML](../../../project-dossiers/motorized-camera-slider-mcs02/domains/sysml.md).
+This does not add placements, ports, flows or behavioral SysML to the covered grammar.
 
 PS-01 added a second runtime proof on 2026-08-25. SysON accepted the package and six
 component definitions from textual insertion but omitted all six usage statements. The
-renderer created the six native `PartUsage`/`FeatureTyping` pairs, set their exact target
-definitions and reread them before publishing Thread r3. Product navigation and the
-Workbench then exposed one root plus six typed occurrences. This proves the bounded
+renderer created the six native `PartUsage`/`FeatureTyping` pairs, set their exact
+target definitions and reread them before publishing Thread r3. Product navigation and
+the Workbench then exposed one root plus six typed occurrences. This proves the bounded
 native lowerer; it does not widen the accepted proposal language.
 
 Thread r4 then exercised monotone enrichment on those inherited identities: nine
@@ -63,6 +73,15 @@ joins from those handles. This proves the existing enrichment and join surface; 
 not add ports, flows, placements or behavioral SysML.
 
 ## Two source authorities, not one
+
+Requirements recapture is a separate provider-read-only operation, not a third source
+authoring authority. Its closed review reopens the seed, exact architecture succession
+and active requirements predecessor. Native PartDefinition, RequirementUsage and
+ConstraintUsage UUIDs and extracted criteria must remain unchanged; Thread requirement
+IDs derive from the new capture and receive no prior evaluation. A subject UUID absent
+from historical schema 3 is newly observed, not retrospectively attested. Local ID01 r70
+→ r71 recapture, completed replay and r72 admission qualify this bounded route:
+[qualification and evidence](../../../how-to/extend/qualify-requirements-recapture.md).
 
 Comparison, distinct identities, and writer lookalikes: [paths](paths.md). Closed-subset
 tokens, one-form rule, and resource ingress: [language](language.md).
@@ -102,15 +121,17 @@ validators, WAL/recovery and the complete configured subset are maintained in th
   (`scripts/probes/probe-architecture-attribute-value.ts`) inserted
   `attribute probeHandle : LengthValue = 1 [mm];`: type reread `LengthValue`; value
   reread `OperatorExpression` without a scalar or unit (`unresolved`).
-- Arbitrary requirement grammar or decimal thresholds; the current requirements writer
-  is a separate, bounded integer scalar path.
+- Arbitrary requirement grammar or decimal thresholds; initial requirements writing and
+  unchanged requirements recapture share the bounded integer scalar grammar.
 - Delete, move, rename, retype or merge of an existing generic architecture construct;
   neither enrichment nor a replay is a repair API.
 - Treating a source seal, SysON model, requirement capture or successful provider write
   as simulation evidence, a measurement, a compliance claim or an engineering verdict.
 - Product-specific SysML recipes. `architecture.author-inspection-drone@3` and
   `model.capture-inspection-drone-part-definitions@1` are retired and unregistered.
-  Generic SysML uses `model.write-architecture@1` or `model.seal-architecture-sysml@1`.
+  Generic architecture authoring uses `model.write-architecture@1` or
+  `model.seal-architecture-sysml@1`; requirements writing and read-only recapture are
+  separate registered operations.
 
 ## Extension candidates, not commitments
 
@@ -125,5 +146,5 @@ native SysON capability, an extra JSON field or a successful experiment:
 | Richer agent-authored SysML                              | A new versioned closed profile with lexical/parser/analysis semantics and documentary limits; it must remain distinct from renderer authority unless a separate write operation is qualified. |
 | Controlled architecture correction                       | A dedicated reviewed operation with preconditions, mutation/recovery rules and proof that prior evidence is not silently rewritten.                                                           |
 
-Use the [extension runbook](../../../how-to/extend/extend-generic-sysml-surface.md) before treating any
-candidate as a product surface.
+Use the [extension runbook](../../../how-to/extend/extend-generic-sysml-surface.md)
+before treating any candidate as a product surface.

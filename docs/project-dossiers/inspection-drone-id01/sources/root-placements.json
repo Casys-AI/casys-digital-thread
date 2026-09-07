@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "cad-immediate-placement-source/1.0",
+  "unitSystem": "mm",
+  "placementConvention": "right-handed-mm-extrinsic-xyz-degrees",
+  "placements": [
+    {
+      "usageElementId": "1a748d4f-733d-475a-b8ab-919fd5fe8ea1",
+      "partDefinitionElementId": "8a55a273-884c-486d-b336-00662d5c4107",
+      "placement": {
+        "translationMm": [
+          0,
+          10,
+          15
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "usageElementId": "40728220-ecd8-46d5-85d2-bd24259dedf4",
+      "partDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+      "placement": {
+        "translationMm": [
+          0,
+          0,
+          58
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          45
+        ]
+      }
+    },
+    {
+      "usageElementId": "5a905cf3-43e2-4c2d-b9aa-277b82ce3005",
+      "partDefinitionElementId": "9cac605e-5d64-4451-9421-7852a34a4223",
+      "placement": {
+        "translationMm": [
+          0,
+          0,
+          58
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "usageElementId": "682ab9c1-a59f-4419-bced-db434a9e99e9",
+      "partDefinitionElementId": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+      "placement": {
+        "translationMm": [
+          0,
+          0,
+          50
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          45
+        ]
+      }
+    },
+    {
+      "usageElementId": "78e6c567-3d38-4e35-a3f8-40d8d23bd883",
+      "partDefinitionElementId": "1f63469d-9b5b-4693-8aef-42066e3bdf5d",
+      "placement": {
+        "translationMm": [
+          0,
+          0,
+          6
+        ],
+        "rotationDeg": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "usageElementId": "aada756e-3ba9-4089-ab6c-c00252007218",
+      "partDefinitionElementId": "ed1a741f-4c24-4166-8e90-745c9211d6cf",
+      "placement": {
+        "translationMm": [
+          0,
+          -36,
+          50
+        ],
+        "rotationDeg": [
+          180,
+          0,
+          180
+        ]
+      }
+    }
+  ]
+}

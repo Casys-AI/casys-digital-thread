@@ -9,6 +9,7 @@ import {
   validateAssemblyIntegrityEvaluationCapture,
 } from "../../../domain/cad/assembly-integrity/assembly-integrity-evaluation.ts";
 import { evaluateAssemblyIntegrityWorkItemOperation } from "../../../domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
+import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
 import { ASSEMBLY_INTEGRITY_VERIFICATION_AUTHORITY } from "../../../domain/cad/assembly-integrity/assembly-integrity-verification-authority.ts";
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
 import { validateEngineeringProjectSnapshot } from "../../../domain/project/engineering-project-validation.ts";
@@ -71,7 +72,7 @@ Deno.test("assembly-integrity L5 public review reads only an exact projectId req
 });
 
 Deno.test("assembly-integrity L5 review exposes freshness-bound accept and reject next.append", async () => {
-  const fixture = await reviewFixture();
+  const fixture = await reviewFixture({ l4GateClaimIds: [GATE_ID] });
   const result = await fixture.review.execute({ projectId: PROJECT_ID });
   assertEquals(result.status, "resolved");
   if (result.status !== "resolved") return;
@@ -131,7 +132,7 @@ Deno.test("assembly-integrity L5 review exposes freshness-bound accept and rejec
 });
 
 Deno.test("TPS03: L5 accept next.append includes the gateClaims whose omission execute refuses", async () => {
-  const fixture = await reviewFixture();
+  const fixture = await reviewFixture({ l4GateClaimIds: [GATE_ID] });
   const result = await fixture.review.execute({ projectId: PROJECT_ID });
   assertEquals(result.status, "resolved");
   if (result.status !== "resolved") return;
@@ -155,7 +156,96 @@ Deno.test("TPS03: L5 accept next.append includes the gateClaims whose omission e
   );
 });
 
-async function reviewFixture() {
+Deno.test("zero-claim L4 does not let L5 review invent satisfaction of a current Brief assembly-integrity gate", async () => {
+  const fixture = await reviewFixture({
+    l3GateClaimIds: [GATE_ID],
+    extraAssemblyGateIds: ["verification.assembly-integrity-airframe"],
+  });
+  const result = await fixture.review.execute({ projectId: PROJECT_ID });
+  assertEquals(result.status, "resolved");
+  if (result.status !== "resolved") return;
+  const accept = result.selected.accept;
+  if (accept === undefined) throw new Error("Expected accept on a five-pass L4.");
+
+  assertEquals(accept.admission.gateClaims, []);
+  assertEquals(accept.next.append.arguments.workItems[0]?.gateClaims, []);
+  assertEquals(result.selected.reject.admission.gateClaims, []);
+});
+
+Deno.test("L5 review satisfies only the one current L4 contributes-to claim among multiple compatible Brief gates", async () => {
+  const extraGate = "verification.assembly-integrity-airframe";
+  const fixture = await reviewFixture({
+    extraAssemblyGateIds: [extraGate],
+    l4GateClaimIds: [GATE_ID],
+  });
+  const result = await fixture.review.execute({ projectId: PROJECT_ID });
+  assertEquals(result.status, "resolved");
+  if (result.status !== "resolved") return;
+  const accept = result.selected.accept;
+  if (accept === undefined) throw new Error("Expected accept on a five-pass L4.");
+
+  assertEquals(accept.admission.gateClaims, [{
+    gateItemId: GATE_ID,
+    role: "satisfies",
+    status: "current",
+  }]);
+  assertEquals(accept.next.append.arguments.workItems[0]?.gateClaims, [{
+    gateItemId: GATE_ID,
+    role: "satisfies",
+    status: "current",
+  }]);
+  assertEquals(
+    accept.admission.gateClaims.some((claim) => claim.gateItemId === extraGate),
+    false,
+  );
+});
+
+Deno.test("L5 review refuses a stale or incompatible L4 gate claim instead of satisfying a Brief gate", async () => {
+  const stale = await reviewFixture({
+    l4GateClaims: [{
+      gateItemId: GATE_ID,
+      role: "contributes-to",
+      status: "carried-forward",
+    }],
+  });
+  const staleResult = await stale.review.execute({ projectId: PROJECT_ID });
+  assertEquals(staleResult.status, "unresolved");
+  if (staleResult.status === "unresolved") {
+    assertEquals(
+      staleResult.diagnostic.message.includes(
+        "current contributes-to claims targeting current approved Brief V2",
+      ),
+      true,
+    );
+  }
+
+  const incompatible = await reviewFixture({
+    l4GateClaims: [{
+      gateItemId: "success",
+      role: "contributes-to",
+      status: "current",
+    }],
+  });
+  const incompatibleResult = await incompatible.review.execute({
+    projectId: PROJECT_ID,
+  });
+  assertEquals(incompatibleResult.status, "unresolved");
+});
+
+async function reviewFixture(options: {
+  readonly l4GateClaimIds?: readonly string[];
+  readonly extraAssemblyGateIds?: readonly string[];
+  readonly l4GateClaims?: readonly {
+    readonly gateItemId: string;
+    readonly role: "contributes-to" | "satisfies";
+    readonly status: "current" | "carried-forward";
+  }[];
+  readonly l3GateClaimIds?: readonly string[];
+} = {}) {
+  const l4Claims = options.l4GateClaims ??
+    (options.l4GateClaimIds === undefined
+      ? undefined
+      : contributesTo(options.l4GateClaimIds));
   const root = rootSnapshot();
   const l4Capture = await l4CaptureFixture({
     kind: "thread-snapshot" as const,
@@ -289,6 +379,17 @@ async function reviewFixture() {
             dependsOnItemIds: [],
             verificationAuthority: ASSEMBLY_INTEGRITY_VERIFICATION_AUTHORITY,
           },
+          ...(options.extraAssemblyGateIds ?? []).map((id) => ({
+            id,
+            kind: "verification-activity" as const,
+            statement: `Verify assembly integrity for ${id}.`,
+            sourceRefs: [{
+              kind: "intent" as const,
+              reference: "conversation:assembly-closeout",
+            }],
+            dependsOnItemIds: [] as string[],
+            verificationAuthority: ASSEMBLY_INTEGRITY_VERIFICATION_AUTHORITY,
+          })),
         ],
       },
       currentBriefApproval: {
@@ -308,30 +409,61 @@ async function reviewFixture() {
       name: "Evaluate",
       order: 1,
       description: "Evaluate the factual assembly-integrity observation.",
-      workItemIds: ["work-l4"],
+      workItemIds: [
+        ...(options.l3GateClaimIds === undefined ? [] : ["work-l3"]),
+        "work-l4",
+      ],
       requiredDecisionIds: [],
       evidenceRefs: [],
     }],
-    workItems: [{
-      id: "work-l4",
-      activityId: "activity:work-l4",
-      phaseId: "phase-evaluate",
-      title: "Evaluate assembly integrity",
-      description: "Recross the exact current factual observation.",
-      kind: "verify",
-      operation: evaluateAssemblyIntegrityWorkItemOperation(),
-      status: "completed",
-      owner: "agent",
-      dependsOnWorkItemIds: [],
-      evidenceRefs: [{
-        snapshotId: l4Snapshot.id,
-        snapshotRevision: l4Snapshot.revision,
-        kind: "artifact",
-        id: l4Artifact.id,
-      }],
-      decisionIds: [],
-      blockerIds: [],
-    }],
+    workItems: [
+      ...(options.l3GateClaimIds === undefined ? [] : [{
+        id: "work-l3",
+        activityId: "activity:work-l3",
+        phaseId: "phase-evaluate",
+        title: "Observe assembly integrity",
+        description: "Record the factual assembly-integrity observation.",
+        kind: "verify" as const,
+        operation: {
+          id: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.id,
+          version: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION.version,
+          bindings: [],
+        },
+        gateClaims: contributesTo(options.l3GateClaimIds),
+        status: "completed" as const,
+        owner: "agent" as const,
+        dependsOnWorkItemIds: [],
+        evidenceRefs: [{
+          snapshotId: root.id,
+          snapshotRevision: root.revision,
+          kind: "artifact" as const,
+          id: `assembly-integrity-observation-${DIGEST_C}`,
+        }],
+        decisionIds: [],
+        blockerIds: [],
+      }]),
+      {
+        id: "work-l4",
+        activityId: "activity:work-l4",
+        phaseId: "phase-evaluate",
+        title: "Evaluate assembly integrity",
+        description: "Recross the exact current factual observation.",
+        kind: "verify" as const,
+        operation: evaluateAssemblyIntegrityWorkItemOperation(),
+        ...(l4Claims === undefined ? {} : { gateClaims: l4Claims }),
+        status: "completed" as const,
+        owner: "agent" as const,
+        dependsOnWorkItemIds: options.l3GateClaimIds === undefined ? [] : ["work-l3"],
+        evidenceRefs: [{
+          snapshotId: l4Snapshot.id,
+          snapshotRevision: l4Snapshot.revision,
+          kind: "artifact",
+          id: l4Artifact.id,
+        }],
+        decisionIds: [],
+        blockerIds: [],
+      },
+    ],
     agentRuns: [{
       id: "run-l4",
       workItemId: "work-l4",
@@ -578,4 +710,12 @@ function threadRef(snapshot: ThreadSnapshot) {
 
 function fp(digest: string) {
   return { algorithm: "sha256" as const, digest };
+}
+
+function contributesTo(gateItemIds: readonly string[]) {
+  return gateItemIds.map((gateItemId) => ({
+    gateItemId,
+    role: "contributes-to" as const,
+    status: "current" as const,
+  }));
 }

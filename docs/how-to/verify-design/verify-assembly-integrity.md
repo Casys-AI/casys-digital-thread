@@ -103,8 +103,12 @@ or concurrent head fails closed; do not invent a revision. The server-derived le
 new human-origin item (`mustOrigin: "human"`) based on exact `T2`, dependent on the
 exact L4 work-item id, with the sole `approvedBrief` binding. Obtain the human MRTR,
 queue, then use `project_agent_run_execute` with the required signed human confirmation.
-An accept claim may only `satisfies/current` an existing current Brief V2 gate; reject
-never does.
+A new accept may only `satisfies/current` an existing current Brief V2 gate already
+recorded as `contributes-to/current` on the selected L4 work item. The server recrosses
+that exact set against the current approved Brief; zero L4 claims give a valid accept
+without gate satisfaction. Claims on L3 do not propagate implicitly. Reject never
+satisfies a gate. Completed historical closeouts retain their exact signed claims on
+replay; they do not authorize a new Brief-derived accept.
 
 ## 5. Recover without changing the evidence meaning
 
