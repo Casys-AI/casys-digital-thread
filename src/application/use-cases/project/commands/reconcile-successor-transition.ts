@@ -1,4 +1,8 @@
-import type { EngineeringProjectSnapshot } from "../../../../domain/project/engineering-project.ts";
+import type {
+  EngineeringOperationRef,
+  EngineeringProjectSnapshot,
+  EngineeringWorkItem,
+} from "../../../../domain/project/engineering-project.ts";
 import { deterministicJson } from "../../../../domain/kernel/deterministic-json.ts";
 import { assertApprovedUncertainWriterReconciliation } from "../../../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import type { EngineeringProjectCommandOrigin } from "../../../ports/in/engineering-project-command-origin.ts";
@@ -185,17 +189,8 @@ export async function applyReconcileWorkItemWithSuccessor(
     );
   }
   const successorWork = findWorkItem(draft, successor.workItemId)!;
-  if (successorWork.activityId !== failedWork.activityId) {
-    invalidInput(
-      `Successor work item ${successorWork.id} is not in the same stable activity as ${failedWork.id}.`,
-    );
-  }
-  if (successorWork.predecessorRevisionId !== failedWork.id) {
-    invalidInput(
-      `Successor work item ${successorWork.id} must name failed work item ${failedWork.id} ` +
-        "as its direct predecessor revision.",
-    );
-  }
+  const lineageIssue = successorLineageIssue(failedWork, successorWork);
+  if (lineageIssue) invalidInput(lineageIssue);
   if (
     successorWork.status !== "completed" ||
     !sameEvidenceReferences(
@@ -212,16 +207,12 @@ export async function applyReconcileWorkItemWithSuccessor(
   // injected proof on the full closeout form. The mere presence of a
   // direct-child snapshot proves topology, not semantic compatibility.
   if (failedWork.operation !== undefined) {
-    const operationsMatch = successorWork.operation?.id === failedWork.operation.id &&
-      successorWork.operation?.version === failedWork.operation.version &&
-      deterministicJson(successorWork.operation.bindings) ===
-        deterministicJson(failedWork.operation.bindings);
+    const operationsMatch = sameRegisteredOperation(
+      failedWork.operation,
+      successorWork.operation,
+    );
     if (!operationsMatch && command.successorSnapshot === undefined) {
-      invalidInput(
-        `Successor work item ${successorWork.id} does not carry the same operation ` +
-          `(id, version, bindings) as the failed work item ${failedWork.id}. ` +
-          `Use the exact registered operation the failed work was supposed to execute.`,
-      );
+      invalidInput(successorOperationMismatchMessage(failedWork, successorWork));
     }
     if (!operationsMatch && command.successorSnapshot !== undefined) {
       if (!reconciliationOperationPolicy) {
@@ -280,4 +271,50 @@ export async function applyReconcileWorkItemWithSuccessor(
     rationale: command.rationale,
   };
   recomputeWorkReadiness(draft);
+}
+
+/** Direct-form successor: same activity, named predecessor, exact operation. */
+export function directSuccessorIssue(
+  failedWork: EngineeringWorkItem,
+  successorWork: EngineeringWorkItem,
+): string | undefined {
+  return successorLineageIssue(failedWork, successorWork) ??
+    (sameRegisteredOperation(failedWork.operation, successorWork.operation)
+      ? undefined
+      : successorOperationMismatchMessage(failedWork, successorWork));
+}
+
+export function sameRegisteredOperation(
+  failed: EngineeringOperationRef | undefined,
+  successor: EngineeringOperationRef | undefined,
+): boolean {
+  if (failed === undefined) return true;
+  if (successor === undefined) return false;
+  return successor.id === failed.id &&
+    successor.version === failed.version &&
+    deterministicJson(successor.bindings) ===
+      deterministicJson(failed.bindings);
+}
+
+function successorLineageIssue(
+  failedWork: EngineeringWorkItem,
+  successorWork: EngineeringWorkItem,
+): string | undefined {
+  if (successorWork.activityId !== failedWork.activityId) {
+    return `Successor work item ${successorWork.id} is not in the same stable activity as ${failedWork.id}.`;
+  }
+  if (successorWork.predecessorRevisionId !== failedWork.id) {
+    return `Successor work item ${successorWork.id} must name failed work item ${failedWork.id} ` +
+      "as its direct predecessor revision.";
+  }
+  return undefined;
+}
+
+function successorOperationMismatchMessage(
+  failedWork: EngineeringWorkItem,
+  successorWork: EngineeringWorkItem,
+): string {
+  return `Successor work item ${successorWork.id} does not carry the same operation ` +
+    `(id, version, bindings) as the failed work item ${failedWork.id}. ` +
+    "Use the exact registered operation the failed work was supposed to execute.";
 }

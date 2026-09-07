@@ -28,6 +28,7 @@ import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
 } from "../../src/application/use-cases/project/engineering-project-command-service.ts";
+import { directSuccessorIssue } from "../../src/application/use-cases/project/commands/reconcile-successor-transition.ts";
 import type { EngineeringProjectCommandOrigin } from "../../src/application/ports/in/engineering-project-command-origin.ts";
 
 export const DEFAULT_PROJECTS_DIR = "state/local/engineering-projects";
@@ -276,11 +277,62 @@ function buildCommand(
       `Successor run ${successorRunId} was not found.`,
     );
   }
-  if (!successor.resultSnapshot || successor.evidenceRefs.length === 0) {
+  if (
+    successor.status !== "completed" ||
+    !successor.resultSnapshot ||
+    successor.evidenceRefs.length === 0
+  ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
       `Run ${successorRunId} is not a completed successor with evidence.`,
     );
+  }
+  const failedWork = project.workItems.find((item) => item.id === failedWorkItemId);
+  if (!failedWork) {
+    throw new EngineeringProjectCommandError(
+      "entity_not_found",
+      `Engineering work item ${failedWorkItemId} does not exist.`,
+    );
+  }
+  if (failedWork.evidenceRefs.length !== 0) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Work item ${failedWork.id} already owns evidence and cannot be reconciled as failed work.`,
+    );
+  }
+  if (failedWork.status !== "ready") {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Work item ${failedWork.id} can reconcile only from ready after its failed attempt.`,
+    );
+  }
+  const failedRun = project.agentRuns.find((run) => run.id === failedRunId);
+  if (!failedRun) {
+    throw new EngineeringProjectCommandError(
+      "entity_not_found",
+      `Failed run ${failedRunId} was not found.`,
+    );
+  }
+  if (
+    failedRun.workItemId !== failedWork.id || !isRecoverableAnchor(failedRun)
+  ) {
+    throw new EngineeringProjectCommandError(
+      "invalid_transition",
+      `Run ${failedRunId} must be an evidence-free failed attempt or a pre-claim cancelled run for ${failedWork.id}.`,
+    );
+  }
+  const successorWork = project.workItems.find((item) =>
+    item.id === successor.workItemId
+  );
+  if (!successorWork) {
+    throw new EngineeringProjectCommandError(
+      "entity_not_found",
+      `Engineering work item ${successor.workItemId} does not exist.`,
+    );
+  }
+  const successorIssue = directSuccessorIssue(failedWork, successorWork);
+  if (successorIssue) {
+    throw new EngineeringProjectCommandError("invalid_input", successorIssue);
   }
   return {
     commandId: request.commandId ??
@@ -299,7 +351,6 @@ function suggestedSuccessors(
   orphan: EngineeringWorkItem,
   order: ReadonlyMap<string, number>,
 ): RecoverSuccessorOrphan["suggestedSuccessors"] {
-  const key = operationKey(orphan);
   const orphanOrder = order.get(orphan.id) ?? Number.POSITIVE_INFINITY;
   return project.workItems.flatMap((item) => {
     if (
@@ -307,7 +358,10 @@ function suggestedSuccessors(
       item.status !== "completed" ||
       item.evidenceRefs.length === 0
     ) return [];
-    if (key && operationKey(item) !== key) return [];
+    // Direct apply rejects cross-activity work, undeclared revision edges,
+    // and a successor that does not carry the exact operation (id, version,
+    // bindings). Inspect must not recommend any of those.
+    if (directSuccessorIssue(orphan, item)) return [];
     const itemOrder = order.get(item.id) ?? Number.POSITIVE_INFINITY;
     if (itemOrder <= orphanOrder) return [];
     const run = project.agentRuns.find((candidate) =>
