@@ -229,14 +229,26 @@ complete.
 
 The
 [propulsion and energy pre-sizing basis](propulsion-energy-presizing-basis-20260908.md)
-now records the first source-backed candidate motor data, its complete exact-row
-four-motor arithmetic envelope, the static propeller-proxy clearance screen and six
-official 4S battery candidates. Five candidate packs fail orthogonal containment in the
-current 38 × 34 × 25 mm reserve; the sixth fits that geometric screen but fails even the
-first retained four-motor label-current row. This bounded search found no candidate that
-passes both screens, not proof that no 4S pack can do so. The official F1404 pages also
-conflict between 1.5 and 2 mm shaft data, so `GF3016` identity and mating interface stay
-`unresolved`. A partial source-backed COTS mass ledger and separate
+now records two source-backed propulsion leads. F1404 KV4600 + `GF3016` retains a full
+exact-row arithmetic screen but unresolved propeller identity and conflicting shaft
+data. F1507 KV3800 + T3140 has a stronger exact-name bench link and a bounded two-row
+screen, but its 100% bench endpoint exceeds the same page's 60-second motor ratings and
+the motor is larger/heavier than the current CAD envelope. Neither is selected. Six
+official 4S battery candidates remain screened: five fail orthogonal containment in the
+current 38 × 34 × 25 mm reserve; the sixth fits geometrically but fails even the first
+retained F1404 label-current row. This bounded search found no candidate that passes
+both screens, not proof that no 4S pack can do so.
+
+The [mission sizing decision sheet](mission-sizing-decision-sheet-20260908.md) now keeps
+three reversible workflow shapes separate from human decisions and deliberately leaves
+every numeric mission cell blank. The
+[battery packaging sensitivity](battery-packaging-sensitivity-20260908.md) recomputes
+all six orthogonal orientations at nominal and published maximum dimensions and keeps
+the CAD unchanged pending a viable pack. The
+[electrical power architecture basis](electrical-power-architecture-basis-20260908.md)
+compares PM02 V3 and PM06 V2 leads, exposes the as-sold main-path current limit and
+leaves distribution, protection, harness and companion regulation unresolved. A partial
+source-backed COTS mass ledger and separate
 [mass/position closure worksheet](mass-and-position-closure-worksheet-20260908.md) now
 make the absent installed items, structural masses and positions explicit; total vehicle
 mass and CG remain unresolved. The documents preserve the calculation contract and
@@ -272,18 +284,21 @@ the actual planned activity. This is presentation QA only: it does not prove cla
 semantics, native-writer qualification, requirement satisfaction, FEA, or provider
 runtime. The older literal `TRACE GAP` remains separate historical provenance.
 
-Working split: Astra directly operates Digital Thread and authors the engineering
-proposals/sources; native Grok investigates or implements bounded platform changes under
-Astra's review; Terra performs targeted investigation. The devFrame reconstruction
-worker was stopped after the user clarified original design intent; its downloaded
-reference files were preserved, never admitted as ID01 geometry. Grok completed the
-read-only diagnosis of the comment-qualification friction, then implemented the bounded
-Product-navigation removal under Astra's review. No engineering provider or admission
-behavior was changed. A later bounded server-composition correction separated trusted
-SysON author and inspector connections, with 34 targeted tests, type checking and a
-successful real `model.capture-part-definitions@1` after controlled server adoption. No
-provider image changed. Source publication is tracked separately from these local
-engineering and presentation observations.
+Current continuation split: Codex owns architecture, source checking, acceptance and
+proportionate validation; native Grok handles bounded investigation or implementation;
+Terra is used only for targeted cross-checks or a Grok blockage; Astra is reserved for
+exceptional consultation and was not used in the current pre-sizing pass. Earlier
+Astra-led work remains historical rather than being rewritten. The devFrame
+reconstruction worker was stopped after the user clarified original design intent; its
+downloaded reference files were preserved, never admitted as ID01 geometry. Grok had
+completed the read-only diagnosis of the comment-qualification friction, then
+implemented the bounded Product-navigation removal under Astra's historical review. No
+engineering provider or admission behavior was changed. A later bounded
+server-composition correction separated trusted SysON author and inspector connections,
+with 34 targeted tests, type checking and a successful real
+`model.capture-part-definitions@1` after controlled server adoption. No provider image
+changed. Source publication is tracked separately from these local engineering and
+presentation observations.
 
 See the [observed friction journal](frictions.md); observations and potential
 improvements are not automatically classified as product defects.

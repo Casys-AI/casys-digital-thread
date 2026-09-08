@@ -464,6 +464,45 @@ controlled motor/propeller interface drawing and explicit resolution of the 1.5-
 mm shaft datum. F17 remains open until that external evidence exists; no provider,
 registry, source-workspace or Project mutation is justified by the conflict alone.
 
+The separately documented F1507 KV3800 + T3140 table is an alternative candidate lead,
+not a repair of F17. It does not establish that `GF3016` was a T3140, nor does it
+resolve the F1404 shaft or motor–propeller interface.
+
+## F18 — F1507 ratings and its T3140 bench endpoint disagree (open, external evidence)
+
+The official LIGPOWER F1507 page reports 23 A peak current for 60 seconds and 372 W
+maximum power for 60 seconds for KV3800. The same page's F1507 KV3800 + T3140 table
+reports 25.87 A and 391.57 W at 100%, with motor-surface temperature after a one-minute
+run. The table endpoint therefore exceeds the adjacent 60-second current and power
+ratings by 2.87 A and 19.57 W.
+
+This is a literal source contradiction, not permission to choose whichever number makes
+the design pass. The documentary pre-sizing note preserves both the row and the ratings,
+but treats the 100% row only as a reported bench endpoint. It is not a continuous or
+accepted 60-second operating point, and it cannot size the battery, ESC, connector or
+thermal design without clarification.
+
+The smallest closure packet is a manufacturer-controlled revision of the KV3800 + T3140
+map, explicit allowable-current/power duration and temperature limits, and the exact
+propeller revision/interface. Until then the candidate remains unselected. No solver,
+CAD edit, provider operation or Project mutation can correct this external evidence
+conflict; F18 remains open for supplier follow-up.
+
+## F19 — PM06 V2 output and height fields conflict (open, external evidence)
+
+The official Holybro PM06 V2 product page publishes both `5.2 V, 3 A max` and `18 W` for
+the regulated output; the direct arithmetic is 15.6 W. The same product page states 35 ×
+35 × 5 mm, while Holybro's analog power-module comparison states 35 × 35 × 10 mm. These
+are two source conflicts on the exact component lead, not rounding differences that
+Codex may resolve.
+
+The quick response is documentary: retain both literal fields, do not use 18 W as an
+auxiliary budget and do not create a PM06 CAD envelope. The later closure packet needs a
+controlled electrical specification and mechanical drawing for the selected
+SKU/revision. Until then PM06 remains an unselected architecture lead. No local code,
+solver or Project mutation can repair the supplier data; F19 remains open for external
+follow-up.
+
 ## Expected states, not defects
 
 - The old preview was explicitly pinned to TPS03. It correctly ignored the new durable
