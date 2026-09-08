@@ -248,7 +248,9 @@ card: the shortest exact products found that clear the current arithmetic are st
 `49 mm` long, `11 mm` beyond the reserve maximum. A parallel exact-pair search also
 added no 3-inch propulsion card; its closest better-joined iFlight chain is 2.5-inch and
 therefore remains an out-of-class search boundary. Neither result changes CAD or selects
-hardware.
+hardware. The retained pack pages also do not provide the exact current, cutoff,
+temperature and age evidence needed for usable energy. F20 keeps that external-or-bench
+gap explicit; nameplate Wh and C-rate are not endurance evidence.
 
 The [mission sizing decision sheet](mission-sizing-decision-sheet-20260908.md) now keeps
 three reversible workflow shapes separate from human decisions and deliberately leaves
@@ -257,9 +259,12 @@ every numeric mission cell blank. The
 all six orthogonal orientations at nominal and published maximum dimensions and keeps
 the CAD unchanged pending a viable pack. The
 [electrical power architecture basis](electrical-power-architecture-basis-20260908.md)
-compares PM02 V3 and PM06 V2 leads, exposes the as-sold main-path current limit and
-leaves distribution, protection, harness and companion regulation unresolved. A partial
-source-backed COTS mass ledger and separate
+now distinguishes PM02 + PDB + individual ESCs, PM02 + four-in-one ESC and PM06 +
+individual ESCs instead of multiplying their overlapping distribution roles. It also
+records a 6.7 g UBEC companion-rail candidate, mutually alternative standard/Micro M10
+GNSS cards and one airborne SiK telemetry lead. None is selected; the RC command link,
+main isolation/protection, exact wiring and simultaneous installed power remain
+unresolved. A partial source-backed COTS mass ledger and separate
 [mass/position closure worksheet](mass-and-position-closure-worksheet-20260908.md) now
 separates the exact 22-leaf canonical geometry census into ten structural solids and
 twelve envelopes/proxies, then keeps the absent installed items, structural masses and
@@ -267,15 +272,18 @@ positions explicit. It now includes a visibly excluded 6082 density-consistency 
 `103.235905636 g` for the four arms plus camera bracket under their theoretical FEA
 material label, and `347.349252240 g` only if that same density were hypothetically
 extended to all ten solids. Neither value enters the vehicle sum or selects a material.
-Total vehicle mass and CG remain unresolved. The documents preserve the calculation
-contract and still-missing input packets. They are documentary drafts against pending
-brief r5, not a component selection or a new proof.
+The avionics candidates likewise remain outside every vehicle sum until their exact
+variant, installed cable/mount scope and position are frozen. Total vehicle mass and CG
+remain unresolved. The documents preserve the calculation contract and still-missing
+input packets. They are documentary drafts against pending brief r5, not a component
+selection or a new proof.
 
 The [configuration pre-selection matrix](configuration-preselection-matrix-20260908.md)
-now groups propulsion, ESC/control, battery/tray and power-module cards by mutually
-exclusive slot. It exposes the current-path and minimum tray-growth consequences without
-multiplying them into false vehicle configurations. Its verdict remains `HOLD`: no
-column closes identity, mass, usable energy, packaging and interfaces together.
+now groups propulsion, ESC/control, battery/tray, power and avionics cards by mutually
+exclusive slot. It makes the PDB/four-in-one/PM06 overlaps and the distinction between
+telemetry and RC command explicit, without multiplying them into false vehicle
+configurations. Its verdict remains `HOLD`: no column closes identity, mass, usable
+energy, packaging and interfaces together.
 
 The [proportionate verification and test plan](verification-and-test-plan-20260908.md)
 now answers the wider engineering boundary explicitly. It keeps the two accepted
@@ -285,7 +293,8 @@ propulsion benches, physical interfaces, electrical/thermal work, an external ca
 Current admitted Modelica may later carry only a sourced scalar question that fits its
 closed grammar; current prescribed Chrono may later carry an explicit revolute
 mechanism, not rotor or flight dynamics. The plan queues none of those activities and
-invents no criterion.
+invents no criterion. If physical evidence is later authorized, it remains tied to its
+article and protocol; it is not automatically persisted as sensitivity.
 
 The freshly restarted read-only BFF now projects project r674 / Thread r93 under
 `engineering-workbench/0.6` and `engineering-cases/1.1`. The accepted assembly-integrity

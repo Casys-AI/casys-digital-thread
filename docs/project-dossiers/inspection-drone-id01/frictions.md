@@ -422,6 +422,13 @@ noise. Their engineering conclusions were accepted only after Codex reopened the
 official ESC pages and recounted the controlled placement sources. F14 remains open; the
 global plugin configuration is still outside this repository's authority.
 
+The latest four-task pre-sizing pass reproduced the same startup noise and intermittent
+web-fetch errors. Its first power-chain final output was lost at the orchestration
+boundary; after every other task had exited, the exact same bounded prompt was retried
+once and completed. Only that complete retry was reviewed. Codex independently reopened
+the retained manufacturer pages, so the dossier does not depend on partial stream text
+or on the wrapper cleanup warnings.
+
 This is a real agent-workflow friction, but not a safe repo-local quick win. Repairing
 it would change the user's global Grok/plugin configuration outside the ID01 scope and
 could affect other work. Leave that configuration untouched here. For now, keep each
@@ -566,6 +573,28 @@ controlled electrical specification and mechanical drawing for the selected
 SKU/revision. Until then PM06 remains an unselected architecture lead. No local code,
 solver or Project mutation can repair the supplier data; F19 remains open for external
 follow-up.
+
+## F20 — retained battery leads lack usable-energy evidence (open, external/bench evidence)
+
+The retained battery pages publish combinations of nameplate capacity, nominal voltage,
+C-rate, body dimensions and mass. The current dossier has no exact-SKU curve or test
+record that joins delivered capacity to current, cutoff, temperature and age. A bounded
+recheck of the three named GNB pages also found no published internal-resistance or
+delivered-capacity curve. Nameplate watt-hours and `Ah × C` therefore cannot close
+`E_usable` or endurance.
+
+This is not repaired by another solver or by renaming catalogue arithmetic
+“sensitivity.” Keep `E_usable` unresolved until one selected pack has either a
+supplier-controlled curve covering the selected region or a separately authorized,
+guarded discharge record with synchronized voltage, current and temperature and a
+human-approved cutoff. The present 20.92 A and 24.64 A propulsion rows are screening
+points, not automatically safe battery-test setpoints.
+
+Any later physical record remains evidence of its exact article, setup and protocol. It
+is not silently stored as sensitivity; `verify.evaluate-sensitivity-base@1` is a
+separate registered evaluation over an admitted sensitivity basis. No bench, Project
+mutation or sensitivity run is authorized by this friction entry. F20 remains open for
+supplier or governed physical evidence.
 
 ## Expected states, not defects
 

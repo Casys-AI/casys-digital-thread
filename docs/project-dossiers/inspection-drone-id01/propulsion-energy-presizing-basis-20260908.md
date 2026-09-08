@@ -351,6 +351,28 @@ cooling, tolerance and service clearance are still outside the body dimensions, 
 the mission operating point and usable-energy requirement remain unknown. No new battery
 card is promoted into the configuration matrix.
 
+### Usable-energy evidence boundary
+
+The current candidate pages close nameplate capacity/voltage, C-rate labels, body
+dimensions and mass to varying degrees. The dossier contains no exact-SKU discharge
+curve or test record that joins delivered capacity to current, cutoff, temperature and
+age for any retained pack. A bounded recheck of the three named GNB pages also found no
+published internal-resistance or delivered-capacity curve. This is a boundary on the
+inspected evidence, not a claim about every supplier document or battery on the market.
+
+Consequently, nameplate watt-hours and `Ah × C` remain screening arithmetic only.
+`E_usable` can later come from a supplier-controlled curve covering the selected region,
+or from a separately authorized guarded discharge record that logs voltage, current,
+time, pack/surface temperature and ambient to a human-approved cutoff, then integrates
+`∫ U(t)I(t)dt`. The present 20.92 A and 24.64 A four-motor rows are not automatically
+safe battery-test setpoints; the exact pack limits and selected operating region must
+govern the protocol first. No bench activity is authorized here.
+
+That future discharge record would remain physical source evidence under its own
+capture/review path. It would not be silently persisted as a sensitivity result; a later
+sensitivity evaluation would require an explicit registered operation and its exact
+admitted basis.
+
 ## Mission-energy worksheet without an invented mission
 
 The approved brief r4 supplies a mission **kind**, not a quantified mission: exterior
@@ -391,17 +413,24 @@ real operation adds losses, margins, vehicle interaction and environment.
 The official component sources close a few input and planning facts, but not an ID01
 auxiliary-power subtotal:
 
-| Candidate                                                                                                                 | Official fact                                                                                                                                                                                                                                                                   | Evidence class and permitted use                                                                                                                                                                                     | State for mission power                                                                                                                              |
-| ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Raspberry Pi Zero 2 W](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#typical-power-requirements) | Current Raspberry Pi documentation reports 350 mA typical bare-board active current and a 2 A recommended PSU capacity; the [product brief](https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-product-brief.pdf) separately specifies 5 V DC, 2.5 A input power | 350 mA is a typical bare-board reference. The 2 A and 2.5 A figures size a supply and are not consumption. At the documentation's stated 5.1 V supply, `5.1 × 0.350 = 1.785 W` is a calculated reference point only. | Workload-, radio-, encoding-, storage- and peripheral-specific draw remains `unresolved`; do not use 1.785 W as mission average without measurement. |
-| [Raspberry Pi Camera Module 3](https://datasheets.raspberrypi.com/camera/camera-module-3-product-brief.pdf)               | The product brief identifies the Module 3 and CSI-2 interface; Raspberry Pi's general power documentation says a Camera Module requires 250 mA.                                                                                                                                 | Generic official accessory supply requirement, not a Module 3 workload trace. The cited statement does not provide the matching rail and operating point needed to turn it into watts here.                          | Capture-mode consumption and simultaneous duty remain `unresolved`; retain 250 mA for later source sizing only.                                      |
-| [Holybro Pixhawk 6C Mini Model A Current](https://docs.holybro.com/autopilot/pixhawk-6c-mini/technical-specification)     | USB input is 4.75–5.25 V, maximum input is 6 V; Telem1 + GPS1 and all other ports each have stated 1.5 A output-current limiters.                                                                                                                                               | Input-voltage and output-protection limits. They are neither controller self-draw nor attached-load consumption.                                                                                                     | Controller, heater, sensors and attached-port duty remain `unresolved`; no watt term is added.                                                       |
+| Candidate                                                                                                                                             | Official fact                                                                                                                                                                                                                                                                   | Evidence class and permitted use                                                                                                                                                                                     | State for mission power                                                                                                                              |
+| ----------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Raspberry Pi Zero 2 W](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#typical-power-requirements)                             | Current Raspberry Pi documentation reports 350 mA typical bare-board active current and a 2 A recommended PSU capacity; the [product brief](https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-product-brief.pdf) separately specifies 5 V DC, 2.5 A input power | 350 mA is a typical bare-board reference. The 2 A and 2.5 A figures size a supply and are not consumption. At the documentation's stated 5.1 V supply, `5.1 × 0.350 = 1.785 W` is a calculated reference point only. | Workload-, radio-, encoding-, storage- and peripheral-specific draw remains `unresolved`; do not use 1.785 W as mission average without measurement. |
+| [Raspberry Pi Camera Module 3](https://datasheets.raspberrypi.com/camera/camera-module-3-product-brief.pdf)                                           | The product brief identifies the Module 3 and CSI-2 interface; Raspberry Pi's general power documentation says a Camera Module requires 250 mA.                                                                                                                                 | Generic official accessory supply requirement, not a Module 3 workload trace. The cited statement does not provide the matching rail and operating point needed to turn it into watts here.                          | Capture-mode consumption and simultaneous duty remain `unresolved`; retain 250 mA for later source sizing only.                                      |
+| [Holybro Pixhawk 6C Mini Model A Current](https://docs.holybro.com/autopilot/pixhawk-6c-mini/technical-specification)                                 | USB input is 4.75–5.25 V, maximum input is 6 V; Telem1 + GPS1 and all other ports each have stated 1.5 A output-current limiters.                                                                                                                                               | Input-voltage and output-protection limits. They are neither controller self-draw nor attached-load consumption.                                                                                                     | Controller, heater, sensors and attached-port duty remain `unresolved`; no watt term is added.                                                       |
+| [Holybro M10](https://holybro.com/products/m10-gps) / [Micro M10](https://holybro.com/collections/all-product/products/micro-m10-gps) GNSS candidates | Standard and Micro candidate pages each state `<200 mA @ 5 V`; the variants are mutually alternative.                                                                                                                                                                           | The published upper-current statement is below 1 W. It is not an installed or average mission draw.                                                                                                                  | Exact variant, compass/indicator functions, firmware, cable/mount scope and simultaneous installed duty remain `unresolved`.                         |
+| [Holybro SiK V3 100 mW telemetry candidate](https://holybro.com/collections/telemetry-radios/products/sik-telemetry-radio-v3)                         | The 5 V radio states 100 mA transmit current at 20 dBm and 25 mA receive current; 433 and 915 MHz SKUs are regional alternatives.                                                                                                                                               | `0.5 W` TX and `0.125 W` RX are exact source-point arithmetic only.                                                                                                                                                  | Legal band, duty cycle, cable, coexistence and whether the link is selected remain `unresolved`; SiK is not treated as the RC command link.          |
+| [Holybro UBEC 5 A candidate](https://holybro.com/products/ubec-5a-3-14s)                                                                              | At 5.2 V it states 5 A continuous, 10 A burst without duration, generic efficiency over 90% and 6.7 g.                                                                                                                                                                          | `5.2 × 5 = 26 W` is supply capacity, not consumption or mission energy.                                                                                                                                              | Exact connectors, operating-point efficiency, transient/thermal margin and simultaneous Pi/camera/storage load remain `unresolved`.                  |
 
 The design consequence is explicit: a real power-rail worksheet must identify the
 battery-side measurement plane, regulator topology and efficiency, Pixhawk self-draw, Pi
 workload, camera capture mode, storage, radio/GNSS and their simultaneous duty. A short
 instrumented representative-duty trace can close these terms later; supply ratings alone
 cannot.
+[Raspberry Pi records evidence](https://www.raspberrypi.com/documentation/accessories/camera.html#camera-module-3)
+that Camera Module 3 may emit RFI near GPS L1; placement, CSI mode, separation/shielding
+and GNSS performance therefore remain an integration test input rather than a
+catalogue-only closure.
 
 ## Partial source-backed mass ledger
 
@@ -570,8 +599,8 @@ law.
 | Motor                | Exact variant, mass, dimensions, voltage/current/thermal limits and matching test map                                                      | F1404 KV4600 and F1507 KV3800 are documented alternatives only; F1507 exceeds the current CAD motor envelope                                                                       |
 | Propeller            | Exact maker/part, diameter, pitch, blade count, mass/inertia, hub interface and thrust/torque map                                          | `GF3016` identity unresolved; T3140 has catalogue geometry/mass and a nominal M5 chain, but revision, tolerances, inertia and installed evidence remain unresolved; CAD is a proxy |
 | ESC                  | Exact part, mass/envelope, voltage, continuous/burst current conditions, efficiency, cooling and protocol                                  | F35A passes a nameplate screen only; firmware, pairing, efficiency, cooling, wiring and installation remain `unresolved`                                                           |
-| Battery              | Chemistry, series/parallel layout, pack mass/envelope, capacity curve, resistance, continuous/burst current, cutoff and temperature limits | Five sourced packs fail reserve containment; one fits geometrically but fails the first-row current screen                                                                         |
-| Payload and avionics | Actual mass, centre, voltage/current and simultaneous duty                                                                                 | Typical Pi bare-board current and supply limits are sourced; mission duty and installed-system power remain `unresolved`                                                           |
+| Battery              | Chemistry, series/parallel layout, pack mass/envelope, capacity curve, resistance, continuous/burst current, cutoff and temperature limits | Five sourced packs fail reserve containment; one fits geometrically but fails the first-row current screen; no retained candidate has usable-energy evidence                       |
+| Payload and avionics | Actual mass, centre, voltage/current and simultaneous duty                                                                                 | Pi/camera, mutually alternative M10 GNSS, SiK telemetry and UBEC candidates are sourced; exact inclusion, RC command link and installed-system power remain `unresolved`           |
 | Interfaces           | Propeller–shaft, motor–arm, ESC cooling/wiring, battery retention/connector, power distribution, regulated rails and protection            | F1404 base and F1507/T3140 nominal drawings narrow two candidates; fit, tolerance, engagement and every selected installed interface remain `unresolved`                           |
 
 ## Verification sequence
@@ -595,25 +624,30 @@ law.
 
 ## Review boundary
 
-Twenty-two completed native Grok consultations ran across ten bounded review passes. The
-first pair used a clean, repository-free sandbox for method cross-checks; after the
-human explicitly requested continued Grok-native work on this project, the later reviews
-read only the relevant dossier files. They independently checked motor arithmetic,
-battery screens, the partial mass ledger, mission equations, source identities,
-packaging, electrical architecture and the next mission-decision boundary. The latest
-four reviews covered one task each: alternative propulsion, mission sheet, power
-architecture and battery-tray orientation screening. A new four-way source-control pass
-then audited F1404, T3140, `GF3016`, and the F1507/T3140 assembly chain. All four
-completed; Codex independently inspected the linked official drawings and specification
-image before accepting the corrections. Two later exact-row audits independently
-transcribed and recalculated all eleven F1507/T3140 rows. Codex accepted the full
-exact-row table but rejected a same-throttle candidate ranking because the source
-conditions differ and the manufacturer explicitly discourages inter-type comparison. A
-parallel battery search was cancelled after the recurring permission-classifier timeout
-and contributed no accepted verdict, as were an earlier STEP audit and supplier-identity
-run. The latest pair audited the exact installed-item census and the F1507 ESC-guide
-boundary. Codex accepted the 22-leaf geometry split and the guide-versus-bench
-distinction after independently checking the controlled placements and official pages.
+Completed native Grok consultations ran across bounded review passes. The first pair
+used a clean, repository-free sandbox for method cross-checks; after the human
+explicitly requested continued Grok-native work on this project, the later reviews read
+only the relevant dossier files. They independently checked motor arithmetic, battery
+screens, the partial mass ledger, mission equations, source identities, packaging,
+electrical architecture and the next mission-decision boundary. The latest four reviews
+covered one task each: alternative propulsion, mission sheet, power architecture and
+battery-tray orientation screening. A new four-way source-control pass then audited
+F1404, T3140, `GF3016`, and the F1507/T3140 assembly chain. All four completed; Codex
+independently inspected the linked official drawings and specification image before
+accepting the corrections. Two later exact-row audits independently transcribed and
+recalculated all eleven F1507/T3140 rows. Codex accepted the full exact-row table but
+rejected a same-throttle candidate ranking because the source conditions differ and the
+manufacturer explicitly discourages inter-type comparison. A parallel battery search was
+cancelled after the recurring permission-classifier timeout and contributed no accepted
+verdict, as were an earlier STEP audit and supplier-identity run. The latest pair
+audited the exact installed-item census and the F1507 ESC-guide boundary. Codex accepted
+the 22-leaf geometry split and the guide-versus-bench distinction after independently
+checking the controlled placements and official pages. A latest four-task pass audited
+usable-energy evidence, avionics census, power-chain topology and the need for another
+mass trade-space worksheet. Codex accepted the `HOLD` boundaries, independently reopened
+the GNB, Holybro and Raspberry Pi sources, and rejected the extra hypothetical
+worksheet. Its retained output is the explicit missing usable-energy packet and the
+candidate PDB, UBEC, GNSS and telemetry facts above.
 
 Codex inspected the source pages and repository facts, recalculated the values, rehashed
 the selected source and STEP bytes, derived the simple constructive-solid volumes and

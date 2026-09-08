@@ -31,11 +31,13 @@ selected 4S battery
        └─ measured main path / current-sense plane [candidate PM02 or PM06]
             ├─ regulated flight-controller output
             │    └─ Pixhawk 6C Mini POWER1 [candidate, analog]
+            │         ├─ one GNSS/compass [candidate standard or Micro M10]
+            │         └─ one airborne telemetry radio [candidate SiK V3]
             ├─ four protected/distributed high-current branches
             │    └─ four individual ESCs or one four-channel ESC ── motor ×4
             │         [exclusive candidate identities unresolved]
             └─ separately regulated 5 V companion/payload branch [proposal]
-                 └─ Pi Zero 2 W + camera/storage/radio loads [duty unresolved]
+                 └─ Pi Zero 2 W + camera/storage [duty unresolved]
 ```
 
 PM02 V3 would require a separate distribution element downstream of its measured main
@@ -49,6 +51,11 @@ The F1507 page's Mini F45A 4-in-1 matching-guide lead can occupy the shared four
 ESC slot only after its exact identity and limits are closed. Its F7 35A AIO lead also
 contains a flight controller and therefore represents a different control architecture;
 it is not inserted into this Pixhawk diagram or added beside a separate ESC card.
+
+The diagram does not contain an RC command link. The SiK candidate is documented as a
+Pixhawk-to-ground-station telemetry link and must not be silently promoted into that
+safety-critical role. The exact RC architecture, receiver, antenna, power and fail-safe
+policy remain separate unresolved occurrences.
 
 The Pixhawk 6C Mini has one POWER1 port and no POWER2 port. Holybro's analog-module
 comparison lists both PM02 V3 and PM06 V2 as applicable to Pixhawk 6C/6C Mini. This
@@ -67,6 +74,22 @@ The PM06 store also exposes a 10S SKU 15009 and a 14S SKU 15019; this note names
 observed 14S variant explicitly. Variant availability is commercial state, not an
 engineering selection criterion.
 
+## Candidate downstream cards
+
+| Candidate                                                                                         | Official facts observed                                                                                                                                     | Permitted architecture role                                | Unresolved before selection                                                                                                     |
+| ------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| [Holybro PDB 60 A, SKU 18069 / 18069A](https://holybro.com/products/power-distribution-board-pdb) | explicitly for PM02/PM02D; 60 A, 120 A `<60 s`; 45 × 45 mm mounting; 18069A adds pre-soldered XT30s; no BEC stated                                          | distribution after PM02 when four individual ESCs are used | engineering mass and board envelope, per-pad limits, exact harness, cooling, retention and protection                           |
+| [Holybro UBEC 5 A, SKU 15034](https://holybro.com/products/ubec-5a-3-14s)                         | 3–14S / 8–60 V input; 5.2 V at 5 A continuous; 10 A burst without duration; generic efficiency over 90%; 35 × 24 × 6.5 mm; 6.7 g; TVS and named protections | candidate separately regulated companion/payload rail      | connectors, efficiency curve, transient duration, cooling, installed input/output trace and simultaneous Pi/camera/storage duty |
+
+These cards make three topology branches explicit. PM02 plus four individual ESCs needs
+the PDB role; PM02 plus a four-in-one ESC does not add that PDB because the shared ESC
+input occupies distribution; PM06 already exposes four ESC pads. PM06 plus a four-in-one
+is therefore not a free combination, and F7 AIO would replace both the separate Pixhawk
+and ESC cards. None of the branches yet names a battery-isolation/fuse/anti-spark
+device. A bounded Holybro/AMASS source search did not identify such a lightweight
+main-path SKU; that is an unresolved search result, not proof that the wider market has
+no solution.
+
 ## Current-path arithmetic screen
 
 The existing F1404 KV4600 + `GF3016` manufacturer table gives `4 × 5.23 = 20.92 A` at
@@ -78,6 +101,7 @@ row retains the source's one-minute context.
 | Published current element           | Rating used | Margin at 20.92 A | Margin at 70.16 A | Bounded interpretation                                                                   |
 | ----------------------------------- | ----------: | ----------------: | ----------------: | ---------------------------------------------------------------------------------------- |
 | PM02 V3 PCB continuous              |        60 A |          +39.08 A |          −10.16 A | first row passes an arithmetic nameplate screen; 100% row exceeds continuous rating      |
+| PDB 60 A continuous                 |        60 A |          +39.08 A |          −10.16 A | same bounded screen; no per-pad, thermal or installed-chain qualification                |
 | PM06 V2 PCB continuous              |        70 A |          +49.08 A |           −0.16 A | first row passes; 100% row is already above the literal rating before losses/auxiliaries |
 | As-sold XT60 + 12 AWG continuous    |        30 A |           +9.08 A |          −40.16 A | only a narrow first-row catalogue margin; not a design margin                            |
 | As-sold XT60 + 12 AWG burst `<60 s` |        60 A |          +39.08 A |          −10.16 A | 100% row exceeds the current value and its one-minute duration is outside `<60 s`        |
@@ -108,13 +132,15 @@ four-channel board, and the 100% motor row remains in conflict with its own 23 A
 
 ## Regulated-load boundary
 
-| Load or rail                | Sourced fact                                                                                                     | What may be calculated                                  | What remains unknown                                                                                 |
-| --------------------------- | ---------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| Pixhawk 6C Mini             | POWER1 exists; POWER2 is absent; technical specification gives 1.5 A output limiters for named peripheral groups | interface and output-limit screens only                 | controller self-draw, attached peripherals, heater/sensor duty and installed supply margin           |
-| Raspberry Pi Zero 2 W       | 350 mA typical bare-board reference; 2 A recommended PSU; product brief states 5 V DC, 2.5 A input supply        | `5.1 V × 0.350 A = 1.785 W` as one reference point only | mission workload, peaks, encoding, storage, radio and peripheral draw                                |
-| Camera Module 3             | generic Raspberry Pi camera guidance names 250 mA; exact Module 3 brief identifies CSI-2                         | retain a later supply-sizing input                      | rail voltage at that statement, capture-mode consumption and simultaneous duty                       |
-| PM02/PM06 regulated output  | 5.2 V, 3 A max, intended for flight controller                                                                   | compare only after Pixhawk and port loads are known     | spare current, thermal derating and any permitted external load path                                 |
-| Companion/payload regulator | none selected                                                                                                    | no mass, loss or power term                             | input range, 5 V current, efficiency map, transient behavior, cooling, protection, mass and envelope |
+| Load or rail                                   | Sourced fact                                                                                                     | What may be calculated                                   | What remains unknown                                                                                    |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- | ------------------------------------------------------------------------------------------------------- |
+| Pixhawk 6C Mini                                | POWER1 exists; POWER2 is absent; technical specification gives 1.5 A output limiters for named peripheral groups | interface and output-limit screens only                  | controller self-draw, attached peripherals, heater/sensor duty and installed supply margin              |
+| Raspberry Pi Zero 2 W                          | 350 mA typical bare-board reference; 2 A recommended PSU; product brief states 5 V DC, 2.5 A input supply        | `5.1 V × 0.350 A = 1.785 W` as one reference point only  | mission workload, peaks, encoding, storage and peripheral draw                                          |
+| Camera Module 3                                | generic Raspberry Pi camera guidance names 250 mA; exact Module 3 brief identifies CSI-2                         | retain a later supply-sizing input                       | rail voltage at that statement, capture-mode consumption and simultaneous duty                          |
+| M10 standard or Micro M10 GNSS candidate       | each official card states `<200 mA @ 5 V`; variants are mutually alternative                                     | less than 1 W from the published upper-current statement | exact variant, attached functions, installed current, cable/mount scope, firmware and simultaneous duty |
+| SiK V3 100 mW airborne telemetry candidate     | 5 V; 100 mA transmit at 20 dBm and 25 mA receive; 433/915 MHz variants are region-dependent                      | 0.5 W TX and 0.125 W RX source-point arithmetic only     | legal band, duty cycle, cable loss/mass, coexistence, installation and whether the link is used         |
+| PM02/PM06 regulated output                     | 5.2 V, 3 A max, intended for flight controller                                                                   | compare only after Pixhawk and port loads are known      | spare current, thermal derating and any permitted external load path                                    |
+| UBEC 5 A companion/payload regulator candidate | 5.2 V at 5 A continuous; generic efficiency over 90%; 10 A burst without duration; 6.7 g                         | `5.2 V × 5 A = 26 W` supply capacity only                | exact load, connectors, input current, efficiency map, transient behavior, cooling and installed margin |
 
 “The Pi cannot be powered from the Pixhawk” would be too strong. The supported
 conclusion is narrower: no Pixhawk-to-Pi path is demonstrated or dimensioned, and a
@@ -124,20 +150,26 @@ are supply sizing, not consumption. A direct, separately regulated companion bra
 therefore the current proposal, pending topology and instrumented simultaneous-load
 evidence.
 
+Likewise, the UBEC's 26 W output-capacity arithmetic does not establish Pi/camera
+consumption, thermal margin or mission energy. The manufacturer states only a generic
+efficiency over 90%, not an operating-point map, and gives no duration for its 10 A
+burst value. No auxiliary subtotal is promoted from these ratings.
+
 ## Closure packet before calculation or CAD
 
-1. Select one exact battery, one ESC/control card and one alternative main-path
-   topology: PM02 plus separate PDB, PM06 integrated distribution, or a different
-   sourced design.
+1. Select one exact battery, one ESC/control card and one complete main-path topology:
+   PM02 plus PDB and individual ESCs; PM02 plus a four-in-one ESC; PM06 plus individual
+   ESCs; or a different sourced design.
 2. Draw the exact net/connector topology, including battery isolation, protection,
-   current-sense plane, four ESC branches, returns and the companion rail.
+   current-sense plane, four ESC branches, returns, the companion rail and the distinct
+   command/telemetry connections.
 3. Source continuous/burst ratings at named durations and temperatures for every series
    element; size wire and connectors from a reviewed vehicle operating envelope.
-4. Measure Pixhawk, Pi, camera, storage, GNSS/radio and regulator input power under the
-   representative simultaneous mission states.
+4. Measure Pixhawk, Pi, camera, storage, GNSS, command receiver, telemetry and regulator
+   input power under representative simultaneous mission states.
 5. Add mass, envelope and installed position for the selected ESC/control card, power
-   module, distribution, regulator, harness, connectors and protection to the mass/CG
-   worksheet.
+   module, distribution, regulator, GNSS, command receiver, airborne telemetry, harness,
+   connectors and protection to the mass/CG worksheet.
 6. Only then use circuit or time-domain simulation for an exact question it can answer,
    such as voltage drop or energy-state sensitivity. SPICE does not supply a battery
    curve; Modelica does not supply propeller aerodynamics; Chrono and CalculiX do not
@@ -156,4 +188,8 @@ Project/Thread mutation, provider run, broad test campaign or Astra consultation
 introduced. A later bounded native Grok review separated the two F1507 matching-guide
 cards from the unnamed bench ESC; Codex independently reopened the official F1507, Mini
 F45A, F7 AIO and catalogue pages before accepting the source distinction and arithmetic
-screens.
+screens. The latest bounded native Grok power-chain audit returned `HOLD`; Codex
+independently reopened the Holybro PDB, UBEC, GNSS, telemetry and Pixhawk interface
+sources before retaining the candidate cards above. PM07 and larger/digital alternatives
+were rejected as scope-expanding distractions. No component, topology or protection
+device was selected.
