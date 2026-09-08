@@ -441,6 +441,13 @@ verdict. Codex terminated it rather than extending a proportional documentation 
 none of its partial stream was accepted. The independent arithmetic, formatting, link
 and source checks remain the acceptance evidence.
 
+The next four read-only mission-boundary reviews all completed and agreed that choosing
+A, B or C is the next material decision, while numerical durations, distances, reserve
+and operating limits cannot be inferred from YOLO. They reproduced the same unrelated
+plugin startup noise. Codex independently checked the live r674 snapshot and the exact
+`project_question_propose` schema before admitting only the unanswered question at
+project r675; no global Grok or plugin setting was changed.
+
 This is a real agent-workflow friction, but not a safe repo-local quick win. Repairing
 it would change the user's global Grok/plugin configuration outside the ID01 scope and
 could affect other work. Leave that configuration untouched here. For now, keep each

@@ -3,7 +3,8 @@
 Audience: both · Diátaxis: none · Kind: dated engineering working sheet
 
 Observation **2026-09-08**, primary atelier, local. This is a reversible documentary
-sheet prepared by Codex against project r674 / Thread r93. It does not change Project or
+sheet maintained by Codex against project r675 / Thread r93. Project r675 adds the one
+unanswered framing question `mission-sizing-scenario-shape-r1`; it does not change
 Thread truth, approve proposed brief r5, select a component, define an operating
 authorization, or establish flight readiness.
 
@@ -13,7 +14,9 @@ Approved brief r4 remains current. Proposed brief r5,
 `inspection-drone-id01:brief:r5:7180b5c1fe7eef09`, remains **pending**. The human has
 selected an unarmed civil exterior camera-inspection mission and the priority
 `presize-before-simulations`; no duration, range, height, inspection dwell, reserve,
-weather envelope, payload duty cycle or thrust-margin criterion has been selected.
+weather envelope, payload duty cycle or thrust-margin criterion has been selected. The
+Project now presents A/B/C below as one explicit human decision. No answer is recorded,
+and neither YOLO nor a request to continue substitutes for that choice.
 
 The source-backed
 [camera-to-target geometry basis](camera-mission-geometry-basis-20260908.md) now
@@ -27,11 +30,11 @@ vehicle.
 
 ## Reversible scenario shapes
 
-| Scenario shape               | Mission sequence                                                                                   | What it would expose                                                                                                      | Current status                                              |
-| ---------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
-| A — short local façade pass  | launch and climb; short approach; one local façade zone; direct return; land                       | first measured workflow timing, inspection dwell, simultaneous camera/compute/radio duty and a minimal reserve discussion | **Codex proposal for the first screen; not human-approved** |
-| B — extended façade coverage | launch and climb; several contiguous façade passes; repositioning and dwell; return; land          | repeated inspection segments, longer capture duty, direction changes and a larger energy sensitivity                      | documentary alternative only                                |
-| C — roof/perimeter coverage  | launch and climb to roofline; roof or perimeter transit; downward/oblique inspection; return; land | climb energy, different camera attitude, roofline wind exposure and a distinct path geometry                              | documentary alternative only                                |
+| Scenario shape               | Mission sequence                                                                                   | What it would expose                                                                                                      | Current status                                       |
+| ---------------------------- | -------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------- |
+| A — short local façade pass  | launch and climb; short approach; one local façade zone; direct return; land                       | first measured workflow timing, inspection dwell, simultaneous camera/compute/radio duty and a minimal reserve discussion | **recommended in project question r675; unanswered** |
+| B — extended façade coverage | launch and climb; several contiguous façade passes; repositioning and dwell; return; land          | repeated inspection segments, longer capture duty, direction changes and a larger energy sensitivity                      | documentary alternative only                         |
+| C — roof/perimeter coverage  | launch and climb to roofline; roof or perimeter transit; downward/oblique inspection; return; land | climb energy, different camera attitude, roofline wind exposure and a distinct path geometry                              | documentary alternative only                         |
 
 Scenario A is proposed first because it is the smallest reversible workflow from which
 real durations and electrical duty can be measured. That sequencing proposal does not
@@ -114,11 +117,12 @@ Until then, the scenario shapes stay proposals and all numeric mission outputs r
 
 ## Review boundary
 
-One bounded native Grok review independently checked the authority split and recommended
-opening a worksheet without a solver. Codex retained scenario A only as a reversible
-proposal and kept every consequential number and choice blank. No Project/Thread
-mutation, provider run, human answer, Astra consultation or flight claim was made. A
-later three-task Grok-native pass covered camera sources, first-order geometry and
-minimal dossier integration. Codex independently reopened the official sources,
-recalculated the retained coefficients and kept stand-off, capture settings and image
-criteria unresolved.
+Four bounded native Grok reviews independently checked the next decision, whether a
+numerical desktop mission could be assumed, the ordering of mission and image claims,
+and the remaining non-human work. Codex recrossed their consensus against the live
+project snapshot and the mutation schema, then proposed only
+`mission-sizing-scenario-shape-r1` at project r675. No answer, brief approval, Thread
+append, provider run, physical test, sensitivity evaluation, Astra consultation or
+flight claim was made. Scenario A remains a reversible recommendation, and every
+consequential number stays blank. The earlier camera pass remains source-backed; its
+stand-off, capture settings and image criterion are still unresolved.

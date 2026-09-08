@@ -8,11 +8,13 @@ decisions. Re-read the control plane before continuing.
 
 ## Current project truth
 
-Latest resumption: project r674 / Thread r93. Project r672 proposed the bounded
+Latest resumption: project r675 / Thread r93. Project r672 proposed the bounded
 propulsion/energy priority question, r673 recorded the human-sourced
-`presize-before-simulations` answer, and r674 proposed brief r5. That brief is still
-pending; no new Thread evidence or capability was authorized. The fresh Airframe
-`RadialArm` ↔ `CentralDeck` assembly-integrity chain published L3 observation
+`presize-before-simulations` answer, r674 proposed brief r5, and r675 proposed the one
+unanswered mission-shape question `mission-sizing-scenario-shape-r1`. That brief is
+still pending; no human answer, new Thread evidence or capability was authorized. The
+fresh Airframe `RadialArm` ↔ `CentralDeck` assembly-integrity chain published L3
+observation
 `assembly-integrity-observation-958ef913155ff5f8a6ab115003b00ff996f382b95becb408833fe68ce9a78704`
 at r91, L4 `pass` evaluation
 `assembly-integrity-evaluation-83f3d7926589703b5a34856240821c5906176f13ec69d02a8244057f66b86b8e`
@@ -30,8 +32,8 @@ bounded human-origin L5 acceptance published at r86. Both runs are `completed`. 
 collision at project r603 remains documented as F11 rather than erased.
 
 - Project: `inspection-drone-id01`.
-- Observed project revision: r674,
-  `inspection-drone-id01:project:r674:6dd7744cb3c6ac54`. The current Thread is r93,
+- Observed project revision: r675,
+  `inspection-drone-id01:project:r675:8b9a15b705ec6c99`. The current Thread is r93,
   `project:inspection-drone-id01:r93:decide-accept-assembly-integrity-evaluation-run:queue-assembly-integrity-accept-83f3d7926589703b-r92-r667`.
 - The first provider-free requirements-to-brief claim at project r591 / Thread r83
   remains historical evidence; it did not execute an FEA solver or a native requirements
@@ -254,7 +256,9 @@ gap explicit; nameplate Wh and C-rate are not endurance evidence.
 
 The [mission sizing decision sheet](mission-sizing-decision-sheet-20260908.md) now keeps
 three reversible workflow shapes separate from human decisions and deliberately leaves
-every numeric mission cell blank. A separate
+every numeric mission cell blank. Project r675 presents those shapes as one durable
+A/B/C framing question, recommends the smallest local façade pass only as a reversible
+first screen, and records no answer. A separate
 [camera-to-target geometry basis](camera-mission-geometry-basis-20260908.md) uses the
 official Camera Module 3 Standard `66° × 41°` full-resolution field angles to publish a
 unit-distance footprint and nominal object-plane sampling lookup. It selects no
@@ -303,7 +307,7 @@ article and protocol; it is not automatically persisted as sensitivity. Its new 
 gate keeps source-backed optical geometry separate from a human-owned inspection
 criterion and later measured image quality.
 
-The freshly restarted read-only BFF now projects project r674 / Thread r93 under
+The freshly restarted read-only BFF now projects project r675 / Thread r93 under
 `engineering-workbench/0.6` and `engineering-cases/1.1`. The accepted assembly-integrity
 closeout is projected as a fresh artifact, and the RadialArm r2 case and project
 activity join remain present without the stale pre-`nm` `capture-invalid` symptom. This
