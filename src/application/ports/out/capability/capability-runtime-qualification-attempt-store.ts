@@ -9,6 +9,7 @@ import type {
   CapabilityRuntimeQualificationAttemptOutcome,
   CapabilityRuntimeQualificationDispatchingAttempt,
   CapabilityRuntimeQualificationQuarantineReason,
+  CapabilityRuntimeQualificationQuarantineResourceErrorKind,
   CapabilityRuntimeQualificationQuarantineResourceFailure,
   CapabilityRuntimeQualificationQuarantineResourceRole,
   CapabilityRuntimeQualificationQuarantineStage,
@@ -69,6 +70,8 @@ export interface CapabilityRuntimeQualificationAttemptStore {
       readonly resourceRole?: CapabilityRuntimeQualificationQuarantineResourceRole;
       readonly resourceFailure?:
         CapabilityRuntimeQualificationQuarantineResourceFailure;
+      readonly resourceErrorKind?:
+        CapabilityRuntimeQualificationQuarantineResourceErrorKind;
     },
   ): Promise<CapabilityRuntimeQualificationAttempt>;
   markOutcome(

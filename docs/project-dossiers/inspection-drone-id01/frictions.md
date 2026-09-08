@@ -985,7 +985,7 @@ underlying resource read or qualification is repaired.
 
 ## F38 — one resource-content stage hid which of nine artifacts failed
 
-(mitigated, live confirmation pending, quick win)
+(closed, quick win)
 
 Protocol 1.2 narrowed the live failure to `provider-resource-content`, but the reader
 loop still discarded both the artifact role and whether failure occurred inside the MCP
@@ -1001,7 +1001,34 @@ The pair is immutable, forbidden on other stages and absent from all historical 
 URI, run id, provider message and payload remain unpersisted; the one-dispatch rule is
 unchanged. Thirty-nine focused tests and whole-repository type checking pass. The next
 live qualification must identify the exact boundary or complete the evidence path before
-F38 closes.
+F38 can close.
+
+The protocol-1.3 physical qualification subsequently crossed exact run readback and the
+nine-resource list, then retained `input.step` / `read-error`. The stopped provider's
+retained STEP bytes still match the run ledger byte count and SHA-256 exactly. This
+closes the missing-resource-identity friction without repairing or qualifying the MCP
+read path.
+
+## F39 — the resource reader erased the closed MCP failure layer
+
+(mitigated, live protocol-1.4 confirmation pending, quick win)
+
+Protocol 1.3 proved that the exact `input.step` read failed inside the MCP reader, but
+that adapter collapsed transport, HTTP/RPC rejection, result-envelope, content-envelope,
+base64 and content-integrity failures to one exception type without a machine-readable
+kind. Static comparison of the pinned client and published provider found no deterministic
+contract mismatch: the URI is header-safe, the provider returns `model/step` plus a
+canonical blob, and its locked server stamps the complete cache envelope expected by the
+client. The remaining cause is therefore runtime-only until another bounded observation
+separates those layers.
+
+Protocol 1.4 preserves one closed reader category for a content-stage `read-error`: the
+four existing transport kinds, four reader validation layers, or `unexpected`. Historical
+WAL without the optional field remains valid, the category is immutable, and it is
+forbidden on post-read byte/hash mismatch. HTTP status, URI, provider message and payload
+are not retained. Reader, qualification-service and WAL tests pass, as does whole-repo
+type checking. A fresh H1-owned physical qualification is still required before choosing
+any wire or provider fix; no header change is justified by static evidence alone.
 
 ## Expected states, not defects
 

@@ -6,6 +6,7 @@ import {
 import {
   HttpMcpResourceReader,
   McpResourceReadError,
+  type McpResourceReadErrorKind,
 } from "./http-mcp-resource-reader.ts";
 import {
   StatelessMcpHttpTransport,
@@ -24,6 +25,15 @@ async function expectedFor(
     byteCount: bytes.byteLength,
     sha256: await fingerprintResourceBytes(bytes),
   };
+}
+
+async function assertResourceReadRejects(
+  read: () => Promise<unknown>,
+  kind: McpResourceReadErrorKind,
+  message?: string,
+): Promise<void> {
+  const error = await assertRejects(read, McpResourceReadError, message);
+  assertEquals((error as McpResourceReadError).kind, kind);
 }
 
 function rpcFetch(
@@ -177,9 +187,9 @@ Deno.test("HttpMcpResourceReader rejects non-canonical and malformed base64", as
         contents: [{ uri: URI, mimeType: expected.mediaType, blob }],
       }),
     });
-    await assertRejects(
+    await assertResourceReadRejects(
       () => reader.read(expected),
-      McpResourceReadError,
+      "content-encoding",
       "canonical base64",
     );
   }
@@ -188,36 +198,42 @@ Deno.test("HttpMcpResourceReader rejects non-canonical and malformed base64", as
 Deno.test("HttpMcpResourceReader rejects URI, MIME, count, and hash mismatches", async () => {
   const bytes = new TextEncoder().encode("ok");
   const expected = await expectedFor(bytes, "text/plain");
-  const cases: Array<[unknown, ExpectedProviderResource, string]> = [
+  const cases: Array<
+    [unknown, ExpectedProviderResource, McpResourceReadErrorKind, string]
+  > = [
     [
       { contents: [{ uri: `${URI}-other`, mimeType: "text/plain", text: "ok" }] },
       expected,
+      "content-envelope",
       "URI mismatch",
     ],
     [
       { contents: [{ uri: URI, mimeType: "text/csv", text: "ok" }] },
       expected,
+      "content-envelope",
       "mimeType mismatch",
     ],
     [
       { contents: [{ uri: URI, mimeType: "text/plain", text: "ok" }] },
       { ...expected, byteCount: 3 },
+      "content-integrity",
       "expected 3",
     ],
     [
       { contents: [{ uri: URI, mimeType: "text/plain", text: "ok" }] },
       { ...expected, sha256: "a".repeat(64) },
+      "content-integrity",
       "expected aaaaaaaaa",
     ],
   ];
-  for (const [result, expectedCase, message] of cases) {
+  for (const [result, expectedCase, kind, message] of cases) {
     const reader = new HttpMcpResourceReader({
       mcpUrl: "http://127.0.0.1:3999/mcp",
       fetch: rpcFetch(result),
     });
-    await assertRejects(
+    await assertResourceReadRejects(
       () => reader.read(expectedCase),
-      McpResourceReadError,
+      kind,
       message,
     );
   }
@@ -226,8 +242,8 @@ Deno.test("HttpMcpResourceReader rejects URI, MIME, count, and hash mismatches",
 Deno.test("HttpMcpResourceReader requires exactly one well-formed ResourceContents", async () => {
   const bytes = new Uint8Array();
   const expected = await expectedFor(bytes);
-  const malformed: Array<[unknown, string]> = [
-    [{ contents: [] }, "received 0"],
+  const malformed: Array<[unknown, McpResourceReadErrorKind, string]> = [
+    [{ contents: [] }, "result-envelope", "received 0"],
     [
       {
         contents: [
@@ -235,13 +251,15 @@ Deno.test("HttpMcpResourceReader requires exactly one well-formed ResourceConten
           { uri: URI, mimeType: expected.mediaType, blob: "" },
         ],
       },
+      "result-envelope",
       "received 2",
     ],
-    [{}, "malformed result"],
-    [{ contents: "not-an-array" }, "must be an array"],
-    [{ contents: [{}] }, "requires uri and mimeType"],
+    [{}, "result-envelope", "malformed result"],
+    [{ contents: "not-an-array" }, "result-envelope", "must be an array"],
+    [{ contents: [{}] }, "content-envelope", "requires uri and mimeType"],
     [
       { contents: [{ uri: URI, mimeType: expected.mediaType }] },
+      "content-envelope",
       "exactly one of text or blob",
     ],
     [
@@ -253,6 +271,7 @@ Deno.test("HttpMcpResourceReader requires exactly one well-formed ResourceConten
           blob: "",
         }],
       },
+      "content-envelope",
       "exactly one of text or blob",
     ],
     [
@@ -264,6 +283,7 @@ Deno.test("HttpMcpResourceReader requires exactly one well-formed ResourceConten
           annotations: {},
         }],
       },
+      "content-envelope",
       "unsupported fields",
     ],
     [
@@ -275,18 +295,23 @@ Deno.test("HttpMcpResourceReader requires exactly one well-formed ResourceConten
           _meta: "not-an-object",
         }],
       },
+      "content-envelope",
       "_meta must be an object",
     ],
-    [{ contents: [], _meta: "not-an-object" }, "result _meta must be an object"],
+    [
+      { contents: [], _meta: "not-an-object" },
+      "result-envelope",
+      "result _meta must be an object",
+    ],
   ];
-  for (const [result, message] of malformed) {
+  for (const [result, kind, message] of malformed) {
     const reader = new HttpMcpResourceReader({
       mcpUrl: "http://127.0.0.1:3999/mcp",
       fetch: rpcFetch(result),
     });
-    await assertRejects(
+    await assertResourceReadRejects(
       () => reader.read(expected),
-      McpResourceReadError,
+      kind,
       message,
     );
   }
@@ -325,9 +350,9 @@ Deno.test("HttpMcpResourceReader validates the complete cache envelope fail-clos
       mcpUrl: "http://127.0.0.1:3999/mcp",
       fetch: rpcFetch(result, [], { rawResult: true }),
     });
-    await assertRejects(
+    await assertResourceReadRejects(
       () => reader.read(expected),
-      McpResourceReadError,
+      "result-envelope",
       message,
     );
   }
@@ -375,9 +400,9 @@ Deno.test("HttpMcpResourceReader fails closed if a transport reports a redirect"
       return Promise.resolve(response);
     }) as typeof fetch,
   });
-  await assertRejects(
+  await assertResourceReadRejects(
     () => reader.read(expected),
-    McpResourceReadError,
+    "transport",
     "redirected the request",
   );
 });

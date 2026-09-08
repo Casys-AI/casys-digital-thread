@@ -15,6 +15,7 @@ import {
   type CapabilityRuntimeQualificationAttemptIdentity,
   type CapabilityRuntimeQualificationAttemptOutcome,
   type CapabilityRuntimeQualificationQuarantineReason,
+  type CapabilityRuntimeQualificationQuarantineResourceErrorKind,
   type CapabilityRuntimeQualificationQuarantineResourceFailure,
   type CapabilityRuntimeQualificationQuarantineResourceRole,
   type CapabilityRuntimeQualificationQuarantineStage,
@@ -71,6 +72,7 @@ import {
   stoppedQualificationAttemptFrom,
 } from "../../application/control-plane/capability-runtime-qualification-attestation-factory.ts";
 import { matchesCapabilityRuntimeQualificationCandidate } from "../../application/control-plane/evaluate-capability-runtime-qualifications.ts";
+import { McpResourceReadError } from "../shared/mcp/http-mcp-resource-reader.ts";
 
 const LEASE_TTL_MS = 6 * 60 * 60 * 1000;
 const DEADLINE_MS = 5 * 60 * 1000;
@@ -83,6 +85,7 @@ class CalculixHttpReadbackQuarantine extends Error {
     readonly resource?: {
       readonly role: CapabilityRuntimeQualificationQuarantineResourceRole;
       readonly failure: CapabilityRuntimeQualificationQuarantineResourceFailure;
+      readonly errorKind?: CapabilityRuntimeQualificationQuarantineResourceErrorKind;
     },
   ) {
     super("CalculiX qualification readback requires quarantine.");
@@ -642,6 +645,9 @@ export class CalculixHttpRuntimeQualificationService {
           ...(error.resource === undefined ? {} : {
             resourceRole: error.resource.role,
             resourceFailure: error.resource.failure,
+            ...(error.resource.errorKind === undefined ? {} : {
+              resourceErrorKind: error.resource.errorKind,
+            }),
           }),
         });
       }
@@ -792,11 +798,15 @@ export class CalculixHttpRuntimeQualificationService {
       let resourceBytes: Uint8Array;
       try {
         resourceBytes = await this.options.readResource(resource);
-      } catch {
+      } catch (error) {
         throw new CalculixHttpReadbackQuarantine(
           "malformed",
           "provider-resource-content",
-          { role: resourceRole, failure: "read-error" },
+          {
+            role: resourceRole,
+            failure: "read-error",
+            errorKind: qualificationResourceReadErrorKind(error),
+          },
         );
       }
       if (
@@ -1070,6 +1080,12 @@ function qualificationResourceRole(
     )
   ) return value as CapabilityRuntimeQualificationQuarantineResourceRole;
   throw new TypeError("CalculiX qualification resource role drifted.");
+}
+
+function qualificationResourceReadErrorKind(
+  error: unknown,
+): CapabilityRuntimeQualificationQuarantineResourceErrorKind {
+  return error instanceof McpResourceReadError ? error.kind : "unexpected";
 }
 
 function startAuthority(

@@ -9,12 +9,23 @@ import {
   StatelessMcpHttpTransport,
   type StatelessMcpHttpTransportOptions,
   StatelessMcpTransportError,
+  type StatelessMcpTransportErrorKind,
 } from "./stateless-mcp-http-transport.ts";
 
 export type HttpMcpResourceReaderOptions = StatelessMcpHttpTransportOptions;
 
+export type McpResourceReadErrorKind =
+  | StatelessMcpTransportErrorKind
+  | "result-envelope"
+  | "content-envelope"
+  | "content-encoding"
+  | "content-integrity";
+
 export class McpResourceReadError extends Error {
-  constructor(message: string) {
+  constructor(
+    readonly kind: McpResourceReadErrorKind,
+    message: string,
+  ) {
     super(message);
     this.name = "McpResourceReadError";
   }
@@ -48,7 +59,7 @@ export class HttpMcpResourceReader implements ProviderResourceReader {
       });
     } catch (error) {
       if (error instanceof StatelessMcpTransportError) {
-        throw new McpResourceReadError(error.message);
+        throw new McpResourceReadError(error.kind, error.message);
       }
       throw error;
     }
@@ -56,17 +67,20 @@ export class HttpMcpResourceReader implements ProviderResourceReader {
     const contentsValue = exactResultContents(result);
     if (contentsValue.length !== 1) {
       throw new McpResourceReadError(
+        "result-envelope",
         `resources/read: expected exactly one ResourceContents; received ${contentsValue.length}`,
       );
     }
     const content = resourceContent(contentsValue[0]);
     if (content.uri !== expected.uri) {
       throw new McpResourceReadError(
+        "content-envelope",
         `resources/read: URI mismatch; expected ${expected.uri}, received ${content.uri}`,
       );
     }
     if (content.mimeType !== expected.mediaType) {
       throw new McpResourceReadError(
+        "content-envelope",
         `resources/read: mimeType mismatch; expected ${expected.mediaType}, received ${content.mimeType}`,
       );
     }
@@ -78,6 +92,7 @@ export class HttpMcpResourceReader implements ProviderResourceReader {
       return await createProviderResourceRead(expected, bytes);
     } catch (error) {
       throw new McpResourceReadError(
+        "content-integrity",
         `resources/read: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
@@ -104,11 +119,13 @@ function exactResultContents(result: Record<string, unknown>): unknown[] {
     )
   ) {
     throw new McpResourceReadError(
+      "result-envelope",
       "resources/read: malformed result object",
     );
   }
   if (result.resultType !== "complete") {
     throw new McpResourceReadError(
+      "result-envelope",
       'resources/read: resultType must be "complete"',
     );
   }
@@ -118,21 +135,25 @@ function exactResultContents(result: Record<string, unknown>): unknown[] {
     result.ttlMs < 0
   ) {
     throw new McpResourceReadError(
+      "result-envelope",
       "resources/read: ttlMs must be a non-negative safe integer",
     );
   }
   if (result.cacheScope !== "private" && result.cacheScope !== "public") {
     throw new McpResourceReadError(
+      "result-envelope",
       'resources/read: cacheScope must be "private" or "public"',
     );
   }
   if (!Array.isArray(result.contents)) {
     throw new McpResourceReadError(
+      "result-envelope",
       "resources/read: contents must be an array",
     );
   }
   if (Object.hasOwn(result, "_meta") && !isRecord(result._meta)) {
     throw new McpResourceReadError(
+      "result-envelope",
       "resources/read: result _meta must be an object",
     );
   }
@@ -142,22 +163,26 @@ function exactResultContents(result: Record<string, unknown>): unknown[] {
 function resourceContent(value: unknown): ValidResourceContent {
   if (!isRecord(value)) {
     throw new McpResourceReadError(
+      "content-envelope",
       "resources/read: ResourceContents must be an object",
     );
   }
   const allowed = new Set(["uri", "mimeType", "text", "blob", "_meta"]);
   if (Object.keys(value).some((key) => !allowed.has(key))) {
     throw new McpResourceReadError(
+      "content-envelope",
       "resources/read: ResourceContents has unsupported fields",
     );
   }
   if (Object.hasOwn(value, "_meta") && !isRecord(value._meta)) {
     throw new McpResourceReadError(
+      "content-envelope",
       "resources/read: ResourceContents _meta must be an object",
     );
   }
   if (typeof value.uri !== "string" || typeof value.mimeType !== "string") {
     throw new McpResourceReadError(
+      "content-envelope",
       "resources/read: ResourceContents requires uri and mimeType",
     );
   }
@@ -165,16 +190,19 @@ function resourceContent(value: unknown): ValidResourceContent {
   const hasBlob = Object.hasOwn(value, "blob");
   if (hasText === hasBlob) {
     throw new McpResourceReadError(
+      "content-envelope",
       "resources/read: ResourceContents requires exactly one of text or blob",
     );
   }
   if (hasText && typeof value.text !== "string") {
     throw new McpResourceReadError(
+      "content-envelope",
       "resources/read: ResourceContents.text must be a string",
     );
   }
   if (hasBlob && typeof value.blob !== "string") {
     throw new McpResourceReadError(
+      "content-envelope",
       "resources/read: ResourceContents.blob must be a string",
     );
   }
@@ -194,6 +222,7 @@ function decodeCanonicalBase64(value: string): Uint8Array {
     )
   ) {
     throw new McpResourceReadError(
+      "content-encoding",
       "resources/read: blob must be canonical base64",
     );
   }
@@ -202,11 +231,13 @@ function decodeCanonicalBase64(value: string): Uint8Array {
     binary = atob(value);
   } catch {
     throw new McpResourceReadError(
+      "content-encoding",
       "resources/read: blob must be canonical base64",
     );
   }
   if (btoa(binary) !== value) {
     throw new McpResourceReadError(
+      "content-encoding",
       "resources/read: blob must be canonical base64",
     );
   }

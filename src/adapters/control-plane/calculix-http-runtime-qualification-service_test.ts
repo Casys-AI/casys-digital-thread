@@ -44,6 +44,7 @@ import {
 import type { JsonValue } from "../../domain/compile/rop/resolved-operation-plan.ts";
 import type { SensitivityRecordedProviderResource } from "../../application/ports/out/sensitivity/live-fea/sensitivity-static-structural-solver.ts";
 import { evaluateCapabilityRuntimeQualifications } from "../../application/control-plane/evaluate-capability-runtime-qualifications.ts";
+import { McpResourceReadError } from "../shared/mcp/http-mcp-resource-reader.ts";
 
 const HOST_IDENTITY = { algorithm: "sha256" as const, digest: "a".repeat(64) };
 const RUN_ID = "r-11111111-1111-1111-1111-111111111111";
@@ -350,8 +351,31 @@ Deno.test("CalculiX records a closed resource-content stage without provider det
       stage: "provider-resource-content",
       resourceRole: "input.step",
       resourceFailure: "read-error",
+      resourceErrorKind: "unexpected",
     }]);
     assertEquals((await runtime.attestations.list()).length, 0);
+  } finally {
+    await runtime.close();
+  }
+});
+
+Deno.test("CalculiX retains only the closed MCP resource reader error kind", async () => {
+  const runtime = await fixture({ resourceRead: "mcp-http-rejection" });
+  try {
+    const review = await runtime.service.review(runtime.candidate.id);
+    const result = await runtime.service.apply(review);
+    assertEquals(result.phase, "stopped");
+    assertEquals(runtime.quarantines, [{
+      reason: "malformed",
+      stage: "provider-resource-content",
+      resourceRole: "input.step",
+      resourceFailure: "read-error",
+      resourceErrorKind: "http-rejection",
+    }]);
+    assertEquals(
+      JSON.stringify(runtime.quarantines).includes("provider secret"),
+      false,
+    );
   } finally {
     await runtime.close();
   }
@@ -466,7 +490,11 @@ async function fixture(options: {
     | "outcome_unknown"
   )[];
   readonly displacementMm?: number;
-  readonly resourceRead?: "exact" | "throw" | "drift";
+  readonly resourceRead?:
+    | "exact"
+    | "throw"
+    | "mcp-http-rejection"
+    | "drift";
   readonly crashBeforeMarkActive?: number;
   readonly crashAfterMarkActive?: number;
   readonly crashAfterMarkRecorded?: number;
@@ -621,6 +649,12 @@ async function fixture(options: {
       resourceReads++;
       if (options.resourceRead === "throw") {
         throw new Error("provider detail must not enter qualification WAL");
+      }
+      if (options.resourceRead === "mcp-http-rejection") {
+        throw new McpResourceReadError(
+          "http-rejection",
+          "provider secret must not enter qualification WAL",
+        );
       }
       if (options.resourceRead === "drift") return new Uint8Array();
       return provider.resource(resource.sha256);

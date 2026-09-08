@@ -63,6 +63,17 @@ export type CapabilityRuntimeQualificationQuarantineResourceFailure =
   | "read-error"
   | "byte-or-digest-mismatch";
 
+export type CapabilityRuntimeQualificationQuarantineResourceErrorKind =
+  | "transport"
+  | "protocol-invalid"
+  | "http-rejection"
+  | "rpc-rejection"
+  | "result-envelope"
+  | "content-envelope"
+  | "content-encoding"
+  | "content-integrity"
+  | "unexpected";
+
 const IDENTITY_FIELDS = [
   "candidate",
   "observedHost",
@@ -147,6 +158,9 @@ export type CapabilityRuntimeQualificationAttempt =
       CapabilityRuntimeQualificationQuarantineResourceRole;
     readonly quarantineResourceFailure?:
       CapabilityRuntimeQualificationQuarantineResourceFailure;
+    /** Protocol 1.4 closed reader classification; historical WAL omits it. */
+    readonly quarantineResourceErrorKind?:
+      CapabilityRuntimeQualificationQuarantineResourceErrorKind;
     readonly claimedAt: string;
     readonly deadlineAt: string;
   })
@@ -361,7 +375,15 @@ export async function validateCapabilityRuntimeQualificationAttempt(
     const resourceFailure = Object.hasOwn(root, "quarantineResourceFailure")
       ? quarantineResourceFailure(root.quarantineResourceFailure)
       : undefined;
-    assertQuarantineResourceDiagnosis(stage, resourceRole, resourceFailure);
+    const resourceErrorKind = Object.hasOwn(root, "quarantineResourceErrorKind")
+      ? quarantineResourceErrorKind(root.quarantineResourceErrorKind)
+      : undefined;
+    assertQuarantineResourceDiagnosis(
+      stage,
+      resourceRole,
+      resourceFailure,
+      resourceErrorKind,
+    );
     return freeze({
       ...base(identity, preparedAt),
       phase,
@@ -373,6 +395,9 @@ export async function validateCapabilityRuntimeQualificationAttempt(
       ...(resourceFailure === undefined
         ? {}
         : { quarantineResourceFailure: resourceFailure }),
+      ...(resourceErrorKind === undefined
+        ? {}
+        : { quarantineResourceErrorKind: resourceErrorKind }),
       claimedAt: timestamp(root.claimedAt, `${path}.claimedAt`),
       deadlineAt: timestamp(root.deadlineAt, `${path}.deadlineAt`),
     });
@@ -629,6 +654,8 @@ export function quarantineQualificationAttempt(
     readonly stage?: CapabilityRuntimeQualificationQuarantineStage;
     readonly resourceRole?: CapabilityRuntimeQualificationQuarantineResourceRole;
     readonly resourceFailure?: CapabilityRuntimeQualificationQuarantineResourceFailure;
+    readonly resourceErrorKind?:
+      CapabilityRuntimeQualificationQuarantineResourceErrorKind;
   },
 ): CapabilityRuntimeQualificationAttempt {
   if (current.phase === "recorded") return current;
@@ -640,13 +667,22 @@ export function quarantineQualificationAttempt(
   const resourceFailure = input.resourceFailure === undefined
     ? undefined
     : quarantineResourceFailure(input.resourceFailure);
-  assertQuarantineResourceDiagnosis(stage, resourceRole, resourceFailure);
+  const resourceErrorKind = input.resourceErrorKind === undefined
+    ? undefined
+    : quarantineResourceErrorKind(input.resourceErrorKind);
+  assertQuarantineResourceDiagnosis(
+    stage,
+    resourceRole,
+    resourceFailure,
+    resourceErrorKind,
+  );
   if (current.phase === "quarantined") {
     if (
       current.quarantineReason !== reason ||
       current.quarantineStage !== stage ||
       current.quarantineResourceRole !== resourceRole ||
-      current.quarantineResourceFailure !== resourceFailure
+      current.quarantineResourceFailure !== resourceFailure ||
+      current.quarantineResourceErrorKind !== resourceErrorKind
     ) {
       throw integrity("Qualification quarantine diagnosis cannot be rewritten.");
     }
@@ -666,6 +702,9 @@ export function quarantineQualificationAttempt(
     ...(resourceFailure === undefined
       ? {}
       : { quarantineResourceFailure: resourceFailure }),
+    ...(resourceErrorKind === undefined
+      ? {}
+      : { quarantineResourceErrorKind: resourceErrorKind }),
     claimedAt: current.claimedAt,
     deadlineAt: current.deadlineAt,
   });
@@ -1026,6 +1065,9 @@ function fieldsFor(phase: unknown, value: unknown): readonly string[] {
         : []),
       ...(Object.hasOwn(value, "quarantineResourceFailure")
         ? ["quarantineResourceFailure"]
+        : []),
+      ...(Object.hasOwn(value, "quarantineResourceErrorKind")
+        ? ["quarantineResourceErrorKind"]
         : []),
     ];
   }
@@ -1463,10 +1505,26 @@ function quarantineResourceFailure(
   throw integrity("Qualification quarantine resource failure is unsupported.");
 }
 
+function quarantineResourceErrorKind(
+  value: unknown,
+): CapabilityRuntimeQualificationQuarantineResourceErrorKind {
+  if (
+    value === "transport" || value === "protocol-invalid" ||
+    value === "http-rejection" || value === "rpc-rejection" ||
+    value === "result-envelope" || value === "content-envelope" ||
+    value === "content-encoding" || value === "content-integrity" ||
+    value === "unexpected"
+  ) return value;
+  throw integrity("Qualification quarantine resource error kind is unsupported.");
+}
+
 function assertQuarantineResourceDiagnosis(
   stage: CapabilityRuntimeQualificationQuarantineStage | undefined,
   role: CapabilityRuntimeQualificationQuarantineResourceRole | undefined,
   failure: CapabilityRuntimeQualificationQuarantineResourceFailure | undefined,
+  errorKind:
+    | CapabilityRuntimeQualificationQuarantineResourceErrorKind
+    | undefined,
 ): void {
   if ((role === undefined) !== (failure === undefined)) {
     throw integrity(
@@ -1476,6 +1534,11 @@ function assertQuarantineResourceDiagnosis(
   if (role !== undefined && stage !== "provider-resource-content") {
     throw integrity(
       "Qualification quarantine resource diagnosis requires the content stage.",
+    );
+  }
+  if (errorKind !== undefined && failure !== "read-error") {
+    throw integrity(
+      "Qualification quarantine resource error kind requires a read error.",
     );
   }
 }

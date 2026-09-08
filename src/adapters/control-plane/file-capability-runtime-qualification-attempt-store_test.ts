@@ -294,6 +294,98 @@ Deno.test("qualification WAL promotes a quarantined request on later factual rea
   }
 });
 
+Deno.test("qualification WAL retains a closed immutable resource reader kind and accepts historical omission", async () => {
+  const directory = await Deno.makeTempDir();
+  const historicalDirectory = await Deno.makeTempDir();
+  try {
+    const identity = await fixtureIdentity();
+    const store = new FileCapabilityRuntimeQualificationAttemptStore(directory);
+    await prepareThroughDispatch(store, identity);
+    await assertRejects(
+      () =>
+        store.markQuarantined(identity, {
+          reason: "malformed",
+          stage: "provider-resource-content",
+          resourceErrorKind: "http-rejection",
+        }),
+      CapabilityRuntimeQualificationAttemptIntegrityError,
+      "requires a read error",
+    );
+    await assertRejects(
+      () =>
+        store.markQuarantined(identity, {
+          reason: "malformed",
+          stage: "provider-resource-content",
+          resourceRole: "input.step",
+          resourceFailure: "byte-or-digest-mismatch",
+          resourceErrorKind: "content-integrity",
+        }),
+      CapabilityRuntimeQualificationAttemptIntegrityError,
+      "requires a read error",
+    );
+    const quarantined = await store.markQuarantined(identity, {
+      reason: "malformed",
+      stage: "provider-resource-content",
+      resourceRole: "input.step",
+      resourceFailure: "read-error",
+      resourceErrorKind: "http-rejection",
+    });
+    if (quarantined.phase !== "quarantined") {
+      throw new Error("quarantine event absent");
+    }
+    assertEquals(quarantined.quarantineResourceErrorKind, "http-rejection");
+    assertEquals(
+      await store.markQuarantined(identity, {
+        reason: "malformed",
+        stage: "provider-resource-content",
+        resourceRole: "input.step",
+        resourceFailure: "read-error",
+        resourceErrorKind: "http-rejection",
+      }),
+      quarantined,
+    );
+    await assertRejects(
+      () =>
+        store.markQuarantined(identity, {
+          reason: "malformed",
+          stage: "provider-resource-content",
+          resourceRole: "input.step",
+          resourceFailure: "read-error",
+          resourceErrorKind: "rpc-rejection",
+        }),
+      CapabilityRuntimeQualificationAttemptIntegrityError,
+      "diagnosis cannot be rewritten",
+    );
+    const recovered = await new FileCapabilityRuntimeQualificationAttemptStore(
+      directory,
+    ).read(keyFor(identity));
+    assertEquals(recovered, quarantined);
+
+    const historicalStore = new FileCapabilityRuntimeQualificationAttemptStore(
+      historicalDirectory,
+    );
+    await prepareThroughDispatch(historicalStore, identity);
+    const historical = await historicalStore.markQuarantined(identity, {
+      reason: "malformed",
+      stage: "provider-resource-content",
+      resourceRole: "input.step",
+      resourceFailure: "read-error",
+    });
+    const historicalRecovered =
+      await new FileCapabilityRuntimeQualificationAttemptStore(
+        historicalDirectory,
+      ).read(keyFor(identity));
+    assertEquals(historicalRecovered, historical);
+    if (!historicalRecovered || historicalRecovered.phase !== "quarantined") {
+      throw new Error("historical quarantine event absent");
+    }
+    assertEquals(historicalRecovered.quarantineResourceErrorKind, undefined);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+    await Deno.remove(historicalDirectory, { recursive: true });
+  }
+});
+
 Deno.test("qualification WAL refuses skipped transitions, rewritten identity and secrets", async () => {
   const directory = await Deno.makeTempDir();
   try {
