@@ -311,30 +311,35 @@ The freshly restarted read-only BFF now projects project r675 / Thread r93 under
 `engineering-workbench/0.6` and `engineering-cases/1.1`. The accepted assembly-integrity
 closeout is projected as a fresh artifact, and the RadialArm r2 case and project
 activity join remain present without the stale pre-`nm` `capture-invalid` symptom. This
-is current projection adoption, not a new visual UX audit. The latest separate-profile
-browser interaction audit remains project r591 / Thread r83; no later visual audit is
-claimed here. The earlier project r583 / Thread r82 presentation established seven exact
-whole-App bindings for the six modules and updated root while preserving all twenty-five
-prior bindings; the registry contains thirty-two entries. Fresh root and Airframe App
-checks verified their exact GLB digests, rendered canvases and passed Fit/zoom and
-read-only network checks. Both canvases were visually inspected. The scripts,
-screenshots, hashes and presentation-only limits are in the current rebuild ledger.
-Chromium's existing unsupported `webrtc` CSP-directive warning remains. The Product tab
-remains removed as requested; 3D stays on Project. The older r69 presentation ledger
-remains historical. Source attachments may be `different-basis`; preserved captures and
-historical admissions are not silently rewritten. Recross only through a registered
-surface when a current authoring capture or closure requires it. The BFF now declares
-the available v1 requirements-to-brief claim while retaining the original `TRACE GAP`
-separately. A fresh separate-profile headless browser audit of project r591 / Thread r83
-selected the native camera-bracket requirement with no page errors and no non-GET API
-requests. It found the exact brief-r3 `camera-bracket-bench-stress` source node in the
-Brief hull, its one direct cable to the sole requirement, and no stand-alone
-retrospective-document wrapper node on that hero surface. Requirement-to-source and
-source-to-requirement navigation both worked; the source note stayed readable above
-restored viewers, and a planned-only detached `PENDING` legend was absent without hiding
-the actual planned activity. This is presentation QA only: it does not prove claim
-semantics, native-writer qualification, requirement satisfaction, FEA, or provider
-runtime. The older literal `TRACE GAP` remains separate historical provenance.
+is current projection adoption, not a new visual UX audit. Revision r675 changes the
+Project snapshot and exposes the unanswered question on the planning surface, but it
+cannot create a whiteboard graph node while Thread remains r93. The operation registry
+has no pre-sizing-worksheet publication contract;
+[F21](frictions.md#f21--pre-sizing-worksheets-have-no-registered-thread-publication-path-open-deferred)
+records that deferred product boundary. The latest separate-profile browser interaction
+audit remains project r591 / Thread r83; no later visual audit is claimed here. The
+earlier project r583 / Thread r82 presentation established seven exact whole-App
+bindings for the six modules and updated root while preserving all twenty-five prior
+bindings; the registry contains thirty-two entries. Fresh root and Airframe App checks
+verified their exact GLB digests, rendered canvases and passed Fit/zoom and read-only
+network checks. Both canvases were visually inspected. The scripts, screenshots, hashes
+and presentation-only limits are in the current rebuild ledger. Chromium's existing
+unsupported `webrtc` CSP-directive warning remains. The Product tab remains removed as
+requested; 3D stays on Project. The older r69 presentation ledger remains historical.
+Source attachments may be `different-basis`; preserved captures and historical
+admissions are not silently rewritten. Recross only through a registered surface when a
+current authoring capture or closure requires it. The BFF now declares the available v1
+requirements-to-brief claim while retaining the original `TRACE GAP` separately. A fresh
+separate-profile headless browser audit of project r591 / Thread r83 selected the native
+camera-bracket requirement with no page errors and no non-GET API requests. It found the
+exact brief-r3 `camera-bracket-bench-stress` source node in the Brief hull, its one
+direct cable to the sole requirement, and no stand-alone retrospective-document wrapper
+node on that hero surface. Requirement-to-source and source-to-requirement navigation
+both worked; the source note stayed readable above restored viewers, and a planned-only
+detached `PENDING` legend was absent without hiding the actual planned activity. This is
+presentation QA only: it does not prove claim semantics, native-writer qualification,
+requirement satisfaction, FEA, or provider runtime. The older literal `TRACE GAP`
+remains separate historical provenance.
 
 Current continuation split: Codex owns architecture, source checking, acceptance and
 proportionate validation; native Grok handles bounded investigation or implementation;

@@ -8,11 +8,13 @@ truth, approve a component, authorize an operation, or establish flight readines
 
 ## Status and outcome
 
-The live control plane is at project r674 / Thread r93. Question
+The live control plane is at project r675 / Thread r93. Question
 `propulsion-energy-presizing-priority-r1` has a human-sourced answer selecting
 `presize-before-simulations`. Proposed brief r5,
 `inspection-drone-id01:brief:r5:7180b5c1fe7eef09`, is still **pending**; approved brief
-r4 remains current.
+r4 remains current. Question `mission-sizing-scenario-shape-r1` now presents the three
+reversible mission shapes and remains unanswered; it adds no numerical mission input or
+Thread evidence.
 
 No whole-vehicle thrust, power, current, endurance, centre-of-gravity or
 operational-load result can yet be reported. The current evidence does not provide a

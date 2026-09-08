@@ -448,6 +448,14 @@ plugin startup noise. Codex independently checked the live r674 snapshot and the
 `project_question_propose` schema before admitting only the unanswered question at
 project r675; no global Grok or plugin setting was changed.
 
+Two later read-only closure audits also completed despite the same startup noise. One
+found no remaining deterministic source-backed vehicle calculation that was not already
+present; the other found no registered operation that semantically publishes these
+worksheets into the Thread. Codex independently recrossed the live r675 state, resource
+capture boundary, operation registry and Workbench case/domain maps before accepting
+those negative findings. No plugin setting or engineering state changed during the
+audits.
+
 This is a real agent-workflow friction, but not a safe repo-local quick win. Repairing
 it would change the user's global Grok/plugin configuration outside the ID01 scope and
 could affect other work. Leave that configuration untouched here. For now, keep each
@@ -614,6 +622,38 @@ is not silently stored as sensitivity; `verify.evaluate-sensitivity-base@1` is a
 separate registered evaluation over an admitted sensitivity basis. No bench, Project
 mutation or sensitivity run is authorized by this friction entry. F20 remains open for
 supplier or governed physical evidence.
+
+## F21 — pre-sizing worksheets have no registered Thread publication path (open, deferred)
+
+Live inspection after project r675 confirmed the split visible to the user: the new
+mission-shape question exists exactly once and has no answer, while the latest Thread is
+still r93 and the run, approval, decision and blocker counts are unchanged. The
+read-only Workbench can therefore show the new Project revision and planning question,
+but it has no new Thread graph entity to paint on the whiteboard.
+
+This is not repaired by copying the Markdown into draft CAS. `project_resource_capture`
+writes one raw draft MCP resource with `grants: none`; unknown files create neither
+EngineeringProject nor Thread state. `baseline.from-approved-brief@1` is valid only
+before the first documentary Thread snapshot. The electrical and Modelica method-sheet
+seals require their own typed schemas and exact admitted run branches. Architecture,
+requirements, CAD, proof-case and sensitivity seals likewise have narrower authorities;
+using any of them for a mission worksheet would invent a source model, physics case,
+MRTR or result.
+
+The registered Engineering Case catalogue contains only mechanical proof, sensitivity,
+printability, print estimate and DFM case families. The Overview domain map separately
+recognizes exact SysML, geometry, FEA, assembly-integrity, prescribed-kinematics and
+Modelica operations. Neither surface defines a pre-sizing worksheet family. Creating a
+fake solver run merely to obtain a node would therefore corrupt rather than improve the
+digital thread.
+
+A real repair needs a separate versioned capability design: a typed source-backed
+pre-sizing evidence schema, exact capture/reopen rules, a registered provider-free
+Thread seal, producer and lineage semantics, projection grouping, UI presentation and
+focused contract tests. That is broader than an ID01 documentation quick win and could
+affect every engineering project. Defer it as a product-capability extension; until it
+exists, keep the worksheets documentary and let the next whiteboard node come only from
+a semantically valid registered operation over real evidence.
 
 ## Expected states, not defects
 
