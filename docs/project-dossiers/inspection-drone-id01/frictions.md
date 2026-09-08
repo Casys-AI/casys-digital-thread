@@ -378,6 +378,34 @@ Grok task bounded, observe live progress, stop rather than loop when it stalls, 
 targeted Terra reinforcement if needed. Diagnose and clean the global plugin set in a
 separate, explicitly scoped maintenance pass.
 
+## F15 — preview catalogue exposes historical validator drift (open, deferred)
+
+The pinned preview could read ID01 project r674 / Thread r93, while `GET /api/projects`
+returned HTTP 503 with `Persisted project catalog is unavailable.` Read-only inspection
+found a bounded wiring omission: the preview CLI created the validated project store but
+did not supply the project-catalog reader already used by the packaged Desktop BFF.
+
+The quick win is closed in checkpoint `033a0dc8`. The shared fail-closed reader now
+serves both entry points; 54 targeted tests, type checking, formatting and whitespace
+checks passed. After restarting the same pinned preview, `/api/projects` reached that
+reader. It then returned the more precise literal state
+`Persisted project revisions could not be reopened exactly.`
+
+The remaining failure is not an ID01 projection error. Direct store reads reopened five
+current heads, including ID01 r674, and rejected five historical project heads:
+`desktop-parts-sorter-ps01`, `motorized-camera-slider-mcs01`,
+`motorized-camera-slider-mcs02`, `precision-heated-specimen-stage-hs01` and
+`spice-lifecycle-pilot-sl01`. Their completed plan-bearing historical runs predate the
+current mandatory `resolvedOperationPlan` validation and cannot be presented as valid
+current snapshots. Because catalogue discovery is deliberately all-or-nothing, those
+entries keep the list endpoint at 503 even though the exact pinned ID01 Workbench
+remains HTTP 200 on `engineering-workbench/0.6`.
+
+Do not delete those projects, backfill signed history, skip invalid entries or weaken
+the validator as an ID01 fix. A later migration/legacy-reopen design must decide how to
+preserve the original bytes and provenance while presenting historical contracts. This
+is a real compatibility project, not another quick win; it remains open and deferred.
+
 ## Expected states, not defects
 
 - The old preview was explicitly pinned to TPS03. It correctly ignored the new durable

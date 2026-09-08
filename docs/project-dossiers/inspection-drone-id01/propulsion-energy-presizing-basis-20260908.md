@@ -163,6 +163,58 @@ would still be premature. The mission duration, closed mass ledger and a reviewa
 battery/propulsion candidate packet must first determine whether to enlarge or relocate
 the reserve, or to source a different pack.
 
+## Mission-energy worksheet without an invented mission
+
+The approved brief r4 supplies a mission **kind**, not a quantified mission: exterior
+visual observation of civil building façades and roofs. It also states that the site,
+presence of people and admissible weather are not specified. No duration, distance,
+height, speed, inspection dwell, wind, temperature, reserve or payload duty cycle is
+therefore inserted here.
+
+The smallest useful mission decomposition is a worksheet whose cells remain variables
+until their evidence is named:
+
+| Phase               | Duration    | Propulsion operating point | Auxiliary duty                                   | Phase energy                                                    |
+| ------------------- | ----------- | -------------------------- | ------------------------------------------------ | --------------------------------------------------------------- |
+| Launch and climb    | `t_launch`  | `P_prop,launch`            | avionics, compute, camera and radio states       | `(P_prop,launch + P_aux,launch + P_loss,launch) × t_launch`     |
+| Outbound transit    | `t_out`     | `P_prop,out`               | simultaneous transit states                      | `(P_prop,out + P_aux,out + P_loss,out) × t_out`                 |
+| Inspection          | `t_inspect` | `P_prop,inspect`           | sourced capture, compute, storage and radio duty | `(P_prop,inspect + P_aux,inspect + P_loss,inspect) × t_inspect` |
+| Return transit      | `t_return`  | `P_prop,return`            | simultaneous return states                       | `(P_prop,return + P_aux,return + P_loss,return) × t_return`     |
+| Descent and landing | `t_land`    | `P_prop,land`              | simultaneous landing states                      | `(P_prop,land + P_aux,land + P_loss,land) × t_land`             |
+
+With every `t_i` expressed in hours and every power in watts:
+
+`E_mission = Σ_i [(P_prop,i + P_aux,i + P_loss,i) × t_i]`.
+
+Feasibility then requires `E_mission + E_reserve ≤ E_usable`. One reviewed reserve
+policy must define `E_reserve`, either directly or through a named reserve phase; it
+must not be counted both ways. `E_usable` remains battery-, current-, temperature-, age-
+and cutoff-dependent and is not substituted by catalogue nameplate energy.
+
+The first exact four-motor bench row provides one arithmetic sensitivity only:
+`333.12 W / 60 = 5.552 Wh/min` of reported propulsion power at that row. Every actual
+auxiliary watt would add `1/60 Wh` per minute. The `5.552 Wh/min` value is neither a
+lower nor an upper bound on ID01 flight energy: the unresolved all-up mass can place
+ideal static balance below the first row, between rows or beyond the reported table, and
+real operation adds losses, margins, vehicle interaction and environment.
+
+### Auxiliary electrical evidence screen
+
+The official component sources close a few input and planning facts, but not an ID01
+auxiliary-power subtotal:
+
+| Candidate                                                                                                                 | Official fact                                                                                                                                                                                                                                                                   | Evidence class and permitted use                                                                                                                                                                                     | State for mission power                                                                                                                              |
+| ------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------- |
+| [Raspberry Pi Zero 2 W](https://www.raspberrypi.com/documentation/computers/raspberry-pi.html#typical-power-requirements) | Current Raspberry Pi documentation reports 350 mA typical bare-board active current and a 2 A recommended PSU capacity; the [product brief](https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-product-brief.pdf) separately specifies 5 V DC, 2.5 A input power | 350 mA is a typical bare-board reference. The 2 A and 2.5 A figures size a supply and are not consumption. At the documentation's stated 5.1 V supply, `5.1 × 0.350 = 1.785 W` is a calculated reference point only. | Workload-, radio-, encoding-, storage- and peripheral-specific draw remains `unresolved`; do not use 1.785 W as mission average without measurement. |
+| [Raspberry Pi Camera Module 3](https://datasheets.raspberrypi.com/camera/camera-module-3-product-brief.pdf)               | The product brief identifies the Module 3 and CSI-2 interface; Raspberry Pi's general power documentation says a Camera Module requires 250 mA.                                                                                                                                 | Generic official accessory supply requirement, not a Module 3 workload trace. The cited statement does not provide the matching rail and operating point needed to turn it into watts here.                          | Capture-mode consumption and simultaneous duty remain `unresolved`; retain 250 mA for later source sizing only.                                      |
+| [Holybro Pixhawk 6C Mini Model A Current](https://docs.holybro.com/autopilot/pixhawk-6c-mini/technical-specification)     | USB input is 4.75–5.25 V, maximum input is 6 V; Telem1 + GPS1 and all other ports each have stated 1.5 A output-current limiters.                                                                                                                                               | Input-voltage and output-protection limits. They are neither controller self-draw nor attached-load consumption.                                                                                                     | Controller, heater, sensors and attached-port duty remain `unresolved`; no watt term is added.                                                       |
+
+The design consequence is explicit: a real power-rail worksheet must identify the
+battery-side measurement plane, regulator topology and efficiency, Pixhawk self-draw, Pi
+workload, camera capture mode, storage, radio/GNSS and their simultaneous duty. A short
+instrumented representative-duty trace can close these terms later; supply ratings alone
+cannot.
+
 ## Partial source-backed mass ledger
 
 The already named candidate components allow a partial ledger. Variant identity and
@@ -240,16 +292,16 @@ law.
 
 ## Inputs still required
 
-| Input packet         | Minimum content                                                                                                                            | Current state                                                                     |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------- |
-| Mission              | Endurance target, inspection dwell, transit, reserve, wind/temperature envelope, payload duty cycle                                        | `unresolved`                                                                      |
-| Mass and position    | Airframe, four propulsion units, battery, avionics, camera, wiring, fasteners and landing gear                                             | Partial COTS ledger only; total and CG `unresolved`; CAD volume is not mass       |
-| Motor                | Exact variant, mass, dimensions, voltage/current/thermal limits and matching test map                                                      | F1404 KV4600 is a documented candidate only                                       |
-| Propeller            | Exact maker/part, diameter, pitch, blade count, mass/inertia, hub interface and thrust/torque map                                          | `GF3016` identity/fit `unresolved`; current CAD is a proxy                        |
-| ESC                  | Exact part, mass/envelope, voltage, continuous/burst current conditions, efficiency, cooling and protocol                                  | `unresolved`                                                                      |
-| Battery              | Chemistry, series/parallel layout, pack mass/envelope, capacity curve, resistance, continuous/burst current, cutoff and temperature limits | Three sourced candidates fail current containment; selection remains `unresolved` |
-| Payload and avionics | Actual mass, centre, voltage/current and simultaneous duty                                                                                 | camera envelope partly sourced; installed system remains `unresolved`             |
-| Interfaces           | Propeller–shaft, motor–arm, ESC cooling/wiring, battery retention/connector and protection                                                 | `unresolved`                                                                      |
+| Input packet         | Minimum content                                                                                                                            | Current state                                                                                                            |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
+| Mission              | Endurance target, inspection dwell, transit, reserve, wind/temperature envelope, payload duty cycle                                        | `unresolved`                                                                                                             |
+| Mass and position    | Airframe, four propulsion units, battery, avionics, camera, wiring, fasteners and landing gear                                             | Partial COTS ledger only; total and CG `unresolved`; CAD volume is not mass                                              |
+| Motor                | Exact variant, mass, dimensions, voltage/current/thermal limits and matching test map                                                      | F1404 KV4600 is a documented candidate only                                                                              |
+| Propeller            | Exact maker/part, diameter, pitch, blade count, mass/inertia, hub interface and thrust/torque map                                          | `GF3016` identity/fit `unresolved`; current CAD is a proxy                                                               |
+| ESC                  | Exact part, mass/envelope, voltage, continuous/burst current conditions, efficiency, cooling and protocol                                  | `unresolved`                                                                                                             |
+| Battery              | Chemistry, series/parallel layout, pack mass/envelope, capacity curve, resistance, continuous/burst current, cutoff and temperature limits | Three sourced candidates fail current containment; selection remains `unresolved`                                        |
+| Payload and avionics | Actual mass, centre, voltage/current and simultaneous duty                                                                                 | Typical Pi bare-board current and supply limits are sourced; mission duty and installed-system power remain `unresolved` |
+| Interfaces           | Propeller–shaft, motor–arm, ESC cooling/wiring, battery retention/connector and protection                                                 | `unresolved`                                                                                                             |
 
 ## Verification sequence
 
@@ -272,16 +324,19 @@ law.
 
 ## Review boundary
 
-Five completed native Grok consultations ran across three bounded review passes. The
+Seven completed native Grok consultations ran across four bounded review passes. The
 first pair used a clean, repository-free sandbox for method cross-checks; after the
 human explicitly requested continued Grok-native work on this project, the later reviews
 read only the relevant dossier files and independently checked the full motor
-arithmetic, battery screen and partial mass ledger. A separate supplier-identity run was
-cancelled after a permission-classifier timeout and contributed no accepted verdict.
-Codex inspected the source pages and repository facts, recalculated the values, retained
-the useful equations and sequencing, and rejected three overreaches: current CAD cannot
-supply physical mass or inertia without sourced material and component data,
+arithmetic, battery screen, partial mass ledger and mission-energy equations. The latest
+review preserved losses as a separate term and confirmed that `5.552 Wh/min` is not a
+bound on flight energy. A separate supplier-identity run was cancelled after a
+permission-classifier timeout and contributed no accepted verdict. Codex inspected the
+source pages and repository facts, recalculated the values, retained the useful
+equations and sequencing, and rejected three overreaches: current CAD cannot supply
+physical mass or inertia without sourced material and component data,
 `E_nameplate / P_bench` is not an endurance ceiling, and an official editorial mass is
-not equivalent to a technical-sheet datum. Terra was used for two targeted checks:
-authority order, then the unresolved propeller identity. No Astra consultation, broad
-test campaign, provider execution or project confirmation was used for this note.
+not equivalent to a technical-sheet datum. Terra was used for three targeted checks:
+authority order, unresolved propeller identity, then primary-source classification of
+auxiliary-power facts. No Astra consultation, broad test campaign, provider execution or
+project confirmation was used for this note.
