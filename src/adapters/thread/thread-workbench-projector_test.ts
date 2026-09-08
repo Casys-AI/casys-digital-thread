@@ -25,7 +25,7 @@ Deno.test("ThreadSnapshot projects linked evidence into the native Workbench con
   assertEquals(projection.subject.label, "Generic Product GEN-01");
   assertEquals(Object.hasOwn(projection, "components"), false);
   assertEquals(projection.engineeringCases, {
-    schemaVersion: "engineering-cases/1.0",
+    schemaVersion: "engineering-cases/1.1",
     status: "unavailable",
     coverage: [
       { family: "mechanical-proof", status: "unavailable" },
@@ -35,6 +35,7 @@ Deno.test("ThreadSnapshot projects linked evidence into the native Workbench con
       { family: "dfm-check", status: "unavailable" },
     ],
     cases: [],
+    current: [],
     issues: [],
   });
   assertEquals(projection.evidenceFamilyGraph, {

@@ -51,7 +51,12 @@ import {
   INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
   validateDfmCheckCase,
 } from "../../domain/make/dfm/dfm-case.ts";
-import { unavailableEngineeringCaseCatalog } from "../../presentation/workbench/thread/evidence.ts";
+import {
+  compareEngineeringCaseIssues,
+  projectCurrentEngineeringCases,
+  unavailableEngineeringCaseCatalog,
+  verificationCaseKey,
+} from "../../presentation/workbench/thread/evidence.ts";
 import {
   type EngineeringCaseWorkbenchEnricherDependencies,
   enrichThreadWorkbenchWithEngineeringCases,
@@ -151,6 +156,566 @@ Deno.test(
       nodeByRef(enriched, "artifact:unrelated")?.engineeringCaseRefs,
       undefined,
       "an unrelated fact is never joined by component or label",
+    );
+    assertEquals(
+      enriched.engineeringCases.current,
+      projectCurrentEngineeringCases(enriched.engineeringCases.cases).current,
+    );
+    assertEquals(enriched.engineeringCases.current.length, 2);
+  },
+);
+
+Deno.test(
+  "verification case enricher projects Camera r1/r3 current r3 and a distinct RadialArm r2",
+  async () => {
+    const cameraR1 = await sealedProof(
+      proofCaseWith({
+        id: "id01-camera-bracket-bench",
+        revision: 1,
+      }),
+      "run.seal.camera-r1",
+    );
+    const cameraR3 = await sealedProof(
+      proofCaseWith({
+        id: "id01-camera-bracket-bench",
+        revision: 3,
+      }),
+      "run.seal.camera-r3",
+    );
+    const radialR2 = await sealedProof(
+      proofCaseWith({
+        id: "id01-radial-arm-bench",
+        revision: 2,
+        target: {
+          id: "RadialArm",
+          modelElementId: "444df600-019b-45d5-ac36-617ff0a0f791",
+        },
+      }),
+      "run.seal.radial-r2",
+    );
+    const snapshot = workbenchFor([cameraR1, cameraR3, radialR2]);
+    const captureByDigest = new Map([
+      [cameraR1.captureFingerprint, cameraR1.captureText],
+      [cameraR3.captureFingerprint, cameraR3.captureText],
+      [radialR2.captureFingerprint, radialR2.captureText],
+    ]);
+    const incomingSupersedes = snapshot.graph.edges.filter((edge) =>
+      edge.relation === "supersedes"
+    );
+
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
+      snapshot,
+      caseReaders({
+        mechanicalProof: {
+          read: (fingerprint) =>
+            Promise.resolve(captureByDigest.get(fingerprint.digest)),
+        },
+      }),
+      CASE_CONTEXT,
+    );
+
+    const cameraR1Key = verificationCaseKey(
+      "mechanical-proof",
+      cameraR1.proofDigest,
+    );
+    const cameraR3Key = verificationCaseKey(
+      "mechanical-proof",
+      cameraR3.proofDigest,
+    );
+    const radialR2Key = verificationCaseKey(
+      "mechanical-proof",
+      radialR2.proofDigest,
+    );
+    assertEquals(cameraR1Key === cameraR3Key, false);
+    assertEquals(enriched.engineeringCases.status, "observed");
+    assertEquals(enriched.engineeringCases.issues, []);
+    assertEquals(
+      enriched.engineeringCases.cases.map((item) => ({
+        key: item.key,
+        id: item.id,
+        revision: item.revision,
+        caseDigest: item.caseDigest,
+        authorityArtifactIds: item.authorityArtifactIds,
+      })),
+      [
+        {
+          key: cameraR1Key,
+          id: "id01-camera-bracket-bench",
+          revision: 1,
+          caseDigest: cameraR1.proofDigest,
+          authorityArtifactIds: [cameraR1.artifact.id],
+        },
+        {
+          key: cameraR3Key,
+          id: "id01-camera-bracket-bench",
+          revision: 3,
+          caseDigest: cameraR3.proofDigest,
+          authorityArtifactIds: [cameraR3.artifact.id],
+        },
+        {
+          key: radialR2Key,
+          id: "id01-radial-arm-bench",
+          revision: 2,
+          caseDigest: radialR2.proofDigest,
+          authorityArtifactIds: [radialR2.artifact.id],
+        },
+      ],
+    );
+    // Cancelled Camera r2 never sealed a case, so it is not invented as a
+    // current selection or archived hole between r1 and r3.
+    assertEquals(enriched.engineeringCases.current, [
+      {
+        family: "mechanical-proof",
+        id: "id01-camera-bracket-bench",
+        currentCaseKey: cameraR3Key,
+        revision: 3,
+      },
+      {
+        family: "mechanical-proof",
+        id: "id01-radial-arm-bench",
+        currentCaseKey: radialR2Key,
+        revision: 2,
+      },
+    ]);
+    assertEquals(
+      nodeByRef(enriched, `artifact:${cameraR1.artifact.id}`)
+        ?.engineeringCaseRefs,
+      [cameraR1Key],
+    );
+    assertEquals(
+      nodeByRef(enriched, `artifact:${cameraR3.artifact.id}`)
+        ?.engineeringCaseRefs,
+      [cameraR3Key],
+    );
+    assertEquals(
+      enriched.graph.edges.filter((edge) => edge.relation === "supersedes"),
+      incomingSupersedes,
+    );
+    assertEquals(
+      enriched.graph.edges.some((edge) =>
+        edge.relation === "supersedes" &&
+        ((edge.from.id === cameraR1.artifact.id &&
+          edge.to.id === cameraR3.artifact.id) ||
+          (edge.from.id === cameraR3.artifact.id &&
+            edge.to.id === cameraR1.artifact.id))
+      ),
+      false,
+    );
+  },
+);
+
+Deno.test(
+  "verification case enricher fails closed on duplicate family/id/revision with a divergent digest",
+  async () => {
+    const first = await sealedProof(
+      proofCaseWith({
+        id: "id01-camera-bracket-bench",
+        revision: 1,
+        scope: `${PROOF_CASE.scope} First divergent declaration.`,
+      }),
+      "run.seal.dup-a",
+    );
+    const second = await sealedProof(
+      proofCaseWith({
+        id: "id01-camera-bracket-bench",
+        revision: 1,
+        scope: `${PROOF_CASE.scope} Second divergent declaration.`,
+      }),
+      "run.seal.dup-b",
+    );
+    const snapshot = workbenchFor([first, second]);
+    const captureByDigest = new Map([
+      [first.captureFingerprint, first.captureText],
+      [second.captureFingerprint, second.captureText],
+    ]);
+
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
+      snapshot,
+      caseReaders({
+        mechanicalProof: {
+          read: (fingerprint) =>
+            Promise.resolve(captureByDigest.get(fingerprint.digest)),
+        },
+      }),
+      CASE_CONTEXT,
+    );
+
+    const firstKey = verificationCaseKey("mechanical-proof", first.proofDigest);
+    const secondKey = verificationCaseKey(
+      "mechanical-proof",
+      second.proofDigest,
+    );
+    assertEquals(enriched.engineeringCases.status, "unresolved");
+    assertEquals(
+      new Set(enriched.engineeringCases.cases.map((item) => item.key)),
+      new Set([firstKey, secondKey]),
+    );
+    assertEquals(enriched.engineeringCases.current, []);
+    assertEquals(
+      enriched.engineeringCases.issues,
+      [
+        currentIssue(first.artifact.id),
+        currentIssue(second.artifact.id),
+      ].toSorted(compareEngineeringCaseIssues),
+    );
+    assertEquals(
+      nodeByRef(enriched, `artifact:${first.artifact.id}`)
+        ?.engineeringCaseRefs,
+      [firstKey],
+    );
+    assertEquals(
+      nodeByRef(enriched, `artifact:${second.artifact.id}`)
+        ?.engineeringCaseRefs,
+      [secondKey],
+    );
+  },
+);
+
+Deno.test(
+  "verification case enricher fails closed on the same case id with incompatible targets",
+  async () => {
+    const camera = await sealedProof(
+      proofCaseWith({
+        id: "id01-camera-bracket-bench",
+        revision: 1,
+      }),
+      "run.seal.target-a",
+    );
+    const otherTarget = await sealedProof(
+      proofCaseWith({
+        id: "id01-camera-bracket-bench",
+        revision: 3,
+        target: {
+          id: "RadialArm",
+          modelElementId: "444df600-019b-45d5-ac36-617ff0a0f791",
+        },
+      }),
+      "run.seal.target-b",
+    );
+    const snapshot = workbenchFor([camera, otherTarget]);
+    snapshot.graph.nodes.push(
+      graphNode(
+        "part-definition",
+        PROOF_CASE.target.modelElementId,
+        "Display text must not carry identity",
+        "syson",
+      ),
+      graphNode(
+        "part-definition",
+        "444df600-019b-45d5-ac36-617ff0a0f791",
+        "Display text must not carry identity",
+        "syson",
+      ),
+    );
+    const captureByDigest = new Map([
+      [camera.captureFingerprint, camera.captureText],
+      [otherTarget.captureFingerprint, otherTarget.captureText],
+    ]);
+
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
+      snapshot,
+      caseReaders({
+        mechanicalProof: {
+          read: (fingerprint) =>
+            Promise.resolve(captureByDigest.get(fingerprint.digest)),
+        },
+      }),
+      CASE_CONTEXT,
+    );
+
+    const cameraKey = verificationCaseKey(
+      "mechanical-proof",
+      camera.proofDigest,
+    );
+    const otherKey = verificationCaseKey(
+      "mechanical-proof",
+      otherTarget.proofDigest,
+    );
+    assertEquals(enriched.engineeringCases.status, "unresolved");
+    assertEquals(
+      new Set(enriched.engineeringCases.cases.map((item) => item.key)),
+      new Set([cameraKey, otherKey]),
+    );
+    assertEquals(enriched.engineeringCases.current, []);
+    assertEquals(
+      enriched.engineeringCases.issues,
+      [
+        currentIssue(camera.artifact.id),
+        currentIssue(otherTarget.artifact.id),
+      ].toSorted(compareEngineeringCaseIssues),
+    );
+    assertEquals(
+      nodeByRef(enriched, `artifact:${camera.artifact.id}`)
+        ?.engineeringCaseRefs,
+      [cameraKey],
+    );
+    assertEquals(
+      nodeByRef(enriched, `artifact:${otherTarget.artifact.id}`)
+        ?.engineeringCaseRefs,
+      [otherKey],
+    );
+    assertEquals(
+      enriched.graph.nodes.some((node) =>
+        node.engineeringCaseRefs?.includes(cameraKey) === true
+      ),
+      true,
+    );
+    assertEquals(
+      enriched.graph.nodes.some((node) =>
+        node.engineeringCaseRefs?.includes(otherKey) === true
+      ),
+      true,
+    );
+    assertEquals(
+      enriched.graph.edges.filter((edge) => edge.relation === "verified_by")
+        .map((edge) => edge.id)
+        .toSorted((left, right) => left < right ? -1 : left > right ? 1 : 0),
+      [
+        `structure:verified-by:${PROOF_CASE.target.modelElementId}:${camera.artifact.id}`,
+        `structure:verified-by:444df600-019b-45d5-ac36-617ff0a0f791:${otherTarget.artifact.id}`,
+      ].toSorted((left, right) => left < right ? -1 : left > right ? 1 : 0),
+    );
+  },
+);
+
+Deno.test(
+  "verification case enricher keeps RadialArm when a disjoint Camera group fail-closes",
+  async () => {
+    const cameraA = await sealedProof(
+      proofCaseWith({
+        id: "id01-camera-bracket-bench",
+        revision: 1,
+        scope: `${PROOF_CASE.scope} Camera duplicate A.`,
+      }),
+      "run.seal.camera-dup-a",
+    );
+    const cameraB = await sealedProof(
+      proofCaseWith({
+        id: "id01-camera-bracket-bench",
+        revision: 1,
+        scope: `${PROOF_CASE.scope} Camera duplicate B.`,
+      }),
+      "run.seal.camera-dup-b",
+    );
+    const radial = await sealedProof(
+      proofCaseWith({
+        id: "id01-radial-arm-bench",
+        revision: 2,
+        target: {
+          id: "RadialArm",
+          modelElementId: "444df600-019b-45d5-ac36-617ff0a0f791",
+        },
+      }),
+      "run.seal.radial-r2",
+    );
+    const snapshot = workbenchFor([cameraA, cameraB, radial]);
+    snapshot.graph.nodes.push(
+      graphNode(
+        "part-definition",
+        PROOF_CASE.target.modelElementId,
+        "Display text must not carry identity",
+        "syson",
+      ),
+      graphNode(
+        "part-definition",
+        "444df600-019b-45d5-ac36-617ff0a0f791",
+        "Display text must not carry identity",
+        "syson",
+      ),
+    );
+    const incomingSupersedes = snapshot.graph.edges.filter((edge) =>
+      edge.relation === "supersedes"
+    );
+    const captureByDigest = new Map([
+      [cameraA.captureFingerprint, cameraA.captureText],
+      [cameraB.captureFingerprint, cameraB.captureText],
+      [radial.captureFingerprint, radial.captureText],
+    ]);
+
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
+      snapshot,
+      caseReaders({
+        mechanicalProof: {
+          read: (fingerprint) =>
+            Promise.resolve(captureByDigest.get(fingerprint.digest)),
+        },
+      }),
+      CASE_CONTEXT,
+    );
+
+    const cameraAKey = verificationCaseKey(
+      "mechanical-proof",
+      cameraA.proofDigest,
+    );
+    const cameraBKey = verificationCaseKey(
+      "mechanical-proof",
+      cameraB.proofDigest,
+    );
+    const radialKey = verificationCaseKey(
+      "mechanical-proof",
+      radial.proofDigest,
+    );
+    assertEquals(enriched.engineeringCases.status, "unresolved");
+    assertEquals(
+      new Set(enriched.engineeringCases.cases.map((item) => item.key)),
+      new Set([cameraAKey, cameraBKey, radialKey]),
+    );
+    assertEquals(enriched.engineeringCases.current, [{
+      family: "mechanical-proof",
+      id: "id01-radial-arm-bench",
+      currentCaseKey: radialKey,
+      revision: 2,
+    }]);
+    assertEquals(
+      enriched.engineeringCases.issues,
+      [
+        currentIssue(cameraA.artifact.id),
+        currentIssue(cameraB.artifact.id),
+      ].toSorted(compareEngineeringCaseIssues),
+    );
+    assertEquals(
+      nodeByRef(enriched, `artifact:${radial.artifact.id}`)
+        ?.engineeringCaseRefs,
+      [radialKey],
+    );
+    assertEquals(
+      nodeByRef(enriched, `artifact:${cameraA.artifact.id}`)
+        ?.engineeringCaseRefs,
+      [cameraAKey],
+    );
+    assertEquals(
+      nodeByRef(enriched, `artifact:${cameraB.artifact.id}`)
+        ?.engineeringCaseRefs,
+      [cameraBKey],
+    );
+    assertEquals(
+      nodeByRef(enriched, "artifact:result")?.engineeringCaseRefs,
+      [cameraAKey, cameraBKey, radialKey].toSorted((left, right) =>
+        left < right ? -1 : left > right ? 1 : 0
+      ),
+    );
+    assertEquals(
+      enriched.graph.nodes.some((node) =>
+        node.engineeringCaseRefs?.includes(cameraAKey) === true
+      ),
+      true,
+    );
+    assertEquals(
+      enriched.graph.edges.filter((edge) => edge.relation === "verified_by")
+        .map((edge) => edge.id)
+        .toSorted((left, right) => left < right ? -1 : left > right ? 1 : 0),
+      [
+        `structure:verified-by:${PROOF_CASE.target.modelElementId}:${cameraA.artifact.id}`,
+        `structure:verified-by:${PROOF_CASE.target.modelElementId}:${cameraB.artifact.id}`,
+        `structure:verified-by:444df600-019b-45d5-ac36-617ff0a0f791:${radial.artifact.id}`,
+      ].toSorted((left, right) => left < right ? -1 : left > right ? 1 : 0),
+    );
+    assertEquals(
+      enriched.graph.edges.filter((edge) => edge.relation === "supersedes"),
+      incomingSupersedes,
+    );
+  },
+);
+
+Deno.test(
+  "verification case enricher omits Camera current when r1 is duplicated and keeps exact cases",
+  async () => {
+    const cameraR1a = await sealedProof(
+      proofCaseWith({
+        id: "id01-camera-bracket-bench",
+        revision: 1,
+        scope: `${PROOF_CASE.scope} Camera r1 first declaration.`,
+      }),
+      "run.seal.camera-r1a",
+    );
+    const cameraR1b = await sealedProof(
+      proofCaseWith({
+        id: "id01-camera-bracket-bench",
+        revision: 1,
+        scope: `${PROOF_CASE.scope} Camera r1 second declaration.`,
+      }),
+      "run.seal.camera-r1b",
+    );
+    const cameraR3 = await sealedProof(
+      proofCaseWith({
+        id: "id01-camera-bracket-bench",
+        revision: 3,
+      }),
+      "run.seal.camera-r3",
+    );
+    const snapshot = workbenchFor([cameraR1a, cameraR1b, cameraR3]);
+    snapshot.graph.nodes.push(
+      graphNode(
+        "part-definition",
+        PROOF_CASE.target.modelElementId,
+        "Display text must not carry identity",
+        "syson",
+      ),
+    );
+    const captureByDigest = new Map([
+      [cameraR1a.captureFingerprint, cameraR1a.captureText],
+      [cameraR1b.captureFingerprint, cameraR1b.captureText],
+      [cameraR3.captureFingerprint, cameraR3.captureText],
+    ]);
+
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
+      snapshot,
+      caseReaders({
+        mechanicalProof: {
+          read: (fingerprint) =>
+            Promise.resolve(captureByDigest.get(fingerprint.digest)),
+        },
+      }),
+      CASE_CONTEXT,
+    );
+
+    const cameraR1aKey = verificationCaseKey(
+      "mechanical-proof",
+      cameraR1a.proofDigest,
+    );
+    const cameraR1bKey = verificationCaseKey(
+      "mechanical-proof",
+      cameraR1b.proofDigest,
+    );
+    const cameraR3Key = verificationCaseKey(
+      "mechanical-proof",
+      cameraR3.proofDigest,
+    );
+    assertEquals(enriched.engineeringCases.status, "unresolved");
+    assertEquals(
+      new Set(enriched.engineeringCases.cases.map((item) => item.key)),
+      new Set([cameraR1aKey, cameraR1bKey, cameraR3Key]),
+    );
+    assertEquals(enriched.engineeringCases.current, []);
+    assertEquals(
+      enriched.engineeringCases.issues,
+      [
+        currentIssue(cameraR1a.artifact.id),
+        currentIssue(cameraR1b.artifact.id),
+        currentIssue(cameraR3.artifact.id),
+      ].toSorted(compareEngineeringCaseIssues),
+    );
+    assertEquals(
+      nodeByRef(enriched, `artifact:${cameraR3.artifact.id}`)
+        ?.engineeringCaseRefs,
+      [cameraR3Key],
+    );
+    assertEquals(
+      nodeByRef(enriched, "artifact:result")?.engineeringCaseRefs,
+      [cameraR1aKey, cameraR1bKey, cameraR3Key].toSorted((left, right) =>
+        left < right ? -1 : left > right ? 1 : 0
+      ),
+    );
+    assertEquals(
+      enriched.graph.nodes.some((node) =>
+        node.engineeringCaseRefs?.includes(cameraR3Key) === true
+      ),
+      true,
+    );
+    assertEquals(
+      enriched.graph.edges.filter((edge) => edge.relation === "verified_by")
+        .length,
+      3,
     );
   },
 );
@@ -268,8 +833,9 @@ Deno.test(
     );
 
     assertEquals(enriched.engineeringCases.status, "observed");
+    const studyKey = verificationCaseKey("sensitivity-study", caseDigest);
     assertEquals(enriched.engineeringCases.cases, [{
-      key: `verification-case:sensitivity-study:${caseDigest}`,
+      key: studyKey,
       family: "sensitivity-study",
       caseSchemaVersion: "sensitivity-study-case/3.0",
       id: studyCase.id,
@@ -278,9 +844,15 @@ Deno.test(
       caseDigest,
       authorityArtifactIds: [authorityId],
     }]);
+    assertEquals(enriched.engineeringCases.current, [{
+      family: "sensitivity-study",
+      id: studyCase.id,
+      currentCaseKey: studyKey,
+      revision: studyCase.revision,
+    }]);
     assertEquals(
       nodeByRef(enriched, "artifact:result")?.engineeringCaseRefs,
-      [`verification-case:sensitivity-study:${caseDigest}`],
+      [studyKey],
     );
   },
 );
@@ -301,6 +873,7 @@ Deno.test(
 
     assertEquals(enriched.engineeringCases.status, "unresolved");
     assertEquals(enriched.engineeringCases.cases, []);
+    assertEquals(enriched.engineeringCases.current, []);
     assertEquals(enriched.engineeringCases.issues, [{
       family: "mechanical-proof",
       authorityArtifactId: proof.artifact.id,
@@ -557,6 +1130,14 @@ Deno.test(
       ["dfm-check", "print-estimate", "printability-check"],
     );
     assertEquals(
+      enriched.engineeringCases.current.map((item) => item.family),
+      ["dfm-check", "print-estimate", "printability-check"],
+    );
+    assertEquals(
+      enriched.engineeringCases.current.map((item) => item.revision),
+      enriched.engineeringCases.cases.map((item) => item.revision),
+    );
+    assertEquals(
       enriched.engineeringCases.coverage.map((item) => item.family),
       [
         "mechanical-proof",
@@ -575,6 +1156,20 @@ interface SealedProof {
   readonly captureFingerprint: string;
   readonly captureText: string;
   readonly artifact: ThreadArtifact;
+}
+
+function proofCaseWith(
+  overrides: {
+    readonly id?: string;
+    readonly revision?: number;
+    readonly scope?: string;
+    readonly target?: MechanicalProofCase["target"];
+  },
+): MechanicalProofCase {
+  return validateMechanicalProofCase({
+    ...PROOF_CASE,
+    ...overrides,
+  });
 }
 
 async function sealedProof(
@@ -831,6 +1426,15 @@ function sensitivityStudyCase(): SensitivityStudyCaseV3 {
       limitations: ["Local study only."],
     },
   });
+}
+
+function currentIssue(authorityArtifactId: string) {
+  return {
+    family: "mechanical-proof" as const,
+    authorityArtifactId,
+    status: "error" as const,
+    reason: "case-current-divergent" as const,
+  };
 }
 
 function nodeByRef(

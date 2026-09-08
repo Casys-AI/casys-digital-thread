@@ -60,6 +60,7 @@ import type {
   EngineeringCase,
   EngineeringCaseCatalog,
   EngineeringCaseCoverage,
+  EngineeringCaseCurrent,
   EngineeringCaseFamily,
   EngineeringCaseIssue,
   ThreadChange,
@@ -73,9 +74,12 @@ import type {
   ThreadFlowStage,
 } from "../../../presentation/workbench/thread/evidence.ts";
 import {
+  compareEngineeringCaseIssues,
   ENGINEERING_CASE_CATALOG_SCHEMA,
   ENGINEERING_CASE_FAMILIES,
   ENGINEERING_CASE_SCHEMA_BY_FAMILY,
+  projectCurrentEngineeringCases,
+  verificationCaseKey,
 } from "../../../presentation/workbench/thread/evidence.ts";
 import {
   THREAD_WORKBENCH_SCHEMA,
@@ -110,6 +114,7 @@ export type {
   EngineeringCase,
   EngineeringCaseCatalog,
   EngineeringCaseCoverage,
+  EngineeringCaseCurrent,
   EngineeringCaseFamily,
   EngineeringCaseIssue,
   ThreadChange,
@@ -553,9 +558,7 @@ function isProjectPathProjection(
         engineeringActivityIdFromRootRevision(expected.rootRevisionId) ||
       activity.rootRevisionId !== expected.rootRevisionId ||
       activity.revisionIds.length !== expected.revisionIds.length ||
-      activity.revisionIds.some((id, index) =>
-        id !== expected.revisionIds[index]
-      )
+      activity.revisionIds.some((id, index) => id !== expected.revisionIds[index])
     ) {
       return false;
     }
@@ -1083,9 +1086,7 @@ export function isThreadWorkbenchSnapshot(
     Array.isArray(candidate.artifacts) &&
     candidate.artifacts.every(isThreadArtifact) &&
     (candidate.engineeringCases === undefined
-      ? candidate.graph.nodes.every((node) =>
-        node.engineeringCaseRefs === undefined
-      )
+      ? candidate.graph.nodes.every((node) => node.engineeringCaseRefs === undefined)
       : isEngineeringCaseCatalog(
         candidate.engineeringCases,
         candidate.artifacts,
@@ -1620,6 +1621,18 @@ function isEngineeringCaseCatalog(
   artifactsValue: unknown,
   graphValue: unknown,
 ): value is EngineeringCaseCatalog {
+  try {
+    return matchesEngineeringCaseCatalog(value, artifactsValue, graphValue);
+  } catch {
+    return false;
+  }
+}
+
+function matchesEngineeringCaseCatalog(
+  value: unknown,
+  artifactsValue: unknown,
+  graphValue: unknown,
+): boolean {
   if (
     !isRecord(value) ||
     !hasExactKeys(value, [
@@ -1627,6 +1640,7 @@ function isEngineeringCaseCatalog(
       "status",
       "coverage",
       "cases",
+      "current",
       "issues",
     ]) ||
     value.schemaVersion !== ENGINEERING_CASE_CATALOG_SCHEMA ||
@@ -1637,6 +1651,7 @@ function isEngineeringCaseCatalog(
     !hasExactVerificationCaseCoverage(value.coverage) ||
     !Array.isArray(value.cases) ||
     !value.cases.every(isEngineeringCase) ||
+    !Array.isArray(value.current) ||
     !Array.isArray(value.issues) ||
     !value.issues.every(isEngineeringCaseIssue) ||
     !Array.isArray(artifactsValue) ||
@@ -1656,14 +1671,21 @@ function isEngineeringCaseCatalog(
   );
   const caseKeys = catalog.cases.map((item) => item.key);
   if (!hasUniqueStrings(caseKeys)) return false;
+  if (
+    !isClosedEngineeringCaseCurrent(
+      catalog.current,
+      catalog.cases,
+      catalog.issues,
+    )
+  ) {
+    return false;
+  }
   const knownCaseKeys = new Set(caseKeys);
   const exactCaseIdentities = catalog.cases.map((item) =>
     `${item.family}:${item.caseDigest}`
   );
   if (!hasUniqueStrings(exactCaseIdentities)) return false;
-  const authorityIds = catalog.cases.flatMap((item) =>
-    item.authorityArtifactIds
-  );
+  const authorityIds = catalog.cases.flatMap((item) => item.authorityArtifactIds);
   if (!hasUniqueStrings(authorityIds)) return false;
   const coverageByFamily = new Map(
     catalog.coverage.map((item) => [item.family, item.status]),
@@ -1744,10 +1766,14 @@ function isEngineeringCase(
       candidate.caseSchemaVersion,
     ) &&
     typeof candidate.id === "string" && candidate.id.length > 0 &&
+    candidate.id === candidate.id.trim() &&
     isPositiveSafeInteger(candidate.revision) &&
     typeof candidate.scope === "string" && candidate.scope.length > 0 &&
     typeof candidate.caseDigest === "string" &&
     isSha256Digest(candidate.caseDigest) &&
+    candidate.family !== undefined &&
+    candidate.key ===
+      verificationCaseKey(candidate.family, candidate.caseDigest) &&
     Array.isArray(candidate.authorityArtifactIds) &&
     candidate.authorityArtifactIds.length > 0 &&
     candidate.authorityArtifactIds.every((id) =>
@@ -1784,7 +1810,62 @@ function isEngineeringCaseIssue(
       (value.status === "error" &&
         (value.reason === "artifact-binding-invalid" ||
           value.reason === "capture-invalid" ||
-          value.reason === "case-binding-divergent")));
+          value.reason === "case-binding-divergent" ||
+          value.reason === "case-current-divergent")));
+}
+
+function isClosedEngineeringCaseCurrent(
+  value: unknown,
+  cases: readonly EngineeringCase[],
+  issues: readonly EngineeringCaseIssue[],
+): value is EngineeringCaseCurrent[] {
+  if (!Array.isArray(value)) return false;
+  let projected: ReturnType<typeof projectCurrentEngineeringCases>;
+  try {
+    projected = projectCurrentEngineeringCases(cases);
+  } catch {
+    return false;
+  }
+  if (value.length !== projected.current.length) return false;
+  if (
+    !value.every((item, index) =>
+      sameEngineeringCaseCurrent(item, projected.current[index]!)
+    )
+  ) {
+    return false;
+  }
+  const publishedDivergent = issues
+    .filter((item) => item.reason === "case-current-divergent")
+    .toSorted(compareEngineeringCaseIssues);
+  const expectedDivergent = projected.issues.toSorted(
+    compareEngineeringCaseIssues,
+  );
+  return publishedDivergent.length === expectedDivergent.length &&
+    publishedDivergent.every((item, index) =>
+      sameEngineeringCaseIssue(item, expectedDivergent[index]!)
+    );
+}
+
+function sameEngineeringCaseCurrent(
+  value: unknown,
+  expected: EngineeringCaseCurrent,
+): boolean {
+  return isRecord(value) &&
+    hasExactKeys(value, ["family", "id", "currentCaseKey", "revision"]) &&
+    value.family === expected.family &&
+    value.id === expected.id &&
+    value.currentCaseKey === expected.currentCaseKey &&
+    value.revision === expected.revision;
+}
+
+function sameEngineeringCaseIssue(
+  left: EngineeringCaseIssue,
+  right: EngineeringCaseIssue,
+): boolean {
+  return left.family === right.family &&
+    left.authorityArtifactId === right.authorityArtifactId &&
+    left.status === right.status &&
+    left.reason === right.reason;
 }
 
 function isEngineeringCaseFamily(
@@ -1838,20 +1919,17 @@ const ENGINEERING_CASE_AUTHORITY: Record<
   },
   "sensitivity-study": {
     producedBy: "analyze.seal-sensitivity-study@1",
-    artifactId: (_captureDigest, caseDigest) =>
-      `sensitivity-case-${caseDigest}`,
+    artifactId: (_captureDigest, caseDigest) => `sensitivity-case-${caseDigest}`,
     uriPrefix: "casys://sensitivity-study-case-capture/sha256/",
   },
   "printability-check": {
     producedBy: "industrialize.seal-printability-case@1",
-    artifactId: (_captureDigest, caseDigest) =>
-      `printability-case-${caseDigest}`,
+    artifactId: (_captureDigest, caseDigest) => `printability-case-${caseDigest}`,
     uriPrefix: "casys://printability-case-capture/sha256/",
   },
   "print-estimate": {
     producedBy: "industrialize.seal-print-estimate-case@1",
-    artifactId: (_captureDigest, caseDigest) =>
-      `print-estimate-case-${caseDigest}`,
+    artifactId: (_captureDigest, caseDigest) => `print-estimate-case-${caseDigest}`,
     uriPrefix: "casys://print-estimate-case-capture/sha256/",
   },
   "dfm-check": {

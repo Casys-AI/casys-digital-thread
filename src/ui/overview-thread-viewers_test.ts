@@ -1,4 +1,8 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
+import {
+  createOverviewWhiteboardControllerState,
+  reduceOverviewWhiteboard,
+} from "./src/project/overview/whiteboard/state.ts";
 
 function cssRule(source: string, selector: string): string {
   const start = source.indexOf(`${selector} {`);
@@ -6,6 +10,14 @@ function cssRule(source: string, selector: string): string {
   const end = source.indexOf("\n}", start);
   assertEquals(end > start, true, `Unclosed ${selector}`);
   return source.slice(start, end + 2);
+}
+
+function assertIdentityClass(source: string, identity: string): void {
+  assertEquals(
+    source.includes(`"${identity}"`) || source.includes(`'${identity}'`),
+    true,
+    `Missing identity class ${identity}`,
+  );
 }
 
 Deno.test("overview context menus expose every exact registered App", async () => {
@@ -36,9 +48,22 @@ Deno.test("overview context menus expose every exact registered App", async () =
   assertStringIncludes(hero, "Open hull monitor");
   assertEquals(hero.includes("Vue Arbre"), false);
   assertEquals(hero.includes("hull-view:"), false);
-  assertStringIncludes(flow, 'className="overview-thread-flow-group-view"');
+  const hullChrome = await Deno.readTextFile(
+    new URL(
+      "./src/project/overview/components/hull-chrome.tsx",
+      import.meta.url,
+    ),
+  );
+  assertIdentityClass(flow, "overview-thread-flow-group-view");
+  assertStringIncludes(flow, "whiteboardHullViewSelect");
   assertStringIncludes(flow, 'value="tree">Arbre');
-  assertStringIncludes(flow, "aria-label={`Tree ${flowGroupCaption(group)}`}");
+  assertStringIncludes(
+    flow,
+    "aria-label={`Vue de ${flowGroupCaption(group)}`}",
+  );
+  assertIdentityClass(hullChrome, "overview-thread-flow-group-fold");
+  assertStringIncludes(hullChrome, "whiteboardHullFold");
+  assertStringIncludes(flow, "OverviewFlowGroupFold");
   assertEquals(flow.includes("OverviewThreadInstrument"), false);
   assertEquals(flow.includes("onOpenInstrument"), false);
   assertStringIncludes(hero, "OverviewThreadContextMenu");
@@ -59,7 +84,7 @@ Deno.test("click selects a record persistently while viewers open from the conte
   );
 
   const viewerLayerStart = hero.indexOf(
-    'className="overview-thread-viewer-layer"',
+    '"overview-thread-viewer-layer"',
   );
   const viewerLayerEnd = hero.indexOf("      </div>", viewerLayerStart);
   const viewerLayer = hero.slice(viewerLayerStart, viewerLayerEnd);
@@ -72,11 +97,38 @@ Deno.test("click selects a record persistently while viewers open from the conte
   assertEquals(hero.includes("overviewSelectionCardGeometry("), false);
   assertStringIncludes(
     hero,
-    "setSelectedKey((current) => nextOverviewHeroSelection(current, item.key))",
+    'apply({ type: "selection-toggled", key: item.key })',
   );
   assertStringIncludes(hero, "onClick={onToggle}");
   assertStringIncludes(hero, "aria-pressed={selected}");
-  assertStringIncludes(hero, "availableSessionIds?.has(viewer.sessionId)");
+  const stale = reduceOverviewWhiteboard(
+    {
+      ...createOverviewWhiteboardControllerState(),
+      presentation: {
+        ...createOverviewWhiteboardControllerState().presentation,
+        viewers: [{
+          kind: "session",
+          id: "session:artifact:hull-1:gone",
+          nodeKey: "artifact:hull-1",
+          sessionId: "gone",
+          x: 1,
+          y: 1,
+          width: 200,
+          height: 200,
+          z: 1,
+        }],
+      },
+    },
+    {
+      type: "snapshot-reconciled",
+      snapshot: {
+        displayedKeys: ["artifact:hull-1"],
+        recordedKeys: ["artifact:hull-1"],
+        availableSessionIds: ["mcp-app:live"],
+      },
+    },
+  );
+  assertEquals(stale.presentation.viewers, []);
   assertStringIncludes(hero, "overviewViewerAnchorPoint(");
   assertStringIncludes(hero, "presentationRowKey");
   assertStringIncludes(hero, "openCurrentBriefViewer");
@@ -96,7 +148,7 @@ Deno.test("click selects a record persistently while viewers open from the conte
     hero.indexOf("const bringViewerFront ="),
   );
   assertEquals(toggle.includes("openViewer("), false);
-  assertStringIncludes(toggle, "nextOverviewHeroSelection(current, item.key)");
+  assertStringIncludes(toggle, 'type: "selection-toggled"');
   assertStringIncludes(hero, "const runContextAction =");
   const sessionOpen = hero.slice(
     hero.indexOf('if (action.kind === "open-session")'),
@@ -145,6 +197,11 @@ Deno.test("overview viewers stay read-only, spatially tethered, and keyboard rea
   assertEquals(hero.includes("Read-only project activity projection"), false);
   assertEquals(hero.includes('kind: "record"'), false);
   assertEquals(hero.includes('kind: "activity"'), false);
+  const viewerTypes = await Deno.readTextFile(
+    new URL("./src/project/overview/whiteboard/types.ts", import.meta.url),
+  );
+  assertStringIncludes(viewerTypes, "readonly nodeKey: string;");
+  assertStringIncludes(viewerTypes, "readonly sessionId: string;");
   assertStringIncludes(hero, "<McpAppFrame");
   assertStringIncludes(appFrame, 'document.createElement("iframe")');
   assertStringIncludes(
@@ -157,7 +214,6 @@ Deno.test("overview viewers stay read-only, spatially tethered, and keyboard rea
   assertEquals(capabilityModel.includes("inspectRecord"), false);
   assertEquals(capabilityModel.includes("cadAssets"), false);
 
-  assertStringIncludes(hero, "readonly nodeKey: string;");
   assertStringIncludes(hero, "whiteboardWorldSize");
   assertStringIncludes(
     hero,
@@ -167,13 +223,15 @@ Deno.test("overview viewers stay read-only, spatially tethered, and keyboard rea
   assertStringIncludes(hero, "top: viewer.y");
   assertStringIncludes(hero, "width: viewer.width");
   assertStringIncludes(hero, "height: viewer.height");
-  assertStringIncludes(hero, 'className="overview-thread-viewer-connectors"');
-  assertStringIncludes(hero, 'className="overview-thread-viewer-connector"');
-  assertStringIncludes(hero, 'className="overview-thread-viewer-anchor"');
+  assertIdentityClass(hero, "overview-thread-viewer-connectors");
+  assertIdentityClass(hero, "overview-thread-viewer-connector");
+  assertIdentityClass(hero, "overview-thread-viewer-anchor");
+  assertIdentityClass(hero, "overview-thread-viewer");
+  assertIdentityClass(hero, "overview-thread-viewer-resize");
+  assertStringIncludes(hero, "whiteboardViewer");
   assertStringIncludes(hero, "onWheel={(event) => event.stopPropagation()}");
   assertStringIncludes(hero, "const toggleViewerExpanded = (viewerId: string)");
   assertStringIncludes(hero, 'viewer.restoreGeometry ? "Restore" : "Expand"');
-  assertStringIncludes(hero, 'className="overview-thread-viewer-resize"');
   assertStringIncludes(hero, "onResizeByKeyboard(event.key)");
   assertStringIncludes(hero, "onMoveByKeyboard(event.key)");
 

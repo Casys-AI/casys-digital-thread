@@ -9,7 +9,10 @@ import {
 } from "./src/project/overview-thread-d3-flow-layout.ts";
 import type { OverviewHullContent } from "./src/project/overview/hulls/content.ts";
 import { overviewHullRowAnchors } from "./src/project/overview/hulls/row-anchors.ts";
-import { layoutOverviewHullRowCells } from "./src/project/overview/hulls/row-layout.ts";
+import {
+  layoutOverviewHullRowCells,
+  overviewHullRowCableSurface,
+} from "./src/project/overview/hulls/row-layout.ts";
 import type { ThreadViewerHierarchyProjection } from "../presentation/workbench/thread/viewer-hierarchy.ts";
 
 const GEOMETRY_GROUP = "geometry-assembly";
@@ -74,7 +77,9 @@ function hierarchy(
     schemaVersion: "thread-viewer-hierarchy/1.0",
     status: "available",
     nodes,
-    rootIds: nodes.filter((node) => node.parentId === undefined).map((node) => node.id),
+    rootIds: nodes.filter((node) => node.parentId === undefined).map((node) =>
+      node.id
+    ),
   };
 }
 
@@ -316,7 +321,9 @@ function samePoint(
 function routeSegment(
   layout: ReturnType<typeof localLayout>,
 ) {
-  const route = layout.routes.find((candidate) => candidate.edgeKey === "edge:a-b");
+  const route = layout.routes.find((candidate) =>
+    candidate.edgeKey === "edge:a-b"
+  );
   assert(route);
   assertEquals(route.segmentKeys.length, 1);
   const segment = layout.segments.find((candidate) =>
@@ -385,7 +392,9 @@ Deno.test("expanded folded stubs dock on the hull body rail outside the header b
   assertEquals(layout.unroutedEdgeKeys, []);
   const headerBottom = group.y + group.headerHeight;
   const edgeX = group.x + group.width;
-  const hullEdge = segment.points.filter((point) => Math.abs(point.x - edgeX) <= 1e-6);
+  const hullEdge = segment.points.filter((point) =>
+    Math.abs(point.x - edgeX) <= 1e-6
+  );
   assert(hullEdge.length > 0);
   for (const point of hullEdge) {
     assert(
@@ -483,17 +492,50 @@ function segmentFor(
   layout: ReturnType<typeof liveShapedLayout>["layout"],
   edgeKey: string,
 ) {
-  const route = layout.routes.find((candidate) => candidate.edgeKey === edgeKey);
+  const route = layout.routes.find((candidate) =>
+    candidate.edgeKey === edgeKey
+  );
   assert(route, `Missing exact route ${edgeKey}`);
   assertEquals(route.segmentKeys.length, 1);
   const segment = layout.segments.find((candidate) =>
     candidate.key === route.segmentKeys[0]
   );
   assert(segment, `Missing exact segment ${edgeKey}`);
-  return segment;
+  return { route, segment };
 }
 
-Deno.test("three exact artifacts per occurrence retain distinct ports and nonzero local routes in every hull mode", () => {
+function polylineLength(
+  points: readonly { readonly x: number; readonly y: number }[],
+): number {
+  return points.slice(1).reduce(
+    (sum, point, index) =>
+      sum + Math.hypot(point.x - points[index]!.x, point.y - points[index]!.y),
+    0,
+  );
+}
+
+function assertSharedRowDock(
+  row: ReturnType<typeof liveShapedLayout>["layout"]["nodes"],
+  cell: ReturnType<typeof layoutOverviewHullRowCells>[number],
+  view: "tree" | "list" | "matrix",
+): void {
+  const surface = overviewHullRowCableSurface(cell, view, 10);
+  const dockKeys = new Set(row.map((node) => node.dockKey));
+  assertEquals(dockKeys.size, 1);
+  assert(row[0]?.dockKey);
+  for (const node of row) {
+    assertEquals(node.rowAnchored, true);
+    assertEquals(node.folded, false);
+    assertEquals(node.x, surface.x);
+    assertEquals(node.y, surface.y);
+    assertEquals(node.width, surface.width);
+    assertEquals(node.height, surface.height);
+    assertEquals(node.leftPort, row[0]!.leftPort);
+    assertEquals(node.rightPort, row[0]!.rightPort);
+  }
+}
+
+Deno.test("several graphRefs on one row share one visual dock and keep every exact local route", () => {
   for (const view of ["tree", "list", "matrix"] as const) {
     const { layout, nodeKeys } = liveShapedLayout(view);
     const nodes = new Map(layout.nodes.map((node) => [node.key, node]));
@@ -502,70 +544,231 @@ Deno.test("three exact artifacts per occurrence retain distinct ports and nonzer
     );
     const rowOne = [nodeKeys.module, nodeKeys.moduleStep, nodeKeys.moduleGlb]
       .map((key) => nodes.get(key)!);
+    const cells = layoutOverviewHullRowCells(2, layout.groups[0]!);
 
     assertEquals(layout.unroutedEdgeKeys, []);
-    for (const node of [...rowZero, ...rowOne]) {
-      assertEquals(node.rowAnchored, true);
-      assertEquals(node.folded, false);
-      assert(node.width > 0 && node.height > 0);
-    }
+    assertSharedRowDock(
+      rowZero,
+      cells.find((cell) => cell.index === 0)!,
+      view,
+    );
+    assertSharedRowDock(
+      rowOne,
+      cells.find((cell) => cell.index === 1)!,
+      view,
+    );
+    assert(rowZero[0]!.dockKey !== rowOne[0]!.dockKey);
+
+    const sameRowZero = [
+      segmentFor(layout, `${nodeKeys.root}>${nodeKeys.rootStep}`),
+      segmentFor(layout, `${nodeKeys.root}>${nodeKeys.rootGlb}`),
+    ];
+    const sameRowOne = [
+      segmentFor(layout, `${nodeKeys.module}>${nodeKeys.moduleStep}`),
+      segmentFor(layout, `${nodeKeys.module}>${nodeKeys.moduleGlb}`),
+    ];
+    const across = segmentFor(
+      layout,
+      `${nodeKeys.root}>${nodeKeys.module}`,
+    );
+
+    assertEquals(sameRowZero[0]!.segment.key, sameRowZero[1]!.segment.key);
+    assertEquals(sameRowOne[0]!.segment.key, sameRowOne[1]!.segment.key);
+    assert(sameRowZero[0]!.segment.key !== sameRowOne[0]!.segment.key);
+    assertEquals(sameRowZero[0]!.segment.fromKeys, [nodeKeys.root]);
+    assertEquals(sameRowZero[0]!.segment.toKeys, [
+      nodeKeys.rootGlb,
+      nodeKeys.rootStep,
+    ]);
+    assertEquals(sameRowZero[0]!.segment.edgeKeys, [
+      `${nodeKeys.root}>${nodeKeys.rootGlb}`,
+      `${nodeKeys.root}>${nodeKeys.rootStep}`,
+    ]);
+    assertEquals(sameRowZero[0]!.segment.pathCount, 2);
+    assertEquals(sameRowZero[0]!.segment.pathKeys, [
+      `recorded:${nodeKeys.root}>${nodeKeys.rootGlb}`,
+      `recorded:${nodeKeys.root}>${nodeKeys.rootStep}`,
+    ]);
+
     for (
-      const [fromKey, toKey] of [
-        [nodeKeys.root, nodeKeys.rootStep],
-        [nodeKeys.root, nodeKeys.rootGlb],
-        [nodeKeys.root, nodeKeys.module],
-        [nodeKeys.module, nodeKeys.moduleStep],
-        [nodeKeys.module, nodeKeys.moduleGlb],
-      ]
+      const { route, segment } of [...sameRowZero, ...sameRowOne, across]
     ) {
-      const segment = segmentFor(layout, `${fromKey}>${toKey}`);
-      const source = nodes.get(fromKey)!;
-      const target = nodes.get(toKey)!;
+      assertEquals(
+        layout.routes.some((candidate) => candidate.edgeKey === route.edgeKey),
+        true,
+      );
       assert(segment.d.length > 1);
+      assert(polylineLength(segment.points) > 0);
       assert(!samePoint(segment.points[0]!, segment.points.at(-1)!));
-      assert(
-        samePoint(segment.points[0]!, source.leftPort) ||
-          samePoint(segment.points[0]!, source.rightPort),
-      );
-      assert(
-        samePoint(segment.points.at(-1)!, target.leftPort) ||
-          samePoint(segment.points.at(-1)!, target.rightPort),
-      );
     }
 
-    if (view === "matrix") {
-      const cells = layoutOverviewHullRowCells(2, layout.groups[0]!);
-      for (const [index, row] of [rowZero, rowOne].entries()) {
-        const cell = cells.find((candidate) => candidate.index === index)!;
-        const minimumX = Math.min(...row.map((node) => node.x));
-        const maximumX = Math.max(...row.map((node) => node.x + node.width));
-        const minimumY = Math.min(...row.map((node) => node.y));
-        const maximumY = Math.max(...row.map((node) => node.y + node.height));
-        assert(maximumX - minimumX <= 10);
-        assert(maximumY - minimumY <= 10);
-        assert(row.every((node) => node.centerX === cell.x + cell.width / 2));
-        assertEquals(
-          (Math.min(...row.map((node) => node.centerY)) +
-            Math.max(...row.map((node) => node.centerY))) / 2,
-          cell.y + cell.height / 2,
-        );
-        assertEquals(
-          new Set(row.map((node) => `${node.centerX}:${node.centerY}`)).size,
-          3,
-        );
-      }
-      continue;
-    }
+    assert(
+      samePoint(across.segment.points[0]!, rowZero[0]!.rightPort) ||
+        samePoint(across.segment.points[0]!, rowZero[0]!.leftPort),
+    );
+    assert(
+      samePoint(across.segment.points.at(-1)!, rowOne[0]!.rightPort) ||
+        samePoint(across.segment.points.at(-1)!, rowOne[0]!.leftPort),
+    );
+    assertEquals(across.segment.fromKeys, [nodeKeys.root]);
+    assertEquals(across.segment.toKeys, [nodeKeys.module]);
+  }
+});
 
-    for (const row of [rowZero, rowOne]) {
-      assert(row.every((node) => node.width > 10));
-      assert(
-        new Set(row.map((node) => node.centerY)).size === 3,
-        "Each direct artifact owns one disjoint vertical row subslot.",
+const PHYSICS_GROUP = "physics-proof";
+const PHYSICS_HULL = overviewThreadD3FlowGroupIdentity(
+  "physics",
+  PHYSICS_GROUP,
+);
+
+function crossHullSharedDockLayout(view: "tree" | "list" | "matrix") {
+  const geometryKeys = [
+    "artifact:geometry-root",
+    "artifact:cad-asset-root-step",
+    "artifact:cad-asset-root-glb",
+    "artifact:geometry-module",
+    "artifact:cad-asset-module-step",
+    "artifact:cad-asset-module-glb",
+  ] as const;
+  const targetKey = "observation:proof";
+  const nodes = [
+    ...geometryKeys.map((key) => ({
+      key,
+      lane: "geometry" as const,
+      groupKey: GEOMETRY_GROUP,
+      label: key,
+    })),
+    {
+      key: targetKey,
+      lane: "physics" as const,
+      groupKey: PHYSICS_GROUP,
+      label: targetKey,
+    },
+  ];
+  const edges = geometryKeys.map((fromKey, index) => ({
+    key: `${fromKey}>${targetKey}`,
+    fromKey,
+    toKey: targetKey,
+    pathCount: fromKey.endsWith("-step") ? 2 : 1,
+    pathKeys: [`recorded:${fromKey}>${targetKey}`],
+    emphasis: index === 0,
+  }));
+  return {
+    geometryKeys,
+    targetKey,
+    layout: buildOverviewThreadD3FlowLayout(nodes, edges, {
+      groupStructureRowCounts: { [GEOMETRY_HULL]: 2 },
+      groupRowAnchors: {
+        [GEOMETRY_HULL]: {
+          [geometryKeys[0]]: 0,
+          [geometryKeys[1]]: 0,
+          [geometryKeys[2]]: 0,
+          [geometryKeys[3]]: 1,
+          [geometryKeys[4]]: 1,
+          [geometryKeys[5]]: 1,
+        },
+      },
+      groupPlacements: {
+        [GEOMETRY_HULL]: { view },
+        [PHYSICS_HULL]: { view: "matrix" },
+      },
+    }),
+  };
+}
+
+Deno.test("shared row docks keep one branch per row/role/side and sum exact metadata", () => {
+  for (const view of ["tree", "list", "matrix"] as const) {
+    const { layout, geometryKeys, targetKey } = crossHullSharedDockLayout(
+      view,
+    );
+    const nodes = new Map(layout.nodes.map((node) => [node.key, node]));
+    const rowZero = geometryKeys.slice(0, 3).map((key) => nodes.get(key)!);
+    const rowOne = geometryKeys.slice(3).map((key) => nodes.get(key)!);
+    const cells = layoutOverviewHullRowCells(
+      2,
+      layout.groups.find((group) => group.key === GEOMETRY_HULL)!,
+    );
+
+    assertEquals(layout.unroutedEdgeKeys, []);
+    assertEquals(
+      layout.routes.map((route) => route.edgeKey).toSorted(),
+      [
+        ...geometryKeys.map((key) => `${key}>${targetKey}`),
+      ].toSorted(),
+    );
+    assertSharedRowDock(
+      rowZero,
+      cells.find((cell) => cell.index === 0)!,
+      view,
+    );
+    assertSharedRowDock(
+      rowOne,
+      cells.find((cell) => cell.index === 1)!,
+      view,
+    );
+
+    const sourceBranches = layout.segments.filter((segment) =>
+      segment.kind === "node-branch" && segment.role === "source"
+    );
+    const targetBranches = layout.segments.filter((segment) =>
+      segment.kind === "node-branch" && segment.role === "target"
+    );
+    assertEquals(sourceBranches.length, 2);
+    assertEquals(targetBranches.length, 1);
+
+    const rowZeroRoutes = geometryKeys.slice(0, 3).map((key) =>
+      layout.routes.find((route) => route.fromKey === key)!
+    );
+    const rowOneRoutes = geometryKeys.slice(3).map((key) =>
+      layout.routes.find((route) => route.fromKey === key)!
+    );
+    assertEquals(
+      new Set(rowZeroRoutes.map((route) => route.segmentKeys[0])).size,
+      1,
+    );
+    assertEquals(
+      new Set(rowOneRoutes.map((route) => route.segmentKeys[0])).size,
+      1,
+    );
+    assert(
+      rowZeroRoutes[0]!.segmentKeys[0] !== rowOneRoutes[0]!.segmentKeys[0],
+    );
+
+    const rowZeroBranch = layout.segments.find((segment) =>
+      segment.key === rowZeroRoutes[0]!.segmentKeys[0]
+    )!;
+    const rowOneBranch = layout.segments.find((segment) =>
+      segment.key === rowOneRoutes[0]!.segmentKeys[0]
+    )!;
+    assertEquals(
+      rowZeroBranch.fromKeys,
+      [...geometryKeys.slice(0, 3)].toSorted(),
+    );
+    assertEquals(rowZeroBranch.toKeys, [targetKey]);
+    assertEquals(
+      rowZeroBranch.edgeKeys,
+      [
+        `${geometryKeys[0]}>${targetKey}`,
+        `${geometryKeys[1]}>${targetKey}`,
+        `${geometryKeys[2]}>${targetKey}`,
+      ].toSorted(),
+    );
+    assertEquals(rowZeroBranch.pathCount, 4);
+    assertEquals(rowZeroBranch.pathKeys.length, 3);
+    assertEquals(rowZeroBranch.emphasis, true);
+    assertEquals(rowOneBranch.fromKeys, [...geometryKeys.slice(3)].toSorted());
+    assertEquals(rowOneBranch.pathCount, 4);
+    assertEquals(targetBranches[0]!.fromKeys, [...geometryKeys].toSorted());
+    assertEquals(targetBranches[0]!.toKeys, [targetKey]);
+    assertEquals(targetBranches[0]!.pathCount, 8);
+
+    for (const route of [...rowZeroRoutes, ...rowOneRoutes]) {
+      assertEquals(
+        route.segmentKeys.map((key) =>
+          layout.segments.find((segment) => segment.key === key)?.kind
+        ),
+        ["node-branch", "bundle-trunk", "node-branch"],
       );
-      for (const node of row) {
-        assertEquals(node.rightPort.x - node.leftPort.x, node.width);
-      }
     }
   }
 });

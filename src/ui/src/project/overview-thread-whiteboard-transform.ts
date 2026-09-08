@@ -242,6 +242,23 @@ export function fitOverviewThreadWhiteboardTransform(
 }
 
 /**
+ * Viewport resize may fit or normalise. World-only growth after the initial
+ * hydration must keep the current transform; explicit Fit/Reset stay
+ * separate callers.
+ */
+export function nextOverviewWhiteboardTransformOnObservedResize(input: {
+  readonly viewportChanged: boolean;
+  readonly touched: boolean;
+  readonly current: OverviewThreadWhiteboardTransform;
+  readonly bounds: OverviewThreadWhiteboardBounds;
+}): OverviewThreadWhiteboardTransform {
+  if (!input.viewportChanged) return input.current;
+  return input.touched
+    ? normalizeOverviewThreadWhiteboardTransform(input.current, input.bounds)
+    : fitOverviewThreadWhiteboardTransform(input.bounds);
+}
+
+/**
  * Returns the finite union of scene rectangles. This lets an explicit Fit
  * recover graph content and off-graph viewers without making ordinary pan or
  * zoom finite.

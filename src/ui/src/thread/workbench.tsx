@@ -174,6 +174,9 @@ export function ThreadWorkbench({
   const [viewerSessions, setViewerSessions] = useState<
     ThreadViewerSessionsProjection
   >();
+  const [settledViewerSessionsBasisKey, setSettledViewerSessionsBasisKey] = useState<
+    string
+  >();
   const [selection, setSelection] = useState<ThreadRef>();
   const [graphSelection, setGraphSelection] = useState<ThreadGraphSelection>();
   const [lineageFocus, setLineageFocus] = useState<ThreadGraphRef>();
@@ -396,10 +399,29 @@ export function ThreadWorkbench({
   }, [client]);
 
   const viewerSessionsBasis = workbench;
+  const viewerSessionsBasisKey = viewerSessionsBasis
+    ? JSON.stringify([
+      viewerSessionsBasis.project.project.id,
+      viewerSessionsBasis.project.revision,
+      viewerSessionsBasis.project.project.subjectId,
+      viewerSessionsBasis.surface === "evidence"
+        ? viewerSessionsBasis.thread.id
+        : undefined,
+      viewerSessionsBasis.surface === "evidence"
+        ? viewerSessionsBasis.alignment.currentThreadRevision
+        : undefined,
+    ])
+    : undefined;
+  const viewerSessionsPending = Boolean(
+    viewerSessionsClient && viewerSessionsBasisKey &&
+      settledViewerSessionsBasisKey !== viewerSessionsBasisKey,
+  );
   useEffect(() => {
     viewerSessionsRef.current = undefined;
     setViewerSessions(undefined);
-    if (!viewerSessionsClient || !viewerSessionsBasis) return;
+    if (
+      !viewerSessionsClient || !viewerSessionsBasis || !viewerSessionsBasisKey
+    ) return;
 
     const controller = new AbortController();
     const accept = (incoming: ThreadViewerSessionsProjection) => {
@@ -411,10 +433,18 @@ export function ThreadWorkbench({
       }
       viewerSessionsRef.current = incoming;
       setViewerSessions(incoming);
+      setSettledViewerSessionsBasisKey(viewerSessionsBasisKey);
     };
-    viewerSessionsClient.load(controller.signal).then(accept).catch(() => {
-      // The read-only workbench remains usable when this optional projection
-      // is unavailable. It does not invent a session from the Thread graph.
+    viewerSessionsClient.load(controller.signal).then((incoming) => {
+      accept(incoming);
+      if (!controller.signal.aborted) {
+        setSettledViewerSessionsBasisKey(viewerSessionsBasisKey);
+      }
+    }).catch(() => {
+      if (controller.signal.aborted) return;
+      // The optional projection settled unavailable. The read-only Workbench
+      // falls back to graph records instead of leaving a permanent skeleton.
+      setSettledViewerSessionsBasisKey(viewerSessionsBasisKey);
     });
     const unsubscribe = viewerSessionsClient.subscribe?.(accept);
     return () => {
@@ -422,15 +452,7 @@ export function ThreadWorkbench({
       unsubscribe?.();
     };
   }, [
-    viewerSessionsBasis?.surface === "evidence"
-      ? viewerSessionsBasis.alignment.currentThreadRevision
-      : undefined,
-    viewerSessionsBasis?.project.id,
-    viewerSessionsBasis?.project.project.subjectId,
-    viewerSessionsBasis?.project.revision,
-    viewerSessionsBasis?.surface === "evidence"
-      ? viewerSessionsBasis.thread.id
-      : undefined,
+    viewerSessionsBasisKey,
     viewerSessionsClient,
   ]);
 
@@ -1190,9 +1212,8 @@ export function ThreadWorkbench({
           </strong>
           <span>
             The technical thread is at revision{" "}
-            {workbench.alignment.currentThreadRevision}, while project decisions
-            remain anchored to revision{" "}
-            {workbench.alignment.projectThreadRevision}.
+            {workbench.alignment.currentThreadRevision}, while project decisions remain
+            anchored to revision {workbench.alignment.projectThreadRevision}.
           </span>
         </Notice>
       )}
@@ -1206,10 +1227,9 @@ export function ThreadWorkbench({
               : "references do"} not resolve in this thread revision
           </strong>
           <span>
-            These project records cite thread entities or snapshots that the
-            exact revision cannot resolve (usually residues of abandoned work).
-            The rest of this page resolved.{" "}
-            {workbench.unresolvedEvidenceReferences
+            These project records cite thread entities or snapshots that the exact
+            revision cannot resolve (usually residues of abandoned work). The rest of
+            this page resolved. {workbench.unresolvedEvidenceReferences
               .map((issue) => issue.path)
               .join(", ")}
           </span>
@@ -1229,6 +1249,7 @@ export function ThreadWorkbench({
               viewerSessions &&
                 viewerSessionsMatchWorkbench(viewerSessions, workbench),
             )}
+            viewerHierarchyPending={viewerSessionsPending}
             phaseLanes={workbench.projectPath.phaseLanes}
             activities={workbench.projectPath.activities}
             caseActivityJoins={workbench.caseActivityJoins}
@@ -1532,17 +1553,14 @@ function workspaceEyebrow(
 function operationsHeadline(
   project: EngineeringProjectSnapshot,
 ): string {
-  const running =
-    project.agentRuns.filter((run) => run.status === "running").length;
+  const running = project.agentRuns.filter((run) => run.status === "running").length;
   const queued = project.agentRuns.filter((run) => run.status === "queued")
     .length;
   const confirmations = pendingHumanConfirmationDecisions(project).length;
   const preparations = agentPreparationDecisions(project).length;
   return `${running} running · ${queued} queued · ${confirmations} human confirmation${
     confirmations === 1 ? "" : "s"
-  } · ${preparations} agent proposal${
-    preparations === 1 ? "" : "s"
-  } in preparation`;
+  } · ${preparations} agent proposal${preparations === 1 ? "" : "s"} in preparation`;
 }
 
 function workspaceTitle(
@@ -1638,8 +1656,7 @@ function EvidenceCaseNavigator({
                 {sentenceCaseLabel(item.case.family)}
               </span>
               <span className="mt-1 block break-words text-xs text-muted-foreground">
-                {item.case.id} · r{item.case.revision} · {item.nodeCount}{" "}
-                linked items
+                {item.case.id} · r{item.case.revision} · {item.nodeCount} linked items
               </span>
               <span
                 className="mt-2 line-clamp-2 block text-xs text-foreground/75"
@@ -1652,8 +1669,8 @@ function EvidenceCaseNavigator({
         })}
         {cases.length === 0 && (
           <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-            No engineering case is recorded in this exact snapshot. Catalog
-            status: {catalog.status}.
+            No engineering case is recorded in this exact snapshot. Catalog status:{" "}
+            {catalog.status}.
           </div>
         )}
       </div>
@@ -1714,9 +1731,7 @@ function MetricTiles(
 }
 
 function Mono({ children }: { children: ReactNode }): JSX.Element {
-  return (
-    <code className="font-mono text-xs text-muted-foreground">{children}</code>
-  );
+  return <code className="font-mono text-xs text-muted-foreground">{children}</code>;
 }
 
 function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
@@ -1774,12 +1789,11 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
       {
         id: "asserted-by",
         label: "Asserted by",
-        value:
-          `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
-            edge.analysis.assertedBy.version
-              ? ` @ ${edge.analysis.assertedBy.version}`
-              : ""
-          }`,
+        value: `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
+          edge.analysis.assertedBy.version
+            ? ` @ ${edge.analysis.assertedBy.version}`
+            : ""
+        }`,
       },
       {
         id: "analysis-scope",
@@ -1868,10 +1882,9 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
         {!edge.attestation && edge.analysis
           ? (
             <Notice title="Qualified analysis assertion" tone="info">
-              This semantic relation is backed by the exact evidence listed
-              above and is classified as{" "}
-              {edge.analysis.epistemicBasis}. It does not grant execution
-              authority.
+              This semantic relation is backed by the exact evidence listed above and is
+              classified as{" "}
+              {edge.analysis.epistemicBasis}. It does not grant execution authority.
             </Notice>
           )
           : !edge.attestation && (

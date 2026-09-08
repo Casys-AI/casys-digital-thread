@@ -78,6 +78,9 @@ Deno.test("Overview captions use the readable cockpit token", async () => {
   const hero = await Deno.readTextFile(
     new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
   );
+  const recipes = await Deno.readTextFile(
+    new URL("./src/ui/whiteboard.ts", import.meta.url),
+  );
   const atelier = await Deno.readTextFile(
     new URL("./src/styles/10-light-atelier.css", import.meta.url),
   );
@@ -86,7 +89,24 @@ Deno.test("Overview captions use the readable cockpit token", async () => {
   );
 
   assertEquals(hero.includes('fill="#a1a1aa"'), false);
-  assertStringIncludes(hero, 'return "var(--thread-muted)"');
+  assertStringIncludes(hero, "whiteboardFlowRadialNode");
+
+  const activityStatusStart = recipes.indexOf("activityStatus: cn(");
+  const activityStatusEnd = recipes.indexOf(
+    "activityMark: cn(",
+    activityStatusStart,
+  );
+  assertEquals(activityStatusStart >= 0, true);
+  assertEquals(activityStatusEnd > activityStatusStart, true);
+  const activityStatus = recipes.slice(activityStatusStart, activityStatusEnd);
+  assertStringIncludes(activityStatus, "text-[var(--thread-muted)]");
+
+  const detailStart = recipes.indexOf("detail: cn(");
+  const detailEnd = recipes.indexOf("viewer: cn(", detailStart);
+  assertEquals(detailStart >= 0, true);
+  assertEquals(detailEnd > detailStart, true);
+  const detail = recipes.slice(detailStart, detailEnd);
+  assertStringIncludes(detail, "text-[var(--thread-muted");
 
   const muted = atelier.match(/--thread-muted:\s*(#[0-9a-f]{6})/i)?.[1];
   const panel = tokens.match(/--surface-1:\s*(#[0-9a-f]{6})/i)?.[1];

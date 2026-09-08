@@ -2,6 +2,7 @@ import { assertEquals, assertStringIncludes } from "@std/assert";
 import {
   overviewEffectiveInspection,
   overviewInspectionIsVisualTarget,
+  overviewInspectionPresentationRowKey,
 } from "./src/project/overview-thread-inspection.ts";
 import { flowSegmentState } from "./src/project/overview-thread-d3-flow-highlight.ts";
 import {
@@ -157,6 +158,13 @@ Deno.test("one visual atom: hover overrides retained selection both directions",
   );
   assertEquals(
     overviewInspectionIsVisualTarget(structureThenFlow, {
+      presentationRowKey: GEOMETRY_ROOT,
+      graphKeys: [CAD],
+    }),
+    true,
+  );
+  assertEquals(
+    overviewInspectionIsVisualTarget(structureThenFlow, {
       graphKey: ARCHITECTURE,
     }),
     false,
@@ -174,6 +182,35 @@ Deno.test("one visual atom: hover overrides retained selection both directions",
   assertEquals(
     overviewInspectionIsVisualTarget(selectedFlow, { graphKey: CAD }),
     true,
+  );
+  assertEquals(
+    overviewInspectionIsVisualTarget(selectedFlow, {
+      presentationRowKey: GEOMETRY_ROOT,
+      graphKeys: [CAD],
+    }),
+    true,
+  );
+  assertEquals(
+    overviewInspectionIsVisualTarget(selectedStructure, {
+      presentationRowKey: SYSML_ROOT,
+      graphKeys: [ARCHITECTURE],
+    }),
+    true,
+  );
+  assertEquals(
+    overviewInspectionIsVisualTarget(selectedStructure, {
+      presentationRowKey: GEOMETRY_ROOT,
+      graphKeys: [CAD],
+    }),
+    false,
+  );
+  assertEquals(
+    overviewInspectionPresentationRowKey(selectedFlow, mapped),
+    GEOMETRY_ROOT,
+  );
+  assertEquals(
+    overviewInspectionPresentationRowKey(selectedStructure, mapped),
+    SYSML_ROOT,
   );
 
   const flowThenStructure = overviewEffectiveInspection({
@@ -243,17 +280,29 @@ Deno.test("structure rows and FlowNodes bind retained selection separately from 
     flow,
     'data-selected={selected ? "true" : "false"}',
   );
-  assertStringIncludes(flow, "data-inspection-active={inspectionActive");
+  assertEquals(
+    flow.includes("data-inspection-active={inspectionActive"),
+    false,
+  );
   assertStringIncludes(flow, "aria-pressed={selected}");
   assertEquals(flow.includes("aria-pressed={inspectionActive}"), false);
   assertStringIncludes(flow, "selected={position.key === selectedKey}");
   assertStringIncludes(
     flow,
-    'inspectionActive={inspection.mode === "selected" &&',
+    "inspectionActive={overviewInspectionIsVisualTarget(inspection, {",
+  );
+  assertEquals(
+    flow.includes('inspectionActive={inspection.mode === "selected" &&'),
+    false,
   );
   assertEquals(
     flow.includes('data-state={selected ? "selected"'),
     false,
   );
-  assertStringIncludes(flow, "data-state={inspectionActive");
+  assertStringIncludes(flow, "data-state={flowItemVisualState(");
+  assertEquals(flow.includes("data-state={inspectionActive"), false);
+  assertStringIncludes(flow, "refNode(presentationKey, element)");
+  assertStringIncludes(flow, "refNode(key, element)");
+  assertStringIncludes(flow, "<FlowItemSurface");
+  assertStringIncludes(flow, "whiteboardFlowItem({ density })");
 });

@@ -72,23 +72,94 @@ const hierarchy: ThreadViewerHierarchyProjection = {
   ],
 };
 
-Deno.test("default viewers show the whole assembly and independent brief, never every module", () => {
-  const sessions = [
-    session("module-app"),
-    session("brief"),
-    session("assembly"),
-    session("brief-alt", "brief"),
-  ];
+function defaultSessionIds(
+  sessions: readonly ThreadViewerSession[],
+  viewerHierarchy?: ThreadViewerHierarchyProjection,
+): readonly string[] {
+  return overviewDefaultViewerSessions(sessions, viewerHierarchy).map(
+    (item) => item.id,
+  );
+}
+
+const siblingSessions = [
+  session("module-app"),
+  session("brief"),
+  session("assembly"),
+  session("brief-alt", "brief"),
+  session("calculix-1"),
+  session("calculix-2"),
+  session("calculix-3"),
+];
+
+Deno.test("default viewers open only the unique hierarchy root session", () => {
+  assertEquals(defaultSessionIds(siblingSessions, hierarchy), ["assembly"]);
+});
+
+Deno.test("default discovery fails closed without an available hierarchy", () => {
+  assertEquals(defaultSessionIds(siblingSessions), []);
   assertEquals(
-    overviewDefaultViewerSessions(sessions, hierarchy).map((s) => s.id),
-    [
-      "brief",
-      "assembly",
-    ],
+    defaultSessionIds(siblingSessions, { ...hierarchy, status: "unavailable" }),
+    [],
+  );
+});
+
+Deno.test("default discovery fails closed when hierarchy has several roots", () => {
+  assertEquals(
+    defaultSessionIds(siblingSessions, { ...hierarchy, rootIds: [] }),
+    [],
   );
   assertEquals(
-    overviewDefaultViewerSessions(sessions.slice(0, 2), hierarchy).map((s) => s.id),
-    ["module-app", "brief"],
+    defaultSessionIds(siblingSessions, {
+      ...hierarchy,
+      rootIds: ["root", "module"],
+    }),
+    [],
+  );
+});
+
+Deno.test("default discovery fails closed when the unique root id is absent", () => {
+  assertEquals(
+    defaultSessionIds(siblingSessions, {
+      ...hierarchy,
+      rootIds: ["missing"],
+    }),
+    [],
+  );
+});
+
+Deno.test("default discovery fails closed when the unique root has no session", () => {
+  assertEquals(
+    defaultSessionIds(siblingSessions, {
+      ...hierarchy,
+      nodes: hierarchy.nodes.map((node) =>
+        node.id === "root" ? { ...node, sessionIds: [] } : node
+      ),
+    }),
+    [],
+  );
+});
+
+Deno.test("default discovery fails closed when the unique root has several sessions", () => {
+  assertEquals(
+    defaultSessionIds(siblingSessions, {
+      ...hierarchy,
+      nodes: hierarchy.nodes.map((node) =>
+        node.id === "root"
+          ? { ...node, sessionIds: ["assembly", "assembly-alt"] }
+          : node
+      ),
+    }),
+    [],
+  );
+});
+
+Deno.test("default discovery fails closed when the root session is not current", () => {
+  assertEquals(
+    defaultSessionIds(
+      siblingSessions.filter((item) => item.id !== "assembly"),
+      hierarchy,
+    ),
+    [],
   );
 });
 
@@ -103,8 +174,21 @@ Deno.test("default discovery never opens provisional project reviews", () => {
     },
   };
   assertEquals(
-    overviewDefaultViewerSessions([review, session("brief")]).map((s) => s.id),
-    ["brief"],
+    defaultSessionIds(
+      [review, session("brief"), session("assembly")],
+      hierarchy,
+    ),
+    ["assembly"],
+  );
+  assertEquals(defaultSessionIds([review, session("brief")]), []);
+  assertEquals(
+    defaultSessionIds([review], {
+      ...hierarchy,
+      nodes: hierarchy.nodes.map((node) =>
+        node.id === "root" ? { ...node, sessionIds: [review.id] } : node
+      ),
+    }),
+    [],
   );
 });
 
@@ -265,10 +349,8 @@ Deno.test("direct sessions stay on their recorded anchors and default discovery 
   }]);
   assertEquals(overviewCanonicalViewerNodeKey(review), undefined);
   assertEquals(
-    overviewDefaultViewerSessions([CURRENT_SESSION, MODEL_SESSION, review]).map(
-      (item) => item.id,
-    ),
-    ["requirements-app", "model-app"],
+    defaultSessionIds([CURRENT_SESSION, MODEL_SESSION, review]),
+    [],
   );
 });
 

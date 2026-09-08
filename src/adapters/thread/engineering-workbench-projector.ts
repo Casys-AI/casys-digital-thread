@@ -159,6 +159,8 @@ function projectCaseActivityJoins(
   thread: LiveThreadWorkbenchSnapshot,
 ): EngineeringEvidenceWorkbenchSnapshot["caseActivityJoins"] {
   const cases = thread.engineeringCases?.cases ?? [];
+  // Joins follow exact sealed cases. Cancelled or abandoned Project work
+  // with no sealed case is not a result and cannot appear here.
   if (cases.length === 0) return [];
   const runById = new Map(project.agentRuns.map((run) => [run.id, run]));
   const workById = new Map(project.workItems.map((item) => [item.id, item]));

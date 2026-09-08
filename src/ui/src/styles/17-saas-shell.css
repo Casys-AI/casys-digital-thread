@@ -202,50 +202,12 @@
   background: var(--ui-card);
 }
 
+/* Default spatial pin. Hero and board embeddings override placement. */
 .overview-thread-layout-switch {
   position: absolute;
   top: 3.2rem;
   right: 0.6rem;
   z-index: 8;
-  display: flex;
-  padding: 2px;
-  border: 1px solid var(--ui-border);
-  border-radius: 0.45rem;
-  background: color-mix(in srgb, #fff 94%, transparent);
-  box-shadow: 0 1px 2px rgb(15 23 42 / 8%);
-  backdrop-filter: blur(8px);
-}
-
-.overview-thread-layout-switch > button {
-  min-height: 1.55rem;
-  padding: 0.15rem 0.5rem;
-  border: 0;
-  background: transparent;
-  color: var(--thread-muted);
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  font-weight: 650;
-  letter-spacing: 0.035em;
-  cursor: pointer;
-}
-
-.overview-thread-layout-switch > button:first-child {
-  border-radius: 0.35rem 0 0 0.35rem;
-}
-
-.overview-thread-layout-switch > button:last-child {
-  border-radius: 0 0.35rem 0.35rem 0;
-}
-
-.overview-thread-layout-switch > button[aria-pressed="true"] {
-  z-index: 1;
-  background: var(--ui-accent);
-  color: var(--ui-foreground);
-}
-
-.overview-thread-layout-switch > button:focus-visible {
-  outline: 2px solid color-mix(in srgb, var(--ui-brand) 65%, white);
-  outline-offset: 2px;
 }
 
 .overview-thread-viewport {
@@ -293,47 +255,24 @@
   stroke-linejoin: round;
 }
 
-.overview-thread-cable {
-  pointer-events: none;
-  stroke: #53666f;
-  stroke-linecap: round;
-  opacity: 0.18;
-}
-
-.overview-thread-cable[data-state="emphasis"] {
-  stroke: var(--ui-warning);
-  opacity: 0.58;
-}
-
-.overview-thread-cable[data-state="incoming"] {
-  stroke: var(--overview-inspection-color, var(--thread-muted));
-  opacity: 0.82;
-}
-
-.overview-thread-cable[data-state="outgoing"] {
-  stroke: var(--overview-inspection-color, var(--thread-muted));
-  opacity: 0.9;
-}
-
-.overview-thread-cable[data-state="muted"] {
-  opacity: 0.025;
-}
-
+/* Radial SVG geometry only. Cable/node state paint lives on
+   whiteboardFlowCable / whiteboardFlowRadialNode. Residual exception:
+   leaders, label paint-order and focus-ring stroke-width cannot be
+   utilities on SVG text/path. */
 .overview-thread-node {
-  opacity: 1;
   outline: none;
 }
 
 .overview-thread-node-leader {
-  stroke: #718087;
-  stroke-width: 0.8;
-  opacity: 0.5;
+  stroke: var(--overview-cable-idle-color, #6e7f86);
+  stroke-width: 0.55;
+  stroke-linecap: round;
+  stroke-dasharray: 1.25 2.75;
+  opacity: 0.18;
 }
 
 .overview-thread-node-label {
-  fill: #202b31;
   font-size: 12px;
-  font-weight: 500;
   letter-spacing: -0.005em;
   paint-order: stroke;
   stroke: #fff;
@@ -343,28 +282,6 @@
 
 .overview-thread-node-focus-ring {
   stroke-width: 2;
-  opacity: 0;
-}
-
-.overview-thread-node:hover .overview-thread-node-label,
-.overview-thread-node:focus-visible .overview-thread-node-label,
-.overview-thread-node[data-state="selected"] .overview-thread-node-label {
-  fill: #09090b;
-  font-weight: 700;
-}
-
-.overview-thread-node:focus-visible .overview-thread-node-focus-ring,
-.overview-thread-node[data-state="selected"] .overview-thread-node-focus-ring {
-  opacity: 1;
-}
-
-.overview-thread-node[data-state="muted"] {
-  opacity: 0.24;
-}
-
-.overview-thread-node[data-kind="activity"] .overview-thread-node-label {
-  fill: #4b5563;
-  font-style: italic;
 }
 
 /* Left-to-right hierarchy. Shared segments are emitted once by the D3 routing
@@ -419,76 +336,6 @@
   overflow: visible;
   background: #fff;
   font-family: Inter, ui-sans-serif, system-ui, sans-serif;
-}
-
-.overview-thread-flow-segment {
-  pointer-events: none;
-  stroke: #62747c;
-  opacity: 0.22;
-}
-
-.overview-thread-flow-segment[data-kind="node-branch"] {
-  opacity: 0.34;
-}
-
-.overview-thread-flow-segment[data-state="emphasis"] {
-  stroke: var(--ui-warning);
-  opacity: 0.7;
-}
-
-.overview-thread-flow-segment[data-state="incoming"] {
-  stroke: var(--overview-inspection-color, var(--thread-muted));
-  opacity: 0.82;
-}
-
-.overview-thread-flow-segment[data-state="outgoing"] {
-  stroke: var(--overview-inspection-color, var(--thread-muted));
-  opacity: 0.9;
-}
-
-.overview-thread-flow-segment[data-state="muted"] {
-  opacity: 0.025;
-}
-
-.overview-thread-flow-node {
-  cursor: pointer;
-  outline: none;
-}
-
-.overview-thread-flow-node-card {
-  fill: #fff;
-  stroke: #ced7db;
-  stroke-width: 1;
-}
-
-.overview-thread-flow-node-label {
-  fill: #202b31;
-  paint-order: stroke;
-  stroke: #fff;
-  stroke-width: 2px;
-  stroke-linejoin: round;
-}
-
-.overview-thread-flow-node-focus {
-  opacity: 0;
-}
-
-.overview-thread-flow-node:hover .overview-thread-flow-node-card,
-.overview-thread-flow-node:focus-visible .overview-thread-flow-node-card,
-.overview-thread-flow-node[data-state="selected"] .overview-thread-flow-node-card {
-  fill: #f8fafb;
-}
-
-.overview-thread-flow-node:focus-visible .overview-thread-flow-node-focus {
-  opacity: 1;
-}
-
-.overview-thread-flow-node[data-state="muted"] {
-  opacity: 0.2;
-}
-
-.overview-thread-flow-node[data-kind="activity"] .overview-thread-flow-node-card {
-  stroke-dasharray: 4 3;
 }
 
 @container workspace (min-width: 62rem) {

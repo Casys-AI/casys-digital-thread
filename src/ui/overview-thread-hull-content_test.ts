@@ -3,7 +3,17 @@ import {
   buildOverviewHullContents,
   overviewAnalysisBasisGroupKey,
   overviewBriefSnapshotGroupKey,
+  overviewHullCanHostViewerHierarchy,
+  overviewHullHierarchyPendingPlaceholders,
+  overviewHullStructureRowCounts,
 } from "./src/project/overview/hulls/content.ts";
+import {
+  overviewBriefReferencedSnapshotLabel,
+  withOverviewCurrentBriefContent,
+} from "./src/project/overview/hulls/current-brief.ts";
+import { overviewHullMappedGraphKey } from "./src/project/overview/hulls/presentation-identity.ts";
+import { overviewHullRowGraphRefs } from "./src/project/overview/hulls/types.ts";
+import { overviewHullRowAnchors } from "./src/project/overview/hulls/row-anchors.ts";
 import {
   activateOverviewHullRow,
   overviewHullRowActions,
@@ -23,6 +33,18 @@ import { OVERVIEW_DOMAIN_GROUP_KEYS } from "./src/project/overview/hulls/domain-
 import { overviewRequirementSourceViewerAliases } from "./src/project/overview-thread-viewer-discovery.ts";
 import type { ThreadViewerHierarchyProjection } from "../presentation/workbench/thread/viewer-hierarchy.ts";
 import type { ThreadViewerSession } from "./src/thread/viewer-sessions-client.ts";
+
+function hullContents(
+  members: Parameters<typeof buildOverviewHullContents>[0],
+  sessions: Parameters<typeof buildOverviewHullContents>[1] = [],
+  hierarchy?: Parameters<typeof buildOverviewHullContents>[2],
+) {
+  return withOverviewCurrentBriefContent(
+    buildOverviewHullContents(members, sessions, hierarchy),
+    members,
+    undefined,
+  );
+}
 
 function record(
   id: string,
@@ -144,14 +166,30 @@ Deno.test("architecture and geometry hulls share the occurrence tree but never b
     ).length,
     1,
   );
-  assertEquals(
-    syson.rows.map((
-      { sessionIds: _sessions, viewerNodeKey: _viewer, ...row },
-    ) => row),
-    canonical.rows.map((
-      { sessionIds: _sessions, viewerNodeKey: _viewer, ...row },
-    ) => row),
-  );
+  const sharedTree = (
+    {
+      sessionIds: _sessions,
+      viewerNodeKey: _viewer,
+      graphRefs: _graphRefs,
+      role: _role,
+      selectable: _selectable,
+      focusable: _focusable,
+      ...row
+    }: (typeof syson.rows)[number],
+  ) => row;
+  assertEquals(syson.rows.map(sharedTree), canonical.rows.map(sharedTree));
+  assertEquals(overviewHullRowGraphRefs(syson.rows[0]!), [
+    "artifact:architecture-current",
+  ]);
+  assertEquals(syson.rows[0]!.role, "overlay");
+  assertEquals(overviewHullRowGraphRefs(canonical.rows[0]!), [
+    "artifact:geometry",
+    "artifact:geometry-step",
+  ]);
+  assertEquals(canonical.rows[0]!.role, "overlay");
+  assertEquals(overviewHullRowGraphRefs(syson.rows[1]!), []);
+  assertEquals(syson.rows[1]!.role, "folder");
+  assertEquals(syson.rows[1]!.endpoint, false);
   assertEquals(
     syson.rows.map((row) => [row.key, row.label, row.depth, row.sessionIds]),
     [["root", "Assembly", 0, ["model-app"]], ["left", "Left arm", 1, []], [
@@ -165,6 +203,58 @@ Deno.test("architecture and geometry hulls share the occurrence tree but never b
   assertEquals(canonical.rows[0]!.sessionIds, ["app"]);
   assertEquals(syson.rows.some((row) => row.sessionIds.includes("app")), false);
   assertEquals(JSON.stringify({ nodes, hierarchy }), before);
+});
+
+Deno.test("the same geometry graph ref survives raw records and hierarchy overlay", () => {
+  const geometryMembers = nodes.filter((node) => node.lane === "geometry");
+  const geometryKey = groupId("geometry", "domain:geometry");
+  const raw = buildOverviewHullContents(geometryMembers, []);
+  const rawRow = raw.get(geometryKey)!.rows.find((row) =>
+    row.key === "artifact:geometry"
+  )!;
+  assertEquals(overviewHullRowGraphRefs(rawRow), ["artifact:geometry"]);
+  assertEquals(rawRow.endpoint, true);
+  const structured = buildOverviewHullContents(
+    geometryMembers,
+    [],
+    hierarchy,
+  );
+  const overlay = structured.get(geometryKey)!.rows.find((row) =>
+    overviewHullRowGraphRefs(row).includes("artifact:geometry")
+  )!;
+  assertEquals(overlay.key === rawRow.key, false);
+  assertEquals(overlay.role, "overlay");
+  assertEquals(
+    overviewHullRowGraphRefs(overlay).includes("artifact:geometry"),
+    true,
+  );
+  const known = { has: (key: string) => key === "artifact:geometry" };
+  const rawAnchors = overviewHullRowAnchors(raw, geometryMembers);
+  const structuredAnchors = overviewHullRowAnchors(
+    structured,
+    geometryMembers,
+    hierarchy,
+  );
+  assertEquals(
+    overviewHullMappedGraphKey(
+      geometryKey,
+      rawRow,
+      rawAnchors,
+      raw.get(geometryKey)!.rows,
+      known,
+    ),
+    "artifact:geometry",
+  );
+  assertEquals(
+    overviewHullMappedGraphKey(
+      geometryKey,
+      overlay,
+      structuredAnchors,
+      structured.get(geometryKey)!.rows,
+      known,
+    ),
+    "artifact:geometry",
+  );
 });
 
 Deno.test("a SysON hull without an exact architecture App stays non-actionable even when CAD is registered", () => {
@@ -220,6 +310,47 @@ Deno.test("every other hull shares exact record hierarchy with its menu and neve
   assertEquals(contents.get(groupId("physics", "proof"))!.mode, "records");
 });
 
+Deno.test("pending hierarchy placeholders use graph outline counts on candidate hulls only", () => {
+  const contents = buildOverviewHullContents(nodes, [], undefined);
+  const placeholders = overviewHullHierarchyPendingPlaceholders(
+    nodes,
+    contents,
+  );
+  const sysonKey = groupId("system-model", "syson");
+  const geometryKey = groupId("geometry", "domain:geometry");
+  const briefKey = groupId("requirements", "brief");
+  const proofKey = groupId("physics", "proof");
+  assertEquals(
+    overviewHullCanHostViewerHierarchy(
+      nodes.filter((node) => groupId(node.lane, node.groupKey) === sysonKey),
+    ),
+    true,
+  );
+  assertEquals(
+    overviewHullCanHostViewerHierarchy(
+      nodes.filter((node) => groupId(node.lane, node.groupKey) === geometryKey),
+    ),
+    true,
+  );
+  assertEquals(
+    overviewHullCanHostViewerHierarchy(
+      nodes.filter((node) => groupId(node.lane, node.groupKey) === briefKey),
+    ),
+    false,
+  );
+  assertEquals(placeholders.get(sysonKey), contents.get(sysonKey)!.rows.length);
+  assertEquals(
+    placeholders.get(geometryKey),
+    contents.get(geometryKey)!.rows.length,
+  );
+  assertEquals(placeholders.has(briefKey), false);
+  assertEquals(placeholders.has(proofKey), false);
+  assertEquals(
+    [...placeholders.values()].every((count) => count > 0),
+    true,
+  );
+});
+
 Deno.test("missing current anchors and unavailable hierarchy fail closed while missing Apps stay plain structure", () => {
   const old = buildOverviewHullContents([nodes[1]!], [], hierarchy);
   assertEquals([...old.values()][0]!.mode, "records");
@@ -237,6 +368,43 @@ Deno.test("missing current anchors and unavailable hierarchy fail closed while m
   assert(
     [...unavailable.values()].every((content) => content.mode === "records"),
   );
+  const fallback = overviewHullHierarchyPendingPlaceholders(nodes, unavailable);
+  assertEquals(fallback.get(groupId("system-model", "syson"))! > 0, true);
+  assertEquals(fallback.get(groupId("geometry", "domain:geometry"))! > 0, true);
+  assertEquals(fallback.has(groupId("requirements", "brief")), false);
+});
+
+Deno.test("every non-empty hull, including records mode, contributes the same structure row count", () => {
+  const contents = buildOverviewHullContents(nodes, [], undefined);
+  const counts = overviewHullStructureRowCounts(contents);
+  for (const [groupKey, content] of contents) {
+    if (content.rows.length === 0) {
+      assertEquals(counts[groupKey], undefined);
+      continue;
+    }
+    assertEquals(counts[groupKey], content.rows.length);
+  }
+  const briefKey = groupId("requirements", "brief");
+  const proofKey = groupId("physics", "proof");
+  assertEquals(contents.get(briefKey)?.mode, "records");
+  assertEquals(contents.get(proofKey)?.mode, "records");
+  assertEquals(counts[briefKey], contents.get(briefKey)!.rows.length);
+  assertEquals(counts[proofKey], contents.get(proofKey)!.rows.length);
+  const pending = overviewHullHierarchyPendingPlaceholders(nodes, contents);
+  const overlaid = overviewHullStructureRowCounts(contents, pending);
+  for (const [key, count] of pending) {
+    assertEquals(overlaid[key], count);
+  }
+});
+
+Deno.test("records-mode rows keep exact graph docks without becoming a second renderer", () => {
+  const contents = buildOverviewHullContents(nodes, [], undefined);
+  const briefKey = groupId("requirements", "brief");
+  const brief = contents.get(briefKey)!;
+  assertEquals(brief.mode, "records");
+  const anchors = overviewHullRowAnchors(contents, nodes);
+  assertEquals(anchors[briefKey]?.["artifact:brief"], 0);
+  assertEquals(anchors[briefKey]?.["artifact:brief-child"], 1);
 });
 
 function briefSource(
@@ -254,7 +422,7 @@ function briefSource(
     key: overviewBriefSourceKey(snapshotId, sourceItemId),
     lane: "requirements",
     groupKey: "brief",
-    label: `${sourceItemId} · brief r${revision}`,
+    label: sourceItemId,
     color: "#7c3aed",
     emphasis: false,
     brief: { briefId, snapshotId, revision },
@@ -263,7 +431,9 @@ function briefSource(
       kind: "success-criterion",
       statement: extras.statement ?? "Exact approved clause.",
       sourceRefs: [{ kind: "intent", reference: "conversation:fixture" }],
-      ...(extras.dependsOnItemIds ? { dependsOnItemIds: extras.dependsOnItemIds } : {}),
+      ...(extras.dependsOnItemIds
+        ? { dependsOnItemIds: extras.dependsOnItemIds }
+        : {}),
     },
     correspondences: [{
       trace: {
@@ -345,7 +515,7 @@ Deno.test("brief hull groups exact source notes by snapshot identity without par
     3,
     "camera-bracket-bench-stress",
   );
-  const contents = buildOverviewHullContents([baseline, source], []);
+  const contents = hullContents([baseline, source]);
   const brief = contents.get(groupId("requirements", "brief"))!;
   const groupKey = overviewBriefSnapshotGroupKey(source.brief);
   assertEquals(brief.mode, "tree");
@@ -383,7 +553,10 @@ Deno.test("brief hull groups exact source notes by snapshot identity without par
   );
   assertEquals(
     brief.records.map((row) => [row.key, row.kind, row.nodeKey]),
-    [[baseline.key, "record", baseline.key]],
+    [
+      [baseline.key, "record", baseline.key],
+      [source.key, "source", source.key],
+    ],
   );
   assertEquals(
     brief.rows.some((row) => row.parentKey === baseline.key),
@@ -404,7 +577,7 @@ Deno.test("the same sourceItemId in two snapshots stays distinct and never inven
     3,
     "clause",
   );
-  const contents = buildOverviewHullContents([r1, r3], []);
+  const contents = hullContents([r1, r3]);
   const brief = contents.get(groupId("requirements", "brief"))!;
   const groupR1 = overviewBriefSnapshotGroupKey(r1.brief);
   const groupR3 = overviewBriefSnapshotGroupKey(r3.brief);
@@ -419,7 +592,9 @@ Deno.test("the same sourceItemId in two snapshots stays distinct and never inven
     ],
   );
   assertEquals(
-    brief.rows.some((row) => row.parentKey === groupR1 && row.nodeKey === r3.key),
+    brief.rows.some((row) =>
+      row.parentKey === groupR1 && row.nodeKey === r3.key
+    ),
     false,
   );
 });
@@ -431,7 +606,7 @@ Deno.test("multiple requirements sharing one exact clause keep a single source r
     3,
     "clause",
   );
-  const contents = buildOverviewHullContents([source, { ...source }], []);
+  const contents = hullContents([source, { ...source }]);
   const brief = contents.get(groupId("requirements", "brief"))!;
   assertEquals(
     brief.rows.filter((row) => row.kind === "source").map((row) => row.key),
@@ -443,9 +618,8 @@ Deno.test("conflicting or dangling brief identity fails closed instead of invent
   const dangling = briefSource(" ", "fixture:brief", 3, "dangling");
   const conflictA = briefSource("same-snapshot", "brief-a", 3, "clause-a");
   const conflictB = briefSource("same-snapshot", "brief-b", 3, "clause-b");
-  const contents = buildOverviewHullContents(
+  const contents = hullContents(
     [dangling, conflictA, conflictB],
-    [],
   );
   const brief = contents.get(groupId("requirements", "brief"))!;
   assertEquals(brief.mode, "tree");
@@ -474,7 +648,7 @@ Deno.test("dependsOnItemIds never become brief tree containment", () => {
     "child-clause",
     { dependsOnItemIds: ["parent-clause"] },
   );
-  const contents = buildOverviewHullContents([parent, child], []);
+  const contents = hullContents([parent, child]);
   const brief = contents.get(groupId("requirements", "brief"))!;
   const groupKey = overviewBriefSnapshotGroupKey(parent.brief);
   assertEquals(
@@ -497,7 +671,7 @@ Deno.test("product hierarchy stays a navigation tree with App actions separated 
     3,
     "clause",
   );
-  const contents = buildOverviewHullContents(
+  const contents = hullContents(
     [...nodes, source],
     [session, modelSession],
     hierarchy,
@@ -516,8 +690,8 @@ Deno.test("product hierarchy stays a navigation tree with App actions separated 
   );
   assertEquals(brief.rows.every((row) => row.sessionIds.length === 0), true);
   assertEquals(
-    brief.records.map((row) => row.key),
-    ["artifact:brief", "artifact:brief-child"],
+    brief.records.map((row) => row.key).sort(),
+    ["artifact:brief", "artifact:brief-child", source.key].sort(),
   );
 });
 
@@ -528,7 +702,7 @@ Deno.test("canvas and contextual menu share one hull row action model", () => {
     3,
     "clause",
   );
-  const contents = buildOverviewHullContents(
+  const contents = hullContents(
     [...nodes, source],
     [session, modelSession],
     hierarchy,
@@ -596,9 +770,8 @@ Deno.test("brief tree overlay keeps exact source endpoints and does not fabricat
     lane: node.lane,
     groupKey: node.groupKey,
   }));
-  const contents = buildOverviewHullContents(
+  const contents = hullContents(
     [baseline, source, requirement],
-    [],
   );
   const briefKey = groupId("requirements", "brief");
   const brief = contents.get(briefKey)!;
@@ -622,7 +795,9 @@ Deno.test("brief tree overlay keeps exact source endpoints and does not fabricat
     graphNodes.map((node) => node.key).sort(),
   );
   assertEquals(
-    tree.nodes.some((node) => node.key === overviewBriefSnapshotGroupKey(source.brief)),
+    tree.nodes.some((node) =>
+      node.key === overviewBriefSnapshotGroupKey(source.brief)
+    ),
     false,
   );
   assertEquals(tree.unroutedEdgeKeys, []);
@@ -725,7 +900,7 @@ Deno.test("brief tree retains recorded analysis, baseline, and exact r3 sources 
     cameraSource,
     enduranceSource,
   ];
-  const contents = buildOverviewHullContents(members, []);
+  const contents = hullContents(members);
   const brief = contents.get(groupId("requirements", "brief"))!;
   const analysisGroup = overviewAnalysisBasisGroupKey({
     domain: "brief",
@@ -794,7 +969,7 @@ Deno.test("brief tree retains recorded analysis, baseline, and exact r3 sources 
         undefined,
         undefined,
         false,
-        "Clauses sources · brief r3",
+        overviewBriefReferencedSnapshotLabel(),
         cameraSource.brief.snapshotId,
       ],
       [
@@ -844,7 +1019,13 @@ Deno.test("brief tree retains recorded analysis, baseline, and exact r3 sources 
   );
   assertEquals(
     brief.records.map((row) => row.nodeKey).sort(),
-    [airframe.key, baseline.key, camera.key].sort(),
+    [
+      airframe.key,
+      baseline.key,
+      camera.key,
+      cameraSource.key,
+      enduranceSource.key,
+    ].sort(),
   );
 });
 
@@ -854,7 +1035,8 @@ Deno.test("distinct analysis bases stay separate and never invent an r1/r3 join"
     "requirements",
     "brief",
   );
-  const otherBasis = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const otherBasis =
+    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const camera = analysisRecord("subsystem-camera", {
     domain: "brief",
     kind: "brief-item",
@@ -873,9 +1055,8 @@ Deno.test("distinct analysis bases stay separate and never invent an r1/r3 join"
     3,
     "camera-bracket-bench-stress",
   );
-  const brief = buildOverviewHullContents(
+  const brief = hullContents(
     [baseline, camera, later, source],
-    [],
   ).get(groupId("requirements", "brief"))!;
   const first = overviewAnalysisBasisGroupKey({
     domain: "brief",
@@ -945,7 +1126,7 @@ Deno.test("exact App action on the brief baseline stays only on that baseline ro
     id: "brief-app",
     anchor: { kind: "artifact", id: "approved-brief-document-r1" },
   };
-  const brief = buildOverviewHullContents(
+  const brief = hullContents(
     [baseline, camera, source],
     [briefSession],
   ).get(groupId("requirements", "brief"))!;
@@ -1001,9 +1182,8 @@ Deno.test("declared-dependency parentKey is not analysis containment and unknown
     3,
     "camera-bracket-bench-stress",
   );
-  const brief = buildOverviewHullContents(
+  const brief = hullContents(
     [baseline, camera, dependent, unknown, source],
-    [],
   ).get(groupId("requirements", "brief"))!;
   const analysisGroup = overviewAnalysisBasisGroupKey({
     domain: "brief",
@@ -1052,7 +1232,9 @@ function sysmlRecord(
     kind: "recorded",
     color: "#2563eb",
     emphasis: false,
-    ...(extras.isRequirementsCapture === true ? { isRequirementsCapture: true } : {}),
+    ...(extras.isRequirementsCapture === true
+      ? { isRequirementsCapture: true }
+      : {}),
     node: {
       id: key,
       ref: { kind, id },
@@ -1117,7 +1299,9 @@ Deno.test("architecture tree keeps 29 occurrences and appends one root Requireme
       key: node.key,
       groupKey: node.groupKey,
       ref: node.node.ref,
-      ...(node.isRequirementsCapture === true ? { isRequirementsCapture: true } : {}),
+      ...(node.isRequirementsCapture === true
+        ? { isRequirementsCapture: true }
+        : {}),
     })),
     [{
       from: { kind: "artifact", id: "requirements-current" },
@@ -1138,11 +1322,15 @@ Deno.test("architecture tree keeps 29 occurrences and appends one root Requireme
   const section = hull.rows.find((row) =>
     row.kind === "navigation" && row.label === "Requirements"
   )!;
-  const requirementRows = hull.rows.filter((row) => row.nodeKey === requirement.key);
+  const requirementRows = hull.rows.filter((row) =>
+    row.nodeKey === requirement.key
+  );
   const occurrenceRows = hull.rows.filter((row) => row.kind === "navigation");
   assertEquals(hull.mode, "tree");
   assertEquals(
-    hull.rows.filter((row) => row.kind === "navigation" && row.label !== "Requirements")
+    hull.rows.filter((row) =>
+      row.kind === "navigation" && row.label !== "Requirements"
+    )
       .length,
     29,
   );
@@ -1152,6 +1340,10 @@ Deno.test("architecture tree keeps 29 occurrences and appends one root Requireme
   assertEquals(section.nodeKey, undefined);
   assertEquals(section.endpoint, false);
   assertEquals(section.sessionIds, []);
+  assertEquals(section.role, "folder");
+  assertEquals(overviewHullRowGraphRefs(section), []);
+  assertEquals(hull.rows[0]!.role, "overlay");
+  assertEquals(overviewHullRowGraphRefs(hull.rows[0]!), [architecture.key]);
   assertEquals(requirementRows, [{
     key: requirement.key,
     kind: "record",
@@ -1160,10 +1352,16 @@ Deno.test("architecture tree keeps 29 occurrences and appends one root Requireme
     depth: 1,
     parentKey: section.key,
     nodeKey: requirement.key,
+    graphRefs: [requirement.key],
     viewerNodeKey: capture.key,
     sessionIds: ["requirements-app"],
     endpoint: true,
+    selectable: true,
+    focusable: true,
+    provenance: { recordedAt: requirement.node.recordedAt },
   }]);
+  assertEquals(section.role, "folder");
+  assertEquals(overviewHullRowGraphRefs(section), []);
   assertEquals(requirementRows[0]!.parentKey === "occ-4", false);
   assertEquals(requirementRows[0]!.parentKey === "root", false);
   assertEquals(
@@ -1222,5 +1420,28 @@ Deno.test("a SYSML hull without hierarchy still shows the requirement and keeps 
   assertEquals(
     hull.records.map((row) => row.nodeKey).sort(),
     [architecture.key, capture.key, requirement.key, unknown.key].sort(),
+  );
+});
+
+Deno.test("hull row viewer binding is one non-React helper", async () => {
+  const content = await Deno.readTextFile(
+    new URL("./src/project/overview/hulls/content.ts", import.meta.url),
+  );
+  const currentCases = await Deno.readTextFile(
+    new URL(
+      "./src/project/overview/hulls/adapters/from-current-engineering-cases.ts",
+      import.meta.url,
+    ),
+  );
+  const helper = await Deno.readTextFile(
+    new URL("./src/project/overview/hulls/row-viewer.ts", import.meta.url),
+  );
+  assertEquals(content.includes("function boundRowViewer("), false);
+  assertEquals(currentCases.includes("function boundRowViewer("), false);
+  assertEquals(content.includes("overviewHullBoundRowViewer("), true);
+  assertEquals(currentCases.includes("overviewHullBoundRowViewer("), true);
+  assertEquals(
+    helper.includes("export function overviewHullBoundRowViewer("),
+    true,
   );
 });

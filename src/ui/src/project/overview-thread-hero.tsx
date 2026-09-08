@@ -1,13 +1,29 @@
 import { SECTION_LABEL } from "../ui/cockpit.tsx";
 import { cn } from "../lib/utils.ts";
+import {
+  whiteboardFlowCable,
+  whiteboardFlowRadialNode,
+  whiteboardMonitor,
+  whiteboardMonitorAction,
+  whiteboardMonitorPart,
+  whiteboardNote,
+  whiteboardNoteAction,
+  whiteboardNotePart,
+  whiteboardNotePin,
+  whiteboardNoteState,
+  whiteboardToolbar,
+  whiteboardToolbarButton,
+  whiteboardToolbarPart,
+  whiteboardViewer,
+  whiteboardViewerPart,
+} from "../ui/whiteboard.ts";
 import type {
   CSSProperties,
   JSX,
   PointerEvent as ReactPointerEvent,
 } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import type { EngineeringPhaseStatus } from "../../../domain/project/engineering-project.ts";
 import {
   buildOverviewThreadHero,
   OVERVIEW_LANES,
@@ -25,10 +41,11 @@ import {
 } from "./overview-thread-d3-flow.tsx";
 import {
   buildOverviewThreadD3FlowLayout,
+  nextHullViewPlacement,
   overviewThreadD3FlowGroupIdentity,
   type OverviewThreadD3FlowGroupLayout,
   type OverviewThreadD3FlowGroupPlacement,
-  type OverviewThreadD3FlowNodePlacement,
+  type OverviewThreadD3FlowHullView,
   type OverviewThreadD3FlowRoutingState,
   rememberOverviewThreadHullPositions,
 } from "./overview-thread-d3-flow-layout.ts";
@@ -49,10 +66,8 @@ import { OverviewThreadRequirementsBriefTrace } from "./overview-thread-requirem
 import { OverviewThreadBriefSourceNote } from "./overview-thread-brief-source-note.tsx";
 import type { ProjectBriefRevision } from "../../../domain/project/project-brief.ts";
 import { overviewHullRowAnchors } from "./overview/hulls/row-anchors.ts";
-import {
-  withOverviewCurrentBrief,
-  withOverviewCurrentBriefContent,
-} from "./overview/hulls/current-brief.ts";
+import { withOverviewCurrentBrief } from "./overview/hulls/current-brief.ts";
+import { applyOverviewHullAdapters } from "./overview/hulls/adapters/index.ts";
 import { OverviewCurrentBriefDocument } from "./overview-thread-current-brief.tsx";
 import {
   overviewCurrentBriefMatches,
@@ -66,15 +81,19 @@ import {
   type OverviewViewerOpenTarget,
 } from "./overview-thread-viewer-discovery.ts";
 import {
+  activateOverviewHullRow,
   buildOverviewHullContents,
   buildOverviewVersionHistory,
-  nextOverviewHullPresentationRowKey,
   overviewContextActionPresentationRowKey,
   type OverviewHullContent,
+  overviewHullHierarchyPendingPlaceholders,
   overviewHullMappedGraphKey,
   OverviewHullMenuRowBody,
   overviewHullPresentationRowKey,
   overviewHullPresentationRowLookup,
+  overviewHullRowActions,
+  overviewHullRowPrimaryGraphRef,
+  overviewHullStructureRowCounts,
   parseOverviewHullPresentationRowKey,
 } from "./overview/hulls/index.ts";
 import { layoutOverviewHullRows } from "./overview/hulls/row-layout.ts";
@@ -88,21 +107,30 @@ import {
   DropdownMenuLabel,
 } from "../ui/dropdown-menu.tsx";
 import {
-  loadOverviewThreadWhiteboardPresentation,
   type OverviewThreadWhiteboardPresentationReconciliation,
-  type OverviewThreadWhiteboardPresentationState,
-  overviewThreadWhiteboardPresentationStorageKey,
-  type OverviewThreadWhiteboardPresentationViewer,
   type OverviewThreadWhiteboardViewerCapability,
-  saveOverviewThreadWhiteboardPresentation,
 } from "./overview-thread-whiteboard-persistence.ts";
+import {
+  OVERVIEW_SELECTION_NOTE_GAP,
+  OVERVIEW_SELECTION_NOTE_TOP_MARGIN,
+  OVERVIEW_WHITEBOARD_INITIAL_TRANSFORM,
+  overviewCanvasPointerBecamePan,
+  overviewSelectionNoteAnchorFromRects,
+  type OverviewSelectionNotePlacement,
+  overviewViewerGeometry,
+  overviewViewerId,
+  type OverviewViewerState,
+  type OverviewWhiteboardLayoutMode,
+  placeOverviewSelectionNote,
+  useOverviewWhiteboardPresentation,
+} from "./overview/whiteboard/index.ts";
 import {
   overviewThreadNodeContextValue,
   parseOverviewThreadContextTarget,
 } from "./overview-thread-context-target.ts";
 import {
   fitOverviewThreadWhiteboardTransform,
-  normalizeOverviewThreadWhiteboardTransform,
+  nextOverviewWhiteboardTransformOnObservedResize,
   type OverviewThreadWhiteboardBounds,
   overviewThreadWhiteboardContentBounds,
   type OverviewThreadWhiteboardTransform,
@@ -131,7 +159,6 @@ type OverviewD3Node = ReturnType<
 type OverviewFlowNode = ReturnType<
   typeof buildOverviewThreadD3FlowLayout
 >["nodes"][number];
-type OverviewLayoutMode = "hierarchy" | "radial";
 type OverviewReactWheelEvent = Parameters<
   NonNullable<JSX.IntrinsicElements["div"]["onWheel"]>
 >[0];
@@ -161,35 +188,6 @@ type OverviewOpenSessionContextAction = Extract<
   OverviewNodeContextAction,
   { readonly kind: "open-session" }
 >;
-
-type OverviewViewerState =
-  | OverviewSessionViewerState
-  | OverviewCurrentBriefViewerState;
-
-interface OverviewViewerBase {
-  readonly id: string;
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-  readonly z: number;
-  readonly restoreGeometry?: OverviewThreadViewerGeometry;
-}
-
-interface OverviewSessionViewerState extends OverviewViewerBase {
-  readonly kind: "session";
-  readonly nodeKey: string;
-  /** Stable descriptor key; URL and runtime state are never persisted. */
-  readonly sessionId: string;
-  /** Visible hull row that opened this viewer; never a Thread identity. */
-  readonly presentationRowKey?: string;
-}
-
-interface OverviewCurrentBriefViewerState extends OverviewViewerBase {
-  readonly kind: "current-brief";
-  readonly briefSnapshotId: string;
-  readonly presentationRowKey?: string;
-}
 
 interface OverviewViewerDragState {
   readonly viewerId: string;
@@ -231,27 +229,13 @@ interface OverviewHullMonitorResizeState {
 
 interface OverviewCanvasPanState {
   readonly pointerId: number;
+  readonly startClientX: number;
+  readonly startClientY: number;
   lastClientX: number;
   lastClientY: number;
+  moved: boolean;
 }
 
-interface OverviewWhiteboardPersistenceHydration {
-  readonly projectId: string | null;
-  readonly restored: boolean;
-  readonly viewersRestored: boolean;
-}
-
-interface OverviewWhiteboardPendingPersistence {
-  readonly projectId: string;
-  readonly state: OverviewThreadWhiteboardPresentationState;
-  readonly reconciliation: OverviewThreadWhiteboardPresentationReconciliation;
-}
-
-const OVERVIEW_WHITEBOARD_INITIAL_TRANSFORM = {
-  x: 0,
-  y: 0,
-  k: 1,
-} as const satisfies OverviewThreadWhiteboardTransform;
 const OVERVIEW_VIEWER_PADDING = 8;
 const OVERVIEW_VIEWER_DEFAULT_WIDTH = 620;
 const OVERVIEW_VIEWER_DEFAULT_HEIGHT = 460;
@@ -259,7 +243,6 @@ const OVERVIEW_VIEWER_MIN_WIDTH = 260;
 const OVERVIEW_VIEWER_MIN_HEIGHT = 210;
 const OVERVIEW_HULL_MONITOR_WIDTH = 360;
 const OVERVIEW_HULL_MONITOR_HEIGHT = 300;
-const OVERVIEW_WHITEBOARD_SAVE_DELAY_MS = 240;
 
 export function OverviewThreadHero({
   thread,
@@ -267,6 +250,7 @@ export function OverviewThreadHero({
   projectId,
   viewerSessions,
   viewerSessionsReady = true,
+  viewerHierarchyPending = false,
   requirementsBriefTraces = [],
   activities = [],
   stages = [],
@@ -280,6 +264,8 @@ export function OverviewThreadHero({
   readonly viewerSessions?: ThreadViewerSessionsProjection;
   /** False while the exact current session projection is unknown, not empty. */
   readonly viewerSessionsReady?: boolean;
+  /** True only while the current viewer hierarchy request is in flight. */
+  readonly viewerHierarchyPending?: boolean;
   /** Optional server-sealed brief clauses for requirements selections. */
   readonly requirementsBriefTraces?:
     readonly EngineeringWorkbenchRequirementsBriefTrace[];
@@ -343,16 +329,6 @@ export function OverviewThreadHero({
       versionHistory.displayedGraph,
     ],
   );
-  const [groupPlacements, setGroupPlacements] = useState<
-    Readonly<Record<string, OverviewThreadD3FlowGroupPlacement>>
-  >({});
-  const [nodePlacements, setNodePlacements] = useState<
-    Readonly<Record<string, OverviewThreadD3FlowNodePlacement>>
-  >({});
-  const [fixedGroupKey, setFixedGroupKey] = useState<string>();
-  const [whiteboardTransform, setWhiteboardTransform] = useState<
-    OverviewThreadWhiteboardTransform
-  >(OVERVIEW_WHITEBOARD_INITIAL_TRANSFORM);
   const [whiteboardWorldSize, setWhiteboardWorldSize] = useState({
     width: 1000,
     height: 560,
@@ -384,40 +360,231 @@ export function OverviewThreadHero({
       ),
     [thread.graph.edges, viewerAliasRecords, viewerSessions],
   );
+  const recordNodesByKey = useMemo(
+    () => new Map(recordView.nodes.map((item) => [item.key, item])),
+    [recordView.nodes],
+  );
+  const nodesByKey = useMemo(
+    () => new Map(view.nodes.map((item) => [item.key, item])),
+    [view.nodes],
+  );
+  const viewerSessionsByNodeKey = useMemo(() => {
+    const sessionsByNodeKey = new Map<
+      string,
+      readonly ThreadViewerSession[]
+    >();
+    for (const session of viewerSessions?.sessions ?? []) {
+      if (session.anchor.kind === "project-review") continue;
+      const nodeKey = overviewThreadGraphRefKey(session.anchor);
+      const node = recordNodesByKey.get(nodeKey);
+      if (node?.kind !== "recorded") continue;
+      const current = sessionsByNodeKey.get(nodeKey) ?? [];
+      sessionsByNodeKey.set(nodeKey, [...current, session]);
+    }
+    return sessionsByNodeKey;
+  }, [recordNodesByKey, viewerSessions]);
+  const viewerSessionsById = useMemo(
+    () =>
+      new Map(
+        [...viewerSessionsByNodeKey.values()].flat().map((session) => [
+          session.id,
+          session,
+        ]),
+      ),
+    [viewerSessionsByNodeKey],
+  );
+  const viewerNodeKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const key of viewerSessionsByNodeKey.keys()) {
+      if (nodesByKey.has(key)) keys.add(key);
+    }
+    for (const key of viewerAliases.keys()) {
+      if (nodesByKey.has(key)) keys.add(key);
+    }
+    return keys;
+  }, [nodesByKey, viewerAliases, viewerSessionsByNodeKey]);
+  const persistenceGroupKeys = useMemo(
+    () => [
+      ...new Set(
+        recordView.nodes.map((item) =>
+          overviewThreadD3FlowGroupIdentity(item.lane, item.groupKey)
+        ),
+      ),
+    ],
+    [recordView.nodes],
+  );
+  const persistenceNodeKeys = useMemo(
+    () => recordView.nodes.map((item) => item.key),
+    [recordView.nodes],
+  );
+  const persistenceViewerCapabilities = useMemo(() => {
+    const result = Object.create(null) as Record<
+      string,
+      OverviewThreadWhiteboardViewerCapability
+    >;
+    for (const item of recordView.nodes) {
+      result[item.key] = {
+        sessionIds: (viewerSessionsByNodeKey.get(item.key) ?? []).map(
+          (session) => session.id,
+        ),
+      };
+    }
+    return result;
+  }, [recordView.nodes, viewerSessionsByNodeKey]);
+  const persistenceReconciliation = useMemo<
+    OverviewThreadWhiteboardPresentationReconciliation
+  >(() => ({
+    groupKeys: persistenceGroupKeys,
+    nodeKeys: persistenceNodeKeys,
+    viewerCapabilities: persistenceViewerCapabilities,
+  }), [
+    persistenceGroupKeys,
+    persistenceNodeKeys,
+    persistenceViewerCapabilities,
+  ]);
+  const whiteboard = useOverviewWhiteboardPresentation({
+    projectId,
+    viewerSessionsReady,
+    reconciliation: persistenceReconciliation,
+  });
+  const {
+    presentation,
+    persistenceProjectId,
+    apply,
+    markTouched,
+    isTouched,
+    consumeSkipNextAutoFit,
+    reconcileSnapshot,
+    rememberHullPositions,
+    setGroupPlacements,
+    setNodePlacements,
+    setWhiteboardTransform,
+    setViewers,
+    setAutoShownNodeKeys,
+    setSelectedKey,
+    setSelectedRowKey,
+    setSelectionPinned,
+    closeSelection,
+    clearCanvasSelection,
+    setHoveredKey,
+    setFocusedKey,
+    resetLayout,
+  } = whiteboard;
+  const {
+    layoutMode,
+    groupPlacements,
+    nodePlacements,
+    transform: whiteboardTransform,
+    viewers,
+    autoShownNodeKeys,
+    selectedKey,
+    selectedRowKey,
+    selectionPinned,
+    hoveredKey,
+    focusedKey,
+    fixedGroupKey,
+    hydration: persistenceHydration,
+  } = presentation;
+  const settledHierarchy = viewerHierarchyPending
+    ? undefined
+    : viewerSessions?.hierarchy;
+  const hullEngineeringCases = useMemo(() => ({
+    catalog: thread.engineeringCases,
+    sessions: viewerSessions?.sessions ?? [],
+    viewerAliases,
+  }), [
+    thread.engineeringCases,
+    viewerAliases,
+    viewerSessions,
+  ]);
+  const hullAdapterContext = useMemo(() => ({
+    nodes: view.nodes,
+    engineeringCases: hullEngineeringCases,
+  }), [
+    view.nodes,
+    hullEngineeringCases,
+  ]);
+  const recordHullAdapterContext = useMemo(() => ({
+    nodes: recordView.nodes,
+    engineeringCases: hullEngineeringCases,
+  }), [
+    recordView.nodes,
+    hullEngineeringCases,
+  ]);
   const hullContents = useMemo(
     () =>
-      withOverviewCurrentBriefContent(
+      applyOverviewHullAdapters(
         buildOverviewHullContents(
           view.nodes,
           viewerSessions?.sessions ?? [],
-          viewerSessions?.hierarchy,
+          settledHierarchy,
           groupPlacements,
           viewerAliases,
         ),
-        view,
-        currentBrief,
+        { ...hullAdapterContext, currentBrief },
       ),
-    [view, viewerSessions, groupPlacements, viewerAliases, currentBrief],
-  );
-  const groupStructureRowCounts = useMemo(() =>
-    Object.fromEntries(
-      [...hullContents].filter(([, content]) => content.mode === "tree")
-        .map(([key, content]) => [key, content.rows.length]),
-    ), [hullContents]);
-  const recordHullContents = useMemo(() =>
-    buildOverviewHullContents(
-      recordView.nodes,
-      viewerSessions?.sessions ?? [],
-      viewerSessions?.hierarchy,
+    [
+      view,
+      viewerSessions,
+      settledHierarchy,
       groupPlacements,
       viewerAliases,
-    ), [recordView.nodes, viewerSessions, groupPlacements, viewerAliases]);
+      currentBrief,
+      hullAdapterContext,
+    ],
+  );
+  const candidateStructuredRowCounts = useMemo(
+    () => overviewHullHierarchyPendingPlaceholders(view.nodes, hullContents),
+    [hullContents, view.nodes],
+  );
+  const pendingHierarchyGroupKeys = useMemo(
+    () =>
+      viewerHierarchyPending
+        ? new Set(candidateStructuredRowCounts.keys())
+        : new Set<string>(),
+    [candidateStructuredRowCounts, viewerHierarchyPending],
+  );
+  const groupStructureRowCounts = useMemo(
+    () =>
+      overviewHullStructureRowCounts(
+        hullContents,
+        candidateStructuredRowCounts,
+      ),
+    [hullContents, candidateStructuredRowCounts],
+  );
+  const recordHullContents = useMemo(() =>
+    applyOverviewHullAdapters(
+      buildOverviewHullContents(
+        recordView.nodes,
+        viewerSessions?.sessions ?? [],
+        settledHierarchy,
+        groupPlacements,
+        viewerAliases,
+      ),
+      recordHullAdapterContext,
+    ), [
+    recordView.nodes,
+    viewerSessions,
+    settledHierarchy,
+    groupPlacements,
+    viewerAliases,
+    recordHullAdapterContext,
+  ]);
   const groupRowAnchors = useMemo(() =>
     overviewHullRowAnchors(
       hullContents,
       view.nodes,
-      viewerSessions?.hierarchy,
-    ), [hullContents, view.nodes, viewerSessions?.hierarchy]);
+      settledHierarchy,
+    ), [hullContents, view.nodes, settledHierarchy]);
+  const availableRowKeys = useMemo(() => {
+    const keys: string[] = [];
+    for (const [groupKey, content] of hullContents) {
+      for (const row of content.rows) {
+        keys.push(overviewHullPresentationRowKey(groupKey, row.key));
+      }
+    }
+    return keys;
+  }, [hullContents]);
   const radialLayout = useMemo(
     () =>
       buildOverviewThreadD3Layout(
@@ -491,120 +658,38 @@ export function OverviewThreadHero({
     key: string,
     patch: OverviewThreadD3FlowGroupPlacement,
   ) => {
-    whiteboardTouchedRef.current = true;
-    setFixedGroupKey(key);
     setGroupPlacements((current) => {
       const settled = rememberOverviewThreadHullPositions(
         current,
         flowLayoutRef.current.groups,
       );
       return { ...settled, [key]: { ...settled[key], ...patch } };
-    });
+    }, { fixedGroupKey: key, markTouched: true });
   };
-  const recordNodesByKey = useMemo(
-    () => new Map(recordView.nodes.map((item) => [item.key, item])),
-    [recordView.nodes],
-  );
-  const nodesByKey = useMemo(
-    () => new Map(view.nodes.map((item) => [item.key, item])),
-    [view.nodes],
-  );
-  const viewerSessionsByNodeKey = useMemo(() => {
-    const sessionsByNodeKey = new Map<
-      string,
-      readonly ThreadViewerSession[]
-    >();
-    for (const session of viewerSessions?.sessions ?? []) {
-      if (session.anchor.kind === "project-review") continue;
-      const nodeKey = overviewThreadGraphRefKey(session.anchor);
-      const node = recordNodesByKey.get(nodeKey);
-      if (node?.kind !== "recorded") continue;
-      const current = sessionsByNodeKey.get(nodeKey) ?? [];
-      sessionsByNodeKey.set(nodeKey, [...current, session]);
-    }
-    return sessionsByNodeKey;
-  }, [recordNodesByKey, viewerSessions]);
-  const viewerSessionsById = useMemo(
-    () =>
-      new Map(
-        [...viewerSessionsByNodeKey.values()].flat().map((session) => [
-          session.id,
-          session,
-        ]),
-      ),
-    [viewerSessionsByNodeKey],
-  );
-  const viewerNodeKeys = useMemo(() => {
-    const keys = new Set<string>();
-    for (const key of viewerSessionsByNodeKey.keys()) {
-      if (nodesByKey.has(key)) keys.add(key);
-    }
-    for (const key of viewerAliases.keys()) {
-      if (nodesByKey.has(key)) keys.add(key);
-    }
-    return keys;
-  }, [nodesByKey, viewerAliases, viewerSessionsByNodeKey]);
-  const persistenceProjectId = projectId &&
-      overviewThreadWhiteboardPresentationStorageKey(projectId)
-    ? projectId
-    : undefined;
-  const persistenceGroupKeys = useMemo(
-    () => [
-      ...new Set(
-        recordView.nodes.map((item) =>
-          overviewThreadD3FlowGroupIdentity(item.lane, item.groupKey)
-        ),
-      ),
-    ],
-    [recordView.nodes],
-  );
-  const persistenceNodeKeys = useMemo(
-    () => recordView.nodes.map((item) => item.key),
-    [recordView.nodes],
-  );
-  const persistenceViewerCapabilities = useMemo(() => {
-    const result = Object.create(null) as Record<
-      string,
-      OverviewThreadWhiteboardViewerCapability
-    >;
-    for (const item of recordView.nodes) {
-      result[item.key] = {
-        sessionIds: (viewerSessionsByNodeKey.get(item.key) ?? []).map(
-          (session) => session.id,
-        ),
+  const changeHullView = (
+    key: string,
+    view: OverviewThreadD3FlowHullView,
+  ) => {
+    setGroupPlacements((current) => {
+      const settled = rememberOverviewThreadHullPositions(
+        current,
+        flowLayoutRef.current.groups,
+      );
+      return {
+        ...settled,
+        [key]: nextHullViewPlacement(settled[key], view),
       };
-    }
-    return result;
-  }, [recordView.nodes, viewerSessionsByNodeKey]);
-  const persistenceReconciliation = useMemo<
-    OverviewThreadWhiteboardPresentationReconciliation
-  >(() => ({
-    groupKeys: persistenceGroupKeys,
-    nodeKeys: persistenceNodeKeys,
-    viewerCapabilities: persistenceViewerCapabilities,
-  }), [
-    persistenceGroupKeys,
-    persistenceNodeKeys,
-    persistenceViewerCapabilities,
-  ]);
-  const [selectedKey, setSelectedKey] = useState<string>();
-  const [selectedRowKey, setSelectedRowKey] = useState<string>();
-  const [hoveredKey, setHoveredKey] = useState<string>();
-  const [focusedKey, setFocusedKey] = useState<string>();
+    }, { fixedGroupKey: key, markTouched: true });
+  };
   const [contextTriggerValue, setContextTriggerValue] = useState<
     string | null
   >(null);
   const [contextPresentationRowKey, setContextPresentationRowKey] = useState<
     string
   >();
-  const [layoutMode, setLayoutMode] = useState<OverviewLayoutMode>("hierarchy");
-  const [viewers, setViewers] = useState<readonly OverviewViewerState[]>([]);
-  const [autoShownNodeKeys, setAutoShownNodeKeys] = useState<readonly string[]>(
-    [],
-  );
   const [hullMonitor, setHullMonitor] = useState<OverviewHullMonitorState>();
-  const [persistenceHydration, setPersistenceHydration] = useState<
-    OverviewWhiteboardPersistenceHydration
+  const [selectionNotePlacement, setSelectionNotePlacement] = useState<
+    OverviewSelectionNotePlacement
   >();
   const heroRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -615,166 +700,136 @@ export function OverviewThreadHero({
   const hullMonitorDragRef = useRef<OverviewHullMonitorDragState>();
   const hullMonitorResizeRef = useRef<OverviewHullMonitorResizeState>();
   const canvasPanRef = useRef<OverviewCanvasPanState>();
-  const whiteboardTouchedRef = useRef(false);
-  const skipNextAutoFitRef = useRef(false);
-  const persistenceReconciliationRef = useRef(persistenceReconciliation);
-  const persistenceTimerRef = useRef<
-    ReturnType<typeof globalThis.setTimeout>
-  >();
-  const pendingPersistenceRef = useRef<
-    OverviewWhiteboardPendingPersistence
-  >();
-  const flushPersistenceRef = useRef<() => void>(() => undefined);
   const nodeRefs = useRef(
     new Map<string, HTMLButtonElement | SVGGElement>(),
   );
   const viewerRefs = useRef(new Map<string, HTMLElement>());
-  persistenceReconciliationRef.current = persistenceReconciliation;
-  flushPersistenceRef.current = () => {
-    if (persistenceTimerRef.current !== undefined) {
-      clearTimeout(persistenceTimerRef.current);
-      persistenceTimerRef.current = undefined;
-    }
-    const pending = pendingPersistenceRef.current;
-    pendingPersistenceRef.current = undefined;
-    const storage = overviewWhiteboardBrowserStorage();
-    if (!pending || !storage) return;
-    saveOverviewThreadWhiteboardPresentation(
-      storage,
-      pending.projectId,
-      pending.state,
-      pending.reconciliation,
-    );
-  };
-  useEffect(() => {
-    flushPersistenceRef.current();
-    const storage = overviewWhiteboardBrowserStorage();
-    const restored = persistenceProjectId && storage
-      ? loadOverviewThreadWhiteboardPresentation(
-        storage,
-        persistenceProjectId,
-        persistenceReconciliationRef.current,
-      )
-      : undefined;
-    if (restored) {
-      setLayoutMode(restored.layoutMode);
-      setGroupPlacements(restored.groupPlacements);
-      setNodePlacements(restored.nodePlacements);
-      setWhiteboardTransform(restored.transform);
-      setViewers(separateOverviewThreadViewers(
-        restored.viewers.map(overviewViewerFromPresentation),
-      ));
-      setAutoShownNodeKeys(
-        restored.autoShownNodeKeys ??
-          restored.viewers.map((viewer) => viewer.nodeKey),
-      );
-    } else {
-      setLayoutMode("hierarchy");
-      setGroupPlacements({});
-      setNodePlacements({});
-      setWhiteboardTransform(OVERVIEW_WHITEBOARD_INITIAL_TRANSFORM);
-      setViewers([]);
-      setAutoShownNodeKeys([]);
-    }
-    whiteboardTouchedRef.current = restored !== undefined;
-    setFixedGroupKey(undefined);
-    skipNextAutoFitRef.current = restored !== undefined;
-    setPersistenceHydration({
-      projectId: persistenceProjectId ?? null,
-      restored: restored !== undefined,
-      viewersRestored: viewerSessionsReady,
-    });
-  }, [persistenceProjectId]);
-  useEffect(() => {
-    if (persistenceHydration?.projectId !== (persistenceProjectId ?? null)) {
+  const rememberHullPositionsRef = useRef(rememberHullPositions);
+  const reconcileSnapshotRef = useRef(reconcileSnapshot);
+  const consumeSkipNextAutoFitRef = useRef(consumeSkipNextAutoFit);
+  const isTouchedRef = useRef(isTouched);
+  const setWhiteboardTransformRef = useRef(setWhiteboardTransform);
+  rememberHullPositionsRef.current = rememberHullPositions;
+  reconcileSnapshotRef.current = reconcileSnapshot;
+  consumeSkipNextAutoFitRef.current = consumeSkipNextAutoFit;
+  isTouchedRef.current = isTouched;
+  setWhiteboardTransformRef.current = setWhiteboardTransform;
+  useLayoutEffect(() => {
+    const host = heroRef.current;
+    const hasSelection = selectedKey !== undefined ||
+      selectedRowKey !== undefined;
+    if (!host || !hasSelection) {
+      setSelectionNotePlacement(undefined);
       return;
     }
-    setGroupPlacements((current) =>
-      rememberOverviewThreadHullPositions(current, flowLayout.groups)
-    );
+    const update = () => {
+      const anchor =
+        (selectedRowKey ? nodeRefs.current.get(selectedRowKey) : undefined) ??
+          (selectedKey ? nodeRefs.current.get(selectedKey) : undefined);
+      if (!anchor) return;
+      const note = host.querySelector(".overview-thread-selection-note");
+      setSelectionNotePlacement(
+        readOverviewSelectionNotePlacement(host, anchor, note),
+      );
+    };
+    update();
+    const observer = new ResizeObserver(update);
+    observer.observe(host);
+    const note = host.querySelector(".overview-thread-selection-note");
+    if (note) observer.observe(note);
+    return () => observer.disconnect();
+  }, [
+    selectedKey,
+    selectedRowKey,
+    whiteboardTransform,
+    layoutMode,
+    groupPlacements,
+    nodePlacements,
+  ]);
+  useEffect(() => {
+    rememberHullPositionsRef.current(flowLayout.groups);
   }, [
     flowLayout.groups,
     persistenceHydration?.projectId,
     persistenceProjectId,
   ]);
-  useEffect(() => {
-    if (
-      !viewerSessionsReady ||
-      persistenceHydration?.projectId !== (persistenceProjectId ?? null) ||
-      persistenceHydration.viewersRestored
-    ) return;
-    // Layout can hydrate immediately. Viewer intent must wait for the first
-    // exact session replacement; an in-flight read is not an empty registry.
-    // Do not restore layout again or overwrite movements made while loading.
-    const storage = overviewWhiteboardBrowserStorage();
-    const restored = persistenceProjectId && storage
-      ? loadOverviewThreadWhiteboardPresentation(
-        storage,
-        persistenceProjectId,
-        persistenceReconciliationRef.current,
-      )
-      : undefined;
-    setViewers(separateOverviewThreadViewers(
-      restored?.viewers.map(overviewViewerFromPresentation) ?? [],
-    ));
-    setAutoShownNodeKeys(
-      restored?.autoShownNodeKeys ?? restored?.viewers.map((viewer) =>
-        viewer.nodeKey
-      ) ?? [],
-    );
-    setPersistenceHydration((current) =>
-      current ? { ...current, viewersRestored: true } : current
-    );
-  }, [persistenceHydration, persistenceProjectId, viewerSessionsReady]);
-  useEffect(() => {
-    const displayedKeys = new Set(view.nodes.map((item) => item.key));
-    const recordedKeys = new Set(recordView.nodes.map((item) => item.key));
-    const availableSessionIds = viewerSessions
-      ? new Set(viewerSessions.sessions.map((session) => session.id))
-      : undefined;
-    setSelectedKey((current) =>
-      current && !displayedKeys.has(current) ? undefined : current
-    );
-    setHoveredKey((current) =>
-      current && !displayedKeys.has(current) ? undefined : current
-    );
-    const firstKey = layoutMode === "hierarchy"
-      ? flowLayout.nodes[0]?.key
-      : radialLayout.nodes[0]?.key;
-    setFocusedKey((current) =>
-      current && displayedKeys.has(current) ? current : firstKey
-    );
-    setViewers((current) =>
-      current.filter((viewer) => {
-        if (viewer.kind === "current-brief") {
-          return overviewCurrentBriefMatches(
-            currentBrief,
-            viewer.briefSnapshotId,
-          );
-        }
-        return recordedKeys.has(viewer.nodeKey) &&
-          (availableSessionIds?.has(viewer.sessionId) ?? true);
-      })
-    );
+  const lastSelectedGraphKeyRef = useRef<string>();
+  const availableRowKeysSignatureRef = useRef(availableRowKeys.join("\0"));
+  if (selectedKey) lastSelectedGraphKeyRef.current = selectedKey;
+  useLayoutEffect(() => {
+    const signature = availableRowKeys.join("\0");
+    const keysChanged = availableRowKeysSignatureRef.current !== signature;
+    availableRowKeysSignatureRef.current = signature;
+    const graphKey = selectedKey ??
+      (keysChanged ? lastSelectedGraphKeyRef.current : undefined);
+    if (!graphKey) return;
+    if (selectedRowKey && availableRowKeys.includes(selectedRowKey)) {
+      if (keysChanged && !selectedKey) setSelectedKey(graphKey);
+      return;
+    }
+    let mapped: string | undefined;
+    let preferred: string | undefined;
+    for (const [groupKey, content] of hullContents) {
+      for (const row of content.rows) {
+        const mappedKey = overviewHullMappedGraphKey(
+          groupKey,
+          row,
+          groupRowAnchors,
+          content.rows,
+          nodesByKey,
+        );
+        const matches = mappedKey === graphKey ||
+          row.nodeKey === graphKey ||
+          row.viewerNodeKey === graphKey;
+        if (!matches) continue;
+        const rowKey = overviewHullPresentationRowKey(groupKey, row.key);
+        mapped ??= rowKey;
+        if (row.viewerNodeKey === graphKey) preferred = rowKey;
+      }
+    }
+    const nextRowKey = preferred ?? mapped;
+    if (!nextRowKey) return;
+    if (nextRowKey !== selectedRowKey) setSelectedRowKey(nextRowKey);
+    if (graphKey !== selectedKey) setSelectedKey(graphKey);
   }, [
+    availableRowKeys,
+    groupRowAnchors,
+    hullContents,
+    nodesByKey,
+    selectedKey,
+    selectedRowKey,
+    setSelectedKey,
+    setSelectedRowKey,
+  ]);
+  useEffect(() => {
+    const availableSessionIds = viewerSessions
+      ? viewerSessions.sessions.map((session) => session.id)
+      : undefined;
+    reconcileSnapshotRef.current({
+      displayedKeys: view.nodes.map((item) => item.key),
+      recordedKeys: recordView.nodes.map((item) => item.key),
+      availableSessionIds,
+      currentBriefSnapshotId: currentBrief?.id,
+      hierarchyFirstKey: flowLayout.nodes[0]?.key,
+      radialFirstKey: radialLayout.nodes[0]?.key,
+      availableRowKeys,
+    });
+  }, [
+    availableRowKeys,
+    currentBrief?.id,
     flowLayout.nodes,
     layoutMode,
     radialLayout.nodes,
     recordView.nodes,
     view.nodes,
     viewerSessions,
-    currentBrief,
   ]);
   useEffect(() => {
     if (
       persistenceHydration?.projectId !== (persistenceProjectId ?? null)
     ) return;
-    if (skipNextAutoFitRef.current) {
-      skipNextAutoFitRef.current = false;
-      return;
-    }
-    if (whiteboardTouchedRef.current) return;
-    whiteboardTouchedRef.current = false;
+    if (consumeSkipNextAutoFitRef.current()) return;
+    if (isTouchedRef.current()) return;
     const frame = requestAnimationFrame(() => {
       const bounds = readOverviewWhiteboardBounds(
         viewportRef.current,
@@ -782,10 +837,11 @@ export function OverviewThreadHero({
         [],
         layoutMode === "hierarchy" ? flowLayoutRef.current : undefined,
       );
-      setWhiteboardTransform(
+      setWhiteboardTransformRef.current(
         bounds
           ? fitOverviewThreadWhiteboardTransform(bounds)
           : OVERVIEW_WHITEBOARD_INITIAL_TRANSFORM,
+        { touched: false },
       );
     });
     return () => cancelAnimationFrame(frame);
@@ -803,7 +859,10 @@ export function OverviewThreadHero({
     const viewport = viewportRef.current;
     const world = worldRef.current;
     if (!viewport || !world || typeof ResizeObserver === "undefined") return;
-    const observer = new ResizeObserver(() => {
+    const observer = new ResizeObserver((entries) => {
+      const viewportChanged = entries.some((entry) =>
+        entry.target === viewport
+      );
       const bounds = readOverviewWhiteboardBounds(
         viewport,
         world,
@@ -820,69 +879,19 @@ export function OverviewThreadHero({
           ? current
           : next;
       });
-      setWhiteboardTransform((current) =>
-        whiteboardTouchedRef.current
-          ? normalizeOverviewThreadWhiteboardTransform(current, bounds)
-          : fitOverviewThreadWhiteboardTransform(bounds)
+      setWhiteboardTransformRef.current((current) =>
+        nextOverviewWhiteboardTransformOnObservedResize({
+          viewportChanged,
+          touched: isTouchedRef.current(),
+          current,
+          bounds,
+        })
       );
     });
     observer.observe(viewport);
     observer.observe(world);
     return () => observer.disconnect();
   }, [immersive, layoutMode]);
-  useEffect(() => {
-    if (
-      !persistenceProjectId ||
-      !viewerSessionsReady ||
-      !persistenceHydration?.viewersRestored ||
-      persistenceHydration?.projectId !== persistenceProjectId
-    ) return;
-    pendingPersistenceRef.current = {
-      projectId: persistenceProjectId,
-      state: overviewPresentationState(
-        layoutMode,
-        groupPlacements,
-        nodePlacements,
-        whiteboardTransform,
-        viewers,
-        autoShownNodeKeys,
-      ),
-      reconciliation: persistenceReconciliation,
-    };
-    if (persistenceTimerRef.current !== undefined) {
-      clearTimeout(persistenceTimerRef.current);
-    }
-    persistenceTimerRef.current = globalThis.setTimeout(
-      () => flushPersistenceRef.current(),
-      OVERVIEW_WHITEBOARD_SAVE_DELAY_MS,
-    );
-    return () => {
-      if (persistenceTimerRef.current !== undefined) {
-        clearTimeout(persistenceTimerRef.current);
-        persistenceTimerRef.current = undefined;
-      }
-    };
-  }, [
-    autoShownNodeKeys,
-    groupPlacements,
-    layoutMode,
-    nodePlacements,
-    persistenceHydration?.projectId,
-    persistenceHydration?.viewersRestored,
-    persistenceProjectId,
-    persistenceReconciliation,
-    viewers,
-    viewerSessionsReady,
-    whiteboardTransform,
-  ]);
-  useEffect(() => {
-    const flush = () => flushPersistenceRef.current();
-    globalThis.addEventListener("pagehide", flush);
-    return () => {
-      globalThis.removeEventListener("pagehide", flush);
-      flush();
-    };
-  }, []);
   const activeKey = hoveredKey ?? selectedKey;
   const selectedItem = selectedKey ? nodesByKey.get(selectedKey) : undefined;
   const selectedPresentation = selectedRowKey
@@ -909,8 +918,7 @@ export function OverviewThreadHero({
     [view.edges, activeKey],
   );
   const toggleSelection = (item: OverviewHeroNode) => {
-    setSelectedRowKey(undefined);
-    setSelectedKey((current) => nextOverviewHeroSelection(current, item.key));
+    apply({ type: "selection-toggled", key: item.key });
   };
   const bringViewerFront = (viewerId: string) => {
     setViewers((current) => {
@@ -999,7 +1007,7 @@ export function OverviewThreadHero({
         z: top,
       } as OverviewViewerState], id);
     });
-    setSelectedKey(undefined);
+    closeSelection();
     setHoveredKey(undefined);
     setFocusedKey(undefined);
     requestAnimationFrame(() => viewerRefs.current.get(id)?.focus());
@@ -1520,20 +1528,19 @@ export function OverviewThreadHero({
       layoutMode === "hierarchy" ? flowLayout : undefined,
     );
     if (!bounds) return;
-    whiteboardTouchedRef.current = false;
-    setWhiteboardTransform(fitOverviewThreadWhiteboardTransform(bounds));
+    setWhiteboardTransform(fitOverviewThreadWhiteboardTransform(bounds), {
+      touched: false,
+    });
   };
-  const changeLayoutMode = (next: OverviewLayoutMode) => {
-    if (next === layoutMode) return;
-    whiteboardTouchedRef.current = false;
-    setLayoutMode(next);
+  const changeLayoutMode = (next: OverviewWhiteboardLayoutMode) => {
+    whiteboard.changeLayoutMode(next);
   };
   fitWhiteboardRef.current = fitWhiteboard;
   const zoomWhiteboard = (factor: number) => {
     const viewport = viewportRef.current;
     const bounds = readOverviewWhiteboardBounds(viewport, worldRef.current);
     if (!viewport || !bounds) return;
-    whiteboardTouchedRef.current = true;
+    markTouched();
     setWhiteboardTransform((current) =>
       zoomOverviewThreadWhiteboardAt(
         current,
@@ -1544,15 +1551,11 @@ export function OverviewThreadHero({
     );
   };
   const resetWhiteboard = () => {
-    setFixedGroupKey(undefined);
-    setGroupPlacements({});
-    setNodePlacements({});
-    whiteboardTouchedRef.current = false;
     const bounds = readOverviewWhiteboardBounds(
       viewportRef.current,
       worldRef.current,
     );
-    setWhiteboardTransform(
+    resetLayout(
       bounds
         ? resetOverviewThreadWhiteboardTransform(bounds)
         : OVERVIEW_WHITEBOARD_INITIAL_TRANSFORM,
@@ -1577,7 +1580,7 @@ export function OverviewThreadHero({
       : event.deltaMode === 2
       ? viewport.clientHeight
       : 1;
-    whiteboardTouchedRef.current = true;
+    markTouched();
     setWhiteboardTransform((current) =>
       zoomOverviewThreadWhiteboardByWheel(
         current,
@@ -1598,17 +1601,28 @@ export function OverviewThreadHero({
         "button, [role='button'], .overview-thread-viewer, .overview-thread-hull-monitor",
       )
     ) return;
-    whiteboardTouchedRef.current = true;
+    markTouched();
     canvasPanRef.current = {
       pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
       lastClientX: event.clientX,
       lastClientY: event.clientY,
+      moved: false,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   };
   const moveCanvasPan = (event: ReactPointerEvent<HTMLDivElement>) => {
     const pan = canvasPanRef.current;
     if (!pan || pan.pointerId !== event.pointerId) return;
+    if (
+      !pan.moved &&
+      !overviewCanvasPointerBecamePan(
+        { x: pan.startClientX, y: pan.startClientY },
+        { x: event.clientX, y: event.clientY },
+      )
+    ) return;
+    pan.moved = true;
     const delta = {
       x: event.clientX - pan.lastClientX,
       y: event.clientY - pan.lastClientY,
@@ -1623,10 +1637,12 @@ export function OverviewThreadHero({
   const endCanvasPan = (event: ReactPointerEvent<HTMLDivElement>) => {
     const pan = canvasPanRef.current;
     if (!pan || pan.pointerId !== event.pointerId) return;
+    const wasPan = pan.moved;
     canvasPanRef.current = undefined;
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    if (!wasPan && event.type === "pointerup") clearCanvasSelection();
   };
   const moveFocus = (key: string) => {
     setFocusedKey(key);
@@ -1762,24 +1778,21 @@ export function OverviewThreadHero({
           )?.getAttribute("data-overview-context-target");
           if (contextValue) setContextTriggerValue(contextValue);
           rememberContextPresentationRow(target);
-          if (
-            !target.closest(
-              ".overview-thread-flow-node, .overview-thread-node, .overview-thread-viewer, .overview-thread-hull-monitor, .overview-thread-selection-note, .overview-thread-layout-switch, [data-part='context-trigger'], button",
-            )
-          ) {
-            setSelectedKey(undefined);
-            setHoveredKey(undefined);
-            setSelectedRowKey(undefined);
-          }
         }}
       >
         <div
-          className="overview-thread-layout-switch"
+          className={cn(
+            "overview-thread-layout-switch",
+            whiteboardToolbar,
+          )}
           role="group"
           aria-label="Whiteboard controls"
         >
           <button
             type="button"
+            className={whiteboardToolbarButton({
+              pressed: layoutMode === "hierarchy",
+            })}
             aria-pressed={layoutMode === "hierarchy"}
             onClick={() => changeLayoutMode("hierarchy")}
           >
@@ -1787,36 +1800,58 @@ export function OverviewThreadHero({
           </button>
           <button
             type="button"
+            className={whiteboardToolbarButton({
+              pressed: layoutMode === "radial",
+            })}
             aria-pressed={layoutMode === "radial"}
             onClick={() => changeLayoutMode("radial")}
           >
             Radial
           </button>
-          <span className="overview-thread-layout-divider" aria-hidden="true" />
+          <span
+            className={cn(
+              "overview-thread-layout-divider",
+              whiteboardToolbarPart({ part: "divider" }),
+            )}
+            aria-hidden="true"
+          />
           <button
             type="button"
+            className={whiteboardToolbarButton()}
             onClick={() => zoomWhiteboard(0.82)}
           >
             Zoom out
           </button>
-          <button type="button" onClick={fitWhiteboard}>
+          <button
+            type="button"
+            className={whiteboardToolbarButton()}
+            onClick={fitWhiteboard}
+          >
             Fit
           </button>
           <button
             type="button"
+            className={whiteboardToolbarButton()}
             onClick={() => zoomWhiteboard(1.22)}
           >
             Zoom in
           </button>
           <span
-            className="overview-thread-layout-scale"
+            className={cn(
+              "overview-thread-layout-scale",
+              whiteboardToolbarPart({ part: "scale" }),
+            )}
             aria-label={`Zoom ${
               Math.round(whiteboardTransform.k * 100)
             } percent`}
           >
             {Math.round(whiteboardTransform.k * 100)}%
           </span>
-          <button type="button" onClick={resetWhiteboard}>
+          <button
+            type="button"
+            className={whiteboardToolbarButton()}
+            onClick={resetWhiteboard}
+          >
             Reset layout
           </button>
         </div>
@@ -1824,9 +1859,11 @@ export function OverviewThreadHero({
           <OverviewThreadSelectionNote
             node={selectedItem.node}
             connections={selectedConnections}
+            pinned={selectionPinned === true}
+            onPinToggle={() => setSelectionPinned(selectionPinned !== true)}
+            style={overviewSelectionNoteStyle(selectionNotePlacement)}
             onClose={() => {
-              setSelectedKey(undefined);
-              setSelectedRowKey(undefined);
+              closeSelection();
               nodeRefs.current.get(selectedItem.key)?.focus();
             }}
             onFollow={(reference) => {
@@ -1851,6 +1888,9 @@ export function OverviewThreadHero({
                 <button
                   key={overviewContextActionValue(action, index)}
                   type="button"
+                  className={whiteboardNoteAction({
+                    app: action.kind === "open-session",
+                  })}
                   data-app={action.kind === "open-session" ? "true" : undefined}
                   title={action.label}
                   onClick={() => runContextAction(action, selectedRowKey)}
@@ -1866,27 +1906,67 @@ export function OverviewThreadHero({
         )}
         {selectedBriefSection && currentBrief && (
           <section
-            className="overview-thread-selection-note"
+            className={cn(
+              "overview-thread-selection-note",
+              whiteboardNote,
+              whiteboardNoteState({ pinned: selectionPinned === true }),
+            )}
             aria-label={`Read ${selectedBriefSection.label}`}
+            data-pinned={selectionPinned === true ? "true" : "false"}
+            style={overviewSelectionNoteStyle(selectionNotePlacement)}
           >
-            <header>
+            <header className={whiteboardNotePart({ part: "header" })}>
               <span>Selected on the board</span>
-              <button
-                type="button"
-                onClick={() => setSelectedRowKey(undefined)}
-                aria-label="Close selected section"
-              >
-                Close
-              </button>
-            </header>
-            <div className="overview-thread-selection-body">
-              <h4>{selectedBriefSection.label}</h4>
-              <p className="overview-thread-selection-meta">
-                {selectedBriefSection.detail ?? "Current Brief section"}
-              </p>
-              <div className="overview-thread-selection-actions">
+              <div className={whiteboardNotePart({ part: "headerActions" })}>
                 <button
                   type="button"
+                  className={whiteboardNotePin({
+                    pressed: selectionPinned === true,
+                  })}
+                  aria-pressed={selectionPinned === true}
+                  aria-label={selectionPinned === true
+                    ? "Unpin selection"
+                    : "Pin selection"}
+                  onClick={() => setSelectionPinned(selectionPinned !== true)}
+                >
+                  {selectionPinned === true ? "Unpin" : "Pin"}
+                </button>
+                <button
+                  type="button"
+                  className={whiteboardNotePart({ part: "close" })}
+                  onClick={() => closeSelection()}
+                  aria-label="Close selected section"
+                >
+                  Close
+                </button>
+              </div>
+            </header>
+            <div
+              className={cn(
+                "overview-thread-selection-body",
+                whiteboardNotePart({ part: "body" }),
+              )}
+            >
+              <h4 className={whiteboardNotePart({ part: "title" })}>
+                {selectedBriefSection.label}
+              </h4>
+              <p
+                className={cn(
+                  "overview-thread-selection-meta",
+                  whiteboardNotePart({ part: "meta" }),
+                )}
+              >
+                {selectedBriefSection.detail ?? "Current Brief section"}
+              </p>
+              <div
+                className={cn(
+                  "overview-thread-selection-actions",
+                  whiteboardNotePart({ part: "actions" }),
+                )}
+              >
+                <button
+                  type="button"
+                  className={whiteboardNoteAction()}
                   onClick={() => openCurrentBriefViewer(selectedRowKey)}
                 >
                   Open current Brief
@@ -1898,9 +1978,11 @@ export function OverviewThreadHero({
         {selectedItem?.kind === "brief-source" && (
           <OverviewThreadBriefSourceNote
             item={selectedItem}
+            pinned={selectionPinned === true}
+            onPinToggle={() => setSelectionPinned(selectionPinned !== true)}
+            style={overviewSelectionNoteStyle(selectionNotePlacement)}
             onClose={() => {
-              setSelectedKey(undefined);
-              setSelectedRowKey(undefined);
+              closeSelection();
               nodeRefs.current.get(selectedItem.key)?.focus();
             }}
             onSelectRequirement={(requirementId) =>
@@ -1933,32 +2015,36 @@ export function OverviewThreadHero({
                 <OverviewThreadD3Flow
                   layout={flowLayout}
                   hullContents={hullContents}
+                  pendingHierarchyGroupKeys={pendingHierarchyGroupKeys}
                   rowAnchors={groupRowAnchors}
                   selectedRowKey={selectedRowKey}
                   onActivateHullRow={(row, groupKey) => {
-                    const presentationKey = overviewHullPresentationRowKey(
+                    const rowKey = overviewHullPresentationRowKey(
                       groupKey,
                       row.key,
                     );
-                    const nextRowKey = nextOverviewHullPresentationRowKey(
-                      selectedRowKey,
-                      presentationKey,
-                    );
-                    setSelectedRowKey(nextRowKey);
-                    const mapped = overviewHullMappedGraphKey(
+                    const mappedKey = overviewHullMappedGraphKey(
                       groupKey,
                       row,
                       groupRowAnchors,
                       hullContents.get(groupKey)?.rows,
                       nodesByKey,
                     );
-                    if (mapped && nextRowKey) {
-                      setSelectedKey(mapped);
-                      setFocusedKey(mapped);
-                    } else {
-                      setSelectedKey(undefined);
-                      if (!nextRowKey) setFocusedKey(undefined);
-                    }
+                    activateOverviewHullRow(row, {
+                      selectNode: (nodeKey) =>
+                        apply({
+                          type: "row-activated",
+                          rowKey,
+                          mappedKey: mappedKey ?? nodeKey,
+                        }),
+                      openSession: (_sessionId, nodeKey) =>
+                        apply({
+                          type: "row-activated",
+                          rowKey,
+                          mappedKey: mappedKey ?? nodeKey,
+                        }),
+                      openCurrentBrief: () => openCurrentBriefViewer(rowKey),
+                    });
                   }}
                   nodesByKey={nodesByKey}
                   viewerNodeKeys={viewerNodeKeys}
@@ -1984,7 +2070,7 @@ export function OverviewThreadHero({
                     changeHullPlacement(key, size);
                   }}
                   onSetGroupView={(key, view) => {
-                    changeHullPlacement(key, { view });
+                    changeHullView(key, view);
                   }}
                   onCycleGroupSort={(key) => {
                     setGroupPlacements((current) => {
@@ -2084,7 +2170,10 @@ export function OverviewThreadHero({
                             key={edge.key}
                             d={edge.d}
                             fill="none"
-                            className="overview-thread-cable"
+                            className={cn(
+                              "overview-thread-cable",
+                              whiteboardFlowCable({ state }),
+                            )}
                             data-state={state}
                             strokeWidth={overviewCableWidth(edge.pathCount)}
                             vectorEffect="non-scaling-stroke"
@@ -2163,7 +2252,10 @@ export function OverviewThreadHero({
               }}
             >
               <svg
-                className="overview-thread-viewer-connectors"
+                className={cn(
+                  "overview-thread-viewer-connectors",
+                  whiteboardViewerPart({ part: "connectors" }),
+                )}
                 viewBox={`0 0 ${whiteboardWorldSize.width} ${whiteboardWorldSize.height}`}
                 width="100%"
                 height="100%"
@@ -2346,7 +2438,7 @@ export function OverviewThreadHero({
               ...overviewHullMonitorGeometry(anchor, whiteboardWorldSize),
             });
           }
-          setSelectedKey(undefined);
+          closeSelection();
           setHoveredKey(undefined);
         }}
         onSelectNode={selectNode}
@@ -2355,87 +2447,51 @@ export function OverviewThreadHero({
   );
 }
 
-function overviewPresentationState(
-  layoutMode: OverviewLayoutMode,
-  groupPlacements: Readonly<
-    Record<string, OverviewThreadD3FlowGroupPlacement>
-  >,
-  nodePlacements: Readonly<
-    Record<string, OverviewThreadD3FlowNodePlacement>
-  >,
-  transform: OverviewThreadWhiteboardTransform,
-  viewers: readonly OverviewViewerState[],
-  autoShownNodeKeys: readonly string[],
-): OverviewThreadWhiteboardPresentationState {
-  return {
-    layoutMode,
-    groupPlacements,
-    nodePlacements,
-    transform,
-    viewers: viewers.flatMap((viewer) => {
-      const presented = overviewViewerToPresentation(viewer);
-      return presented ? [presented] : [];
-    }),
-    autoShownNodeKeys,
-  };
-}
-
-function overviewViewerToPresentation(
-  viewer: OverviewViewerState,
-): OverviewThreadWhiteboardPresentationViewer | undefined {
-  if (viewer.kind !== "session") return undefined;
-  const spatial = {
-    id: viewer.id,
-    nodeKey: viewer.nodeKey,
-    geometry: overviewViewerGeometry(viewer),
-    z: viewer.z,
-    expanded: viewer.restoreGeometry !== undefined,
-    ...(viewer.restoreGeometry
-      ? { restoreGeometry: viewer.restoreGeometry }
-      : {}),
-    ...(viewer.presentationRowKey
-      ? { presentationRowKey: viewer.presentationRowKey }
-      : {}),
-  };
-  return { ...spatial, kind: "session", sessionId: viewer.sessionId };
-}
-
-function overviewViewerFromPresentation(
-  viewer: OverviewThreadWhiteboardPresentationViewer,
-): OverviewViewerState {
-  const spatial = {
-    id: viewer.id,
-    nodeKey: viewer.nodeKey,
-    ...viewer.geometry,
-    z: viewer.z,
-    ...(viewer.expanded && viewer.restoreGeometry
-      ? { restoreGeometry: viewer.restoreGeometry }
-      : {}),
-  };
-  return {
-    ...spatial,
-    kind: "session",
-    sessionId: viewer.sessionId,
-    ...(viewer.presentationRowKey
-      ? { presentationRowKey: viewer.presentationRowKey }
-      : {}),
-  };
-}
-
-function overviewWhiteboardBrowserStorage(): Storage | undefined {
-  if (!("localStorage" in globalThis)) return undefined;
-  try {
-    return globalThis.localStorage;
-  } catch {
-    return undefined;
+function readOverviewSelectionNotePlacement(
+  host: HTMLElement,
+  anchor: Element,
+  note: Element | null,
+): OverviewSelectionNotePlacement {
+  const hostBox = host.getBoundingClientRect();
+  const anchorBox = anchor.getBoundingClientRect();
+  const viewportBox = host.querySelector(".overview-thread-viewport")
+    ?.getBoundingClientRect() ?? hostBox;
+  const toolbarBox = host.querySelector(".overview-thread-layout-switch")
+    ?.getBoundingClientRect();
+  let topMargin = OVERVIEW_SELECTION_NOTE_TOP_MARGIN;
+  if (toolbarBox) {
+    topMargin = Math.max(
+      topMargin,
+      toolbarBox.bottom - viewportBox.top + OVERVIEW_SELECTION_NOTE_GAP,
+    );
   }
+  const placement = placeOverviewSelectionNote({
+    host: { width: viewportBox.width, height: viewportBox.height },
+    anchor: overviewSelectionNoteAnchorFromRects(viewportBox, anchorBox),
+    note: {
+      height: note instanceof HTMLElement ? note.offsetHeight : 280,
+    },
+    topMargin,
+  });
+  // The note is positioned by the hero, but must stay inside its canvas,
+  // above the Activity strip and other surrounding controls.
+  return {
+    ...placement,
+    left: placement.left + viewportBox.left - hostBox.left,
+    top: placement.top + viewportBox.top - hostBox.top,
+  };
 }
 
-function nextOverviewHeroSelection(
-  current: string | undefined,
-  requested: string,
-): string | undefined {
-  return current === requested ? undefined : requested;
+function overviewSelectionNoteStyle(
+  placement: OverviewSelectionNotePlacement | undefined,
+): CSSProperties | undefined {
+  if (!placement) return undefined;
+  return {
+    top: placement.top,
+    left: placement.left,
+    width: placement.width,
+    maxHeight: placement.maxHeight,
+  };
 }
 
 function overviewDirectionDelta(
@@ -2517,17 +2573,6 @@ function overviewThreadFlowSceneRects(
   }));
 }
 
-function overviewViewerGeometry(
-  viewer: OverviewViewerState,
-): OverviewThreadViewerGeometry {
-  return {
-    x: viewer.x,
-    y: viewer.y,
-    width: viewer.width,
-    height: viewer.height,
-  };
-}
-
 function initialOverviewViewerGeometry(
   anchor: { readonly x: number; readonly y: number },
   size: { readonly width: number; readonly height: number },
@@ -2589,7 +2634,7 @@ function overviewPresentationRowKeyFromTarget(
 
 function overviewViewerAnchorPoint(
   nodeKey: string,
-  layoutMode: OverviewLayoutMode,
+  layoutMode: OverviewWhiteboardLayoutMode,
   flowLayout: ReturnType<typeof buildOverviewThreadD3FlowLayout>,
   radialLayout: ReturnType<typeof buildOverviewThreadD3Layout>,
   world: { readonly width: number; readonly height: number },
@@ -2857,7 +2902,8 @@ function HeroNode({
     ? position.labelX - 8
     : position.labelX - 208;
   const markerColor = item.kind === "activity"
-    ? activityMarkerColor(item.activity.status)
+    ? OVERVIEW_LANES.find((lane) => lane.id === item.lane)?.color ??
+      "currentColor"
     : item.color;
   return (
     <DropdownMenuContextTrigger
@@ -2871,7 +2917,7 @@ function HeroNode({
         aria-label={ariaLabel}
         aria-pressed={selected}
         aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"
-        className="overview-thread-node cursor-pointer"
+        className={cn("overview-thread-node", whiteboardFlowRadialNode)}
         data-state={selected ? "selected" : related ? "related" : "muted"}
         data-kind={item.kind}
         data-overview-context-target={overviewThreadNodeContextValue(item.key)}
@@ -2924,6 +2970,7 @@ function HeroNode({
               item={item}
               x={position.anchorX}
               y={position.anchorY}
+              color={markerColor}
             />
           )
           : item.kind === "brief-source"
@@ -2990,7 +3037,12 @@ function BriefSourceMarker(
 }
 
 function ActivityMarker(
-  { item, x, y }: { item: OverviewActivityHeroNode; x: number; y: number },
+  { item, x, y, color }: {
+    item: OverviewActivityHeroNode;
+    x: number;
+    y: number;
+    color: string;
+  },
 ): JSX.Element {
   const status = item.activity.status;
   return (
@@ -3000,19 +3052,13 @@ function ActivityMarker(
       width="8"
       height="8"
       rx="1.5"
-      fill="#ffffff"
-      stroke={activityMarkerColor(status)}
-      strokeWidth="2"
+      fill={color}
+      stroke="#ffffff"
+      strokeWidth="1.5"
       strokeDasharray={status === "planned" ? "2 1.5" : undefined}
       vectorEffect="non-scaling-stroke"
     />
   );
-}
-
-function activityMarkerColor(status: EngineeringPhaseStatus): string {
-  if (status === "blocked") return "var(--ui-destructive)";
-  if (status === "active") return "var(--ui-success)";
-  return "var(--thread-muted)";
 }
 
 function clamp(value: number, minimum: number, maximum: number): number {
@@ -3169,7 +3215,7 @@ function OverviewThreadContextMenu({
     }
   }
   const label = node?.label ?? (group ? flowGroupCaption(group) : "Thread");
-  const hierarchyRows = content?.mode === "tree" ? content.rows : [];
+  const hierarchyRows = content?.rows ?? [];
   const hierarchySessionIds = new Set(
     hierarchyRows.flatMap((row) => row.sessionIds),
   );
@@ -3231,9 +3277,7 @@ function OverviewThreadContextMenu({
             <DropdownMenuLabel>Navigation</DropdownMenuLabel>
           )}
           {hierarchyRows.map((row) => {
-            const rowActions = row.sessionIds.flatMap((id) =>
-              actionsBySession.has(id) ? [actionsBySession.get(id)!] : []
-            );
+            const rowActions = overviewHullRowActions(row);
             const style = {
               paddingInlineStart: `${0.75 + row.depth * 0.9}rem`,
             };
@@ -3241,68 +3285,78 @@ function OverviewThreadContextMenu({
               group.key,
               row.key,
             );
-            if (row.nativeAction === "open-current-brief") {
+            if (rowActions.length === 0) {
               return (
-                <DropdownMenuItem
+                <div
                   key={row.key}
-                  value={`hull-row-brief:${row.key}`}
                   data-hull-row-key={row.key}
-                  data-hull-group-key={group.key}
                   data-hull-row-kind={row.kind}
-                  className="overview-thread-context-viewer"
+                  className="overview-thread-context-structure"
                   style={style}
-                  onSelect={() =>
-                    onAction({
-                      kind: "open-current-brief",
-                      label: "Open current Brief",
-                    }, rowPresentationKey)}
                 >
                   <OverviewHullMenuRowBody row={row} />
-                </DropdownMenuItem>
+                </div>
               );
             }
-            if (rowActions.length > 0) {
-              return rowActions.map((action) => (
-                <DropdownMenuItem
-                  key={`${row.key}:${action.sessionId}`}
-                  value={`hull-row-viewer:${row.key}:${action.sessionId}`}
-                  data-hull-row-key={row.key}
-                  data-hull-group-key={group.key}
-                  data-hull-row-kind={row.kind}
-                  className="overview-thread-context-viewer"
-                  style={style}
-                  onSelect={() => onAction(action, rowPresentationKey)}
-                >
-                  <OverviewHullMenuRowBody row={row} />
-                </DropdownMenuItem>
-              ));
-            }
-            if (row.endpoint && row.nodeKey) {
+            return rowActions.map((action, index) => {
+              if (action.kind === "open-current-brief") {
+                return (
+                  <DropdownMenuItem
+                    key={row.key}
+                    value={`hull-row-brief:${row.key}`}
+                    data-hull-row-key={row.key}
+                    data-hull-group-key={group.key}
+                    data-hull-row-kind={row.kind}
+                    className="overview-thread-context-viewer"
+                    style={style}
+                    onSelect={() =>
+                      onAction({
+                        kind: "open-current-brief",
+                        label: "Open current Brief",
+                      }, rowPresentationKey)}
+                  >
+                    <OverviewHullMenuRowBody row={row} />
+                  </DropdownMenuItem>
+                );
+              }
+              if (action.kind === "open-session") {
+                const sessionAction = actionsBySession.get(action.sessionId);
+                return (
+                  <DropdownMenuItem
+                    key={`${row.key}:${action.sessionId}`}
+                    value={`hull-row-viewer:${row.key}:${action.sessionId}`}
+                    data-hull-row-key={row.key}
+                    data-hull-group-key={group.key}
+                    data-hull-row-kind={row.kind}
+                    className="overview-thread-context-viewer"
+                    style={style}
+                    onSelect={() =>
+                      onAction({
+                        kind: "open-session",
+                        nodeKey: action.nodeKey,
+                        sessionId: action.sessionId,
+                        label: sessionAction?.label ??
+                          `Open viewer · ${action.nodeKey}`,
+                      }, rowPresentationKey)}
+                  >
+                    <OverviewHullMenuRowBody row={row} />
+                  </DropdownMenuItem>
+                );
+              }
               return (
                 <DropdownMenuItem
-                  key={row.key}
+                  key={`${row.key}:${index}`}
                   value={`hull-row:${row.key}`}
                   data-hull-row-key={row.key}
                   data-hull-row-kind={row.kind}
                   className="overview-thread-context-member"
                   style={style}
-                  onSelect={() => onSelectNode(row.nodeKey!)}
+                  onSelect={() => onSelectNode(action.nodeKey)}
                 >
                   <OverviewHullMenuRowBody row={row} />
                 </DropdownMenuItem>
               );
-            }
-            return (
-              <div
-                key={row.key}
-                data-hull-row-key={row.key}
-                data-hull-row-kind={row.kind}
-                className="overview-thread-context-structure"
-                style={style}
-              >
-                <OverviewHullMenuRowBody row={row} />
-              </div>
-            );
+            });
           })}
           {memberViewerEntries.filter(({ action }) =>
             !hierarchySessionIds.has(action.sessionId)
@@ -3321,20 +3375,38 @@ function OverviewThreadContextMenu({
             Enregistrements · captures et historique
           </DropdownMenuLabel>
           <div className="overview-thread-context-members">
-            {(content?.records ?? []).map((row) => (
-              <DropdownMenuItem
-                key={row.key}
-                value={`member:${row.key}`}
-                data-hull-row-key={row.key}
-                data-hull-row-kind={row.kind}
-                className="overview-thread-context-member"
-                style={{ paddingInlineStart: `${0.75 + row.depth * 0.9}rem` }}
-                onSelect={() => onSelectNode(row.nodeKey ?? row.key)}
-              >
-                <span>{row.label}</span>
-                <small>{row.detail ?? row.key}</small>
-              </DropdownMenuItem>
-            ))}
+            {(content?.records ?? []).map((row) => {
+              const graphRef = overviewHullRowPrimaryGraphRef(row);
+              const style = {
+                paddingInlineStart: `${0.75 + row.depth * 0.9}rem`,
+              };
+              if (!graphRef) {
+                return (
+                  <div
+                    key={row.key}
+                    data-hull-row-key={row.key}
+                    data-hull-row-kind={row.kind}
+                    className="overview-thread-context-structure"
+                    style={style}
+                  >
+                    <OverviewHullMenuRowBody row={row} />
+                  </div>
+                );
+              }
+              return (
+                <DropdownMenuItem
+                  key={row.key}
+                  value={`member:${row.key}`}
+                  data-hull-row-key={row.key}
+                  data-hull-row-kind={row.kind}
+                  className="overview-thread-context-member"
+                  style={style}
+                  onSelect={() => onSelectNode(graphRef)}
+                >
+                  <OverviewHullMenuRowBody row={row} />
+                </DropdownMenuItem>
+              );
+            })}
           </div>
         </DropdownMenuGroup>
       )}
@@ -3410,7 +3482,10 @@ function OverviewHullMonitorCard({
   );
   return (
     <section
-      className="overview-thread-hull-monitor"
+      className={cn(
+        "overview-thread-hull-monitor",
+        whiteboardMonitor,
+      )}
       aria-label={`${flowGroupCaption(group)} hull monitor`}
       style={{
         left: geometry.x,
@@ -3427,6 +3502,7 @@ function OverviewHullMonitorCard({
       }}
     >
       <header
+        className={whiteboardMonitorPart({ part: "header" })}
         tabIndex={0}
         aria-label={`Move ${
           flowGroupCaption(group)
@@ -3448,31 +3524,50 @@ function OverviewHullMonitorCard({
           <p className={cn("m-0", SECTION_LABEL)}>
             {overviewLaneTitle(group.lane)} · Hull monitor
           </p>
-          <h4>{flowGroupCaption(group)}</h4>
+          <h4 className={whiteboardMonitorPart({ part: "title" })}>
+            {flowGroupCaption(group)}
+          </h4>
         </div>
         <button
           type="button"
+          className={whiteboardMonitorPart({ part: "close" })}
           onClick={onDismiss}
           aria-label="Close hull monitor"
         >
           Close
         </button>
       </header>
-      <div className="overview-thread-hull-monitor-metrics">
-        <span>
+      <div
+        className={cn(
+          "overview-thread-hull-monitor-metrics",
+          whiteboardMonitorPart({ part: "metrics" }),
+        )}
+      >
+        <span className={whiteboardMonitorPart({ part: "metric" })}>
           <strong>{members.length}</strong> nodes
         </span>
-        <span data-live={liveCount > 0 ? "true" : undefined}>
+        <span
+          className={whiteboardMonitorPart({ part: "metric" })}
+          data-live={liveCount > 0 ? "true" : undefined}
+        >
           <strong>{liveCount}</strong> live
         </span>
-        <span data-alert={alertCount > 0 ? "true" : undefined}>
+        <span
+          className={whiteboardMonitorPart({ part: "metric" })}
+          data-alert={alertCount > 0 ? "true" : undefined}
+        >
           <strong>{alertCount}</strong> alerts
         </span>
-        <span>
+        <span className={whiteboardMonitorPart({ part: "metric" })}>
           <strong>{viewerCount}</strong> Apps
         </span>
       </div>
-      <div className="overview-thread-hull-monitor-list">
+      <div
+        className={cn(
+          "overview-thread-hull-monitor-list",
+          whiteboardMonitorPart({ part: "list" }),
+        )}
+      >
         {members.map((member) => {
           const memberActions = overviewNodeContextActions(
             member,
@@ -3480,20 +3575,35 @@ function OverviewHullMonitorCard({
             viewerAliases,
           );
           return (
-            <article key={member.key} data-kind={member.kind}>
+            <article
+              key={member.key}
+              className={whiteboardMonitorPart({ part: "item" })}
+              data-kind={member.kind}
+            >
               <button
                 type="button"
-                className="overview-thread-hull-monitor-node"
+                className={cn(
+                  "overview-thread-hull-monitor-node",
+                  whiteboardMonitorPart({ part: "node" }),
+                )}
                 onClick={() => onSelectNode(member.key)}
               >
                 <span>{member.label}</span>
                 <small>{overviewNodeContextMeta(member)}</small>
               </button>
-              <div className="overview-thread-hull-monitor-actions">
+              <div
+                className={cn(
+                  "overview-thread-hull-monitor-actions",
+                  whiteboardMonitorPart({ part: "actions" }),
+                )}
+              >
                 {memberActions.map((action, index) => (
                   <button
                     key={overviewContextActionValue(action, index)}
                     type="button"
+                    className={whiteboardMonitorAction({
+                      app: action.kind === "open-session",
+                    })}
                     data-app={action.kind === "open-session"
                       ? "true"
                       : undefined}
@@ -3511,7 +3621,10 @@ function OverviewHullMonitorCard({
       </div>
       <button
         type="button"
-        className="overview-thread-viewer-resize"
+        className={cn(
+          "overview-thread-viewer-resize",
+          whiteboardViewerPart({ part: "resize" }),
+        )}
         aria-label={`Resize ${flowGroupCaption(group)} hull monitor`}
         onPointerDown={onResizeStart}
         onPointerMove={onResize}
@@ -3574,7 +3687,10 @@ function OverviewFloatingViewer({
   return (
     <article
       ref={refViewer}
-      className="overview-thread-viewer"
+      className={cn(
+        "overview-thread-viewer",
+        whiteboardViewer({ expanded: Boolean(viewer.restoreGeometry) }),
+      )}
       data-viewer-id={viewer.id}
       data-viewer-kind={viewer.kind}
       data-anchor-node={viewer.kind === "session" ? viewer.nodeKey : undefined}
@@ -3594,7 +3710,10 @@ function OverviewFloatingViewer({
       onWheel={(event) => event.stopPropagation()}
     >
       <header
-        className="overview-thread-viewer-handle"
+        className={cn(
+          "overview-thread-viewer-handle",
+          whiteboardViewerPart({ part: "handle" }),
+        )}
         tabIndex={viewer.restoreGeometry ? -1 : 0}
         aria-label={`Move ${title} with drag or arrow keys`}
         onPointerDown={onDragStart}
@@ -3610,16 +3729,25 @@ function OverviewFloatingViewer({
         }}
       >
         <span
-          className="overview-thread-viewer-title"
+          className={cn(
+            "overview-thread-viewer-title",
+            whiteboardViewerPart({ part: "title" }),
+          )}
           title={viewerSession
             ? `${viewerSession.app.id}@${viewerSession.app.version} · ${viewerSession.session.schema}`
             : undefined}
         >
           {title}
         </span>
-        <span className="overview-thread-viewer-actions">
+        <span
+          className={cn(
+            "overview-thread-viewer-actions",
+            whiteboardViewerPart({ part: "actions" }),
+          )}
+        >
           <button
             type="button"
+            className={whiteboardViewerPart({ part: "action" })}
             onClick={onToggleExpanded}
             aria-label={`${
               viewer.restoreGeometry ? "Restore" : "Expand"
@@ -3629,6 +3757,7 @@ function OverviewFloatingViewer({
           </button>
           <button
             type="button"
+            className={whiteboardViewerPart({ part: "action" })}
             onClick={onClose}
             aria-label={`Close ${title}`}
           >
@@ -3636,7 +3765,12 @@ function OverviewFloatingViewer({
           </button>
         </span>
       </header>
-      <div className="overview-thread-viewer-body">
+      <div
+        className={cn(
+          "overview-thread-viewer-body",
+          whiteboardViewerPart({ part: "body" }),
+        )}
+      >
         {viewer.kind === "current-brief" && currentBrief
           ? <OverviewCurrentBriefDocument brief={currentBrief} />
           : viewerSession?.kind === "mcp-app"
@@ -3647,14 +3781,22 @@ function OverviewFloatingViewer({
             />
           )
           : (
-            <p className="overview-thread-viewer-unavailable">
+            <p
+              className={cn(
+                "overview-thread-viewer-unavailable",
+                whiteboardViewerPart({ part: "unavailable" }),
+              )}
+            >
               Exact viewer session unavailable in this replacement.
             </p>
           )}
       </div>
       <button
         type="button"
-        className="overview-thread-viewer-resize"
+        className={cn(
+          "overview-thread-viewer-resize",
+          whiteboardViewerPart({ part: "resize" }),
+        )}
         aria-label={`Resize ${title}`}
         disabled={Boolean(viewer.restoreGeometry)}
         onPointerDown={onResizeStart}
@@ -3682,14 +3824,4 @@ function overviewViewerTitle(
   return viewerSession
     ? `${viewerSession.app.id}@${viewerSession.app.version}`
     : "App session · unavailable";
-}
-
-function overviewViewerId(
-  request: {
-    readonly kind: "session";
-    readonly nodeKey: string;
-    readonly sessionId: string;
-  },
-): string {
-  return `${request.kind}:${request.nodeKey}:${request.sessionId}`;
 }

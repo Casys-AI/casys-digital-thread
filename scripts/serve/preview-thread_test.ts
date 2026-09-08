@@ -31,6 +31,7 @@ Deno.test("preview:thread launches the BFF on 5175 and Vite on 5173", () => {
   ]);
 
   const [bff, ui] = commands;
+  assertEquals(denoRunFlags(bff, BFF_SCRIPT).includes("--watch"), true);
   assertEquals(bff.args.includes(`--port=${PREVIEW_THREAD_BFF_PORT}`), true);
   assertEquals(bff.args.includes("--workspace-id=primary"), true);
   assertEquals(bff.args.includes("--no-prompt"), true);
@@ -73,6 +74,22 @@ Deno.test("preview:thread launches the BFF on 5175 and Vite on 5173", () => {
     CASYS_COCKPIT_BFF_PORT: "5175",
     CASYS_COCKPIT_UI_PORT: "5173",
   });
+});
+
+Deno.test("preview:thread watches imported BFF modules without changing UI or registrar semantics", () => {
+  const commands = buildPreviewThreadCommands(["--project-id=sample-project"]);
+  const bff = commands.find((command) => command.name === "bff")!;
+  const ui = commands.find((command) => command.name === "ui")!;
+  const registrar = commands.find((command) => command.name === "viewer-registrar")!;
+
+  assertEquals(denoRunFlags(bff, BFF_SCRIPT).includes("--watch"), true);
+  assertEquals(denoRunFlags(bff, BFF_SCRIPT).includes("--frozen"), true);
+  assertEquals(scriptArgs(bff, BFF_SCRIPT).includes("--watch"), false);
+  assertEquals(ui.command, "npm");
+  assertEquals(ui.args.includes("dev:thread"), true);
+  assertEquals(ui.args.includes("--watch"), false);
+  assertEquals(denoRunFlags(registrar, REGISTRAR_SCRIPT).includes("--watch"), false);
+  assertEquals(scriptArgs(registrar, REGISTRAR_SCRIPT).includes("--watch"), true);
 });
 
 Deno.test("preview:thread registers viewers outside the read-only BFF with display-only writes", () => {
@@ -223,16 +240,37 @@ Deno.test("preview:cockpit grants the anchored state root to the read-only BFF",
   assertStringIncludes(config, "--allow-ffi=node_modules");
 });
 
+const BFF_SCRIPT = "scripts/serve/serve-native-workbench.ts";
+const REGISTRAR_SCRIPT = "scripts/runners/register-thread-viewer-apps.ts";
+
+function denoRunFlags(
+  command: { readonly args: readonly string[] },
+  scriptPath: string,
+): readonly string[] {
+  const scriptIndex = command.args.indexOf(scriptPath);
+  if (scriptIndex < 0) {
+    throw new Error(`preview:thread script path is missing: ${scriptPath}`);
+  }
+  return command.args.slice(0, scriptIndex);
+}
+
+function scriptArgs(
+  command: { readonly args: readonly string[] },
+  scriptPath: string,
+): readonly string[] {
+  const scriptIndex = command.args.indexOf(scriptPath);
+  if (scriptIndex < 0) {
+    throw new Error(`preview:thread script path is missing: ${scriptPath}`);
+  }
+  return command.args.slice(scriptIndex + 1);
+}
+
 function bffWorkbenchCliArgs(
   commands: ReturnType<typeof buildPreviewThreadCommands>,
 ): string[] {
   const bff = commands.find((command) => command.name === "bff");
   if (!bff) throw new Error("preview:thread BFF command is missing.");
-  const scriptIndex = bff.args.indexOf("scripts/serve/serve-native-workbench.ts");
-  if (scriptIndex < 0) {
-    throw new Error("preview:thread BFF script path is missing.");
-  }
-  return [...bff.args.slice(scriptIndex + 1)];
+  return [...scriptArgs(bff, BFF_SCRIPT)];
 }
 
 function planningProject(projectId: string): EngineeringProjectSnapshot {

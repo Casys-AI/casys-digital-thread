@@ -5,7 +5,8 @@
  * every downstream provenance edge. This adapter reopens that exact CAS
  * document, projects its typed case identity, then follows recorded edges in
  * their source-to-consumer direction. It never parses a label or invents a
- * canonical Thread relation.
+ * canonical Thread relation. Same-id revisions are a read-side current
+ * selection, not a fabricated `supersedes` edge.
  */
 
 import type {
@@ -24,7 +25,11 @@ import type {
   EngineeringCaseIssue,
 } from "../../presentation/workbench/thread/evidence.ts";
 import {
+  compareEngineeringCaseIssues,
+  compareEngineeringCases,
   ENGINEERING_CASE_CATALOG_SCHEMA,
+  projectCurrentEngineeringCases,
+  verificationCaseKey,
 } from "../../presentation/workbench/thread/evidence.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import {
@@ -64,8 +69,6 @@ import {
 import {
   INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
 } from "../../domain/make/dfm/dfm-case.ts";
-const SHA256 = /^[a-f0-9]{64}$/;
-
 const CASE_LINEAGE_RELATIONS = new Set<ThreadGraphRelation>([
   "derived_from",
   "uses",
@@ -250,7 +253,7 @@ export async function enrichThreadWorkbenchWithEngineeringCases(
       continue;
     }
 
-    const key = caseKey(extracted.family, extracted.caseDigest);
+    const key = verificationCaseKey(extracted.family, extracted.caseDigest);
     inputArtifactIdsByCaseKey.set(
       key,
       new Set([
@@ -278,15 +281,17 @@ export async function enrichThreadWorkbenchWithEngineeringCases(
     );
   }
 
-  const cases = [...casesByKey.values()]
+  const extractedCases = [...casesByKey.values()]
     .map((item) => ({
       ...item,
       authorityArtifactIds: [...new Set(item.authorityArtifactIds)].sort(),
     }))
-    .sort(compareCases);
+    .sort(compareEngineeringCases);
+  const currentProjection = projectCurrentEngineeringCases(extractedCases);
+  issues.push(...currentProjection.issues);
   const membership = projectCaseMemberships(
     snapshot,
-    cases,
+    extractedCases,
     inputArtifactIdsByCaseKey,
     issues,
   );
@@ -304,7 +309,7 @@ export async function enrichThreadWorkbenchWithEngineeringCases(
     }),
     edges: [
       ...snapshot.graph.edges,
-      ...projectVerifiedByEdges(snapshot, cases),
+      ...projectVerifiedByEdges(snapshot, extractedCases),
     ].sort((left, right) => left.id.localeCompare(right.id)),
   };
   const coverage = drivers
@@ -313,12 +318,13 @@ export async function enrichThreadWorkbenchWithEngineeringCases(
       family: driver.family,
       status: driver.reader ? "observed" as const : "unavailable" as const,
     }));
-  const sortedIssues = [...issues].sort(compareIssues);
+  const sortedIssues = [...issues].sort(compareEngineeringCaseIssues);
   const catalog: EngineeringCaseCatalog = {
     schemaVersion: ENGINEERING_CASE_CATALOG_SCHEMA,
     status: catalogStatus(coverage, sortedIssues),
     coverage,
-    cases,
+    cases: extractedCases,
+    current: currentProjection.current,
     issues: sortedIssues,
   };
 
@@ -587,16 +593,6 @@ function caseInputsMatch(
   });
 }
 
-function caseKey(
-  family: EngineeringCaseFamily,
-  digest: string,
-): string {
-  if (!SHA256.test(digest)) {
-    throw new TypeError("verification case digest must be lowercase SHA-256");
-  }
-  return `verification-case:${family}:${digest}`;
-}
-
 function sameDeclaration(
   existing: EngineeringCase,
   extracted: ExtractedCase,
@@ -726,23 +722,4 @@ function catalogStatus(
   return coverage.some((item) => item.status === "unavailable")
     ? "unresolved"
     : "observed";
-}
-
-function compareCases(
-  left: EngineeringCase,
-  right: EngineeringCase,
-): number {
-  return left.family.localeCompare(right.family) ||
-    left.id.localeCompare(right.id) ||
-    left.revision - right.revision ||
-    left.caseDigest.localeCompare(right.caseDigest);
-}
-
-function compareIssues(
-  left: EngineeringCaseIssue,
-  right: EngineeringCaseIssue,
-): number {
-  return left.family.localeCompare(right.family) ||
-    left.authorityArtifactId.localeCompare(right.authorityArtifactId) ||
-    left.reason.localeCompare(right.reason);
 }

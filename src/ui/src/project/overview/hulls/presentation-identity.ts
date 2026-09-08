@@ -1,4 +1,8 @@
-import type { OverviewHullContent, OverviewHullContentRow } from "./types.ts";
+import {
+  type OverviewHullContent,
+  type OverviewHullContentRow,
+  overviewHullRowGraphRefs,
+} from "./types.ts";
 
 const PRESENTATION_ROW_PREFIX = "hull-row:";
 
@@ -71,8 +75,9 @@ export function overviewHullGraphKeysByPresentationRow(
   };
   for (const [groupKey, content] of hullContents ?? []) {
     for (const row of content.rows) {
-      if (!row.nodeKey) continue;
-      add(overviewHullPresentationRowKey(groupKey, row.key), row.nodeKey);
+      for (const graphRef of overviewHullRowGraphRefs(row)) {
+        add(overviewHullPresentationRowKey(groupKey, row.key), graphRef);
+      }
     }
   }
   for (const [groupKey, anchors] of Object.entries(rowAnchors ?? {})) {
@@ -88,12 +93,14 @@ export function overviewHullGraphKeysByPresentationRow(
 
 export function overviewHullMappedGraphKey(
   groupKey: string,
-  row: Pick<OverviewHullContentRow, "key" | "nodeKey">,
+  row: Pick<OverviewHullContentRow, "key" | "nodeKey" | "graphRefs">,
   rowAnchors: Readonly<Record<string, Readonly<Record<string, number>>>>,
   rows: readonly OverviewHullContentRow[] | undefined,
   knownNodeKeys: { readonly has: (key: string) => boolean },
 ): string | undefined {
-  if (row.nodeKey && knownNodeKeys.has(row.nodeKey)) return row.nodeKey;
+  for (const graphRef of overviewHullRowGraphRefs(row)) {
+    if (knownNodeKeys.has(graphRef)) return graphRef;
+  }
   const anchors = rowAnchors[groupKey];
   if (!anchors || !rows) return undefined;
   for (const [nodeKey, index] of Object.entries(anchors)) {

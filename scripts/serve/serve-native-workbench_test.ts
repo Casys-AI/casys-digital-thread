@@ -770,7 +770,7 @@ Deno.test("native Workbench applies the engineering-case read model after pure p
   assertEquals(response.status, 200);
   assertEquals(body.surface, "evidence");
   assertEquals(body.thread.engineeringCases, {
-    schemaVersion: "engineering-cases/1.0",
+    schemaVersion: "engineering-cases/1.1",
     status: "observed",
     coverage: [
       { family: "mechanical-proof", status: "observed" },
@@ -780,6 +780,7 @@ Deno.test("native Workbench applies the engineering-case read model after pure p
       { family: "dfm-check", status: "observed" },
     ],
     cases: [],
+    current: [],
     issues: [],
   });
 });

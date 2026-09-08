@@ -16,7 +16,10 @@ export interface OverviewInspectionTarget {
 }
 
 export type OverviewInspectionVisualCandidate =
-  | { readonly presentationRowKey: string }
+  | {
+    readonly presentationRowKey: string;
+    readonly graphKeys?: readonly string[];
+  }
   | { readonly graphKey: string };
 
 export function overviewEffectiveInspection(input: {
@@ -71,7 +74,64 @@ export function overviewInspectionIsVisualTarget(
 ): boolean {
   if (inspection.mode === "idle") return false;
   if ("presentationRowKey" in candidate) {
-    return inspection.presentationRowKey === candidate.presentationRowKey;
+    if (inspection.presentationRowKey === candidate.presentationRowKey) {
+      return true;
+    }
+    return Boolean(
+      inspection.graphKey &&
+        candidate.graphKeys?.includes(inspection.graphKey),
+    );
   }
   return inspection.graphKey === candidate.graphKey;
+}
+
+/**
+ * Presentation row that owns the effective inspection, including a graph-key
+ * selection that later lands on a structured row.
+ */
+export function overviewInspectionPresentationRowKey(
+  inspection: OverviewInspectionTarget,
+  graphKeysByPresentationRow?: ReadonlyMap<string, readonly string[]>,
+): string | undefined {
+  if (inspection.presentationRowKey) return inspection.presentationRowKey;
+  if (!inspection.graphKey || !graphKeysByPresentationRow) return undefined;
+  for (const [presentationKey, keys] of graphKeysByPresentationRow) {
+    if (keys.includes(inspection.graphKey)) return presentationKey;
+  }
+  return undefined;
+}
+
+/** Illuminate a visible endpoint of the inspected routes, not a whole hull. */
+export function overviewInspectionIsRelatedRow(
+  inspection: OverviewInspectionTarget,
+  presentationRowKey: string,
+  rowGraphKeys: readonly string[],
+  relatedGraphKeys: ReadonlySet<string>,
+): boolean {
+  if (inspection.mode === "idle") return false;
+  if (
+    overviewInspectionIsVisualTarget(inspection, {
+      presentationRowKey,
+      graphKeys: rowGraphKeys,
+    })
+  ) {
+    return false;
+  }
+  return rowGraphKeys.some((key) => relatedGraphKeys.has(key));
+}
+
+/** The same incident routes used by cable highlighting, independent of order. */
+export function overviewInspectionRelatedGraphKeys(
+  routes: readonly { readonly fromKey: string; readonly toKey: string }[],
+  activeKeys: readonly string[],
+): ReadonlySet<string> {
+  const active = new Set(activeKeys);
+  const related = new Set(activeKeys);
+  for (const route of routes) {
+    if (active.has(route.fromKey) || active.has(route.toKey)) {
+      related.add(route.fromKey);
+      related.add(route.toKey);
+    }
+  }
+  return related;
 }

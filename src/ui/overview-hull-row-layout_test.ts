@@ -3,13 +3,19 @@ import {
   layoutOverviewHullHierarchyLinks,
   layoutOverviewHullRows,
   OVERVIEW_HULL_LIST_COLUMN_GAP,
+  overviewHullRowCableSurface,
 } from "./src/project/overview/hulls/row-layout.ts";
-import type { OverviewHullContentRow } from "./src/project/overview/hulls/content.ts";
-import { overviewThreadD3CableHub } from "./src/project/overview-thread-d3-cable-board.ts";
+import {
+  type OverviewHullContentRow,
+  overviewHullStructureRowCounts,
+} from "./src/project/overview/hulls/content.ts";
+import { overviewHullRowGraphRefs } from "./src/project/overview/hulls/types.ts";
+import { overviewThreadD3CableAnchor } from "./src/project/overview-thread-d3-cable-anchorage.ts";
 import {
   buildOverviewThreadD3FlowLayout,
   overviewThreadD3FlowGroupIdentity,
 } from "./src/project/overview-thread-d3-flow-layout.ts";
+import { overviewInspectionRelatedGraphKeys } from "./src/project/overview-thread-inspection.ts";
 
 const rows: OverviewHullContentRow[] = Array.from({ length: 29 }, (_, i) => ({
   key: `occurrence:${i}`,
@@ -18,7 +24,9 @@ const rows: OverviewHullContentRow[] = Array.from({ length: 29 }, (_, i) => ({
   depth: i === 0 ? 0 : 1,
   sessionIds: i === 4 ? ["exact-recorded-viewer"] : [],
   ...(i === 4 ? { viewerNodeKey: "artifact:exact-capture" } : {}),
-  endpoint: false,
+  endpoint: i === 0,
+  graphRefs: i === 0 ? ["artifact:geometry-root"] : [],
+  role: i === 0 ? "overlay" : "folder",
 }));
 const box = {
   x: 10,
@@ -42,6 +50,11 @@ Deno.test("hull tree, list and points arrange the same 29 exact rows and actions
       rows.map((row) => row.key),
     );
     assertEquals(laidOut.map((item) => item.row), rows);
+    assertEquals(
+      laidOut.map((item) => overviewHullRowGraphRefs(item.row)),
+      rows.map((row) => overviewHullRowGraphRefs(row)),
+    );
+    assertEquals(laidOut[0]!.row.graphRefs, ["artifact:geometry-root"]);
     assertEquals(laidOut[4]!.row.viewerNodeKey, "artifact:exact-capture");
     assertEquals(laidOut[4]!.row.sessionIds, ["exact-recorded-viewer"]);
     assertEquals(laidOut.every((item) => item.depth === 0), view !== "tree");
@@ -82,7 +95,10 @@ Deno.test("listed hull columns keep a gutter and the same 29 rows in 2 and 3 col
   for (const columns of [2, 3]) {
     const group = { ...box, view: "list" as const, columns, visibleRows: 29 };
     const laidOut = layoutOverviewHullRows(rows, group);
-    assertEquals(laidOut.map((item) => item.row.key), rows.map((row) => row.key));
+    assertEquals(
+      laidOut.map((item) => item.row.key),
+      rows.map((row) => row.key),
+    );
     assertEquals(laidOut.every((item) => item.depth === 0), true);
     const byColumn = new Map<number, typeof laidOut>();
     for (const item of laidOut) {
@@ -119,6 +135,47 @@ Deno.test("collapsed and empty hulls do not render navigation rows", () => {
     [],
   );
   assertEquals(layoutOverviewHullRows([], { ...box, view: "matrix" }), []);
+});
+
+Deno.test("records-mode hulls keep the same rows in tree, list, and points", () => {
+  const recordRows: OverviewHullContentRow[] = [
+    {
+      key: "artifact:proof-a",
+      kind: "record",
+      label: "Proof A",
+      depth: 0,
+      nodeKey: "artifact:proof-a",
+      graphRefs: ["artifact:proof-a"],
+      sessionIds: [],
+      endpoint: true,
+    },
+    {
+      key: "artifact:proof-b",
+      kind: "record",
+      label: "Proof B",
+      depth: 0,
+      nodeKey: "artifact:proof-b",
+      graphRefs: ["artifact:proof-b"],
+      sessionIds: [],
+      endpoint: true,
+    },
+  ];
+  const contents = new Map([["physics-proof", {
+    groupKey: "physics-proof",
+    mode: "records" as const,
+    rows: recordRows,
+    records: recordRows,
+  }]]);
+  const counts = overviewHullStructureRowCounts(contents);
+  assertEquals(counts["physics-proof"], 2);
+  for (const view of ["tree", "list", "matrix"] as const) {
+    const laidOut = layoutOverviewHullRows(recordRows, { ...box, view });
+    assertEquals(
+      laidOut.map((item) => item.row.key),
+      recordRows.map((row) => row.key),
+    );
+    assertEquals(laidOut.map((item) => item.row), recordRows);
+  }
 });
 
 Deno.test("all structured hull modes keep content counts and only real graph cable identities", () => {
@@ -236,7 +293,7 @@ function pointOn(
 }
 
 Deno.test(
-  "row-parent links fan at a shared lateral hull gate in tree, list and matrix",
+  "row-parent links use orthogonal elbows at exact row docks in tree, list and matrix",
   () => {
     const before = JSON.stringify(hierarchyRows);
     for (const view of ["tree", "list", "matrix"] as const) {
@@ -266,39 +323,30 @@ Deno.test(
         true,
       );
       const parent = laidOut.find((item) => item.row.key === "sysml:root")!;
-      const gate = overviewThreadD3CableHub({
-        key: "sysml:root",
-        x: group.x,
-        y: parent.y,
-        width: group.width,
-        height: parent.height,
-        hubMargin: 20,
-      }, "right");
+      const parentDock = overviewThreadD3CableAnchor(
+        overviewHullRowCableSurface(parent, view),
+        "right",
+      );
       const siblings = links.filter((link) => link.fromKey === "sysml:root");
       assertEquals(siblings.length, 4);
       for (const link of siblings) {
-        assert(link.d.includes("C"));
-        assert(!/[LQAS]/.test(link.d));
-        assert(pointOn(link.points, {
-          x: view === "matrix"
-            ? parent.x + parent.width / 2 + 5
-            : parent.x + parent.width - Math.min(4, parent.width / 8),
-          y: parent.y + parent.height / 2,
-        }));
-        assert(pointOn(link.points, gate));
+        assert(link.d.includes("L") || link.points.length === 1);
+        assertEquals(/[CQA]/.test(link.d), false);
+        assertOrthogonal(link.points);
+        assert(pointOn(link.points, parentDock));
         const child = laidOut.find((item) => item.row.key === link.toKey)!;
-        assert(pointOn(link.points, {
-          x: view === "matrix"
-            ? child.x + child.width / 2 + 5
-            : child.x + child.width - Math.min(4, child.width / 8),
-          y: child.y + child.height / 2,
-        }));
+        assert(pointOn(
+          link.points,
+          overviewThreadD3CableAnchor(
+            overviewHullRowCableSurface(child, view),
+            "right",
+          ),
+        ));
+        assertNoInteriorOverlap(link.points, laidOut, [
+          parent.row.key,
+          child.row.key,
+        ], view);
       }
-      assert(
-        pointOn(siblings[0]!.points, gate) &&
-          pointOn(siblings[1]!.points, gate),
-        `${view} siblings must share the parent fan-in gate`,
-      );
     }
     assertEquals(JSON.stringify(hierarchyRows), before);
   },
@@ -342,7 +390,7 @@ Deno.test(
   },
 );
 
-Deno.test("row-parent curves cover navigation, brief source, and record children only when parentKey is present", () => {
+Deno.test("row-parent links cover navigation, brief source, and record children only when parentKey is present", () => {
   const briefRoot: OverviewHullContentRow = {
     key: "brief-root",
     kind: "navigation",
@@ -407,3 +455,86 @@ Deno.test("row-parent curves cover navigation, brief source, and record children
     [],
   );
 });
+
+Deno.test("row-parent links never join Thread graph routes or inspection keys", () => {
+  const group = { ...hierarchyBox, view: "tree" as const };
+  const links = layoutOverviewHullHierarchyLinks(hierarchyRows, group);
+  const layout = buildOverviewThreadD3FlowLayout(
+    [{
+      key: "artifact:geometry-root",
+      label: "Geometry root",
+      lane: "geometry",
+      groupKey: "domain:geometry",
+    }],
+    [],
+  );
+  assertEquals(links.every((link) => link.relationKind === "row-parent"), true);
+  assertEquals(
+    links.some((link) =>
+      layout.routes.some((route) =>
+        route.fromKey === link.fromKey && route.toKey === link.toKey
+      )
+    ),
+    false,
+  );
+  assertEquals(
+    [...overviewInspectionRelatedGraphKeys(layout.routes, [
+      "artifact:geometry-root",
+    ])].includes("sysml:root"),
+    false,
+  );
+  assertEquals(
+    overviewInspectionRelatedGraphKeys(
+      links.map((link) => ({ fromKey: link.fromKey, toKey: link.toKey })),
+      ["artifact:geometry-root"],
+    ).has("sysml:root"),
+    false,
+  );
+});
+
+function assertOrthogonal(
+  points: readonly { readonly x: number; readonly y: number }[],
+): void {
+  for (let index = 1; index < points.length; index++) {
+    const from = points[index - 1]!;
+    const to = points[index]!;
+    assert(
+      from.x === to.x || from.y === to.y,
+      `segment ${index} is not orthogonal: ${from.x},${from.y} → ${to.x},${to.y}`,
+    );
+  }
+}
+
+function assertNoInteriorOverlap(
+  points: readonly { readonly x: number; readonly y: number }[],
+  laidOut: ReturnType<typeof layoutOverviewHullRows>,
+  involved: readonly string[],
+  view: "tree" | "list" | "matrix",
+): void {
+  const skip = new Set(involved);
+  for (const row of laidOut) {
+    if (skip.has(row.row.key)) continue;
+    const box = view === "matrix"
+      ? overviewHullRowCableSurface(row, view)
+      : row;
+    const minX = box.x + 0.5;
+    const maxX = box.x + box.width - 0.5;
+    const minY = box.y + 0.5;
+    const maxY = box.y + box.height - 0.5;
+    if (maxX <= minX || maxY <= minY) continue;
+    for (let index = 1; index < points.length; index++) {
+      const from = points[index - 1]!;
+      const to = points[index]!;
+      const hits = from.y === to.y
+        ? from.y > minY && from.y < maxY &&
+          Math.max(from.x, to.x) > minX && Math.min(from.x, to.x) < maxX
+        : from.x === to.x && from.x > minX && from.x < maxX &&
+          Math.max(from.y, to.y) > minY && Math.min(from.y, to.y) < maxY;
+      assertEquals(
+        hits,
+        false,
+        `${row.row.key} is crossed by a parent guide in ${view}`,
+      );
+    }
+  }
+}

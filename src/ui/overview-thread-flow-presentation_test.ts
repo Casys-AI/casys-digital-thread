@@ -1,25 +1,47 @@
+/// <reference lib="dom" />
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import { flowSegmentState } from "./src/project/overview-thread-d3-flow-highlight.ts";
+import {
+  flowSegmentPaintRank,
+  flowSegmentState,
+} from "./src/project/overview-thread-d3-flow-highlight.ts";
 import {
   buildOverviewThreadD3FlowLayout,
   type OverviewThreadD3FlowEdgeInput,
   type OverviewThreadD3FlowNodeInput,
 } from "./src/project/overview-thread-d3-flow-layout.ts";
+import { overviewFlowSegmentPresentations } from "./src/project/overview/flow/segments.ts";
 
-Deno.test("fresh idle presentation tokens stay muted and never paint purple or teal inspection hues", async () => {
+Deno.test("idle cables stay grey and inspection paints distinct incoming and outgoing hues", async () => {
   const styles = await Deno.readTextFile(
     new URL("./src/styles/18-overview-thread-flow.css", import.meta.url),
   );
   const shell = await Deno.readTextFile(
     new URL("./src/styles/17-saas-shell.css", import.meta.url),
   );
+  const flow = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-d3-flow.tsx", import.meta.url),
+  );
   assertStringIncludes(styles, "--overview-cable-idle-color");
-  assertStringIncludes(styles, "--overview-cable-idle-opacity");
-  assertStringIncludes(styles, "--overview-inspection-color");
-  assertEquals(styles.includes("#6d28d9"), false);
-  assertEquals(styles.includes("#0f766e"), false);
-  assertEquals(shell.includes("#6d28d9"), false);
-  assertEquals(shell.includes("#0f766e"), false);
+  assertStringIncludes(styles, "--overview-cable-idle-opacity: 0.16");
+  assertEquals(styles.includes("--overview-inspection-color"), false);
+  assertEquals(flow.includes("--overview-inspection-color"), false);
+  assertStringIncludes(styles, "stroke: #6d28d9");
+  assertStringIncludes(styles, "stroke: #0f766e");
+  const recipes = await Deno.readTextFile(
+    new URL("./src/ui/whiteboard.ts", import.meta.url),
+  );
+  assertStringIncludes(recipes, "stroke-[#6d28d9]");
+  assertStringIncludes(recipes, "stroke-[#0f766e]");
+  assertEquals(shell.includes(".overview-thread-flow-segment"), false);
+  assertEquals(shell.includes(".overview-thread-flow-node"), false);
+  assertEquals(shell.includes(".overview-thread-cable["), false);
+  assertEquals(shell.includes("stroke: #6d28d9"), false);
+  assertEquals(shell.includes("stroke: #0f766e"), false);
+  assertStringIncludes(
+    shell,
+    "stroke: var(--overview-cable-idle-color, #6e7f86);",
+  );
+  assertStringIncludes(shell, ".overview-thread-node-leader");
   assertStringIncludes(
     styles,
     '.overview-thread-flow-segment[data-state="incoming"]',
@@ -33,20 +55,269 @@ Deno.test("fresh idle presentation tokens stay muted and never paint purple or t
   );
   const incomingBlock = styles.slice(
     incomingIndex,
-    styles.indexOf("opacity: 0.9;", incomingIndex) + 20,
+    styles.indexOf("opacity: 0.7;", incomingIndex) + 20,
   );
-  assertStringIncludes(incomingBlock, "var(--overview-inspection-color)");
-  assertStringIncludes(
-    incomingBlock,
-    '[data-state="outgoing"]',
-  );
+  assertStringIncludes(incomingBlock, "stroke: #6d28d9");
+  assertEquals(incomingBlock.includes('[data-state="outgoing"]'), false);
   assertStringIncludes(
     styles,
-    ".overview-thread-flow-hierarchy-links path {\n  fill: none;\n  stroke: var(--overview-cable-idle-color);",
+    "opacity: 0.16",
   );
+  assertStringIncludes(styles, "opacity: 0.3;");
+  assertStringIncludes(styles, "opacity: 0.22;");
+  assertStringIncludes(styles, "opacity: 0.14;");
+  assertStringIncludes(styles, "opacity: 0.055;");
+  const hierarchyStart = styles.indexOf(
+    ".overview-thread-flow-hierarchy-links path {",
+  );
+  const hierarchyEnd = styles.indexOf(
+    ".overview-thread-hero .overview-thread-flow-node {",
+    hierarchyStart,
+  );
+  assertEquals(hierarchyStart >= 0, true);
+  assertEquals(hierarchyEnd > hierarchyStart, true);
+  const hierarchy = styles.slice(hierarchyStart, hierarchyEnd);
+  assertStringIncludes(hierarchy, "stroke: var(--overview-cable-idle-color);");
+  assertStringIncludes(hierarchy, "opacity: 0.2;");
+  assertEquals(hierarchy.includes("var(--flow-color)"), false);
+  assertEquals(hierarchy.includes("#6d28d9"), false);
+  assertEquals(hierarchy.includes("#0f766e"), false);
+  assertStringIncludes(recipes, "stroke-[#6e7f86]");
+  assertStringIncludes(recipes, "opacity-[0.16]");
+  assertStringIncludes(recipes, "[stroke-linejoin:round]");
+  assertStringIncludes(recipes, "opacity-[0.68]");
 });
 
 Deno.test("incoming and outgoing exact chains share one inspection color and still raise the far branch", () => {
+  const layout = twoCadFeaLayout();
+  const routeA = layout.routes.find((route) =>
+    route.edgeKey === "trace:a>fea"
+  )!;
+  const idle = layout.segments.map((segment) =>
+    flowSegmentState(segment, undefined, [], layout.routes)
+  );
+  assertEquals(idle.every((state) => state === "default"), true);
+  assertEquals(
+    routeA.segmentKeys.map((key) =>
+      flowSegmentState(
+        layout.segments.find((segment) => segment.key === key)!,
+        "artifact:cad-a",
+        [],
+        layout.routes,
+      )
+    ),
+    ["outgoing", "outgoing", "outgoing"],
+  );
+  assertEquals(
+    routeA.segmentKeys.map((key) =>
+      flowSegmentState(
+        layout.segments.find((segment) => segment.key === key)!,
+        "observation:fea",
+        [],
+        layout.routes,
+      )
+    ),
+    ["incoming", "incoming", "incoming"],
+  );
+});
+
+Deno.test("overviewFlowSegmentPresentations orders paint then key and flags drag only on touching cables", () => {
+  const layout = twoCadFeaLayout();
+  const moving = new Set(["artifact:cad-a"]);
+  const idle = overviewFlowSegmentPresentations(
+    layout,
+    "artifact:cad-a",
+    moving,
+    false,
+  );
+  const dragging = overviewFlowSegmentPresentations(
+    layout,
+    "artifact:cad-a",
+    moving,
+    true,
+  );
+
+  assertEquals(idle.length > 0, true);
+  assertEquals(
+    idle.every((presentation) => presentation.connectedToDrag === false),
+    true,
+  );
+  assertEquals(
+    idle.map((presentation) => presentation.state),
+    idle.map((presentation) =>
+      flowSegmentState(
+        presentation.segment,
+        "artifact:cad-a",
+        [],
+        layout.routes,
+      )
+    ),
+  );
+  assertEquals(
+    idle.map((presentation) => flowSegmentPaintRank(presentation.state)),
+    idle.map((presentation) => flowSegmentPaintRank(presentation.state))
+      .toSorted((left, right) => left - right),
+  );
+  for (let index = 1; index < idle.length; index++) {
+    const previous = idle[index - 1]!;
+    const current = idle[index]!;
+    if (
+      flowSegmentPaintRank(previous.state) !==
+        flowSegmentPaintRank(current.state)
+    ) continue;
+    assertEquals(
+      previous.segment.key.localeCompare(current.segment.key) <= 0,
+      true,
+    );
+  }
+
+  const expectedConnectedToDrag = dragging.map((presentation) =>
+    presentation.segment.fromKeys.includes("artifact:cad-a") ||
+    presentation.segment.toKeys.includes("artifact:cad-a")
+  );
+  assertEquals(
+    dragging.some((presentation) => presentation.connectedToDrag),
+    true,
+  );
+  assertEquals(expectedConnectedToDrag.includes(false), true);
+  assertEquals(
+    dragging.map((presentation) => presentation.connectedToDrag),
+    expectedConnectedToDrag,
+  );
+});
+
+Deno.test("record FlowNode dots and matrix points share a saturated idle fill and selected halo", async () => {
+  const styles = await Deno.readTextFile(
+    new URL("./src/styles/18-overview-thread-flow.css", import.meta.url),
+  );
+  const recipes = await Deno.readTextFile(
+    new URL("./src/ui/whiteboard.ts", import.meta.url),
+  );
+  const heroIndex = styles.indexOf(".overview-thread-hero {");
+  const heroBlock = styles.slice(
+    heroIndex,
+    styles.indexOf("\n}", heroIndex) + 2,
+  );
+  assertEquals(heroBlock.includes("--overview-point-idle-fill"), false);
+  assertEquals(heroBlock.includes("--overview-point-idle-stroke"), false);
+  assertEquals(styles.includes("--overview-point-idle-fill"), false);
+  assertEquals(styles.includes("--overview-point-idle-stroke"), false);
+
+  assertStringIncludes(recipes, "size-[0.4375rem]");
+  assertStringIncludes(recipes, "bg-[var(--flow-color)]");
+  assertStringIncludes(
+    recipes,
+    "border-[color-mix(in_srgb,var(--flow-color)_76%,#fff)]",
+  );
+  assertStringIncludes(recipes, "shadow-[0_0_0_2px_#fff]");
+  assertStringIncludes(
+    recipes,
+    "group-data-[state=selected]:shadow-[0_0_0_2px_#fff,0_0_0_4px_color-mix(in_srgb,var(--flow-color)_48%,transparent)]",
+  );
+  assertEquals(recipes.includes("var(--flow-color)_28%"), false);
+  assertEquals(recipes.includes("ring-primary/50"), false);
+  assertEquals(styles.includes("background: #e7eef0"), false);
+  assertEquals(
+    styles.includes(
+      ".overview-thread-flow-node-dot {\n  display: block;\n  width: 0.4375rem;\n  height: 0.4375rem;\n  border: 1px solid color-mix(in srgb, var(--flow-color) 76%, #fff);\n  border-radius: 999px;\n  background: var(--flow-color);",
+    ),
+    false,
+  );
+
+  const containerIndex = styles.indexOf(
+    "@container overview-thread-flow (max-width: 44rem)",
+  );
+  const nextContainer = styles.indexOf(
+    "@container overview-thread-flow (max-width: 30rem)",
+    containerIndex + 1,
+  );
+  const container = styles.slice(containerIndex, nextContainer);
+  const overrideIndex = container.indexOf(".overview-thread-flow-node-dot {");
+  const override = container.slice(
+    overrideIndex,
+    container.indexOf("\n  }", overrideIndex) + 4,
+  );
+  assertStringIncludes(override, "width: 0.375rem;");
+  assertStringIncludes(override, "height: 0.375rem;");
+  assertEquals(override.includes("border: 0"), false);
+  assertEquals(override.includes("box-shadow: 0 0 0 1px #fff"), false);
+  assertEquals(override.includes("var(--overview-point-idle-stroke)"), false);
+});
+
+Deno.test("retained data-selected does not paint the active structure atom", async () => {
+  const styles = await Deno.readTextFile(
+    new URL("./src/styles/18-overview-thread-flow.css", import.meta.url),
+  );
+  const recipes = await Deno.readTextFile(
+    new URL("./src/ui/whiteboard.ts", import.meta.url),
+  );
+  assertEquals(styles.includes("background: #e7eef0"), false);
+  assertEquals(
+    styles.includes('[data-inspection-active="true"]'),
+    false,
+  );
+  assertEquals(
+    styles.includes(
+      '.overview-thread-flow-structure-row[data-selected="true"]',
+    ),
+    false,
+  );
+  assertEquals(
+    styles.includes('[data-selected="true"]::before'),
+    false,
+  );
+  assertStringIncludes(
+    recipes,
+    "data-[state=selected]:bg-[color-mix(in_srgb,var(--flow-color)_8%,transparent)]",
+  );
+});
+
+Deno.test("matrix row hover keeps a transparent cell and a compact tooltip contract", async () => {
+  const styles = await Deno.readTextFile(
+    new URL("./src/styles/18-overview-thread-flow.css", import.meta.url),
+  );
+  const recipes = await Deno.readTextFile(
+    new URL("./src/ui/whiteboard.ts", import.meta.url),
+  );
+  assertStringIncludes(
+    recipes,
+    "hover:bg-[color-mix(in_srgb,var(--flow-color)_8%,transparent)]",
+  );
+  assertStringIncludes(
+    recipes,
+    'point: "grid size-[0.875rem] place-items-center rounded-full"',
+  );
+  assertEquals(
+    recipes.includes(
+      'point: "grid size-[0.875rem] place-items-center rounded-full"',
+    ) && recipes.includes("8%,transparent"),
+    true,
+  );
+  const pointRecipe = recipes.slice(
+    recipes.indexOf("density: {"),
+    recipes.indexOf("listed:"),
+  );
+  assertEquals(pointRecipe.includes("8%,transparent"), false);
+  assertEquals(styles.includes('[data-hull-row-view="matrix"]::before'), false);
+  assertEquals(
+    styles.includes(
+      '[data-hull-row-view="matrix"] > :not(.overview-thread-flow-node-tooltip)',
+    ),
+    false,
+  );
+  assertEquals(
+    styles.includes(
+      '[data-hull-row-view="matrix"] .overview-thread-flow-node-tooltip {',
+    ),
+    false,
+  );
+  assertStringIncludes(
+    recipes,
+    "group-data-[hull-row-view=matrix]:max-w-[min(8.5rem,22cqi)]",
+  );
+});
+
+function twoCadFeaLayout() {
   const nodes: readonly OverviewThreadD3FlowNodeInput[] = [
     {
       key: "artifact:cad-a",
@@ -85,181 +356,5 @@ Deno.test("incoming and outgoing exact chains share one inspection color and sti
       emphasis: false,
     },
   ];
-  const layout = buildOverviewThreadD3FlowLayout(nodes, edges);
-  const routeA = layout.routes.find((route) => route.edgeKey === "trace:a>fea")!;
-  const idle = layout.segments.map((segment) =>
-    flowSegmentState(segment, undefined, [], layout.routes)
-  );
-  assertEquals(idle.every((state) => state === "default"), true);
-  assertEquals(
-    routeA.segmentKeys.map((key) =>
-      flowSegmentState(
-        layout.segments.find((segment) => segment.key === key)!,
-        "artifact:cad-a",
-        [],
-        layout.routes,
-      )
-    ),
-    ["outgoing", "outgoing", "outgoing"],
-  );
-  assertEquals(
-    routeA.segmentKeys.map((key) =>
-      flowSegmentState(
-        layout.segments.find((segment) => segment.key === key)!,
-        "observation:fea",
-        [],
-        layout.routes,
-      )
-    ),
-    ["incoming", "incoming", "incoming"],
-  );
-});
-
-Deno.test("record FlowNode dots and matrix points share subdued idle and active ring tokens", async () => {
-  const styles = await Deno.readTextFile(
-    new URL("./src/styles/18-overview-thread-flow.css", import.meta.url),
-  );
-  const heroIndex = styles.indexOf(".overview-thread-hero {");
-  const heroBlock = styles.slice(
-    heroIndex,
-    styles.indexOf("\n}", heroIndex) + 2,
-  );
-  assertStringIncludes(heroBlock, "--overview-point-idle-fill: 38%;");
-  assertStringIncludes(heroBlock, "--overview-point-idle-stroke: 64%;");
-  assertEquals(styles.split("--overview-point-idle-fill:").length - 1, 1);
-  assertEquals(styles.split("--overview-point-idle-stroke:").length - 1, 1);
-
-  const idleFill =
-    "color-mix(in srgb, var(--flow-color) var(--overview-point-idle-fill), #fff)";
-  const idleStroke =
-    "color-mix(in srgb, var(--flow-color) var(--overview-point-idle-stroke), #fff)";
-  const matrixIdleIndex = styles.indexOf(
-    '.overview-thread-flow-structure-row[data-hull-row-view="matrix"]::before {',
-  );
-  const matrixIdle = styles.slice(
-    matrixIdleIndex,
-    styles.indexOf("\n}", matrixIdleIndex) + 2,
-  );
-  const nodeDotIndex = styles.indexOf(".overview-thread-flow-node-dot {");
-  const nodeDotIdle = styles.slice(
-    nodeDotIndex,
-    styles.indexOf("\n}", nodeDotIndex) + 2,
-  );
-  assertStringIncludes(matrixIdle, `background: ${idleFill}`);
-  assertStringIncludes(matrixIdle, `border: 1px solid ${idleStroke}`);
-  assertStringIncludes(nodeDotIdle, `background: ${idleFill}`);
-  assertStringIncludes(nodeDotIdle, `border: 1px solid ${idleStroke}`);
-  assertEquals(matrixIdle.includes("var(--flow-color) 28%"), false);
-  assertEquals(nodeDotIdle.includes("var(--flow-color) 28%"), false);
-  assertEquals(matrixIdle.includes("background: var(--flow-color)"), false);
-  assertEquals(nodeDotIdle.includes("background: var(--flow-color)"), false);
-
-  const matrixActiveIndex = styles.indexOf(
-    '.overview-thread-flow-structure-row[data-hull-row-view="matrix"]:hover::before',
-  );
-  const matrixActive = styles.slice(
-    matrixActiveIndex,
-    styles.indexOf("\n}", matrixActiveIndex) + 2,
-  );
-  const nodeActiveIndex = styles.indexOf(
-    '.overview-thread-hero .overview-thread-flow-node:not([data-kind="activity"]):hover .overview-thread-flow-node-dot',
-  );
-  const nodeActive = styles.slice(
-    nodeActiveIndex,
-    styles.indexOf("\n}", nodeActiveIndex) + 2,
-  );
-  assertStringIncludes(
-    matrixActive,
-    '[data-inspection-active="true"]::before',
-  );
-  assertEquals(
-    matrixActive.includes('[data-selected="true"]::before'),
-    false,
-  );
-  assertStringIncludes(matrixActive, "background: var(--flow-color);");
-  assertStringIncludes(matrixActive, "border-color: var(--flow-color);");
-  assertStringIncludes(nodeActive, "background: var(--flow-color);");
-  assertStringIncludes(nodeActive, "border-color: var(--flow-color);");
-  assertEquals(
-    styles.includes(
-      ".overview-thread-flow-node-dot {\n  display: block;\n  width: 0.4375rem;\n  height: 0.4375rem;\n  border: 1px solid color-mix(in srgb, var(--flow-color) 76%, #fff);\n  border-radius: 999px;\n  background: var(--flow-color);",
-    ),
-    false,
-  );
-
-  const containerIndex = styles.indexOf(
-    "@container overview-thread-flow (max-width: 44rem)",
-  );
-  const nextContainer = styles.indexOf(
-    "@container overview-thread-flow (max-width: 30rem)",
-    containerIndex + 1,
-  );
-  const container = styles.slice(containerIndex, nextContainer);
-  const overrideIndex = container.indexOf(".overview-thread-flow-node-dot {");
-  const override = container.slice(
-    overrideIndex,
-    container.indexOf("\n  }", overrideIndex) + 4,
-  );
-  assertStringIncludes(override, "width: 0.375rem;");
-  assertStringIncludes(override, "height: 0.375rem;");
-  assertEquals(override.includes("border: 0"), false);
-  assertEquals(override.includes("box-shadow: 0 0 0 1px #fff"), false);
-  assertEquals(override.includes("var(--overview-point-idle-stroke)"), false);
-  assertStringIncludes(nodeDotIdle, idleStroke);
-});
-
-Deno.test("retained data-selected does not paint the active structure atom", async () => {
-  const styles = await Deno.readTextFile(
-    new URL("./src/styles/18-overview-thread-flow.css", import.meta.url),
-  );
-  assertStringIncludes(
-    styles,
-    '.overview-thread-flow-structure-row[data-inspection-active="true"] {\n  background: #e7eef0;',
-  );
-  assertStringIncludes(
-    styles,
-    '[data-hull-row-view="matrix"][data-inspection-active="true"]::before',
-  );
-  assertEquals(
-    styles.includes(
-      '.overview-thread-flow-structure-row[data-selected="true"]',
-    ),
-    false,
-  );
-  assertEquals(
-    styles.includes('[data-selected="true"]::before'),
-    false,
-  );
-});
-
-Deno.test("matrix row hover keeps a transparent cell and a compact tooltip contract", async () => {
-  const styles = await Deno.readTextFile(
-    new URL("./src/styles/18-overview-thread-flow.css", import.meta.url),
-  );
-  assertStringIncludes(
-    styles,
-    '[data-hull-row-view="matrix"]:hover',
-  );
-  assertStringIncludes(
-    styles,
-    '[data-hull-row-view="matrix"][data-inspection-active="true"] {\n  background: transparent;',
-  );
-  assertStringIncludes(
-    styles,
-    '[data-hull-row-view="matrix"]::before',
-  );
-  assertEquals(
-    styles.includes(
-      '[data-hull-row-view="matrix"]::before {\n  content: "";\n  width: 0.5rem;\n  height: 0.5rem;\n  border: 1px solid var(--flow-color);\n  border-radius: 50%;\n  background: var(--flow-color);',
-    ),
-    false,
-  );
-  assertStringIncludes(
-    styles,
-    '[data-hull-row-view="matrix"]:hover::before',
-  );
-  assertStringIncludes(
-    styles,
-    '[data-hull-row-view="matrix"] .overview-thread-flow-node-tooltip {\n  max-width: min(8.5rem, 22cqi);',
-  );
-});
+  return buildOverviewThreadD3FlowLayout(nodes, edges);
+}

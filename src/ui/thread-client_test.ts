@@ -12,6 +12,10 @@ import {
   type ThreadArtifact,
   type ThreadGraphNode,
 } from "./src/thread/types.ts";
+import {
+  projectCurrentEngineeringCases,
+  verificationCaseKey,
+} from "../presentation/workbench/thread/evidence.ts";
 
 Deno.test("native Workbench rejects a missing bootstrap instead of selecting a product fixture", async () => {
   const client = createThreadWorkbenchClient();
@@ -766,6 +770,7 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
     producerRunId: "run.proof.seal",
     dependsOn: [],
   } as ThreadArtifact);
+  const caseKey = verificationCaseKey("mechanical-proof", caseDigest);
   observed.graph.nodes.push({
     id: `artifact:${authorityArtifactId}`,
     ref: { kind: "artifact", id: authorityArtifactId },
@@ -775,10 +780,20 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
     system: "digital-thread",
     freshness: "fresh",
     summary: "Sealed proof case",
-    engineeringCaseRefs: ["mechanical-proof:case-a"],
+    engineeringCaseRefs: [caseKey],
   } as ThreadGraphNode);
+  const cases = [{
+    key: caseKey,
+    family: "mechanical-proof" as const,
+    caseSchemaVersion: "mechanical-proof-case/1.0" as const,
+    id: "case-a",
+    revision: 2,
+    scope: "Recorded structural proof case",
+    caseDigest,
+    authorityArtifactIds: [authorityArtifactId],
+  }];
   observed.engineeringCases = {
-    schemaVersion: "engineering-cases/1.0",
+    schemaVersion: "engineering-cases/1.1",
     status: "observed",
     coverage: [
       { family: "mechanical-proof", status: "observed" },
@@ -787,19 +802,40 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
       { family: "print-estimate", status: "observed" },
       { family: "dfm-check", status: "observed" },
     ],
-    cases: [{
-      key: "mechanical-proof:case-a",
-      family: "mechanical-proof",
-      caseSchemaVersion: "mechanical-proof-case/1.0",
-      id: "case-a",
-      revision: 2,
-      scope: "Recorded structural proof case",
-      caseDigest,
-      authorityArtifactIds: [authorityArtifactId],
-    }],
+    cases,
+    current: projectCurrentEngineeringCases(cases).current,
     issues: [],
   };
   assertEquals(isThreadWorkbenchSnapshot(observed), true);
+
+  const staleSchema = structuredClone(observed);
+  staleSchema.engineeringCases!.schemaVersion = "engineering-cases/1.0" as never;
+  assertEquals(isThreadWorkbenchSnapshot(staleSchema), false);
+
+  const missingCurrent = structuredClone(observed);
+  delete (missingCurrent.engineeringCases as { current?: unknown }).current;
+  assertEquals(isThreadWorkbenchSnapshot(missingCurrent), false);
+
+  const malformedCurrent = structuredClone(observed);
+  malformedCurrent.engineeringCases!.current = [{
+    ...malformedCurrent.engineeringCases!.current[0]!,
+    currentCaseKey: "verification-case:mechanical-proof:" + "b".repeat(64),
+  }];
+  assertEquals(isThreadWorkbenchSnapshot(malformedCurrent), false);
+
+  const extraCurrentField = structuredClone(observed);
+  extraCurrentField.engineeringCases!.current[0] = {
+    ...extraCurrentField.engineeringCases!.current[0]!,
+    archived: true,
+  } as never;
+  assertEquals(isThreadWorkbenchSnapshot(extraCurrentField), false);
+
+  const extraCurrentKeys = structuredClone(observed);
+  extraCurrentKeys.engineeringCases!.current = [
+    ...extraCurrentKeys.engineeringCases!.current,
+    extraCurrentKeys.engineeringCases!.current[0]!,
+  ];
+  assertEquals(isThreadWorkbenchSnapshot(extraCurrentKeys), false);
 
   const unknownMembership = structuredClone(observed);
   unknownMembership.graph.nodes[0]!.engineeringCaseRefs = ["missing-case"];
@@ -835,6 +871,222 @@ Deno.test("the Workbench accepts only exact verification cases and known node me
   unavailableFamily.engineeringCases!.coverage[0]!.status = "unavailable";
   unavailableFamily.engineeringCases!.status = "unresolved";
   assertEquals(isThreadWorkbenchSnapshot(unavailableFamily), false);
+});
+
+Deno.test(
+  "the Workbench treats a whitespace engineering case id as an unsupported contract, not an exception",
+  async () => {
+    const workbench = joinedCaseWorkbench();
+    workbench.thread.engineeringCases!.cases[0]!.id = " arm-cantilever ";
+    const threadResult = (() => {
+      try {
+        return isThreadWorkbenchSnapshot(workbench.thread);
+      } catch {
+        return "threw";
+      }
+    })();
+    assertEquals(threadResult, false);
+    const workbenchResult = (() => {
+      try {
+        return isEngineeringWorkbenchSnapshot(workbench);
+      } catch {
+        return "threw";
+      }
+    })();
+    assertEquals(workbenchResult, false);
+
+    const client = new HttpThreadWorkbenchClient(
+      "/api/thread/workbench",
+      () => Promise.resolve(Response.json(workbench)),
+    );
+    await assertRejects(() => client.load(), Error, "unsupported contract");
+  },
+);
+
+Deno.test(
+  "the Workbench accepts fail-closed current divergence while exact cases remain",
+  () => {
+    const digestA = "a".repeat(64);
+    const digestB = "b".repeat(64);
+    const captureA = "c".repeat(64);
+    const captureB = "d".repeat(64);
+    const artifactA = `fea-proof-${captureA}`;
+    const artifactB = `fea-proof-${captureB}`;
+    const keyA = verificationCaseKey("mechanical-proof", digestA);
+    const keyB = verificationCaseKey("mechanical-proof", digestB);
+    const observed = structuredClone(GENERIC_THREAD_FIXTURE);
+    observed.artifacts.push(
+      proofArtifact(artifactA, captureA, digestA, "run.proof.dup-a"),
+      proofArtifact(artifactB, captureB, digestB, "run.proof.dup-b"),
+    );
+    observed.graph.nodes.push(
+      proofNode(artifactA, keyA),
+      proofNode(artifactB, keyB),
+    );
+    const cases = [
+      mechanicalCase(keyA, "id01-camera-bracket-bench", 1, digestA, [
+        artifactA,
+      ]),
+      mechanicalCase(keyB, "id01-camera-bracket-bench", 1, digestB, [
+        artifactB,
+      ]),
+    ];
+    const projected = projectCurrentEngineeringCases(cases);
+    observed.engineeringCases = {
+      schemaVersion: "engineering-cases/1.1",
+      status: "unresolved",
+      coverage: [
+        { family: "mechanical-proof", status: "observed" },
+        { family: "sensitivity-study", status: "observed" },
+        { family: "printability-check", status: "observed" },
+        { family: "print-estimate", status: "observed" },
+        { family: "dfm-check", status: "observed" },
+      ],
+      cases,
+      current: projected.current,
+      issues: projected.issues,
+    };
+    assertEquals(projected.current, []);
+    assertEquals(isThreadWorkbenchSnapshot(observed), true);
+
+    const inventedCurrent = structuredClone(observed);
+    inventedCurrent.engineeringCases!.current = [{
+      family: "mechanical-proof",
+      id: "id01-camera-bracket-bench",
+      currentCaseKey: keyB,
+      revision: 1,
+    }];
+    assertEquals(isThreadWorkbenchSnapshot(inventedCurrent), false);
+  },
+);
+
+Deno.test(
+  "the Workbench accepts server current order that locale collation can reverse",
+  () => {
+    const digestZ = "a".repeat(64);
+    const digestUmlaut = "b".repeat(64);
+    const captureZ = "c".repeat(64);
+    const captureUmlaut = "d".repeat(64);
+    const artifactZ = `fea-proof-${captureZ}`;
+    const artifactUmlaut = `fea-proof-${captureUmlaut}`;
+    const keyZ = verificationCaseKey("mechanical-proof", digestZ);
+    const keyUmlaut = verificationCaseKey("mechanical-proof", digestUmlaut);
+    const observed = structuredClone(GENERIC_THREAD_FIXTURE);
+    observed.artifacts.push(
+      proofArtifact(artifactZ, captureZ, digestZ, "run.proof.z"),
+      proofArtifact(
+        artifactUmlaut,
+        captureUmlaut,
+        digestUmlaut,
+        "run.proof.umlaut",
+      ),
+    );
+    observed.graph.nodes.push(
+      proofNode(artifactZ, keyZ),
+      proofNode(artifactUmlaut, keyUmlaut),
+    );
+    const cases = [
+      mechanicalCase(keyUmlaut, "ä-bench", 1, digestUmlaut, [artifactUmlaut]),
+      mechanicalCase(keyZ, "z-bench", 1, digestZ, [artifactZ]),
+    ];
+    const current = projectCurrentEngineeringCases(cases).current;
+    assertEquals(current.map((item) => item.id), ["z-bench", "ä-bench"]);
+    observed.engineeringCases = {
+      schemaVersion: "engineering-cases/1.1",
+      status: "observed",
+      coverage: [
+        { family: "mechanical-proof", status: "observed" },
+        { family: "sensitivity-study", status: "observed" },
+        { family: "printability-check", status: "observed" },
+        { family: "print-estimate", status: "observed" },
+        { family: "dfm-check", status: "observed" },
+      ],
+      cases,
+      current,
+      issues: [],
+    };
+    assertEquals(isThreadWorkbenchSnapshot(observed), true);
+
+    const localeOrdered = structuredClone(observed);
+    localeOrdered.engineeringCases!.current = [current[1]!, current[0]!];
+    assertEquals(isThreadWorkbenchSnapshot(localeOrdered), false);
+  },
+);
+
+Deno.test("the Workbench accepts Camera r1/r3 current r3 and rejects an ambiguous current", () => {
+  const digestR1 = "a".repeat(64);
+  const digestR3 = "b".repeat(64);
+  const captureR1 = "c".repeat(64);
+  const captureR3 = "d".repeat(64);
+  const artifactR1 = `fea-proof-${captureR1}`;
+  const artifactR3 = `fea-proof-${captureR3}`;
+  const keyR1 = verificationCaseKey("mechanical-proof", digestR1);
+  const keyR3 = verificationCaseKey("mechanical-proof", digestR3);
+  const observed = structuredClone(GENERIC_THREAD_FIXTURE);
+  observed.artifacts.push(
+    proofArtifact(artifactR1, captureR1, digestR1, "run.proof.r1"),
+    proofArtifact(artifactR3, captureR3, digestR3, "run.proof.r3"),
+  );
+  observed.graph.nodes.push(
+    proofNode(artifactR1, keyR1),
+    proofNode(artifactR3, keyR3),
+  );
+  const cases = [
+    mechanicalCase(keyR1, "id01-camera-bracket-bench", 1, digestR1, [
+      artifactR1,
+    ]),
+    mechanicalCase(keyR3, "id01-camera-bracket-bench", 3, digestR3, [
+      artifactR3,
+    ]),
+  ];
+  observed.engineeringCases = {
+    schemaVersion: "engineering-cases/1.1",
+    status: "observed",
+    coverage: [
+      { family: "mechanical-proof", status: "observed" },
+      { family: "sensitivity-study", status: "observed" },
+      { family: "printability-check", status: "observed" },
+      { family: "print-estimate", status: "observed" },
+      { family: "dfm-check", status: "observed" },
+    ],
+    cases,
+    current: projectCurrentEngineeringCases(cases).current,
+    issues: [],
+  };
+  assertEquals(isThreadWorkbenchSnapshot(observed), true);
+  assertEquals(observed.engineeringCases.current, [{
+    family: "mechanical-proof",
+    id: "id01-camera-bracket-bench",
+    currentCaseKey: keyR3,
+    revision: 3,
+  }]);
+
+  const twoCurrents = structuredClone(observed);
+  twoCurrents.engineeringCases!.current = [
+    {
+      family: "mechanical-proof",
+      id: "id01-camera-bracket-bench",
+      currentCaseKey: keyR1,
+      revision: 1,
+    },
+    {
+      family: "mechanical-proof",
+      id: "id01-camera-bracket-bench",
+      currentCaseKey: keyR3,
+      revision: 3,
+    },
+  ];
+  assertEquals(isThreadWorkbenchSnapshot(twoCurrents), false);
+
+  const duplicateRevision = structuredClone(observed);
+  duplicateRevision.engineeringCases!.cases[1] = mechanicalCase(
+    keyR3,
+    "id01-camera-bracket-bench",
+    1,
+    digestR3,
+    [artifactR3],
+  );
+  assertEquals(isThreadWorkbenchSnapshot(duplicateRevision), false);
 });
 
 Deno.test("evidence Workbench recrosses projected activity membership with domain identity", () => {
@@ -992,9 +1244,19 @@ function joinedCaseWorkbench(): EngineeringEvidenceWorkbenchSnapshot {
   const secondCapture = "d".repeat(64);
   const firstId = `fea-proof-${firstCapture}`;
   const secondId = `fea-proof-${secondCapture}`;
-  const caseKey = `mechanical-proof:${caseDigest}`;
+  const caseKey = verificationCaseKey("mechanical-proof", caseDigest);
   const runId = "agent-run-mechanical-fixture";
   const workbench = structuredClone(GENERIC_ENGINEERING_WORKBENCH_FIXTURE);
+  const cases = [{
+    key: caseKey,
+    family: "mechanical-proof" as const,
+    caseSchemaVersion: "mechanical-proof-case/1.0" as const,
+    id: "arm-cantilever",
+    revision: 2,
+    scope: "Recorded structural proof case",
+    caseDigest,
+    authorityArtifactIds: [firstId, secondId],
+  }];
   return {
     ...workbench,
     thread: {
@@ -1013,7 +1275,7 @@ function joinedCaseWorkbench(): EngineeringEvidenceWorkbenchSnapshot {
         ],
       },
       engineeringCases: {
-        schemaVersion: "engineering-cases/1.0",
+        schemaVersion: "engineering-cases/1.1",
         status: "observed",
         coverage: [
           { family: "mechanical-proof", status: "observed" },
@@ -1022,16 +1284,8 @@ function joinedCaseWorkbench(): EngineeringEvidenceWorkbenchSnapshot {
           { family: "print-estimate", status: "observed" },
           { family: "dfm-check", status: "observed" },
         ],
-        cases: [{
-          key: caseKey,
-          family: "mechanical-proof",
-          caseSchemaVersion: "mechanical-proof-case/1.0",
-          id: "arm-cantilever",
-          revision: 2,
-          scope: "Recorded structural proof case",
-          caseDigest,
-          authorityArtifactIds: [firstId, secondId],
-        }],
+        cases,
+        current: projectCurrentEngineeringCases(cases).current,
         issues: [],
       },
     },
@@ -1064,6 +1318,25 @@ function proofArtifact(
     producedBy: "verify.seal-proof-case@1",
     producerRunId,
     dependsOn: [],
+  };
+}
+
+function mechanicalCase(
+  key: string,
+  id: string,
+  revision: number,
+  caseDigest: string,
+  authorityArtifactIds: string[],
+) {
+  return {
+    key,
+    family: "mechanical-proof" as const,
+    caseSchemaVersion: "mechanical-proof-case/1.0" as const,
+    id,
+    revision,
+    scope: "Recorded structural proof case",
+    caseDigest,
+    authorityArtifactIds,
   };
 }
 

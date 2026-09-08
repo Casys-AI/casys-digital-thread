@@ -2,7 +2,8 @@
  * Default development cockpit: Vite on :5173, read-only BFF on :5175.
  *
  * Humans open 5173. The BFF stays on the canonical 5175 loopback used by
- * preview:cockpit and start:agent. Vite proxies /api to that BFF.
+ * preview:cockpit and start:agent. Vite proxies /api to that BFF. The BFF
+ * child uses Deno `--watch` so imported projector/domain edits restart it.
  */
 import { parseArgs } from "../lib/cli.ts";
 
@@ -57,6 +58,7 @@ export function buildPreviewThreadCommands(
       command: Deno.execPath(),
       args: [
         "run",
+        "--watch",
         "--no-prompt",
         "--frozen",
         "--node-modules-dir=auto",

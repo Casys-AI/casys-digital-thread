@@ -1,4 +1,7 @@
-import type { OverviewHullContentRow } from "./types.ts";
+import {
+  type OverviewHullContentRow,
+  overviewHullRowPrimaryGraphRef,
+} from "./types.ts";
 
 export type OverviewHullRowAction =
   | {
@@ -36,8 +39,9 @@ export function overviewHullRowActions(
       nodeKey: row.viewerNodeKey!,
     }));
   }
-  if (row.endpoint && row.nodeKey) {
-    return [{ kind: "select-node", nodeKey: row.nodeKey }];
+  const graphRef = overviewHullRowPrimaryGraphRef(row);
+  if (row.endpoint && graphRef) {
+    return [{ kind: "select-node", nodeKey: graphRef }];
   }
   return [];
 }
@@ -94,9 +98,7 @@ export function overviewHullRowPresentation(
     label: row.label,
     ...(row.detail ? { detail: row.detail } : {}),
     caption,
-    ariaLabel: `${row.label}${
-      row.detail ? ` · ${row.detail}` : ""
-    } · ${ariaSuffix}`,
+    ariaLabel: `${row.label} · ${ariaSuffix}`,
     hasViewer,
   };
 }

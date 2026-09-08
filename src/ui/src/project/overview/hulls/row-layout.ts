@@ -1,11 +1,20 @@
-import {
-  OVERVIEW_THREAD_D3_HULL_HUB_MARGIN as HULL_HIERARCHY_HUB_MARGIN,
-  OverviewThreadD3CableFanInFields,
-  type OverviewThreadD3CableHull,
-  overviewThreadD3CableTerminal,
-} from "../../overview-thread-d3-cable-board.ts";
-import type { OverviewThreadD3CableObstacle } from "../../overview-thread-d3-cable-field.ts";
-import type { OverviewHullContentRow, OverviewHullRowBox } from "./types.ts";
+import { overviewThreadD3CableAnchor } from "../../overview-thread-d3-cable-anchorage.ts";
+import type { OverviewHullContentRow } from "./types.ts";
+
+/** Geometry a hull needs to place the same rows in tree, list, and points. */
+export interface OverviewHullRowBox {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly headerHeight: number;
+  readonly footerHeight: number;
+  readonly view: "tree" | "list" | "matrix";
+  readonly columns: number;
+  readonly visibleRows: number;
+  readonly scrollRow: number;
+  readonly collapsed: boolean;
+}
 
 export interface OverviewHullRowLayout {
   readonly row: OverviewHullContentRow;
@@ -108,9 +117,28 @@ export interface OverviewHullHierarchyLink {
   readonly d: string;
 }
 
+const HIERARCHY_SPINE_OFFSET = 8;
+const HIERARCHY_SAME_LINE = 0.75;
+const HIERARCHY_ROW_OFFSET = 12;
+
+interface HierarchyPoint {
+  readonly x: number;
+  readonly y: number;
+}
+
+interface HierarchyObstacle {
+  readonly key: string;
+  readonly minimumX: number;
+  readonly maximumX: number;
+  readonly minimumY: number;
+  readonly maximumY: number;
+}
+
 /**
  * Presentation parentage for any visible row that already names a present
  * parentKey. Never a Thread edge, evidence join, or inferred relation.
+ * Orthogonal elbows stay a containment guide; Thread graph cables keep
+ * their own fan-in routing.
  */
 export function layoutOverviewHullHierarchyLinks(
   rows: readonly OverviewHullContentRow[],
@@ -137,65 +165,31 @@ export function layoutOverviewHullHierarchyLinks(
   for (const [parentKey, children] of childrenByParent) {
     const parent = positions.get(parentKey);
     if (!parent) continue;
-    const involved = new Set([
-      parentKey,
-      ...children.map((child) => child.row.key),
-    ]);
     const side = hierarchyFanSide(parent, group);
-    const hull: OverviewThreadD3CableHull = {
-      key: parentKey,
-      x: group.x,
-      y: parent.y,
-      width: group.width,
-      height: parent.height,
-      hubMargin: HULL_HIERARCHY_HUB_MARGIN,
-    };
-    const fields = new OverviewThreadD3CableFanInFields();
-    const parentTerminal = overviewThreadD3CableTerminal(
-      hull,
-      rowLeaf(parent, group.view, pointSize),
-      side,
-      "source",
-    );
-    fields.demand(parentTerminal, 1);
-    const childTerminals = children.map((child) => {
-      const terminal = overviewThreadD3CableTerminal(
-        hull,
-        rowLeaf(child, group.view, pointSize),
+    const parentDock = hierarchyRowDock(parent, group.view, pointSize, side);
+    for (const child of children) {
+      const childDock = hierarchyRowDock(child, group.view, pointSize, side);
+      const obstacles = [...positions.values()]
+        .filter((position) =>
+          position.row.key !== parentKey && position.row.key !== child.row.key
+        )
+        .map((position) => hierarchyObstacle(position, group.view, pointSize))
+        .toSorted((left, right) => left.key.localeCompare(right.key));
+      const points = orthogonalHierarchyPoints(
+        parentDock,
+        childDock,
         side,
-        "target",
+        group,
+        parent,
+        child,
+        obstacles,
       );
-      fields.demand(terminal, 1);
-      return { child, terminal };
-    });
-    const obstacles: readonly OverviewThreadD3CableObstacle[] =
-      group.view === "list" && group.columns > 1
-        ? [...positions.values()]
-          .filter((position) => !involved.has(position.row.key))
-          .map((position) => ({
-            key: position.row.key,
-            minimumX: position.x,
-            maximumX: position.x + position.width,
-            minimumY: position.y,
-            maximumY: position.y + position.height,
-          }))
-          .toSorted((left, right) => left.key.localeCompare(right.key))
-        : [];
-    fields.solve(() => obstacles);
-    const parentBranch = fields.branchFor(parentTerminal);
-    if (!parentBranch) continue;
-    for (const { child, terminal } of childTerminals) {
-      const childBranch = fields.branchFor(terminal);
-      if (!childBranch) continue;
       links.push({
         fromKey: parentKey,
         toKey: child.row.key,
         relationKind: OVERVIEW_HULL_ROW_PARENT_RELATION,
-        points: [
-          ...parentBranch.points,
-          ...childBranch.points.slice(1),
-        ],
-        d: `${parentBranch.d}${childBranch.d}`,
+        points,
+        d: orthogonalHierarchyPath(points),
       });
     }
   }
@@ -211,19 +205,193 @@ function hierarchyFanSide(
   return parent.x + parent.width / 2 <= mid ? "left" : "right";
 }
 
-function rowLeaf(
+function hierarchyRowDock(
   position: OverviewHullRowLayout,
   view: OverviewHullRowBox["view"],
   pointSize: number,
-): {
-  readonly key: string;
-  readonly x: number;
-  readonly y: number;
-  readonly width: number;
-  readonly height: number;
-} {
+  side: "left" | "right",
+): HierarchyPoint {
+  return overviewThreadD3CableAnchor(
+    overviewHullRowCableSurface(position, view, pointSize),
+    side,
+  );
+}
+
+function hierarchyObstacle(
+  position: OverviewHullRowLayout,
+  view: OverviewHullRowBox["view"],
+  pointSize: number,
+): HierarchyObstacle {
+  const box = view === "matrix"
+    ? overviewHullRowCableSurface(position, view, pointSize)
+    : position;
   return {
     key: position.row.key,
-    ...overviewHullRowCableSurface(position, view, pointSize),
+    minimumX: box.x,
+    maximumX: box.x + box.width,
+    minimumY: box.y,
+    maximumY: box.y + box.height,
   };
+}
+
+function orthogonalHierarchyPoints(
+  parentDock: HierarchyPoint,
+  childDock: HierarchyPoint,
+  side: "left" | "right",
+  group: OverviewHullRowBox,
+  parent: OverviewHullRowLayout,
+  child: OverviewHullRowLayout,
+  obstacles: readonly HierarchyObstacle[],
+): readonly HierarchyPoint[] {
+  const candidates: HierarchyPoint[][] = [];
+  const sameY = Math.abs(parentDock.y - childDock.y) <= HIERARCHY_SAME_LINE;
+  const room = Math.min(
+    HIERARCHY_ROW_OFFSET,
+    Math.max(6, parent.height * 0.35, child.height * 0.35),
+  );
+  if (sameY) {
+    candidates.push(
+      hierarchyURoute(parentDock, childDock, parentDock.y + room),
+    );
+    candidates.push(
+      hierarchyURoute(parentDock, childDock, parentDock.y - room),
+    );
+  }
+  const sign = side === "right" ? 1 : -1;
+  const base = side === "right"
+    ? Math.max(parentDock.x, childDock.x)
+    : Math.min(parentDock.x, childDock.x);
+  const columnEdge = side === "right"
+    ? Math.max(parent.x + parent.width, child.x + child.width)
+    : Math.min(parent.x, child.x);
+  const outer = side === "right" ? group.x + group.width + 6 : group.x - 6;
+  const spines = group.view === "matrix"
+    ? [
+      base + sign * HIERARCHY_SPINE_OFFSET,
+      columnEdge,
+      outer,
+    ]
+    : [
+      columnEdge,
+      base + sign * HIERARCHY_SPINE_OFFSET,
+      base + sign * 16,
+      outer,
+    ];
+  const seen = new Set<number>();
+  for (const spineX of spines) {
+    if (seen.has(spineX)) continue;
+    seen.add(spineX);
+    candidates.push([
+      parentDock,
+      { x: spineX, y: parentDock.y },
+      { x: spineX, y: childDock.y },
+      childDock,
+    ]);
+  }
+  if (!sameY) {
+    candidates.push(
+      hierarchyURoute(parentDock, childDock, parentDock.y + room),
+    );
+    candidates.push(
+      hierarchyURoute(parentDock, childDock, parentDock.y - room),
+    );
+    candidates.push(
+      hierarchyURoute(parentDock, childDock, childDock.y + room),
+    );
+    candidates.push(
+      hierarchyURoute(parentDock, childDock, childDock.y - room),
+    );
+  }
+  for (const candidate of candidates) {
+    const compact = compactOrthogonalPoints(candidate);
+    if (!orthogonalPathHitsObstacles(compact, obstacles)) return compact;
+  }
+  return compactOrthogonalPoints(candidates[0] ?? [parentDock, childDock]);
+}
+
+function hierarchyURoute(
+  parentDock: HierarchyPoint,
+  childDock: HierarchyPoint,
+  elbowY: number,
+): HierarchyPoint[] {
+  return [
+    parentDock,
+    { x: parentDock.x, y: elbowY },
+    { x: childDock.x, y: elbowY },
+    childDock,
+  ];
+}
+
+function compactOrthogonalPoints(
+  points: readonly HierarchyPoint[],
+): HierarchyPoint[] {
+  const unique: HierarchyPoint[] = [];
+  for (const point of points) {
+    const previous = unique.at(-1);
+    if (previous && previous.x === point.x && previous.y === point.y) continue;
+    unique.push(point);
+  }
+  return unique.filter((point, index) => {
+    if (index === 0 || index === unique.length - 1) return true;
+    const previous = unique[index - 1]!;
+    const next = unique[index + 1]!;
+    return (point.x - previous.x) * (next.y - point.y) !==
+      (point.y - previous.y) * (next.x - point.x);
+  });
+}
+
+function orthogonalPathHitsObstacles(
+  points: readonly HierarchyPoint[],
+  obstacles: readonly HierarchyObstacle[],
+): boolean {
+  if (obstacles.length === 0 || points.length < 2) return false;
+  for (let index = 1; index < points.length; index++) {
+    const from = points[index - 1]!;
+    const to = points[index]!;
+    for (const obstacle of obstacles) {
+      if (axisSegmentHitsBox(from, to, obstacle)) return true;
+    }
+  }
+  return false;
+}
+
+function axisSegmentHitsBox(
+  from: HierarchyPoint,
+  to: HierarchyPoint,
+  box: HierarchyObstacle,
+): boolean {
+  const inset = 0.5;
+  const minX = box.minimumX + inset;
+  const maxX = box.maximumX - inset;
+  const minY = box.minimumY + inset;
+  const maxY = box.maximumY - inset;
+  if (maxX <= minX || maxY <= minY) return false;
+  if (from.y === to.y) {
+    if (from.y <= minY || from.y >= maxY) return false;
+    const left = Math.min(from.x, to.x);
+    const right = Math.max(from.x, to.x);
+    return right > minX && left < maxX;
+  }
+  if (from.x === to.x) {
+    if (from.x <= minX || from.x >= maxX) return false;
+    const top = Math.min(from.y, to.y);
+    const bottom = Math.max(from.y, to.y);
+    return bottom > minY && top < maxY;
+  }
+  return true;
+}
+
+function orthogonalHierarchyPath(points: readonly HierarchyPoint[]): string {
+  if (points.length === 0) return "";
+  return points.map((point, index) =>
+    `${index === 0 ? "M" : "L"}${formatHierarchyNumber(point.x)} ${
+      formatHierarchyNumber(point.y)
+    }`
+  ).join("");
+}
+
+function formatHierarchyNumber(value: number): string {
+  if (!Number.isFinite(value)) return "0";
+  const rounded = Math.round(value * 1e6) / 1e6;
+  return Object.is(rounded, -0) ? "0" : String(rounded);
 }

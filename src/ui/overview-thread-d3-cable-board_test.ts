@@ -1,5 +1,7 @@
 import { assert, assertEquals } from "@std/assert";
 import {
+  overviewThreadD3CableDockKey,
+  OverviewThreadD3CableFanInFields,
   overviewThreadD3CableHub,
   overviewThreadD3CableHullSides,
   overviewThreadD3CableTerminal,
@@ -126,5 +128,97 @@ Deno.test(
       testHull("tight", 156, 80),
     );
     assertEquals(tight, { source: "left", target: "right" });
+  },
+);
+
+Deno.test(
+  "fan-in fields merge the same visual dock before solving identical anchors",
+  () => {
+    const hull = testHull("group:shared", 40, 80, 200, 120);
+    const rowZero = {
+      x: 44,
+      y: 110,
+      width: 180,
+      height: 17,
+      dockKey: "row-dock:0",
+    };
+    const rowOne = {
+      x: 44,
+      y: 140,
+      width: 180,
+      height: 17,
+      dockKey: "row-dock:1",
+    };
+    const first = overviewThreadD3CableTerminal(
+      hull,
+      { key: "artifact:a", ...rowZero },
+      "right",
+      "source",
+    );
+    const second = overviewThreadD3CableTerminal(
+      hull,
+      { key: "artifact:b", ...rowZero },
+      "right",
+      "source",
+    );
+    const other = overviewThreadD3CableTerminal(
+      hull,
+      { key: "artifact:c", ...rowOne },
+      "right",
+      "source",
+    );
+
+    assertEquals(first.port, second.port);
+    assertEquals(first.dockKey, second.dockKey);
+    assertEquals(first.branchKey, second.branchKey);
+    assert(first.branchKey !== other.branchKey);
+    assertEquals(overviewThreadD3CableDockKey(first.leaf), "row-dock:0");
+    assertEquals(
+      overviewThreadD3CableDockKey({ key: "artifact:solo" }),
+      "artifact:solo",
+    );
+
+    const fields = new OverviewThreadD3CableFanInFields();
+    fields.demand(first, 1);
+    fields.demand(second, 2);
+    fields.demand(other, 1);
+    fields.solve(() => []);
+
+    const firstBranch = fields.branchFor(first);
+    const secondBranch = fields.branchFor(second);
+    const otherBranch = fields.branchFor(other);
+    assert(firstBranch);
+    assert(secondBranch);
+    assert(otherBranch);
+    assertEquals(firstBranch.d, secondBranch.d);
+    assertEquals(firstBranch.points, secondBranch.points);
+    assert(firstBranch.d !== otherBranch.d);
+  },
+);
+
+Deno.test(
+  "fan-in fields leave unmerged identical anchors unrouted rather than overlapping",
+  () => {
+    const hull = testHull("group:overlap", 40, 80, 200, 120);
+    const box = { x: 44, y: 110, width: 180, height: 17 };
+    const first = overviewThreadD3CableTerminal(
+      hull,
+      { key: "artifact:a", ...box },
+      "right",
+      "source",
+    );
+    const second = overviewThreadD3CableTerminal(
+      hull,
+      { key: "artifact:b", ...box },
+      "right",
+      "source",
+    );
+    assert(first.branchKey !== second.branchKey);
+    const fields = new OverviewThreadD3CableFanInFields();
+    fields.demand(first, 1);
+    fields.demand(second, 1);
+    fields.solve(() => []);
+    assertEquals(fields.branchFor(first), undefined);
+    assertEquals(fields.branchFor(second), undefined);
   },
 );

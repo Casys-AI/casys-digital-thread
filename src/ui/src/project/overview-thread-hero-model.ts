@@ -20,10 +20,11 @@ import {
 import {
   isOverviewBriefRecord,
   isOverviewRequirementsCapture,
-  OVERVIEW_DOMAIN_GROUP_KEYS,
+  overviewDisambiguatedRecordLabel,
   overviewDomainGroupCaption,
   overviewDomainGroupColor,
   overviewDomainGroupKeyFor,
+  overviewRecordProvenanceQualifier,
 } from "./overview/hulls/domain-groups.ts";
 export type {
   OverviewBriefSourceHeroNode,
@@ -56,6 +57,11 @@ export interface OverviewRecordedHeroNode extends OverviewHeroIdentity {
    * Display group and labels never authorize this.
    */
   readonly isRequirementsCapture?: boolean;
+  /**
+   * Restrained overlay from an exact active/blocked Project activity.
+   * Planned/completed never set this. Missing or conflicting relations omit it.
+   */
+  readonly activityStatus?: "active" | "blocked";
 }
 
 export interface OverviewActivityHeroNode extends OverviewHeroIdentity {
@@ -124,6 +130,7 @@ export function buildOverviewThreadHero(
   );
 
   const placed: OverviewHeroNode[] = [];
+  const provenanceByKey = new Map<string, string>();
   for (const node of visibleNodes) {
     const key = refKey(node.ref);
     const artifact = node.ref.kind === "artifact"
@@ -134,15 +141,23 @@ export function buildOverviewThreadHero(
       : undefined;
     const sourceArtifact = observation
       ? artifactsById.get(observation.sourceArtifactId)
-      : undefined;
-    const lane = activityEvidenceLanes.get(key) ??
-      overviewLaneFor(node, artifact);
+      : uniqueEvidencingArtifact(node, thread.graph.edges, artifactsById);
+    // Typed SysML/requirements keep their structural lane. Activity evidence
+    // only places records that otherwise have no typed lane.
+    const lane = overviewLaneFor(node, artifact) ??
+      activityEvidenceLanes.get(key);
     if (!lane) continue;
     const column = OVERVIEW_LANES.find((item) => item.id === lane)!;
     const groupKey = overviewGroupKeyFor(node, artifact, {
       observation,
       sourceArtifact,
     });
+    const qualifier = overviewRecordProvenanceQualifier({
+      artifact,
+      sourceArtifact,
+      engineeringCaseRefs: node.engineeringCaseRefs,
+    });
+    if (qualifier) provenanceByKey.set(key, qualifier);
     placed.push({
       kind: "recorded",
       key,
@@ -157,18 +172,12 @@ export function buildOverviewThreadHero(
         : {}),
     });
   }
-
-  for (const activity of activities) {
-    if (activity.status === "completed") continue;
-    placed.push({
-      kind: "activity",
-      key: `project-activity:${activity.id}`,
-      groupKey: OVERVIEW_DOMAIN_GROUP_KEYS.projectActivity,
-      label: activity.title,
-      activity,
-      lane: activity.lane,
-    });
-  }
+  disambiguateDuplicateRecordLabels(placed, provenanceByKey);
+  overlayExactActivityStatus(
+    placed,
+    activities,
+    thread,
+  );
 
   const containment = hullContainmentParents(
     placed.filter(isRecordedOverviewHeroNode),
@@ -231,33 +240,6 @@ export function buildOverviewThreadHero(
       pathKeys: [...bundle.pathKeys].sort(),
     }),
   );
-  for (const activity of activities) {
-    if (activity.status === "completed") continue;
-    const activityKey = `project-activity:${activity.id}`;
-    const dependencyPathsByNode = new Map<string, string[]>();
-    for (const ref of activity.dependencyEvidenceRefs) {
-      if (!isAddressableInThread(ref, thread)) continue;
-      const dependencyKey = refKey(ref);
-      if (!byKey.has(dependencyKey)) continue;
-      const pathKey = `project-dependency:${
-        exactEvidenceRefKey(ref)
-      }>${activityKey}`;
-      const paths = dependencyPathsByNode.get(dependencyKey);
-      if (paths) paths.push(pathKey);
-      else dependencyPathsByNode.set(dependencyKey, [pathKey]);
-    }
-    for (const [dependencyKey, pathKeys] of dependencyPathsByNode) {
-      edges.push({
-        key: `${dependencyKey}>${activityKey}#project-dependency`,
-        fromKey: dependencyKey,
-        toKey: activityKey,
-        kind: "project-dependency",
-        emphasis: activity.status === "blocked",
-        pathCount: pathKeys.length,
-        pathKeys: pathKeys.toSorted(),
-      });
-    }
-  }
   edges.push(...briefCorrespondences.edges);
   edges.sort((left, right) => left.key.localeCompare(right.key));
 
@@ -332,6 +314,116 @@ export function overviewGroupCaption(
   lane?: OverviewLaneId,
 ): string {
   return overviewDomainGroupCaption(groupKey, lane);
+}
+
+/**
+ * Planned/completed stay off the engineering board. Active/blocked overlay the
+ * unique exact evidence hull; missing or split relations omit fail-closed.
+ */
+function overlayExactActivityStatus(
+  placed: OverviewHeroNode[],
+  activities: readonly ProjectPathActivityView[],
+  thread: ThreadWorkbenchSnapshot,
+): void {
+  const recorded = placed.filter(isRecordedOverviewHeroNode);
+  const byKey = new Map(recorded.map((item) => [item.key, item]));
+  const statusesByHull = new Map<string, Set<"active" | "blocked">>();
+  for (const activity of activities) {
+    if (activity.status !== "active" && activity.status !== "blocked") {
+      continue;
+    }
+    const hulls = new Set<string>();
+    for (const ref of activity.evidenceRefs) {
+      if (!isAddressableInThread(ref, thread)) continue;
+      const node = byKey.get(refKey(ref));
+      if (!node) continue;
+      hulls.add(`${node.lane}/${node.groupKey}`);
+    }
+    if (hulls.size !== 1) continue;
+    const hull = [...hulls][0]!;
+    const bucket = statusesByHull.get(hull) ?? new Set();
+    bucket.add(activity.status);
+    statusesByHull.set(hull, bucket);
+  }
+  const overlay = new Map<string, "active" | "blocked">();
+  for (const [hull, statuses] of statusesByHull) {
+    if (statuses.size === 1) overlay.set(hull, [...statuses][0]!);
+  }
+  if (overlay.size === 0) return;
+  for (let index = 0; index < placed.length; index++) {
+    const item = placed[index]!;
+    if (item.kind !== "recorded") continue;
+    const status = overlay.get(`${item.lane}/${item.groupKey}`);
+    if (status) placed[index] = { ...item, activityStatus: status };
+  }
+}
+
+function uniqueEvidencingArtifact(
+  node: ThreadGraphNode,
+  edges: readonly ThreadGraphEdge[],
+  artifactsById: ReadonlyMap<string, ThreadArtifact>,
+): ThreadArtifact | undefined {
+  if (node.entityKind !== "evaluation" && node.entityKind !== "violation") {
+    return undefined;
+  }
+  const artifactIds: string[] = [];
+  for (const edge of edges) {
+    if (edge.relation !== "evidences") continue;
+    if (edge.to.kind !== node.ref.kind || edge.to.id !== node.ref.id) continue;
+    if (edge.from.kind !== "artifact") continue;
+    artifactIds.push(edge.from.id);
+  }
+  if (artifactIds.length !== 1) return undefined;
+  return artifactsById.get(artifactIds[0]!);
+}
+
+function disambiguateDuplicateRecordLabels(
+  placed: OverviewHeroNode[],
+  provenanceByKey: ReadonlyMap<string, string>,
+): void {
+  const collisions = new Map<string, string[]>();
+  for (const item of placed) {
+    if (item.kind !== "recorded") continue;
+    const collisionKey = `${item.lane}/${item.groupKey}\0${item.label}`;
+    const keys = collisions.get(collisionKey);
+    if (keys) keys.push(item.key);
+    else collisions.set(collisionKey, [item.key]);
+  }
+  const uniqueQualifierByKey = new Map<string, boolean>();
+  for (const keys of collisions.values()) {
+    if (keys.length < 2) continue;
+    const qualifierCounts = new Map<string, number>();
+    for (const key of keys) {
+      const qualifier = provenanceByKey.get(key);
+      if (!qualifier) continue;
+      qualifierCounts.set(
+        qualifier,
+        (qualifierCounts.get(qualifier) ?? 0) + 1,
+      );
+    }
+    for (const key of keys) {
+      const qualifier = provenanceByKey.get(key);
+      uniqueQualifierByKey.set(
+        key,
+        qualifier !== undefined && qualifierCounts.get(qualifier) === 1,
+      );
+    }
+  }
+  for (let index = 0; index < placed.length; index++) {
+    const item = placed[index]!;
+    if (item.kind !== "recorded") continue;
+    const collisionKey = `${item.lane}/${item.groupKey}\0${item.label}`;
+    const collisionCount = collisions.get(collisionKey)?.length ?? 1;
+    const nextLabel = overviewDisambiguatedRecordLabel(
+      item.label,
+      provenanceByKey.get(item.key),
+      collisionCount,
+      uniqueQualifierByKey.get(item.key) === true,
+    );
+    if (nextLabel !== item.label) {
+      placed[index] = { ...item, label: nextLabel };
+    }
+  }
 }
 
 function overviewActivityEvidenceLanes(
@@ -432,12 +524,6 @@ function hullContainmentParents(
   }
   for (const key of cyclic) single.delete(key);
   return single;
-}
-
-function exactEvidenceRefKey(
-  ref: ProjectPathActivityView["dependencyEvidenceRefs"][number],
-): string {
-  return `${ref.snapshotId}@${ref.snapshotRevision}:${ref.kind}:${ref.id}`;
 }
 
 function isAddressableInThread(

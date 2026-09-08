@@ -51,23 +51,36 @@ catalogue, authorization and lifecycle rules.
 
 ## Engineering Case catalog
 
-The Workbench read-side `engineering-cases/1.0` catalog is the typed id+revision case
-families that seal a case document with authority artifacts and producer run IDs. CAD
-admissions, isolated CAD execution, admitted Modelica and admitted SPICE are not members
-of that catalog.
+The Workbench read-side `engineering-cases/1.1` catalog is the typed id+revision case
+families that seal a case document with authority artifacts and producer run IDs. It
+contains every exact sealed case in `cases` and one `current` selection per
+conflict-free `(family, id)`: `{family, id, currentCaseKey, revision}`. Revision stays
+inside that identity and selection. CAD admissions, isolated CAD execution, admitted
+Modelica and admitted SPICE are not members of that catalog. A `case-current-divergent`
+group omits only that current selection; exact case records stay in `cases`. That
+selection is not a Thread `supersedes` edge, not a `series` partition, and not a
+fabricated FEA lineage. The whiteboard is current-only: it does not paint rN,
+prior/current members, a revision counter, or History. Cancelled Project work that never
+sealed a case is not a catalog member.
 
-| This                                                                         | Is                                                                              | Is not                                          |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------- |
-| `mechanical-proof-case/1.0`                                                  | Exact FEA proof-case identity (`verify.seal-proof-case@1`)                      | A CalculiX solve or evaluation closeout         |
-| `sensitivity-study-case/3.0`                                                 | Exact provider-neutral sensitivity-study identity                               | A proof-run, CAD admission, or provider request |
-| `printability-check-case/1.0`                                                | Exact FDM printability-case identity (`industrialize.seal-printability-case@1`) | A DFM payload or a STEP                         |
-| `print-estimate-case/1.0`                                                    | Exact FFF print-estimate identity (`industrialize.seal-print-estimate-case@1`)  | A price, slicer log, or CAD admission           |
-| `dfm-check-case/1.0`                                                         | Exact measured DFM-case identity (`industrialize.seal-dfm-case@1`)              | Printability thresholds or mcp-dfm by itself    |
-| `compile.seal-admission@3` / `technical-compilation-admission-capture/4.0`   | Closed-subset admission bytes                                                   | An Engineering Case                             |
-| `design.execute-build123d@1` / `design.seal-isolated-geometry@1`             | Isolated CAD execution / documentary seal of that execution                     | An Engineering Case or canonical STEP           |
-| `simulate.run-admitted-modelica@1` / `simulate.run-qualified-modelica-kit@1` | Admitted `.mo` run or pinned kit                                                | An Engineering Case                             |
-| `simulate.run-admitted-spice@1`                                              | Circuit-only admitted SPICE                                                     | An Engineering Case or mcp-spice                |
-| Historical `simulate.seal-simulation-case@1`/`@2`                            | Retired recorded-provider route. Not registered                                 | An Engineering Case family                      |
+| This                                                                         | Is                                                                              | Is not                                                        |
+| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| `engineering-cases/1.1` `cases` + `current`                                  | Exact sealed cases plus one current `(family, id)` selection                    | A `series` partition, Thread `supersedes`, or FEA lineage     |
+| `case-current-divergent`                                                     | Fail-closed current selection for one conflicted `(family, id)` group           | Deletion of exact `cases`, a catalog drop, or a join          |
+| Historical `series` / `caseLifecycle` / series-member roles                  | Retired `current-by-revision` / `retained-prior-accepted` UI. Not published     | Catalog `current`, generic graph fold, or FEA History         |
+| `current-engineering-cases`                                                  | Overview adapter (`from-current-engineering-cases.ts`) recrossing `current`     | A series adapter, `caseLifecycle` UI, or `version-history.ts` |
+| FEA Physics hull                                                             | Current solver-result and its viewer for a current mechanical-proof case        | FEA Verdicts, an rN member, or History                        |
+| FEA Verdicts hull                                                            | Exact Requirement evaluation for that current case                              | The solver viewer or a fabricated FEA lineage                 |
+| `mechanical-proof-case/1.0`                                                  | Exact FEA proof-case identity (`verify.seal-proof-case@1`)                      | A CalculiX solve or evaluation closeout                       |
+| `sensitivity-study-case/3.0`                                                 | Exact provider-neutral sensitivity-study identity                               | A proof-run, CAD admission, or provider request               |
+| `printability-check-case/1.0`                                                | Exact FDM printability-case identity (`industrialize.seal-printability-case@1`) | A DFM payload or a STEP                                       |
+| `print-estimate-case/1.0`                                                    | Exact FFF print-estimate identity (`industrialize.seal-print-estimate-case@1`)  | A price, slicer log, or CAD admission                         |
+| `dfm-check-case/1.0`                                                         | Exact measured DFM-case identity (`industrialize.seal-dfm-case@1`)              | Printability thresholds or mcp-dfm by itself                  |
+| `compile.seal-admission@3` / `technical-compilation-admission-capture/4.0`   | Closed-subset admission bytes                                                   | An Engineering Case                                           |
+| `design.execute-build123d@1` / `design.seal-isolated-geometry@1`             | Isolated CAD execution / documentary seal of that execution                     | An Engineering Case or canonical STEP                         |
+| `simulate.run-admitted-modelica@1` / `simulate.run-qualified-modelica-kit@1` | Admitted `.mo` run or pinned kit                                                | An Engineering Case                                           |
+| `simulate.run-admitted-spice@1`                                              | Circuit-only admitted SPICE                                                     | An Engineering Case or mcp-spice                              |
+| Historical `simulate.seal-simulation-case@1`/`@2`                            | Retired recorded-provider route. Not registered                                 | An Engineering Case family                                    |
 
 ## Mechanism
 
@@ -174,7 +187,8 @@ Domain contracts:
 | This                                     | Is                                                                                                  | Is not                                                                                            |
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `verify.run-fea-static-proof@1` / `@2`   | Historical MCP FEA. Not registered                                                                  | Product isolated `@3`                                                                             |
-| `verify.run-fea-static-proof@3`          | Isolated local CalculiX + separate SysON oracle                                                     | MCP CalculiX, agent `.inp`, or a cad-model as `geometry`                                          |
+| `verify.run-fea-static-proof@3`          | Isolated local CalculiX + separate SysON oracle; protocol version, not a case revision              | MCP CalculiX, agent `.inp`, a cad-model as `geometry`, or catalog `revision`                      |
+| `isolated-v3`                            | Implementation of the isolated CalculiX product `@3` path                                           | A mechanical-proof case `revision` or `engineering-cases/1.1` `current`                           |
 | `project_fea_proof_case_capture`         | Draft CAS write of exact `mechanical-proof-case-source/1.0` JSON. Pass `result.reference` only      | The compiled `mechanical-proof-case/1.0`, MRTR, or a solve                                        |
 | `project_fea_proof_seal_review`          | Opaque source fingerprint → `fea.proof.*` for `verify.seal-proof-case@1`                            | Case authoring, a catalog id, or a `fea.run.*` grammar                                            |
 | `project_sensitivity_study_seal_review`  | Catalog id or signed catalog-offer → `sensitivity.case.*` for `analyze.seal-sensitivity-study@1`    | Case authoring, a solve, or inventing `cadSource`                                                 |

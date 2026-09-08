@@ -12,7 +12,7 @@ Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stay
 
 #### [`src/presentation/workbench/thread/`](../../../src/presentation/workbench/thread)
 
-Browser-safe Thread graph, evidence, Engineering Case catalog (`engineering-cases/1.0`),
+Browser-safe Thread graph, evidence, Engineering Case catalog (`engineering-cases/1.1`),
 and exact viewer-session bindings for BFF GET + SSE. Presentation only; no command
 authority and no embedded domain-viewer payloads. CAD/Modelica/SPICE admissions are not
 Engineering Cases.

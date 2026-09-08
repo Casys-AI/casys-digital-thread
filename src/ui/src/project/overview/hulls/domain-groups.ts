@@ -80,6 +80,14 @@ const DOMAIN_BY_EXACT_OPERATION = new Map<string, OverviewDomainGroupKey>([
     OVERVIEW_DOMAIN_GROUP_KEYS.fea,
   ],
   [
+    "verify.seal-proof-case@1",
+    OVERVIEW_DOMAIN_GROUP_KEYS.fea,
+  ],
+  [
+    "decide.accept-evaluation-closeout@1",
+    OVERVIEW_DOMAIN_GROUP_KEYS.fea,
+  ],
+  [
     "simulate.run-admitted-modelica@1",
     OVERVIEW_DOMAIN_GROUP_KEYS.simulation,
   ],
@@ -96,6 +104,10 @@ export interface OverviewDomainGroupInput {
   readonly node: ThreadGraphNode;
   readonly artifact?: ThreadArtifact;
   readonly observation?: ThreadObservation;
+  /**
+   * Observation `sourceArtifactId` or the unique incoming `evidences`
+   * artifact for an evaluation/violation. Ambiguous sources stay unset.
+   */
   readonly sourceArtifact?: ThreadArtifact;
 }
 
@@ -122,6 +134,13 @@ export function isOverviewBriefRecord(
   return isApprovedBriefDocument(node, artifact) || isBriefAnalysisNode(node);
 }
 
+const REQUIREMENTS_CAPTURE_TOOLS = new Set([
+  "syson_element_insert_sysml",
+  "syson_constraint_extract",
+  "model.write-requirements@2",
+  "model.recapture-requirements@2",
+]);
+
 /** Exact recorded capture contract, never a title or provider-name heuristic. */
 export function isOverviewRequirementsCapture(
   node: ThreadGraphNode,
@@ -130,8 +149,7 @@ export function isOverviewRequirementsCapture(
   return node.ref.kind === "artifact" && artifact?.id === node.ref.id &&
     artifact.kind === "sysml-model" &&
     artifact.producer?.serverId === "syson" &&
-    (artifact.producer.tool === "syson_element_insert_sysml" ||
-      artifact.producer.tool === "syson_constraint_extract") &&
+    REQUIREMENTS_CAPTURE_TOOLS.has(artifact.producer.tool) &&
     /^casys:\/\/requirements-capture\/[^/]+\/sha256\/[a-f0-9]{64}$/.test(
       artifact.uri ?? "",
     );
@@ -156,8 +174,12 @@ export function overviewDomainGroupKeyFor(
   if (isApprovedBriefDocument(node, artifact) || isBriefAnalysisNode(node)) {
     return OVERVIEW_DOMAIN_GROUP_KEYS.brief;
   }
-  if (node.ref.kind === "observation") {
-    return observationSourceGroup(node, observation, sourceArtifact);
+  if (
+    node.ref.kind === "observation" ||
+    node.entityKind === "evaluation" ||
+    node.entityKind === "violation"
+  ) {
+    return sourcedRecordGroup(node, observation, sourceArtifact);
   }
   const matchedArtifact = artifact?.id === node.ref.id ? artifact : undefined;
   const fromOperation = groupFromOperation(matchedArtifact);
@@ -197,7 +219,9 @@ export function overviewDomainGroupCaption(
   ) {
     return "Geometry";
   }
-  if (normalized === OVERVIEW_DOMAIN_GROUP_KEYS.fea) return "FEA";
+  if (normalized === OVERVIEW_DOMAIN_GROUP_KEYS.fea) {
+    return lane === "verdicts" ? "FEA verdict" : "FEA";
+  }
   if (normalized === OVERVIEW_DOMAIN_GROUP_KEYS.simulation) {
     return "Simulation";
   }
@@ -221,25 +245,63 @@ export function overviewDomainGroupCaption(
   return leaf.replace(/[-_]+/g, " ").replace(/\s+/g, " ").trim();
 }
 
-function observationSourceGroup(
+function sourcedRecordGroup(
   node: ThreadGraphNode,
   observation: ThreadObservation | undefined,
   sourceArtifact: ThreadArtifact | undefined,
 ): string {
-  if (!observation || observation.id !== node.ref.id) {
-    return OVERVIEW_DOMAIN_GROUP_KEYS.unassigned;
-  }
-  if (!observation.sourceArtifactId) {
-    return OVERVIEW_DOMAIN_GROUP_KEYS.unassigned;
-  }
-  if (
-    !sourceArtifact || sourceArtifact.id !== observation.sourceArtifactId
+  if (node.ref.kind === "observation") {
+    if (!observation || observation.id !== node.ref.id) {
+      return OVERVIEW_DOMAIN_GROUP_KEYS.unassigned;
+    }
+    if (!observation.sourceArtifactId) {
+      return OVERVIEW_DOMAIN_GROUP_KEYS.unassigned;
+    }
+    if (
+      !sourceArtifact || sourceArtifact.id !== observation.sourceArtifactId
+    ) {
+      return OVERVIEW_DOMAIN_GROUP_KEYS.unassigned;
+    }
+  } else if (
+    node.entityKind === "evaluation" || node.entityKind === "violation"
   ) {
+    if (!sourceArtifact) return OVERVIEW_DOMAIN_GROUP_KEYS.unassigned;
+  } else {
     return OVERVIEW_DOMAIN_GROUP_KEYS.unassigned;
   }
   return groupFromOperation(sourceArtifact) ??
     groupFromTypedKind(sourceArtifact.kind) ??
     OVERVIEW_DOMAIN_GROUP_KEYS.unassigned;
+}
+
+/** Recorded run or unique case identity used only when labels collide. */
+export function overviewRecordProvenanceQualifier(input: {
+  readonly artifact?: ThreadArtifact;
+  readonly sourceArtifact?: ThreadArtifact;
+  readonly engineeringCaseRefs?: readonly string[];
+}): string | undefined {
+  const runId = input.artifact?.producer?.runId ??
+    input.artifact?.producerRunId ??
+    input.sourceArtifact?.producer?.runId ??
+    input.sourceArtifact?.producerRunId;
+  if (runId) return runId;
+  const cases = input.engineeringCaseRefs?.filter(Boolean) ?? [];
+  return cases.length === 1 ? cases[0] : undefined;
+}
+
+/**
+ * Same-label independent records stay visible. A qualifier is appended only
+ * when it uniquely distinguishes that collision; missing provenance stays
+ * as the recorded label.
+ */
+export function overviewDisambiguatedRecordLabel(
+  label: string,
+  qualifier: string | undefined,
+  collisionCount: number,
+  qualifierIsUnique: boolean,
+): string {
+  if (collisionCount < 2 || !qualifier || !qualifierIsUnique) return label;
+  return `${label} · ${qualifier}`;
 }
 
 function groupFromOperation(

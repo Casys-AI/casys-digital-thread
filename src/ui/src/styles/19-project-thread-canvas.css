@@ -7,9 +7,9 @@
 
 .overview-thread-selection-note {
   position: absolute;
-  /* Viewer frames deliberately keep their restored stacking order inside a
-     layer at z=30. A selected reading note must remain above that layer, or
-     its own close/follow controls become unreachable. */
+  /* Viewer frames keep restored stacking inside a layer at z=30. A selected
+     reading note must remain above that layer, or close/follow become
+     unreachable. */
   z-index: 31;
   top: 112px;
   left: 16px;
@@ -17,175 +17,6 @@
   max-height: calc(100% - 232px);
   overflow: auto;
   overscroll-behavior: contain;
-  border: 1px solid var(--ui-border);
-  border-top: 3px solid var(--thread-brand, #08798d);
-  border-radius: 6px 6px 12px 12px;
-  background: var(--ui-background, #fff);
-  box-shadow: 0 8px 28px #153c3b14;
-  font-size: 12px;
-}
-
-.overview-thread-selection-note > header {
-  position: sticky;
-  z-index: 1;
-  top: 0;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 8px 12px;
-  background: var(--ui-background, #fff);
-  color: var(--ui-muted-foreground);
-  font-size: 10px;
-}
-
-.overview-thread-selection-note > header > button {
-  min-height: 28px;
-  padding: 4px 6px;
-}
-
-.overview-thread-selection-body {
-  padding: 0 14px 14px;
-}
-
-.overview-thread-selection-body h4 {
-  margin: 0 0 8px;
-  font-size: 15px;
-  line-height: 1.35;
-  overflow-wrap: anywhere;
-}
-
-.overview-thread-selection-meta {
-  margin: 0;
-  color: var(--ui-muted-foreground);
-  font-size: 10px;
-  overflow-wrap: anywhere;
-}
-
-.overview-thread-selection-summary {
-  margin: 10px 0;
-  line-height: 1.5;
-  overflow-wrap: anywhere;
-}
-
-.overview-thread-selection-details {
-  margin-top: 10px;
-  color: var(--ui-muted-foreground);
-  font-size: 10px;
-}
-
-.overview-thread-selection-details > summary {
-  cursor: pointer;
-  padding: 4px 0;
-}
-
-.overview-thread-selection-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 12px;
-}
-
-.overview-thread-selection-actions > button {
-  min-height: 32px;
-  padding: 6px 10px;
-  border: 1px solid var(--ui-border);
-  border-radius: 5px;
-  font-size: 11px;
-}
-
-.overview-thread-selection-actions > button[data-app="true"] {
-  border-color: var(--thread-brand, #08798d);
-  background: var(--thread-brand, #08798d);
-  color: #fff;
-}
-
-.overview-thread-selection-relations {
-  border-top: 1px solid var(--ui-border);
-}
-
-.overview-thread-selection-relations > summary {
-  padding: 12px 14px;
-  cursor: pointer;
-  font-weight: 600;
-}
-
-.overview-thread-selection-relations > summary > span {
-  margin-left: 6px;
-  color: var(--ui-muted-foreground);
-  font-variant-numeric: tabular-nums;
-}
-
-.overview-thread-selection-relations > p {
-  margin: 0;
-  padding: 0 14px 10px;
-  color: var(--ui-muted-foreground);
-  font-size: 10px;
-}
-
-.overview-thread-selection-relations ul {
-  list-style: none;
-  margin: 0;
-  padding: 0 6px 6px;
-}
-
-.overview-thread-selection-relations li > button {
-  display: grid;
-  width: 100%;
-  gap: 3px;
-  padding: 10px 8px;
-  border-radius: 5px;
-  text-align: left;
-  overflow-wrap: anywhere;
-}
-
-.overview-thread-selection-relations li > button:hover,
-.overview-thread-selection-relations li > button:focus-visible {
-  background: var(--ui-muted);
-}
-
-.overview-thread-selection-relations small {
-  color: var(--ui-muted-foreground);
-  font-size: 9px;
-}
-
-.overview-thread-selection-relations strong {
-  color: var(--thread-brand, #08798d);
-  font-size: 10px;
-  font-weight: 500;
-}
-
-.overview-thread-brief-source-note code,
-.overview-thread-brief-source-references,
-.overview-thread-brief-source-claims {
-  overflow-wrap: anywhere;
-}
-
-.overview-thread-brief-source-note h5 {
-  margin: 12px 0 5px;
-  color: var(--ui-muted-foreground);
-  font-size: 10px;
-}
-
-.overview-thread-brief-source-note ul {
-  margin: 0;
-  padding-left: 16px;
-}
-
-.overview-thread-brief-source-note li + li {
-  margin-top: 5px;
-}
-
-.overview-thread-brief-source-note li > button,
-.overview-thread-selection-brief-source-link {
-  margin: 5px 0 0;
-  padding: 4px 6px;
-  border: 1px solid var(--ui-border);
-  border-radius: 4px;
-  background: var(--ui-background, #fff);
-  color: var(--thread-brand, #08798d);
-  font-size: 10px;
-  text-align: left;
 }
 
 .thread-workbench:has(> #project-workspace-panel.project-thread-page) {
@@ -281,18 +112,12 @@
   background: transparent;
 }
 
+/* Board embedding. Toolbar paint lives in ui/whiteboard.ts. */
 .project-thread-board .overview-thread-layout-switch {
   position: absolute;
   z-index: 12;
   top: calc(var(--project-thread-top-inset) + 0.35rem);
   right: 0.65rem;
-  min-height: 1.75rem;
-  padding: 0.18rem;
-  border: 1px solid color-mix(in srgb, var(--ui-border) 78%, transparent);
-  border-radius: 999px;
-  background: color-mix(in srgb, #fff 90%, transparent);
-  box-shadow: 0 1px 4px rgb(35 49 54 / 6%);
-  backdrop-filter: blur(8px);
 }
 
 .project-thread-top-hud {
@@ -528,34 +353,16 @@
   vector-effect: non-scaling-stroke;
 }
 
+/* Spatial frame and pointer routing. Monitor chrome lives in ui/whiteboard.ts. */
 .overview-thread-hull-monitor {
   position: absolute;
   z-index: 2;
-  display: grid;
   min-width: 0;
   min-height: 0;
-  grid-template-rows: auto auto minmax(0, 1fr);
-  overflow: hidden;
-  border: 1px solid color-mix(in srgb, var(--ui-primary) 28%, var(--ui-border));
-  border-radius: 0.72rem;
-  background: color-mix(in srgb, var(--ui-background) 96%, var(--ui-muted));
-  box-shadow: none;
-  color: var(--ui-foreground);
   pointer-events: auto;
 }
 
 .overview-thread-hull-monitor > header {
-  display: grid;
-  min-width: 0;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 0.6rem;
-  padding: 0.55rem 0.6rem 0.48rem 0.7rem;
-  border-bottom: 1px solid var(--ui-border);
-  background:
-    linear-gradient(100deg, color-mix(in srgb, var(--ui-primary) 9%, #fff),
-    transparent 72%),
-    var(--ui-background);
   cursor: grab;
   touch-action: none;
   user-select: none;
@@ -565,156 +372,10 @@
   cursor: grabbing;
 }
 
-.overview-thread-hull-monitor > header:focus-visible {
-  outline: 1px solid var(--ui-ring);
-  outline-offset: -1px;
-}
-
-.overview-thread-hull-monitor h4 {
-  overflow: hidden;
-  margin: 0.12rem 0 0;
-  font-size: 0.78rem;
-  font-weight: 760;
-  line-height: 1.15;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.overview-thread-hull-monitor > header button {
-  min-height: 1.35rem;
-  padding: 0.15rem 0.32rem;
-  border: 0;
-  border-radius: 0.32rem;
-  background: transparent;
-  color: var(--ui-muted-foreground);
-  font-size: 0.56rem;
-  font-weight: 680;
-}
-
-.overview-thread-hull-monitor > header button:hover,
-.overview-thread-hull-monitor > header button:focus-visible {
-  outline: none;
-  background: var(--ui-accent);
-  color: var(--ui-foreground);
-}
-
-.overview-thread-hull-monitor-metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  border-bottom: 1px solid var(--ui-border);
-  background: color-mix(in srgb, var(--ui-muted) 45%, #fff);
-}
-
-.overview-thread-hull-monitor-metrics > span {
-  display: grid;
-  gap: 0.08rem;
-  padding: 0.42rem 0.45rem;
-  border-right: 1px solid var(--ui-border);
-  color: var(--ui-muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 0.51rem;
-  line-height: 1.1;
-  text-transform: uppercase;
-}
-
-.overview-thread-hull-monitor-metrics > span:last-child {
-  border-right: 0;
-}
-
-.overview-thread-hull-monitor-metrics strong {
-  color: var(--ui-foreground);
-  font-size: 0.72rem;
-}
-
-.overview-thread-hull-monitor-metrics [data-live="true"] strong {
-  color: var(--ui-success);
-}
-
-.overview-thread-hull-monitor-metrics [data-alert="true"] strong {
-  color: var(--ui-destructive);
-}
-
 .overview-thread-hull-monitor-list {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  scrollbar-width: thin;
-}
-
-.overview-thread-hull-monitor-list > article {
-  display: grid;
-  gap: 0.28rem;
-  padding: 0.45rem 0.55rem;
-  border-bottom: 1px solid color-mix(in srgb, var(--ui-border) 72%,
-    transparent);
-}
-
-.overview-thread-hull-monitor-node {
-  display: grid;
-  min-width: 0;
-  gap: 0.08rem;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  color: inherit;
-  text-align: left;
-}
-
-.overview-thread-hull-monitor-node > span,
-.overview-thread-hull-monitor-node > small {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.overview-thread-hull-monitor-node > span {
-  font-size: 0.64rem;
-  font-weight: 700;
-}
-
-.overview-thread-hull-monitor-node > small {
-  color: var(--ui-muted-foreground);
-  font-family: var(--font-mono);
-  font-size: 0.5rem;
-}
-
-.overview-thread-hull-monitor-node:hover > span,
-.overview-thread-hull-monitor-node:focus-visible > span {
-  color: var(--ui-primary);
-}
-
-.overview-thread-hull-monitor-actions {
-  display: flex;
-  min-width: 0;
-  gap: 0.25rem;
-  overflow-x: auto;
-  scrollbar-width: thin;
-}
-
-.overview-thread-hull-monitor-actions > button {
-  height: 1.35rem;
-  flex: 0 0 auto;
-  padding: 0.16rem 0.36rem;
-  border: 1px solid var(--ui-border);
-  border-radius: 0.32rem;
-  background: var(--ui-background);
-  color: var(--ui-muted-foreground);
-  font-size: 0.52rem;
-  font-weight: 650;
-  white-space: nowrap;
-}
-
-.overview-thread-hull-monitor-actions > button[data-app="true"] {
-  border-color: color-mix(in srgb, var(--ui-primary) 30%, var(--ui-border));
-  color: var(--ui-foreground);
-}
-
-.overview-thread-hull-monitor-actions > button:hover,
-.overview-thread-hull-monitor-actions > button:focus-visible {
-  outline: none;
-  border-color: color-mix(in srgb, var(--ui-primary) 54%, var(--ui-border));
-  background: var(--ui-accent);
-  color: var(--ui-foreground);
 }
 
 .overview-thread-context-menu {
@@ -1218,7 +879,7 @@
   .project-thread-top-hud,
   .project-thread-bottom-hud,
   .project-thread-board .overview-thread-layout-switch {
-    background: #fff;
+    background: var(--ui-card);
     backdrop-filter: none;
   }
 }

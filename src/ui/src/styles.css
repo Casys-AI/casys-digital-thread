@@ -16,6 +16,9 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+/* Scan the UI source tree so recipes emit when node_modules is a symlink. */
+@source "./";
+
 @import "./styles/01-tokens-and-console.css";
 @import "./styles/04-feed-and-graph.css";
 @import "./styles/05-tool-drawer.css";

@@ -120,9 +120,13 @@ Deno.test("expanding one hull restores exact historical refs without unfolding t
     nodeIds(projection.displayedGraph).includes("geometry-r1"),
     false,
   );
-  const historical = graph.nodes.find((node) => node.ref.id === "architecture-r1")!;
+  const historical = graph.nodes.find((node) =>
+    node.ref.id === "architecture-r1"
+  )!;
   assertStrictEquals(
-    projection.displayedGraph.nodes.find((node) => node.ref.id === "architecture-r1"),
+    projection.displayedGraph.nodes.find((node) =>
+      node.ref.id === "architecture-r1"
+    ),
     historical,
   );
 });
@@ -154,7 +158,9 @@ Deno.test("expansion keeps the original viewer target on the historical member",
     true,
   );
   assertEquals(
-    expanded.displayedGraph.nodes.some((node) => node.ref.id === "requirements-old"),
+    expanded.displayedGraph.nodes.some((node) =>
+      node.ref.id === "requirements-old"
+    ),
     true,
   );
   assertEquals(
@@ -172,7 +178,9 @@ Deno.test("expansion keeps the original viewer target on the historical member",
     { kind: "artifact", id: "requirements-old" },
   );
   assertEquals(
-    collapsed.displayedGraph.edges.some((edge) => edge.from.id === "requirements-old"),
+    collapsed.displayedGraph.edges.some((edge) =>
+      edge.from.id === "requirements-old"
+    ),
     false,
   );
 });
@@ -236,6 +244,108 @@ Deno.test("equal labels without a declared family stay distinct", () => {
   assertEquals(projection.hiddenMemberKeys.size, 0);
 });
 
+Deno.test("a new requirements capture stays visible beside a declared family", () => {
+  const graph: ThreadGraph = {
+    nodes: [
+      artifact(
+        "requirements-CameraMountBracket-old",
+        "Requirements: CameraMountBracket",
+        "sysml-model",
+      ),
+      artifact(
+        "requirements-CameraMountBracket-current",
+        "Requirements: CameraMountBracket",
+        "sysml-model",
+      ),
+      artifact(
+        "requirements-RadialArm-fdf16c35",
+        "Requirements: RadialArm",
+        "sysml-model",
+      ),
+      requirement("REQ-RADIAL-ARM", "RadialArmBenchDisplacementLimit"),
+    ],
+    edges: [
+      supersedes(
+        "requirements-CameraMountBracket-old",
+        "requirements-CameraMountBracket-current",
+      ),
+    ],
+  };
+  const familyGraph: ThreadEvidenceFamilyGraph = {
+    ...emptyFamilies(),
+    families: [
+      family("requirements-family", "sysml-model", [
+        "requirements-CameraMountBracket-old",
+      ], "requirements-CameraMountBracket-current"),
+    ],
+  };
+  const architectureHull = ARCHITECTURE_HULL;
+  const classified = graph.nodes.map((node) => ({
+    key: refKey(node.ref),
+    hullKey: architectureHull,
+  }));
+  const projection = buildOverviewVersionHistory(
+    graph,
+    familyGraph,
+    classified,
+  );
+
+  assertEquals(
+    projection.hiddenMemberKeys.has(
+      "artifact:requirements-CameraMountBracket-old",
+    ),
+    true,
+  );
+  assertEquals(
+    projection.displayedGraph.nodes.some((node) =>
+      node.ref.id === "requirements-RadialArm-fdf16c35"
+    ),
+    true,
+  );
+  assertEquals(
+    projection.displayedGraph.nodes.some((node) =>
+      node.ref.id === "REQ-RADIAL-ARM"
+    ),
+    true,
+  );
+});
+
+Deno.test("independent FEA results with the same label are not folded without lineage", () => {
+  const graph: ThreadGraph = {
+    nodes: [
+      artifact(
+        "calculix-isolated-result-json-r1",
+        "Local CalculiX result.json",
+        "solver-result",
+      ),
+      artifact(
+        "calculix-isolated-result-json-r3",
+        "Local CalculiX result.json",
+        "solver-result",
+      ),
+    ],
+    edges: [],
+  };
+  const projection = buildOverviewVersionHistory(
+    graph,
+    emptyFamilies(),
+    graph.nodes.map((node) => ({
+      key: refKey(node.ref),
+      hullKey: FEA_HULL,
+    })),
+  );
+
+  assertEquals(
+    projection.displayedGraph.nodes.map((node) => node.ref.id).sort(),
+    [
+      "calculix-isolated-result-json-r1",
+      "calculix-isolated-result-json-r3",
+    ],
+  );
+  assertEquals(projection.hulls, []);
+  assertEquals(projection.hiddenMemberKeys.size, 0);
+});
+
 Deno.test("members that cannot be placed in one hull stay visible", () => {
   const graph = twoDomainGraph();
   const classified = classify(graph).map((record) =>
@@ -282,7 +392,9 @@ Deno.test("Brief analysis nodes stay when history folds, and Overview never uses
   );
 
   assertEquals(
-    projection.displayedGraph.nodes.some((node) => node.ref.id === "brief-analysis"),
+    projection.displayedGraph.nodes.some((node) =>
+      node.ref.id === "brief-analysis"
+    ),
     true,
   );
   assertEquals(helper.includes("graphWithoutAnalysisOverlay"), false);
@@ -349,7 +461,9 @@ Deno.test("buildOverviewThreadHero still classifies the full raw graph", () => {
     true,
   );
   assertEquals(
-    projection.displayedGraph.nodes.some((node) => node.ref.id === "architecture-r1"),
+    projection.displayedGraph.nodes.some((node) =>
+      node.ref.id === "architecture-r1"
+    ),
     false,
   );
   assertEquals(JSON.stringify(thread), before);

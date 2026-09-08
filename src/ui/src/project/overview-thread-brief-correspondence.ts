@@ -130,7 +130,7 @@ export function buildOverviewBriefCorrespondences(
       key,
       lane: "requirements",
       groupKey: "brief",
-      label: `${entry.sourceItemId} · brief r${trace.originalBrief.revision}`,
+      label: entry.sourceItemId,
       color: "#7c3aed",
       emphasis: (prior?.emphasis ?? false) || entry.state !== "unchanged",
       brief: trace.originalBrief,

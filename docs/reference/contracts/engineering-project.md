@@ -62,14 +62,21 @@ classifies every exact phase into the same five columns used by the Overview thr
 `projectPath.activities` lists the explicit stable activities with ordered revision IDs;
 the browser never guesses lifecycle from operation keys, phase order, labels, timestamps
 or Thread proximity. `caseActivityJoins` names the Project activity that produced each
-typed Thread case through its unique producer run. A later FEA proof-case revision stays
-the typed mechanical series; it is not a Project retry unless that join points at an
-attempt of the same activity. The server uses its registered operation taxonomy, so the
-browser can wrap a long path without guessing from labels. This is presentation metadata
-only: it does not select a provider, change phase order, or imply a verdict. `GET` and
-SSE create only a read model; they do not promote live events into thread evidence or
-project truth. Project mutations and bounded provider orchestration remain on the paired
-agent's MCP surface.
+typed Thread case through its unique producer run. Joins stay digest-addressed
+(`verification-case:<family>:<digest>`). A later sealed mechanical-proof case remains an
+exact `cases` member of `engineering-cases/1.1`; `current` selects one `(family, id)`
+when that group is conflict-free. It is not a Project retry unless that join points at
+an attempt of the same activity, and it is not a Thread `supersedes` edge. Cancelled or
+abandoned Project work that never sealed a case is not a Thread catalog member, result
+count, viewer binding, evidence-family graph node, or Thread `supersedes` edge. A
+`case-current-divergent` group omits only that current selection; exact sealed cases
+stay in `cases`. The browser must not infer a series, rN label, or lifecycle from
+labels, dates, work-item ids or gaps in revisions. The server uses its registered
+operation taxonomy, so the browser can wrap a long path without guessing from labels.
+This is presentation metadata only: it does not select a provider, change phase order,
+or imply a verdict. `GET` and SSE create only a read model; they do not promote live
+events into thread evidence or project truth. Project mutations and bounded provider
+orchestration remain on the paired agent's MCP surface.
 
 ## Root fields
 

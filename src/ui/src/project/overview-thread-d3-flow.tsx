@@ -1,3 +1,10 @@
+import {
+  whiteboardFlowItem,
+  whiteboardFlowItemPart,
+  whiteboardHullControl,
+  whiteboardHullViewSelect,
+} from "../ui/whiteboard.ts";
+import { cn } from "../lib/utils.ts";
 import type {
   CSSProperties,
   JSX,
@@ -12,29 +19,20 @@ import {
   useRef,
   useState,
 } from "react";
-import { curveBumpX, line } from "d3-shape";
 import type { EngineeringPhaseStatus } from "../../../domain/project/engineering-project.ts";
 import type { EngineeringPathLaneId } from "../../../domain/project/engineering-path-lane.ts";
-import {
-  overviewGroupCaption,
-  type OverviewHeroNode,
-} from "./overview-thread-hero-model.ts";
-import { overviewThreadD3CableCatmullRomPath } from "./overview-thread-d3-cable-field.ts";
+import type { OverviewHeroNode } from "./overview-thread-hero-model.ts";
 import type { OverviewThreadD3FlowHullView } from "./overview-thread-d3-flow-layout.ts";
 import {
-  type OverviewThreadD3FlowCurve,
   type OverviewThreadD3FlowGroupLayout,
   type OverviewThreadD3FlowLayout,
   type OverviewThreadD3FlowNodeLayout,
-  type OverviewThreadD3FlowPoint,
-  overviewThreadD3FlowRoundedPath,
   type OverviewThreadD3FlowSegmentLayout,
 } from "./overview-thread-d3-flow-layout.ts";
 import {
   overviewThreadHullControlsVisible,
   overviewThreadHullLabel,
   overviewThreadHullLabelBudget,
-  overviewThreadHullNameParts,
 } from "./overview-thread-hull-model.ts";
 import {
   overviewThreadGroupContextValue,
@@ -43,7 +41,9 @@ import {
 import { DropdownMenuContextTrigger } from "../ui/dropdown-menu.tsx";
 import {
   layoutOverviewHullHierarchyLinks,
+  layoutOverviewHullRowCells,
   layoutOverviewHullRows,
+  type OverviewHullRowLayout,
 } from "./overview/hulls/row-layout.ts";
 import {
   type OverviewHullContent,
@@ -51,27 +51,69 @@ import {
   overviewHullGraphKeysByPresentationRow,
   overviewHullHierarchyLinkState,
   overviewHullPresentationRowKey,
-  OverviewHullRowBody,
+  overviewHullRowGraphRefs,
   overviewHullRowPresentation,
+  overviewHullRowPrimaryGraphRef,
   overviewHullRowTooltip,
-  parseOverviewHullPresentationRowKey,
 } from "./overview/hulls/index.ts";
 import { overviewActivityStatusCaption } from "./overview/activity-status-caption.ts";
 import { overviewDomainGroupColor } from "./overview/hulls/domain-groups.ts";
-import {
-  flowSegmentPaintRank,
-  flowSegmentState,
-} from "./overview-thread-d3-flow-highlight.ts";
+import { flowSegmentPaintRank } from "./overview-thread-d3-flow-highlight.ts";
 import {
   overviewEffectiveInspection,
+  overviewInspectionIsRelatedRow,
   overviewInspectionIsVisualTarget,
+  overviewInspectionPresentationRowKey,
+  type OverviewInspectionTarget,
 } from "./overview-thread-inspection.ts";
+import {
+  clampNumber,
+  FLOW_HULL_MARGIN,
+  FLOW_HULL_MINIMUM_HEIGHT,
+  FLOW_HULL_MINIMUM_WIDTH,
+  FLOW_PRACTICAL_WORLD_LIMIT,
+  flowHeightPercent,
+  flowKeyboardMoveDelta,
+  flowWidthPercent,
+  flowXPercent,
+  flowYPercent,
+  isFlowMoveDirection,
+  type OverviewThreadD3FlowMoveDirection,
+} from "./overview/flow/geometry.ts";
+import {
+  overviewFlowMotionGeometrySettled,
+  overviewFlowMotionPath,
+  OverviewFlowMotionScene,
+  overviewFlowMotionTopologySignature,
+} from "./overview/flow/motion.ts";
+import {
+  applyOverviewFlowSegmentPresentation,
+  canonicalOverviewFlowMotionPoints,
+  flowRelatedNodeKeys,
+  flowSegmentWidth,
+  formatOverviewFlowMotionNumber,
+  type OverviewFlowSegmentElement,
+  type OverviewFlowSegmentPresentation,
+  overviewFlowSegmentPresentations,
+} from "./overview/flow/segments.ts";
+import { FlowItemSurface } from "./overview/components/flow-item-surface.tsx";
+import { FlowRowBody } from "./overview/components/flow-row-body.tsx";
+import {
+  FLOW_ITEM_KEYSHORTCUTS,
+  flowItemTabIndex,
+  flowItemVisualState,
+  handleFlowItemKeyDown,
+} from "./overview/components/flow-item-interaction.ts";
+import {
+  flowGroupCaption,
+  OverviewFlowGroupBand,
+  OverviewFlowGroupFold,
+  OverviewFlowGroupFoot,
+  OverviewFlowGroupMonitor,
+  OverviewFlowGroupResize,
+} from "./overview/components/hull-chrome.tsx";
 
-export type OverviewThreadD3FlowMoveDirection =
-  | "ArrowUp"
-  | "ArrowDown"
-  | "ArrowLeft"
-  | "ArrowRight";
+export type { OverviewThreadD3FlowMoveDirection };
 
 export interface OverviewThreadStageSummary {
   readonly lane: EngineeringPathLaneId;
@@ -85,6 +127,7 @@ export interface OverviewThreadD3FlowProps {
   readonly nodesByKey: ReadonlyMap<string, OverviewHeroNode>;
   readonly viewerNodeKeys?: ReadonlySet<string>;
   readonly hullContents?: ReadonlyMap<string, OverviewHullContent>;
+  readonly pendingHierarchyGroupKeys?: ReadonlySet<string>;
   readonly rowAnchors?: Readonly<
     Record<string, Readonly<Record<string, number>>>
   >;
@@ -177,26 +220,6 @@ interface OverviewFlowDragTarget {
 }
 
 const FLOW_DRAG_THRESHOLD_PX = 4;
-const FLOW_HULL_MINIMUM_WIDTH = 24;
-/** Drawn hull bleeds this far past the layout box on every side. */
-const FLOW_HULL_MARGIN = 7;
-const FLOW_HULL_MINIMUM_HEIGHT = 28;
-const FLOW_KEYBOARD_MOVE_STEP = 12;
-const FLOW_PRACTICAL_WORLD_LIMIT = 10_000_000;
-// A strong critically damped response reads as a cable under tension: it
-// follows quickly without the rubber-band overshoot of an underdamped spring.
-const FLOW_MOTION_OMEGA = 40;
-const FLOW_DRAG_MOTION_OMEGA = 54;
-const FLOW_PRESENCE_MOTION_OMEGA = 34;
-const FLOW_MOTION_MAX_DELTA_MS = 34;
-const FLOW_MOTION_POSITION_EPSILON = 0.012;
-const FLOW_MOTION_VELOCITY_EPSILON = 0.04;
-const FLOW_MOTION_SCALAR_EPSILON = 0.001;
-
-const flowMotionBumpLine = line<OverviewThreadD3FlowPoint>()
-  .x((point) => point.x)
-  .y((point) => point.y)
-  .curve(curveBumpX);
 
 function usePrefersReducedMotion(): boolean {
   const [reduced, setReduced] = useState(readPrefersReducedMotion);
@@ -216,575 +239,18 @@ function readPrefersReducedMotion(): boolean {
     globalThis.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-export interface OverviewFlowMotionTarget {
-  readonly key: string;
-  readonly kind: string;
-  readonly curve: OverviewThreadD3FlowCurve;
-  readonly points: readonly OverviewThreadD3FlowPoint[];
-  readonly topologySignature: string;
-  readonly targetD: string;
-  readonly width: number;
-  readonly edgeKeys: readonly string[];
-  readonly pathKeys: readonly string[];
-  readonly pinEndpoints: boolean;
-}
-
-export interface OverviewFlowMotionPointSnapshot
-  extends OverviewThreadD3FlowPoint {
-  readonly vx: number;
-  readonly vy: number;
-}
-
-export interface OverviewFlowMotionVisualSnapshot {
-  readonly id: string;
-  readonly key: string;
-  readonly kind: string;
-  readonly curve: OverviewThreadD3FlowCurve;
-  readonly phase: "active" | "exiting";
-  readonly points: readonly OverviewFlowMotionPointSnapshot[];
-  readonly width: number;
-  readonly widthVelocity: number;
-  readonly presence: number;
-  readonly presenceVelocity: number;
-  readonly topologySignature: string;
-  readonly targetD: string;
-  readonly geometrySettled: boolean;
-}
-
-interface MutableOverviewFlowMotionPoint {
-  x: number;
-  y: number;
-  vx: number;
-  vy: number;
-}
-
-interface MutableOverviewFlowMotionEntry {
-  readonly id: string;
-  readonly key: string;
-  kind: string;
-  curve: OverviewThreadD3FlowCurve;
-  phase: "active" | "exiting";
-  points: MutableOverviewFlowMotionPoint[];
-  targetPoints: readonly OverviewThreadD3FlowPoint[];
-  width: number;
-  widthVelocity: number;
-  targetWidth: number;
-  presence: number;
-  presenceVelocity: number;
-  targetPresence: number;
-  topologySignature: string;
-  targetD: string;
-  edgeKeys: readonly string[];
-  pathKeys: readonly string[];
-  pinEndpoints: boolean;
-}
-
-interface OverviewFlowMotionScalar {
-  readonly value: number;
-  readonly velocity: number;
-}
-
-/**
- * Exact critically damped spring step. Retargeting only changes `target`, so
- * the incoming velocity is preserved instead of restarting an ease at zero.
- */
-export function advanceOverviewFlowMotionScalar(
-  value: number,
-  velocity: number,
-  target: number,
-  omega: number,
-  deltaSeconds: number,
-): OverviewFlowMotionScalar {
-  if (
-    !Number.isFinite(value) || !Number.isFinite(velocity) ||
-    !Number.isFinite(target) || !Number.isFinite(omega) || omega <= 0 ||
-    !Number.isFinite(deltaSeconds) || deltaSeconds <= 0
-  ) {
-    return { value, velocity };
-  }
-  const displacement = value - target;
-  const coefficient = velocity + omega * displacement;
-  const decay = Math.exp(-omega * deltaSeconds);
-  return {
-    value: target + (displacement + coefficient * deltaSeconds) * decay,
-    velocity: (velocity - omega * coefficient * deltaSeconds) * decay,
-  };
-}
-
-/**
- * Pure numeric motion state for one complete SVG cable scene. Rendering owns
- * one rAF and visits these entries; this class never reads or writes the DOM.
- */
-export class OverviewFlowMotionScene {
-  readonly #entries = new Map<string, MutableOverviewFlowMotionEntry>();
-  readonly #activeIdByKey = new Map<string, string>();
-  #generation = 0;
-  #hasReconciled = false;
-
-  reconcile(
-    targets: readonly OverviewFlowMotionTarget[],
-    reducedMotion: boolean,
-  ): void {
-    const targetByKey = new Map(targets.map((target) => [target.key, target]));
-
-    for (const [key, id] of this.#activeIdByKey) {
-      if (targetByKey.has(key)) continue;
-      const entry = this.#entries.get(id);
-      if (entry) markOverviewFlowMotionExit(entry);
-      this.#activeIdByKey.delete(key);
-    }
-
-    const firstPopulation = !this.#hasReconciled;
-    for (const target of targetByKey.values()) {
-      let entry = this.#activeEntry(target.key);
-      if (entry && !overviewFlowMotionCompatible(entry, target)) {
-        markOverviewFlowMotionExit(entry);
-        this.#activeIdByKey.delete(target.key);
-        entry = undefined;
-      }
-      entry ??= this.#reviveEntry(target);
-      if (!entry) {
-        entry = this.#createEntry(target, firstPopulation || reducedMotion);
-        this.#entries.set(entry.id, entry);
-      }
-      entry.phase = "active";
-      entry.kind = target.kind;
-      entry.curve = target.curve;
-      entry.targetPoints = copyOverviewFlowPoints(target.points);
-      entry.targetWidth = nonNegativeFinite(target.width);
-      entry.targetPresence = 1;
-      entry.topologySignature = target.topologySignature;
-      entry.targetD = target.targetD;
-      entry.edgeKeys = target.edgeKeys;
-      entry.pathKeys = target.pathKeys;
-      entry.pinEndpoints = target.pinEndpoints;
-      this.#activeIdByKey.set(target.key, entry.id);
-      pinOverviewFlowMotionEndpoints(entry);
-      if (reducedMotion) snapOverviewFlowMotionEntry(entry);
-    }
-    this.#hasReconciled = true;
-
-    if (reducedMotion) {
-      for (const [id, entry] of this.#entries) {
-        if (entry.phase === "exiting") this.#entries.delete(id);
-      }
-    }
-  }
-
-  advance(deltaMilliseconds: number): void {
-    const deltaSeconds = Math.min(
-      FLOW_MOTION_MAX_DELTA_MS,
-      Math.max(0, Number.isFinite(deltaMilliseconds) ? deltaMilliseconds : 0),
-    ) / 1_000;
-    if (deltaSeconds <= 0) return;
-
-    for (const [id, entry] of this.#entries) {
-      const omega = entry.pinEndpoints
-        ? FLOW_DRAG_MOTION_OMEGA
-        : FLOW_MOTION_OMEGA;
-      for (const [index, point] of entry.points.entries()) {
-        const target = entry.targetPoints[index];
-        if (!target) continue;
-        if (
-          entry.pinEndpoints &&
-          (index === 0 || index === entry.points.length - 1)
-        ) {
-          point.x = target.x;
-          point.y = target.y;
-          point.vx = 0;
-          point.vy = 0;
-          continue;
-        }
-        const x = advanceOverviewFlowMotionMonotoneScalar(
-          point.x,
-          point.vx,
-          target.x,
-          omega,
-          deltaSeconds,
-        );
-        const y = advanceOverviewFlowMotionMonotoneScalar(
-          point.y,
-          point.vy,
-          target.y,
-          omega,
-          deltaSeconds,
-        );
-        point.x = x.value;
-        point.vx = x.velocity;
-        point.y = y.value;
-        point.vy = y.velocity;
-        settleOverviewFlowMotionPoint(point, target);
-      }
-
-      const width = advanceOverviewFlowMotionMonotoneScalar(
-        entry.width,
-        entry.widthVelocity,
-        entry.targetWidth,
-        FLOW_MOTION_OMEGA,
-        deltaSeconds,
-      );
-      entry.width = Math.max(0, width.value);
-      entry.widthVelocity = width.velocity;
-      if (
-        scalarMotionSettled(
-          entry.width,
-          entry.widthVelocity,
-          entry.targetWidth,
-        )
-      ) {
-        entry.width = entry.targetWidth;
-        entry.widthVelocity = 0;
-      }
-
-      const presence = advanceOverviewFlowMotionMonotoneScalar(
-        entry.presence,
-        entry.presenceVelocity,
-        entry.targetPresence,
-        FLOW_PRESENCE_MOTION_OMEGA,
-        deltaSeconds,
-      );
-      entry.presence = clampNumber(presence.value, 0, 1);
-      entry.presenceVelocity = presence.velocity;
-      if (entry.presence === 0 || entry.presence === 1) {
-        entry.presenceVelocity = 0;
-      }
-      if (
-        scalarMotionSettled(
-          entry.presence,
-          entry.presenceVelocity,
-          entry.targetPresence,
-        )
-      ) {
-        entry.presence = entry.targetPresence;
-        entry.presenceVelocity = 0;
-      }
-
-      if (
-        entry.phase === "exiting" && entry.presence === 0 &&
-        entry.presenceVelocity === 0
-      ) {
-        this.#entries.delete(id);
-      }
-    }
-  }
-
-  needsAnimation(): boolean {
-    for (const entry of this.#entries.values()) {
-      if (!overviewFlowMotionEntrySettled(entry)) return true;
-    }
-    return false;
-  }
-
-  visit(
-    visitor: (entry: Readonly<MutableOverviewFlowMotionEntry>) => void,
-  ): void {
-    for (const entry of this.#entries.values()) visitor(entry);
-  }
-
-  snapshot(): readonly OverviewFlowMotionVisualSnapshot[] {
-    return [...this.#entries.values()].map((entry) => ({
-      id: entry.id,
-      key: entry.key,
-      kind: entry.kind,
-      curve: entry.curve,
-      phase: entry.phase,
-      points: entry.points.map((point) => ({ ...point })),
-      width: entry.width,
-      widthVelocity: entry.widthVelocity,
-      presence: entry.presence,
-      presenceVelocity: entry.presenceVelocity,
-      topologySignature: entry.topologySignature,
-      targetD: entry.targetD,
-      geometrySettled: overviewFlowMotionGeometrySettled(entry),
-    }));
-  }
-
-  #activeEntry(key: string): MutableOverviewFlowMotionEntry | undefined {
-    const id = this.#activeIdByKey.get(key);
-    return id ? this.#entries.get(id) : undefined;
-  }
-
-  #reviveEntry(
-    target: OverviewFlowMotionTarget,
-  ): MutableOverviewFlowMotionEntry | undefined {
-    for (const entry of this.#entries.values()) {
-      if (
-        entry.phase === "exiting" && entry.key === target.key &&
-        overviewFlowMotionCompatible(entry, target)
-      ) {
-        return entry;
-      }
-    }
-    return undefined;
-  }
-
-  #createEntry(
-    target: OverviewFlowMotionTarget,
-    initiallyVisible: boolean,
-  ): MutableOverviewFlowMotionEntry {
-    const predecessor = this.#findPredecessor(target);
-    const points = predecessor
-      ? predecessor.points.map((point) => ({ ...point }))
-      : mutableOverviewFlowPoints(target.points);
-    return {
-      id: `${target.key}@${++this.#generation}`,
-      key: target.key,
-      kind: target.kind,
-      curve: target.curve,
-      phase: "active",
-      points,
-      targetPoints: copyOverviewFlowPoints(target.points),
-      width: predecessor?.width ?? nonNegativeFinite(target.width),
-      widthVelocity: predecessor?.widthVelocity ?? 0,
-      targetWidth: nonNegativeFinite(target.width),
-      presence: initiallyVisible ? 1 : 0,
-      presenceVelocity: 0,
-      targetPresence: 1,
-      topologySignature: target.topologySignature,
-      targetD: target.targetD,
-      edgeKeys: target.edgeKeys,
-      pathKeys: target.pathKeys,
-      pinEndpoints: target.pinEndpoints,
-    };
-  }
-
-  #findPredecessor(
-    target: OverviewFlowMotionTarget,
-  ): MutableOverviewFlowMotionEntry | undefined {
-    let result: MutableOverviewFlowMotionEntry | undefined;
-    let resultScore = 0;
-    for (const entry of this.#entries.values()) {
-      if (!overviewFlowMotionCompatible(entry, target)) continue;
-      const score = exactStringOverlap(entry.edgeKeys, target.edgeKeys) * 2 +
-        exactStringOverlap(entry.pathKeys, target.pathKeys);
-      if (score > resultScore) {
-        result = entry;
-        resultScore = score;
-      }
-    }
-    return result;
-  }
-}
-
-export function overviewFlowMotionPath(
-  points: readonly OverviewThreadD3FlowPoint[],
-  kind: string,
-  curve: OverviewThreadD3FlowCurve = kind === "node-branch"
-    ? "bump"
-    : "rounded",
-): string {
-  if (points.length === 0) return "";
-  if (points.length === 1) return `M ${points[0]!.x} ${points[0]!.y}`;
-  if (curve === "catmull-rom") {
-    return overviewThreadD3CableCatmullRomPath(points);
-  }
-  const generated = curve === "bump" || kind === "node-branch"
-    ? flowMotionBumpLine(points)
-    : overviewThreadD3FlowRoundedPath(points, curve === "rack" ? 2 : undefined);
-  return generated ?? "";
-}
-
-/**
- * Qualitative route shape used only to decide whether a numeric morph is
- * visually safe. Coordinates never enter the signature: moving an existing
- * detour keeps its velocity, while changing obstacle side/topology cross-fades
- * two valid paths instead of interpolating a shortcut through a hull.
- */
-export function overviewFlowMotionTopologySignature(
-  kind: string,
-  points: readonly OverviewThreadD3FlowPoint[],
-): string {
-  const simplified = simplifyOverviewFlowTopologyPoints(points);
-  const axes: string[] = [];
-  const turns: string[] = [];
-  for (let index = 1; index < simplified.length; index++) {
-    const previous = simplified[index - 1]!;
-    const current = simplified[index]!;
-    axes.push(
-      overviewFlowTopologyAxis(current.x - previous.x, current.y - previous.y),
-    );
-  }
-  for (let index = 1; index + 1 < simplified.length; index++) {
-    const first = simplified[index - 1]!;
-    const middle = simplified[index]!;
-    const last = simplified[index + 1]!;
-    const firstX = middle.x - first.x;
-    const firstY = middle.y - first.y;
-    const secondX = last.x - middle.x;
-    const secondY = last.y - middle.y;
-    const magnitude = Math.hypot(firstX, firstY) * Math.hypot(secondX, secondY);
-    const normalizedTurn = magnitude > 0
-      ? (firstX * secondY - firstY * secondX) / magnitude
-      : 0;
-    turns.push(
-      normalizedTurn > 0.08 ? "L" : normalizedTurn < -0.08 ? "R" : "S",
-    );
-  }
-  return `${kind}|${simplified.length}|${axes.join("")}|${turns.join("")}`;
-}
-
-function markOverviewFlowMotionExit(
-  entry: MutableOverviewFlowMotionEntry,
-): void {
-  entry.phase = "exiting";
-  entry.targetPresence = 0;
-  entry.pinEndpoints = false;
-  entry.targetPoints = entry.points.map(({ x, y }) => ({ x, y }));
-  entry.targetWidth = entry.width;
-}
-
-function advanceOverviewFlowMotionMonotoneScalar(
-  value: number,
-  velocity: number,
-  target: number,
-  omega: number,
-  deltaSeconds: number,
-): OverviewFlowMotionScalar {
-  const advanced = advanceOverviewFlowMotionScalar(
-    value,
-    velocity,
-    target,
-    omega,
-    deltaSeconds,
-  );
-  const minimum = Math.min(value, target);
-  const maximum = Math.max(value, target);
-  if (advanced.value >= minimum && advanced.value <= maximum) return advanced;
-  return {
-    value: clampNumber(advanced.value, minimum, maximum),
-    velocity: 0,
-  };
-}
-
-function snapOverviewFlowMotionEntry(
-  entry: MutableOverviewFlowMotionEntry,
-): void {
-  entry.points = mutableOverviewFlowPoints(entry.targetPoints);
-  entry.width = entry.targetWidth;
-  entry.widthVelocity = 0;
-  entry.presence = entry.targetPresence;
-  entry.presenceVelocity = 0;
-}
-
-function pinOverviewFlowMotionEndpoints(
-  entry: MutableOverviewFlowMotionEntry,
-): void {
-  if (!entry.pinEndpoints || entry.points.length === 0) return;
-  const lastIndex = entry.points.length - 1;
-  for (const index of new Set([0, lastIndex])) {
-    const point = entry.points[index];
-    const target = entry.targetPoints[index];
-    if (!point || !target) continue;
-    point.x = target.x;
-    point.y = target.y;
-    point.vx = 0;
-    point.vy = 0;
-  }
-}
-
-function settleOverviewFlowMotionPoint(
-  point: MutableOverviewFlowMotionPoint,
-  target: OverviewThreadD3FlowPoint,
-): void {
-  if (
-    Math.abs(point.x - target.x) > FLOW_MOTION_POSITION_EPSILON ||
-    Math.abs(point.y - target.y) > FLOW_MOTION_POSITION_EPSILON ||
-    Math.abs(point.vx) > FLOW_MOTION_VELOCITY_EPSILON ||
-    Math.abs(point.vy) > FLOW_MOTION_VELOCITY_EPSILON
-  ) return;
-  point.x = target.x;
-  point.y = target.y;
-  point.vx = 0;
-  point.vy = 0;
-}
-
-function scalarMotionSettled(
-  value: number,
-  velocity: number,
-  target: number,
-): boolean {
-  return Math.abs(value - target) <= FLOW_MOTION_SCALAR_EPSILON &&
-    Math.abs(velocity) <= FLOW_MOTION_VELOCITY_EPSILON;
-}
-
-function overviewFlowMotionGeometrySettled(
-  entry: Readonly<MutableOverviewFlowMotionEntry>,
-): boolean {
-  if (entry.points.length !== entry.targetPoints.length) return false;
-  return entry.points.every((point, index) => {
-    const target = entry.targetPoints[index];
-    return target !== undefined && point.x === target.x &&
-      point.y === target.y &&
-      point.vx === 0 && point.vy === 0;
-  });
-}
-
-function overviewFlowMotionEntrySettled(
-  entry: MutableOverviewFlowMotionEntry,
-): boolean {
-  return overviewFlowMotionGeometrySettled(entry) &&
-    entry.width === entry.targetWidth && entry.widthVelocity === 0 &&
-    entry.presence === entry.targetPresence && entry.presenceVelocity === 0;
-}
-
-function overviewFlowMotionCompatible(
-  entry: MutableOverviewFlowMotionEntry,
-  target: OverviewFlowMotionTarget,
-): boolean {
-  return entry.kind === target.kind &&
-    entry.curve === target.curve &&
-    entry.points.length === target.points.length &&
-    entry.topologySignature === target.topologySignature;
-}
-
-function simplifyOverviewFlowTopologyPoints(
-  points: readonly OverviewThreadD3FlowPoint[],
-): readonly OverviewThreadD3FlowPoint[] {
-  const simplified: OverviewThreadD3FlowPoint[] = [];
-  for (const point of points) {
-    const previous = simplified.at(-1);
-    if (previous && previous.x === point.x && previous.y === point.y) continue;
-    simplified.push(point);
-  }
-  return simplified;
-}
-
-function overviewFlowTopologyAxis(deltaX: number, deltaY: number): string {
-  const x = Math.abs(deltaX);
-  const y = Math.abs(deltaY);
-  if (x <= Number.EPSILON && y <= Number.EPSILON) return "Z";
-  if (y <= x * 0.08) return "H";
-  if (x <= y * 0.08) return "V";
-  return "D";
-}
-
-function mutableOverviewFlowPoints(
-  points: readonly OverviewThreadD3FlowPoint[],
-): MutableOverviewFlowMotionPoint[] {
-  return points.map(({ x, y }) => ({ x, y, vx: 0, vy: 0 }));
-}
-
-function copyOverviewFlowPoints(
-  points: readonly OverviewThreadD3FlowPoint[],
-): readonly OverviewThreadD3FlowPoint[] {
-  return points.map(({ x, y }) => ({ x, y }));
-}
-
-function exactStringOverlap(
-  left: readonly string[],
-  right: readonly string[],
-): number {
-  if (left.length === 0 || right.length === 0) return 0;
-  const rightSet = new Set(right);
-  return left.reduce(
-    (count, value) => count + (rightSet.has(value) ? 1 : 0),
-    0,
-  );
-}
-
-function nonNegativeFinite(value: number): number {
-  return Number.isFinite(value) ? Math.max(0, value) : 0;
-}
+export type {
+  OverviewFlowMotionPointSnapshot,
+  OverviewFlowMotionTarget,
+  OverviewFlowMotionVisualSnapshot,
+} from "./overview/flow/motion.ts";
+export {
+  advanceOverviewFlowMotionScalar,
+  overviewFlowMotionPath,
+  OverviewFlowMotionScene,
+  overviewFlowMotionTopologySignature,
+} from "./overview/flow/motion.ts";
+export { flowGroupCaption } from "./overview/components/hull-chrome.tsx";
 
 /**
  * Read-only, left-to-right projection. D3 owns the shared cable geometry and
@@ -796,6 +262,7 @@ export function OverviewThreadD3Flow({
   nodesByKey,
   viewerNodeKeys,
   hullContents,
+  pendingHierarchyGroupKeys,
   rowAnchors,
   onActivateHullRow,
   selectedRowKey,
@@ -831,7 +298,10 @@ export function OverviewThreadD3Flow({
     selectedGraphKey: selectedKey,
     graphKeysByPresentationRow,
   });
-  const litRowKey = inspection.presentationRowKey;
+  const litRowKey = overviewInspectionPresentationRowKey(
+    inspection,
+    graphKeysByPresentationRow,
+  );
   const descriptionId = useId();
   const canvasRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<OverviewFlowDragState>();
@@ -859,31 +329,13 @@ export function OverviewThreadD3Flow({
       group.groupKey,
       laneColorById.get(group.lane) ?? "currentColor",
     );
-  const inspectionColor = (() => {
-    const parsed = inspection.presentationRowKey
-      ? parseOverviewHullPresentationRowKey(inspection.presentationRowKey)
-      : undefined;
-    const group = parsed
-      ? layout.groups.find((candidate) => candidate.key === parsed.groupKey)
-      : undefined;
-    if (group) return groupColor(group);
-    const graphKey = inspection.graphKeys[0];
-    const item = graphKey ? nodesByKey.get(graphKey) : undefined;
-    if (item) {
-      return overviewDomainGroupColor(
-        item.groupKey,
-        laneColorById.get(item.lane) ?? "currentColor",
-      );
-    }
-    return undefined;
-  })();
   const stageByLane = useMemo(
     () => new Map(stages.map((stage) => [stage.lane, stage])),
     [stages],
   );
   const activityStatuses = useMemo(
-    () => overviewFlowActivityStatuses(nodesByKey),
-    [nodesByKey],
+    () => overviewFlowActivityStatuses(hullContents),
+    [hullContents],
   );
   // A planned activity already carries its own dashed marker and title. A
   // legend containing only Planned is detached from that work item, while
@@ -1120,9 +572,6 @@ export function OverviewThreadD3Flow({
       aria-labelledby={`${titleId} ${descriptionId}`}
       data-inspection={inspection.mode}
       data-dragging={dragging ? "true" : "false"}
-      style={inspectionColor
-        ? { "--overview-inspection-color": inspectionColor } as CSSProperties
-        : undefined}
     >
       <h3 id={titleId} className="overview-thread-flow-sr-only">
         Project digital thread
@@ -1217,7 +666,15 @@ export function OverviewThreadD3Flow({
             {notableActivityStatuses.map((status) => (
               <span key={status} role="listitem">
                 <span
-                  className="overview-thread-flow-activity-key"
+                  className={cn(
+                    "overview-thread-flow-activity-key",
+                    whiteboardFlowItemPart({
+                      part: "legendKey",
+                      status: status === "active" || status === "blocked"
+                        ? status
+                        : undefined,
+                    }),
+                  )}
                   data-status={status}
                   aria-hidden="true"
                 />
@@ -1262,6 +719,14 @@ export function OverviewThreadD3Flow({
                   rx="12"
                   data-lane={group.lane}
                   data-group-key={group.groupKey}
+                  data-view={group.view}
+                  data-hierarchy-pending={pendingHierarchyGroupKeys?.has(
+                      group.key,
+                    )
+                    ? "true"
+                    : undefined}
+                  aria-busy={pendingHierarchyGroupKeys?.has(group.key) ||
+                    undefined}
                   data-draggable={onMoveGroup ? "true" : "false"}
                   data-overview-context-target={overviewThreadGroupContextValue(
                     group.key,
@@ -1279,31 +744,36 @@ export function OverviewThreadD3Flow({
           </g>
           <g className="overview-thread-flow-hierarchy-links">
             {layout.groups.flatMap((group) => {
-              if (!group.structureRowCount || group.collapsed) return [];
+              if (
+                !group.structureRowCount || group.collapsed ||
+                pendingHierarchyGroupKeys?.has(group.key)
+              ) return [];
               const rows = hullContents?.get(group.key)?.rows ?? [];
               const pointSize = group.view === "matrix"
                 ? layout.nodes.find((node) => node.key === group.nodeKeys[0])
                   ?.width
                 : undefined;
-              return layoutOverviewHullHierarchyLinks(rows, group, pointSize)
-                .map((
-                  link,
-                ) => (
-                  <path
-                    key={`${group.key}:${link.fromKey}>${link.toKey}`}
-                    data-from-row={link.fromKey}
-                    data-to-row={link.toKey}
-                    data-relation-kind={link.relationKind}
-                    data-state={overviewHullHierarchyLinkState(
-                      group.key,
-                      link.fromKey,
-                      link.toKey,
-                      litRowKey,
-                    )}
-                    d={link.d}
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ));
+              return (
+                <g key={group.key}>
+                  {layoutOverviewHullHierarchyLinks(rows, group, pointSize)
+                    .map((link) => (
+                      <path
+                        key={`${group.key}:${link.fromKey}>${link.toKey}`}
+                        data-from-row={link.fromKey}
+                        data-to-row={link.toKey}
+                        data-relation-kind={link.relationKind}
+                        data-state={overviewHullHierarchyLinkState(
+                          group.key,
+                          link.fromKey,
+                          link.toKey,
+                          litRowKey,
+                        )}
+                        d={link.d}
+                        vectorEffect="non-scaling-stroke"
+                      />
+                    ))}
+                </g>
+              );
             })}
           </g>
           <FlowSegmentLayer
@@ -1319,42 +789,17 @@ export function OverviewThreadD3Flow({
 
         <div className="overview-thread-flow-group-labels">
           {layout.groups.map((group) => (
-            <div
+            <OverviewFlowGroupBand
               key={group.key}
-              className="overview-thread-flow-group-band"
-              data-lane={group.lane}
-              onWheel={onScrollGroup && group.view !== "matrix" &&
-                  !group.collapsed
-                ? (event) => {
-                  if (group.rowCount <= group.visibleRows * group.columns) {
-                    return;
-                  }
-                  event.preventDefault();
-                  event.stopPropagation();
-                  onScrollGroup(group.key, event.deltaY > 0 ? 1 : -1);
-                }
+              group={group}
+              viewBox={layout.viewBox}
+              color={groupColor(group)}
+              hierarchyPending={pendingHierarchyGroupKeys?.has(group.key) ===
+                true}
+              status={hullContents?.get(group.key)?.status}
+              onScrollRows={onScrollGroup
+                ? (rows) => onScrollGroup(group.key, rows)
                 : undefined}
-              data-collapsed={group.collapsed ? "true" : "false"}
-              style={{
-                "--flow-x": flowXPercent(
-                  group.x + group.width / 2,
-                  layout.viewBox,
-                ),
-                "--flow-y": flowYPercent(
-                  group.y - FLOW_HULL_MARGIN +
-                    (group.headerHeight + FLOW_HULL_MARGIN) / 2,
-                  layout.viewBox,
-                ),
-                "--hull-width": flowWidthPercent(
-                  group.width + FLOW_HULL_MARGIN * 2,
-                  layout.viewBox,
-                ),
-                "--hull-header": flowHeightPercent(
-                  group.headerHeight + FLOW_HULL_MARGIN,
-                  layout.viewBox,
-                ),
-                "--flow-color": groupColor(group),
-              } as CSSProperties}
             >
               <DropdownMenuContextTrigger
                 value={overviewThreadGroupContextValue(group.key)}
@@ -1417,7 +862,10 @@ export function OverviewThreadD3Flow({
               {controlsVisible && !bandFitsControls(group.width) &&
                 !group.collapsed && onSetGroupView && (
                 <select
-                  className="overview-thread-flow-group-view"
+                  className={cn(
+                    "overview-thread-flow-group-view",
+                    whiteboardHullViewSelect,
+                  )}
                   aria-label={`Vue de ${flowGroupCaption(group)}`}
                   title="Vue du hull : arborescence, liste ou points"
                   value={group.view}
@@ -1438,7 +886,10 @@ export function OverviewThreadD3Flow({
                 <>
                   <button
                     type="button"
-                    className="overview-thread-flow-group-control"
+                    className={cn(
+                      "overview-thread-flow-group-control",
+                      whiteboardHullControl(),
+                    )}
                     data-view="tree"
                     data-active={group.view === "tree" ? "true" : "false"}
                     aria-pressed={group.view === "tree"}
@@ -1451,7 +902,10 @@ export function OverviewThreadD3Flow({
                   </button>
                   <button
                     type="button"
-                    className="overview-thread-flow-group-control"
+                    className={cn(
+                      "overview-thread-flow-group-control",
+                      whiteboardHullControl(),
+                    )}
                     data-active={group.view === "list" ? "true" : "false"}
                     aria-pressed={group.view === "list"}
                     aria-label={`List ${flowGroupCaption(group)}`}
@@ -1463,7 +917,10 @@ export function OverviewThreadD3Flow({
                   </button>
                   <button
                     type="button"
-                    className="overview-thread-flow-group-control"
+                    className={cn(
+                      "overview-thread-flow-group-control",
+                      whiteboardHullControl(),
+                    )}
                     data-active={group.view === "matrix" ? "true" : "false"}
                     aria-pressed={group.view === "matrix"}
                     aria-label={`Compact ${flowGroupCaption(group)}`}
@@ -1480,7 +937,10 @@ export function OverviewThreadD3Flow({
                 onCycleGroupSort && (
                 <button
                   type="button"
-                  className="overview-thread-flow-group-control"
+                  className={cn(
+                    "overview-thread-flow-group-control",
+                    whiteboardHullControl(),
+                  )}
                   aria-label={`Reading order of ${flowGroupCaption(group)}`}
                   title="Ordre de lecture — enregistré / récent / nom"
                   onClick={() => onCycleGroupSort(group.key)}
@@ -1490,53 +950,24 @@ export function OverviewThreadD3Flow({
                 </button>
               )}
               {onToggleGroupFold && (controlsVisible || group.collapsed) && (
-                <button
-                  type="button"
-                  className="overview-thread-flow-group-fold"
-                  aria-label={`${group.collapsed ? "Unfold" : "Fold"} ${
-                    flowGroupCaption(group)
-                  } hull`}
-                  aria-expanded={!group.collapsed}
-                  title={group.collapsed ? "Déplier" : "Plier"}
-                  onClick={() => onToggleGroupFold(group.key)}
-                  onPointerDown={(event) => event.stopPropagation()}
-                >
-                  {group.collapsed ? "▸" : "▾"}
-                </button>
+                <OverviewFlowGroupFold
+                  group={group}
+                  caption={flowGroupCaption(group)}
+                  onToggle={() => onToggleGroupFold(group.key)}
+                />
               )}
-            </div>
+            </OverviewFlowGroupBand>
           ))}
           {layout.groups.filter((group) =>
             group.view !== "matrix" && !group.collapsed
           )
             .map((group) => (
-              <div
+              <OverviewFlowGroupFoot
                 key={`foot:${group.key}`}
-                className="overview-thread-flow-group-foot"
-                data-lane={group.lane}
-                style={{
-                  "--flow-x": flowXPercent(
-                    group.x + group.width / 2,
-                    layout.viewBox,
-                  ),
-                  "--flow-y": flowYPercent(
-                    group.y + group.height - group.footerHeight / 2,
-                    layout.viewBox,
-                  ),
-                  "--hull-width": flowWidthPercent(
-                    group.width + FLOW_HULL_MARGIN * 2,
-                    layout.viewBox,
-                  ),
-                  "--flow-color": groupColor(group),
-                } as CSSProperties}
-              >
-                {Math.min(group.visibleRows * group.columns, group.rowCount)}
-                {" / "}
-                {group.rowCount}
-                {group.structureRowCount && " éléments"}
-                {group.rowCount > group.visibleRows * group.columns &&
-                  " — molette dans le hull"}
-              </div>
+                group={group}
+                viewBox={layout.viewBox}
+                color={groupColor(group)}
+              />
             ))}
           {layout.groups.filter((group) => !group.collapsed).map((group) => {
             const live = group.nodeKeys.filter((key) => {
@@ -1549,45 +980,27 @@ export function OverviewThreadD3Flow({
               return item?.kind === "recorded" &&
                 item.node.freshness === "failed";
             });
+            const hullCounts = hullContents?.get(group.key)?.counts;
             return (
-              <span
+              <OverviewFlowGroupMonitor
                 key={`monitor:${group.key}`}
-                className="overview-thread-flow-group-monitor"
-                data-alert={failed ? "true" : "false"}
-                style={{
-                  "--flow-x": flowXPercent(
-                    group.x + group.width,
-                    layout.viewBox,
-                  ),
-                  "--flow-y": flowYPercent(group.y, layout.viewBox),
-                  "--flow-color": groupColor(group),
-                } as CSSProperties}
-              >
-                <i aria-hidden="true" />
-                {group.rowCount}
-                {live > 0 && ` · ${live} live`}
-                {failed && " · ⚠"}
-              </span>
+                group={group}
+                viewBox={layout.viewBox}
+                color={groupColor(group)}
+                liveCount={live}
+                failed={failed}
+                countLabel={hullCounts?.label}
+                counts={hullCounts?.items}
+              />
             );
           })}
           {onResizeGroup && controlsVisible &&
             layout.groups.filter((group) => !group.collapsed).map((group) => (
-              <button
+              <OverviewFlowGroupResize
                 key={`resize:${group.key}`}
-                type="button"
-                className="overview-thread-flow-group-resize"
-                aria-label={`Resize ${flowGroupCaption(group)} hull`}
-                tabIndex={-1}
-                style={{
-                  "--flow-x": flowXPercent(
-                    group.x + group.width,
-                    layout.viewBox,
-                  ),
-                  "--flow-y": flowYPercent(
-                    group.y + group.height,
-                    layout.viewBox,
-                  ),
-                } as CSSProperties}
+                group={group}
+                viewBox={layout.viewBox}
+                caption={flowGroupCaption(group)}
                 onPointerDown={(event) => beginResize(group.key, event)}
                 onPointerMove={moveResize}
                 onPointerUp={endResize}
@@ -1599,131 +1012,60 @@ export function OverviewThreadD3Flow({
 
         <div className="overview-thread-flow-nodes">
           {layout.groups.filter((group) =>
-            group.structureRowCount && !group.collapsed
+            group.structureRowCount && !group.collapsed &&
+            pendingHierarchyGroupKeys?.has(group.key)
+          ).map((group) => (
+            <FlowHullPendingRows
+              key={`pending:${group.key}`}
+              group={group}
+              viewBox={layout.viewBox}
+              color={groupColor(group)}
+              count={group.structureRowCount!}
+            />
+          ))}
+          {layout.groups.filter((group) =>
+            group.structureRowCount && !group.collapsed &&
+            !pendingHierarchyGroupKeys?.has(group.key)
           )
             .map((group) => {
               const content = hullContents?.get(group.key);
-              if (content?.mode !== "tree") return null;
+              if (!content || content.rows.length === 0) return null;
               return layoutOverviewHullRows(content.rows, group).map(
-                (position) => {
-                  const { row } = position;
-                  const presentation = overviewHullRowPresentation(row);
-                  const presentationKey = overviewHullPresentationRowKey(
-                    group.key,
-                    row.key,
-                  );
-                  const graphKey = row.nodeKey ??
-                    graphKeysByPresentationRow.get(presentationKey)?.[0];
-                  const contextKey = row.viewerNodeKey ?? row.nodeKey;
-                  const boundItem = graphKey
-                    ? nodesByKey.get(graphKey)
-                    : undefined;
-                  const tooltip = structureRowTooltip(
-                    row,
-                    boundItem,
-                    group.view,
-                  );
-                  const selected = presentationKey === selectedRowKey;
-                  const inspectionActive = inspection.mode === "selected" &&
-                    overviewInspectionIsVisualTarget(inspection, {
-                      presentationRowKey: presentationKey,
-                    });
-                  return (
-                    <DropdownMenuContextTrigger
-                      key={`${group.key}:${row.key}`}
-                      value={contextKey
-                        ? overviewThreadNodeContextValue(contextKey)
-                        : overviewThreadGroupContextValue(group.key)}
-                      asChild
-                    >
-                      <button
-                        type="button"
-                        className="overview-thread-flow-structure-row"
-                        data-hull-row-key={row.key}
-                        data-hull-row-kind={row.kind}
-                        data-hull-group-key={group.key}
-                        data-overview-presentation-row={presentationKey}
-                        data-hull-row-view={group.view}
-                        data-has-viewer={presentation.hasViewer
-                          ? "true"
-                          : "false"}
-                        data-selected={selected ? "true" : "false"}
-                        data-inspection-active={inspectionActive
-                          ? "true"
-                          : "false"}
-                        aria-label={presentation.ariaLabel}
-                        aria-pressed={selected}
-                        style={{
-                          left: flowXPercent(position.x, layout.viewBox),
-                          top: flowYPercent(position.y, layout.viewBox),
-                          width: flowWidthPercent(
-                            position.width,
-                            layout.viewBox,
-                          ),
-                          height: flowHeightPercent(
-                            position.height,
-                            layout.viewBox,
-                          ),
-                          "--structure-depth": position.depth,
-                          "--flow-color": groupColor(group),
-                        } as CSSProperties}
-                        onClick={() => onActivateHullRow?.(row, group.key)}
-                        onContextMenu={() => {
-                          if (!selected) {
-                            onActivateHullRow?.(row, group.key);
-                          }
-                        }}
-                        onMouseEnter={() => {
-                          setHoveredRowKey(presentationKey);
-                          onHover(graphKey);
-                        }}
-                        onMouseLeave={() => {
-                          setHoveredRowKey(undefined);
-                          onHover(undefined);
-                        }}
-                        onFocus={() => {
-                          setHoveredRowKey(presentationKey);
-                          if (graphKey) onFocus(graphKey);
-                          onHover(graphKey);
-                        }}
-                        onBlur={() => {
-                          setHoveredRowKey(undefined);
-                          onHover(undefined);
-                        }}
-                        ref={(element) => {
-                          refNode(presentationKey, element);
-                        }}
-                        onWheel={group.view !== "matrix" &&
-                            group.rowCount >
-                              group.visibleRows * group.columns &&
-                            onScrollGroup
-                          ? (event) => {
-                            event.preventDefault();
-                            event.stopPropagation();
-                            onScrollGroup(group.key, event.deltaY > 0 ? 1 : -1);
-                          }
-                          : undefined}
-                      >
-                        <OverviewHullRowBody
-                          row={row}
-                          hierarchical={group.view === "tree"}
-                        />
-                        <span
-                          className="overview-thread-flow-node-tooltip"
-                          aria-hidden="true"
-                        >
-                          <strong>{tooltip.title}</strong>
-                          <span>{tooltip.body}</span>
-                        </span>
-                      </button>
-                    </DropdownMenuContextTrigger>
-                  );
-                },
+                (position) => (
+                  <FlowStructureRow
+                    key={`${group.key}:${position.row.key}`}
+                    group={group}
+                    position={position}
+                    viewBox={layout.viewBox}
+                    color={groupColor(group)}
+                    graphKeysByPresentationRow={graphKeysByPresentationRow}
+                    nodesByKey={nodesByKey}
+                    inspection={inspection}
+                    relatedKeys={relatedKeys}
+                    selectedRowKey={selectedRowKey}
+                    focusedKey={focusedKey}
+                    refNode={refNode}
+                    onActivateHullRow={onActivateHullRow}
+                    onHoverGraphKey={onHover}
+                    onFocusGraphKey={onFocus}
+                    onHoverPresentationRow={setHoveredRowKey}
+                    onScrollGroup={onScrollGroup}
+                    onMove={onMove}
+                  />
+                ),
               );
             })}
           {layout.nodes.map((position) => {
             const item = nodesByKey.get(position.key);
             if (!item || position.folded || position.rowAnchored) return null;
+            const pendingGroup = layout.groups.find((group) =>
+              group.nodeKeys.includes(position.key)
+            );
+            if (
+              pendingGroup &&
+              (pendingHierarchyGroupKeys?.has(pendingGroup.key) ||
+                pendingGroup.structureRowCount)
+            ) return null;
             return (
               <FlowNode
                 key={position.key}
@@ -1736,14 +1078,12 @@ export function OverviewThreadD3Flow({
                   laneColorById.get(position.lane) ?? "currentColor",
                 )}
                 selected={position.key === selectedKey}
-                inspectionActive={inspection.mode === "selected" &&
-                  overviewInspectionIsVisualTarget(inspection, {
-                    graphKey: position.key,
-                  })}
+                inspectionActive={overviewInspectionIsVisualTarget(inspection, {
+                  graphKey: position.key,
+                })}
                 focused={position.key === focusedKey}
-                related={inspection.mode === "idle" ||
-                  relatedKeys.has(position.key)}
-                tabIndex={position.key === focusedKey ? 0 : -1}
+                related={relatedKeys.has(position.key)}
+                inspecting={inspection.mode !== "idle"}
                 draggable={Boolean(onMoveNode)}
                 refNode={(node) => refNode(position.key, node)}
                 onHover={(hovered) =>
@@ -1767,60 +1107,253 @@ export function OverviewThreadD3Flow({
   );
 }
 
-/**
- * The contents of one listed row: status, name, and the one figure that dates
- * it. The name's distinguishing tail is lifted out of the ellipsis so a long
- * title loses its middle rather than the part that tells it from its siblings.
- */
-function FlowRowBody(
-  { item }: { readonly item: OverviewHeroNode },
-): JSX.Element {
-  const label = item.kind === "activity" ? item.activity.title : item.label;
-  const { head, tail } = overviewThreadHullNameParts(label);
-  const meta = flowRowMeta(item);
+function FlowHullPendingRows({
+  group,
+  viewBox,
+  color,
+  count,
+}: {
+  readonly group: OverviewThreadD3FlowGroupLayout;
+  readonly viewBox: readonly [number, number, number, number];
+  readonly color: string;
+  readonly count: number;
+}): JSX.Element {
+  const density = group.view === "matrix" ? "point" : "listed";
   return (
-    <>
-      <span className="overview-thread-flow-row-dot" aria-hidden="true" />
-      <span className="overview-thread-flow-row-name" title={label}>
-        <span className="overview-thread-flow-row-head">{head}</span>
-        {tail && <span className="overview-thread-flow-row-tail">{tail}</span>}
-      </span>
-      {meta && (
-        <span
-          className="overview-thread-flow-row-meta"
-          data-live={item.kind === "recorded" &&
-              item.node.freshness === "running"
-            ? "true"
-            : "false"}
+    <div
+      className="overview-thread-flow-hull-pending"
+      data-group-key={group.key}
+      data-whiteboard-flow-pending="true"
+      role="status"
+      aria-busy="true"
+      aria-label="Loading hull hierarchy"
+    >
+      {layoutOverviewHullRowCells(count, group).map((cell) => (
+        <div
+          key={cell.index}
+          className={cn(
+            "overview-thread-flow-structure-row",
+            "overview-thread-flow-structure-row-pending",
+            whiteboardFlowItem({ density, pending: true }),
+          )}
+          data-hull-row-view={group.view}
+          data-pending="true"
+          aria-hidden="true"
+          style={{
+            left: flowXPercent(cell.x, viewBox),
+            top: flowYPercent(cell.y, viewBox),
+            width: flowWidthPercent(cell.width, viewBox),
+            height: flowHeightPercent(cell.height, viewBox),
+            "--flow-color": color,
+          } as CSSProperties}
         >
-          {meta}
-        </span>
-      )}
-    </>
+          <FlowItemSurface density={density} hasViewer={false} pending>
+            {density === "listed"
+              ? (
+                <span
+                  className={whiteboardFlowItemPart({ part: "pendingBar" })}
+                />
+              )
+              : undefined}
+          </FlowItemSurface>
+        </div>
+      ))}
+    </div>
   );
 }
 
-/** The single figure a row carries: what it is doing, or when it settled. */
-function flowRowMeta(item: OverviewHeroNode): string {
-  if (item.kind === "activity") return flowStatusCaption(item.activity.status);
-  if (item.kind === "brief-source") return `brief r${item.brief.revision}`;
-  if (item.node.freshness === "running") return "RUNNING";
-  if (item.node.freshness === "failed") return "échec";
-  const at = overviewThreadRecordedTime(item.node.recordedAt);
-  if (!at) return item.node.freshness === "stale" ? "périmé" : "";
-  return item.node.freshness === "stale" ? `${at} périmé` : `${at} ✓`;
-}
-
-/** Wall-clock only: a compact row shows a time, never a full timestamp. */
-function overviewThreadRecordedTime(
-  recordedAt: string | undefined,
-): string | undefined {
-  if (!recordedAt) return undefined;
-  const parsed = new Date(recordedAt);
-  if (Number.isNaN(parsed.getTime())) return undefined;
-  return `${String(parsed.getHours()).padStart(2, "0")}:${
-    String(parsed.getMinutes()).padStart(2, "0")
-  }`;
+function FlowStructureRow({
+  group,
+  position,
+  viewBox,
+  color,
+  graphKeysByPresentationRow,
+  nodesByKey,
+  inspection,
+  relatedKeys,
+  selectedRowKey,
+  focusedKey,
+  refNode,
+  onActivateHullRow,
+  onHoverGraphKey,
+  onFocusGraphKey,
+  onHoverPresentationRow,
+  onScrollGroup,
+  onMove,
+}: {
+  readonly group: OverviewThreadD3FlowGroupLayout;
+  readonly position: OverviewHullRowLayout;
+  readonly viewBox: readonly [number, number, number, number];
+  readonly color: string;
+  readonly graphKeysByPresentationRow: ReadonlyMap<string, readonly string[]>;
+  readonly nodesByKey: ReadonlyMap<string, OverviewHeroNode>;
+  readonly inspection: OverviewInspectionTarget;
+  readonly relatedKeys: ReadonlySet<string>;
+  readonly selectedRowKey?: string;
+  readonly focusedKey?: string;
+  readonly refNode: (key: string, node: HTMLButtonElement | null) => void;
+  readonly onActivateHullRow?: (
+    row: OverviewHullContentRow,
+    groupKey: string,
+  ) => void;
+  readonly onHoverGraphKey: (key: string | undefined) => void;
+  readonly onFocusGraphKey: (key: string) => void;
+  readonly onHoverPresentationRow: (key: string | undefined) => void;
+  readonly onScrollGroup?: (key: string, rows: number) => void;
+  readonly onMove: (
+    key: string,
+    direction: OverviewThreadD3FlowMoveDirection,
+  ) => void;
+}): JSX.Element {
+  const { row } = position;
+  const presentation = overviewHullRowPresentation(row);
+  const presentationKey = overviewHullPresentationRowKey(group.key, row.key);
+  const rowGraphKeys = useMemo(() => {
+    const mapped = graphKeysByPresentationRow.get(presentationKey);
+    if (mapped) return mapped;
+    return overviewHullRowGraphRefs(row);
+  }, [graphKeysByPresentationRow, presentationKey, row]);
+  const graphKey = overviewHullRowPrimaryGraphRef(row) ?? rowGraphKeys[0];
+  const contextKey = row.viewerNodeKey ??
+    overviewHullRowPrimaryGraphRef(row);
+  const boundItem = graphKey ? nodesByKey.get(graphKey) : undefined;
+  const tooltip = structureRowTooltip(row, boundItem, group.view);
+  const selected = presentationKey === selectedRowKey;
+  const inspectionRelated = overviewInspectionIsRelatedRow(
+    inspection,
+    presentationKey,
+    rowGraphKeys,
+    relatedKeys,
+  );
+  const inspectionActive = overviewInspectionIsVisualTarget(inspection, {
+    presentationRowKey: presentationKey,
+    graphKeys: rowGraphKeys,
+  });
+  const focused = focusedKey === presentationKey ||
+    (focusedKey ? rowGraphKeys.includes(focusedKey) : false);
+  const nodeRef = useRef<HTMLButtonElement | null>(null);
+  const density = group.view === "matrix" ? "point" : "listed";
+  const activityStatus = boundItem?.kind === "activity"
+    ? boundItem.activity.status
+    : undefined;
+  useLayoutEffect(() => {
+    const element = nodeRef.current;
+    for (const key of rowGraphKeys) {
+      refNode(key, element);
+    }
+    return () => {
+      for (const key of rowGraphKeys) {
+        refNode(key, null);
+      }
+    };
+  }, [refNode, rowGraphKeys]);
+  return (
+    <DropdownMenuContextTrigger
+      value={contextKey
+        ? overviewThreadNodeContextValue(contextKey)
+        : overviewThreadGroupContextValue(group.key)}
+      asChild
+    >
+      <button
+        type="button"
+        className={cn(
+          "overview-thread-flow-structure-row",
+          "cursor-context-menu data-[has-viewer=true]:cursor-pointer",
+          "data-[hull-row-kind=source]:cursor-pointer",
+          whiteboardFlowItem({ density }),
+        )}
+        data-whiteboard-flow-item="true"
+        data-overview-context-target={contextKey
+          ? overviewThreadNodeContextValue(contextKey)
+          : overviewThreadGroupContextValue(group.key)}
+        data-hull-row-key={row.key}
+        data-hull-row-kind={row.kind}
+        data-native-action={row.nativeAction}
+        data-kind={boundItem?.kind}
+        data-status={activityStatus}
+        data-lane={group.lane}
+        data-hull-group-key={group.key}
+        data-overview-presentation-row={presentationKey}
+        data-hull-row-view={group.view}
+        data-has-viewer={presentation.hasViewer ? "true" : "false"}
+        data-selected={selected ? "true" : "false"}
+        data-state={flowItemVisualState(
+          inspectionActive,
+          inspectionRelated,
+          inspection.mode !== "idle",
+        )}
+        data-focused={focused ? "true" : "false"}
+        tabIndex={flowItemTabIndex(focused)}
+        aria-label={presentation.ariaLabel}
+        aria-pressed={selected}
+        aria-keyshortcuts={FLOW_ITEM_KEYSHORTCUTS}
+        style={{
+          left: flowXPercent(position.x, viewBox),
+          top: flowYPercent(position.y, viewBox),
+          width: flowWidthPercent(position.width, viewBox),
+          height: flowHeightPercent(position.height, viewBox),
+          "--structure-depth": position.depth,
+          "--flow-color": color,
+        } as CSSProperties}
+        onClick={() => onActivateHullRow?.(row, group.key)}
+        onKeyDown={(event) =>
+          handleFlowItemKeyDown(event, {
+            onActivate: () => onActivateHullRow?.(row, group.key),
+            onMove: graphKey
+              ? (direction) => onMove(graphKey, direction)
+              : undefined,
+          })}
+        onMouseEnter={() => {
+          onHoverPresentationRow(presentationKey);
+          onHoverGraphKey(graphKey);
+        }}
+        onMouseLeave={() => {
+          onHoverPresentationRow(undefined);
+          onHoverGraphKey(undefined);
+        }}
+        onFocus={() => {
+          onHoverPresentationRow(presentationKey);
+          if (graphKey) onFocusGraphKey(graphKey);
+          onHoverGraphKey(graphKey);
+        }}
+        onBlur={() => {
+          onHoverPresentationRow(undefined);
+          onHoverGraphKey(undefined);
+        }}
+        ref={(element) => {
+          nodeRef.current = element;
+          refNode(presentationKey, element);
+        }}
+        onWheel={group.view !== "matrix" &&
+            group.rowCount > group.visibleRows * group.columns &&
+            onScrollGroup
+          ? (event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onScrollGroup(group.key, event.deltaY > 0 ? 1 : -1);
+          }
+          : undefined}
+      >
+        <FlowItemSurface
+          density={density}
+          hasViewer={presentation.hasViewer}
+          label={presentation.label}
+          detail={presentation.detail}
+          status={activityStatus}
+        />
+        <span
+          className={cn(
+            "overview-thread-flow-node-tooltip",
+            whiteboardFlowItemPart({ part: "tooltip" }),
+          )}
+          aria-hidden="true"
+        >
+          <strong>{tooltip.title}</strong>
+          <span>{tooltip.body}</span>
+        </span>
+      </button>
+    </DropdownMenuContextTrigger>
+  );
 }
 
 function FlowNode({
@@ -1833,7 +1366,7 @@ function FlowNode({
   inspectionActive,
   focused,
   related,
-  tabIndex,
+  inspecting,
   draggable,
   refNode,
   onHover,
@@ -1854,7 +1387,7 @@ function FlowNode({
   readonly inspectionActive: boolean;
   readonly focused: boolean;
   readonly related: boolean;
-  readonly tabIndex: number;
+  readonly inspecting: boolean;
   readonly draggable: boolean;
   readonly refNode: (node: HTMLButtonElement | null) => void;
   readonly onHover: (hovered: boolean) => void;
@@ -1868,6 +1401,10 @@ function FlowNode({
   ) => void;
   readonly onMove: (direction: OverviewThreadD3FlowMoveDirection) => void;
 }): JSX.Element {
+  const density = position.listed ? "listed" : "point";
+  const activityStatus = item.kind === "activity"
+    ? item.activity.status
+    : undefined;
   return (
     <DropdownMenuContextTrigger
       value={overviewThreadNodeContextValue(item.key)}
@@ -1876,23 +1413,25 @@ function FlowNode({
       <button
         ref={refNode}
         type="button"
-        tabIndex={tabIndex}
+        tabIndex={flowItemTabIndex(focused)}
         aria-label={`${flowNodeAriaLabel(item)}${
           hasViewer ? " · Open viewer" : ""
         }`}
         aria-pressed={selected}
-        className="overview-thread-flow-node"
+        className={cn(
+          "overview-thread-flow-node",
+          whiteboardFlowItem({ density }),
+        )}
+        data-whiteboard-flow-item="true"
         data-kind={item.kind}
         data-has-viewer={hasViewer ? "true" : "false"}
-        data-status={item.kind === "activity"
-          ? item.activity.status
-          : undefined}
+        data-status={activityStatus}
         data-lane={position.lane}
-        data-state={inspectionActive
-          ? "selected"
-          : related
-          ? "related"
-          : "muted"}
+        data-state={flowItemVisualState(
+          inspectionActive,
+          related,
+          inspecting,
+        )}
         data-focused={focused ? "true" : "false"}
         data-draggable={draggable ? "true" : "false"}
         data-emphasis={item.kind !== "activity" && item.emphasis
@@ -1901,7 +1440,7 @@ function FlowNode({
         data-overview-context-target={overviewThreadNodeContextValue(item.key)}
         data-listed={position.listed ? "true" : "false"}
         data-tree-depth={position.listed ? position.depth : undefined}
-        aria-keyshortcuts="ArrowUp ArrowDown ArrowLeft ArrowRight Shift+F10"
+        aria-keyshortcuts={FLOW_ITEM_KEYSHORTCUTS}
         style={{
           "--flow-x": position.listed
             ? flowXPercent(position.x, viewBox)
@@ -1921,35 +1460,42 @@ function FlowNode({
         onMouseLeave={() => onHover(false)}
         onFocus={onFocus}
         onBlur={() => onHover(false)}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onToggle();
-            return;
-          }
-          if (isFlowMoveDirection(event.key)) {
-            event.preventDefault();
-            onMove(event.key);
-          }
-        }}
+        onKeyDown={(event) =>
+          handleFlowItemKeyDown(event, {
+            onActivate: () => onToggle(),
+            onMove,
+          })}
       >
-        {position.listed ? <FlowRowBody item={item} /> : (
-          <span
-            className="overview-thread-flow-node-dot"
-            aria-hidden="true"
-          />
-        )}
-        {item.kind === "activity"
+        <FlowItemSurface
+          density={density}
+          hasViewer={hasViewer}
+          status={activityStatus}
+          emphasis={item.kind !== "activity" && item.emphasis}
+        >
+          {density === "listed" ? <FlowRowBody item={item} /> : undefined}
+        </FlowItemSurface>
+        {item.kind === "activity" && density === "point"
           ? (
             <span
-              className="overview-thread-flow-activity-label"
+              className={cn(
+                "overview-thread-flow-activity-label",
+                whiteboardFlowItemPart({ part: "activityLabel" }),
+              )}
               data-status={item.activity.status}
               aria-hidden="true"
             >
               <strong>{item.activity.title}</strong>
-              <span className="overview-thread-flow-activity-status">
+              <span
+                className={cn(
+                  "overview-thread-flow-activity-status",
+                  whiteboardFlowItemPart({ part: "activityStatus" }),
+                )}
+              >
                 <span
-                  className="overview-thread-flow-activity-status-mark"
+                  className={cn(
+                    "overview-thread-flow-activity-status-mark",
+                    whiteboardFlowItemPart({ part: "activityMark" }),
+                  )}
                   aria-hidden="true"
                 />
                 {flowStatusCaption(item.activity.status)}
@@ -1958,7 +1504,10 @@ function FlowNode({
           )
           : (
             <span
-              className="overview-thread-flow-node-tooltip"
+              className={cn(
+                "overview-thread-flow-node-tooltip",
+                whiteboardFlowItemPart({ part: "tooltip" }),
+              )}
               aria-hidden="true"
             >
               <strong>{item.label}</strong>
@@ -1968,23 +1517,6 @@ function FlowNode({
       </button>
     </DropdownMenuContextTrigger>
   );
-}
-
-type OverviewFlowSegmentState =
-  import("./overview-thread-d3-flow-highlight.ts").OverviewFlowSegmentHighlightState;
-
-interface OverviewFlowSegmentPresentation {
-  readonly segment: OverviewThreadD3FlowSegmentLayout;
-  readonly state: OverviewFlowSegmentState;
-  readonly connectedToDrag: boolean;
-}
-
-interface OverviewFlowSegmentElement {
-  readonly path: SVGPathElement;
-  presentation?: OverviewFlowSegmentPresentation;
-  renderedD?: string;
-  renderedWidth?: string;
-  renderedPresence?: string;
 }
 
 function FlowSegmentLayer({
@@ -2170,160 +1702,6 @@ function FlowSegmentLayer({
   return <g ref={layerRef} className="overview-thread-flow-segments" />;
 }
 
-function overviewFlowSegmentPresentations(
-  layout: OverviewThreadD3FlowLayout,
-  activeKey: string | undefined,
-  movingNodeKeys: ReadonlySet<string>,
-  dragging: boolean,
-  activeKeys: readonly string[] = [],
-  muteUnmatched = false,
-): readonly OverviewFlowSegmentPresentation[] {
-  return overviewFlowVisualSegments(layout).map((segment) => ({
-    segment,
-    state: flowSegmentState(
-      segment,
-      activeKey,
-      activeKeys,
-      layout.routes,
-      muteUnmatched,
-    ),
-    connectedToDrag: dragging && segmentTouchesKeys(segment, movingNodeKeys),
-  })).toSorted((left, right) =>
-    flowSegmentPaintRank(left.state) - flowSegmentPaintRank(right.state) ||
-    left.segment.key.localeCompare(right.segment.key)
-  );
-}
-
-function overviewFlowVisualSegments(
-  layout: OverviewThreadD3FlowLayout,
-): readonly OverviewThreadD3FlowSegmentLayout[] {
-  const extended = layout as OverviewThreadD3FlowLayout & {
-    readonly corridors?: readonly OverviewThreadD3FlowSegmentLayout[];
-  };
-  if (!extended.corridors || extended.corridors.length === 0) {
-    return layout.segments;
-  }
-  const byKey = new Map(
-    [...extended.corridors, ...layout.segments].map((segment) => [
-      segment.key,
-      segment,
-    ]),
-  );
-  return [...byKey.values()];
-}
-
-function canonicalOverviewFlowMotionPoints(
-  segment: OverviewThreadD3FlowSegmentLayout,
-  layout: OverviewThreadD3FlowLayout,
-): readonly OverviewThreadD3FlowPoint[] {
-  if (segment.kind !== "same-lane-trunk" || segment.points.length < 2) {
-    return segment.points;
-  }
-  const first = segment.points[0]!;
-  const last = segment.points.at(-1)!;
-  const firstGroup = layout.groups.find((group) =>
-    sameOverviewFlowPoint(group.outHub, first) ||
-    sameOverviewFlowPoint(group.inHub, first)
-  );
-  const lastGroup = layout.groups.find((group) =>
-    sameOverviewFlowPoint(group.outHub, last) ||
-    sameOverviewFlowPoint(group.inHub, last)
-  );
-  return firstGroup && lastGroup &&
-      firstGroup.key.localeCompare(lastGroup.key) > 0
-    ? segment.points.toReversed()
-    : segment.points;
-}
-
-function sameOverviewFlowPoint(
-  left: OverviewThreadD3FlowPoint,
-  right: OverviewThreadD3FlowPoint,
-): boolean {
-  return left.x === right.x && left.y === right.y;
-}
-
-function applyOverviewFlowSegmentPresentation(
-  path: SVGPathElement,
-  presentation: OverviewFlowSegmentPresentation,
-): void {
-  path.dataset.kind = presentation.segment.kind;
-  path.dataset.role = presentation.segment.role;
-  path.dataset.direction = presentation.segment.direction;
-  path.dataset.state = presentation.state;
-  path.dataset.dragRoute = presentation.connectedToDrag ? "connected" : "idle";
-  if (presentation.segment.dock) {
-    path.dataset.dock = presentation.segment.dock;
-  } else {
-    delete path.dataset.dock;
-  }
-}
-
-function formatOverviewFlowMotionNumber(value: number): string {
-  return String(Math.round(value * 1_000) / 1_000);
-}
-
-function segmentTouchesKeys(
-  segment: OverviewThreadD3FlowSegmentLayout,
-  keys: ReadonlySet<string>,
-): boolean {
-  if (keys.size === 0) return false;
-  return segment.fromKeys.some((key) => keys.has(key)) ||
-    segment.toKeys.some((key) => keys.has(key));
-}
-
-function flowSegmentWidth(segment: OverviewThreadD3FlowSegmentLayout): number {
-  return nonNegativeFinite(segment.width);
-}
-
-function flowRelatedNodeKeys(
-  layout: OverviewThreadD3FlowLayout,
-  activeKeys: readonly string[],
-): ReadonlySet<string> {
-  if (activeKeys.length === 0) return new Set();
-  const keys = new Set(activeKeys);
-  for (const route of layout.routes) {
-    if (keys.has(route.fromKey) || keys.has(route.toKey)) {
-      keys.add(route.fromKey);
-      keys.add(route.toKey);
-    }
-  }
-  return keys;
-}
-
-function flowXPercent(
-  x: number,
-  viewBox: readonly [number, number, number, number],
-): string {
-  return `${((x - viewBox[0]) / viewBox[2]) * 100}%`;
-}
-
-function flowWidthPercent(
-  width: number,
-  viewBox: readonly [number, number, number, number],
-): string {
-  return `${(width / viewBox[2]) * 100}%`;
-}
-
-function flowHeightPercent(
-  height: number,
-  viewBox: readonly [number, number, number, number],
-): string {
-  return `${(height / viewBox[3]) * 100}%`;
-}
-
-function flowYPercent(
-  y: number,
-  viewBox: readonly [number, number, number, number],
-): string {
-  return `${((y - viewBox[1]) / viewBox[3]) * 100}%`;
-}
-
-export function flowGroupCaption(
-  group: OverviewThreadD3FlowGroupLayout,
-): string {
-  return overviewGroupCaption(group.groupKey, group.lane);
-}
-
 function structureRowTooltip(
   row: OverviewHullContentRow,
   item: OverviewHeroNode | undefined,
@@ -2365,41 +1743,17 @@ const FLOW_ACTIVITY_STATUS_ORDER = [
 ] as const satisfies readonly EngineeringPhaseStatus[];
 
 function overviewFlowActivityStatuses(
-  nodesByKey: ReadonlyMap<string, OverviewHeroNode>,
+  hullContents:
+    | ReadonlyMap<string, OverviewHullContent>
+    | undefined,
 ): readonly EngineeringPhaseStatus[] {
   const present = new Set<EngineeringPhaseStatus>();
-  for (const item of nodesByKey.values()) {
-    if (item.kind === "activity") present.add(item.activity.status);
+  for (const content of hullContents?.values() ?? []) {
+    if (content.status) present.add(content.status);
   }
   return FLOW_ACTIVITY_STATUS_ORDER.filter((status) => present.has(status));
 }
 
 function flowStatusCaption(status: EngineeringPhaseStatus): string {
   return overviewActivityStatusCaption(status);
-}
-
-function isFlowMoveDirection(
-  key: string,
-): key is OverviewThreadD3FlowMoveDirection {
-  return key === "ArrowUp" || key === "ArrowDown" || key === "ArrowLeft" ||
-    key === "ArrowRight";
-}
-
-function flowKeyboardMoveDelta(
-  direction: OverviewThreadD3FlowMoveDirection,
-): { readonly x: number; readonly y: number } {
-  if (direction === "ArrowUp") {
-    return { x: 0, y: -FLOW_KEYBOARD_MOVE_STEP };
-  }
-  if (direction === "ArrowDown") {
-    return { x: 0, y: FLOW_KEYBOARD_MOVE_STEP };
-  }
-  if (direction === "ArrowLeft") {
-    return { x: -FLOW_KEYBOARD_MOVE_STEP, y: 0 };
-  }
-  return { x: FLOW_KEYBOARD_MOVE_STEP, y: 0 };
-}
-
-function clampNumber(value: number, minimum: number, maximum: number): number {
-  return Math.min(maximum, Math.max(minimum, value));
 }

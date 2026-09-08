@@ -1,4 +1,12 @@
-import type { JSX } from "react";
+import type { CSSProperties, JSX } from "react";
+import { cn } from "../lib/utils.ts";
+import {
+  whiteboardNote,
+  whiteboardNoteLink,
+  whiteboardNotePart,
+  whiteboardNotePin,
+  whiteboardNoteState,
+} from "../ui/whiteboard.ts";
 import type { ThreadGraphRef } from "../thread/types.ts";
 import type { OverviewBriefSourceHeroNode } from "./overview-thread-hero-model.ts";
 
@@ -11,52 +19,105 @@ import type { OverviewBriefSourceHeroNode } from "./overview-thread-hero-model.t
 export function OverviewThreadBriefSourceNote({
   item,
   onClose,
+  pinned = false,
+  onPinToggle,
+  style,
   onSelectRequirement,
   onInspectClaim,
 }: {
   readonly item: OverviewBriefSourceHeroNode;
   readonly onClose: () => void;
+  readonly pinned?: boolean;
+  readonly onPinToggle?: () => void;
+  readonly style?: CSSProperties;
   readonly onSelectRequirement: (threadRequirementId: string) => void;
   readonly onInspectClaim: (reference: ThreadGraphRef) => void;
 }): JSX.Element {
   const claims = uniqueDocumentaryClaims(item);
   return (
     <section
-      className="overview-thread-selection-note overview-thread-brief-source-note"
+      className={cn(
+        "overview-thread-selection-note overview-thread-brief-source-note",
+        whiteboardNote,
+        whiteboardNoteState({ pinned }),
+      )}
       aria-label={`Read brief source ${item.sourceItem.id}`}
+      data-pinned={pinned ? "true" : "false"}
+      style={style}
       onKeyDown={(event) => {
         if (event.key !== "Escape") return;
         event.stopPropagation();
         onClose();
       }}
     >
-      <header>
+      <header className={whiteboardNotePart({ part: "header" })}>
         <span>Brief source on the board</span>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close brief source"
-        >
-          Close
-        </button>
+        <div className={whiteboardNotePart({ part: "headerActions" })}>
+          {onPinToggle && (
+            <button
+              type="button"
+              className={whiteboardNotePin({ pressed: pinned })}
+              aria-pressed={pinned}
+              aria-label={pinned ? "Unpin selection" : "Pin selection"}
+              onClick={onPinToggle}
+            >
+              {pinned ? "Unpin" : "Pin"}
+            </button>
+          )}
+          <button
+            type="button"
+            className={whiteboardNotePart({ part: "close" })}
+            onClick={onClose}
+            aria-label="Close brief source"
+          >
+            Close
+          </button>
+        </div>
       </header>
-      <div className="overview-thread-selection-body">
-        <h4>{item.sourceItem.id}</h4>
-        <p className="overview-thread-selection-meta">
+      <div
+        className={cn(
+          "overview-thread-selection-body",
+          whiteboardNotePart({ part: "body" }),
+        )}
+      >
+        <h4 className={whiteboardNotePart({ part: "title" })}>
+          {item.sourceItem.id}
+        </h4>
+        <p
+          className={cn(
+            "overview-thread-selection-meta",
+            whiteboardNotePart({ part: "meta" }),
+          )}
+        >
           Brief r{item.brief.revision} · <code>{item.brief.snapshotId}</code>
         </p>
-        <p className="overview-thread-selection-meta">
+        <p
+          className={cn(
+            "overview-thread-selection-meta",
+            whiteboardNotePart({ part: "meta" }),
+          )}
+        >
           {item.sourceItem.kind}
         </p>
-        <p className="overview-thread-selection-summary">
+        <p
+          className={cn(
+            "overview-thread-selection-summary",
+            whiteboardNotePart({ part: "summary" }),
+          )}
+        >
           {item.sourceItem.statement}
         </p>
         {item.sourceItem.sourceRefs.length > 0 && (
           <section className="overview-thread-brief-source-references">
-            <h5>Source references</h5>
-            <ul>
+            <h5 className={whiteboardNotePart({ part: "heading" })}>
+              Source references
+            </h5>
+            <ul className={whiteboardNotePart({ part: "list" })}>
               {item.sourceItem.sourceRefs.map((source, index) => (
-                <li key={`${source.kind}:${source.reference}:${index}`}>
+                <li
+                  key={`${source.kind}:${source.reference}:${index}`}
+                  className={whiteboardNotePart({ part: "listItem" })}
+                >
                   {source.kind}: {source.reference}
                 </li>
               ))}
@@ -64,12 +125,18 @@ export function OverviewThreadBriefSourceNote({
           </section>
         )}
         <section className="overview-thread-brief-source-requirements">
-          <h5>Linked requirements</h5>
-          <ul>
+          <h5 className={whiteboardNotePart({ part: "heading" })}>
+            Linked requirements
+          </h5>
+          <ul className={whiteboardNotePart({ part: "list" })}>
             {item.correspondences.map((correspondence) => (
-              <li key={correspondence.threadRequirementId}>
+              <li
+                key={correspondence.threadRequirementId}
+                className={whiteboardNotePart({ part: "listItem" })}
+              >
                 <button
                   type="button"
+                  className={whiteboardNoteLink}
                   onClick={() =>
                     onSelectRequirement(correspondence.threadRequirementId)}
                 >
@@ -81,13 +148,19 @@ export function OverviewThreadBriefSourceNote({
         </section>
         {claims.length > 0 && (
           <section className="overview-thread-brief-source-claims">
-            <h5>Documentary claims</h5>
-            <ul>
+            <h5 className={whiteboardNotePart({ part: "heading" })}>
+              Documentary claims
+            </h5>
+            <ul className={whiteboardNotePart({ part: "list" })}>
               {claims.map((claim) => (
-                <li key={claim.artifactId}>
+                <li
+                  key={claim.artifactId}
+                  className={whiteboardNotePart({ part: "listItem" })}
+                >
                   <code>{claim.claimId}</code> · r{claim.revision}
                   <button
                     type="button"
+                    className={whiteboardNoteLink}
                     onClick={() =>
                       onInspectClaim({
                         kind: "artifact",

@@ -52,6 +52,8 @@ http://127.0.0.1:5173/          Vite cockpit (default)
 http://127.0.0.1:5175/          BFF API / SSE; `preview:cockpit` hashed-asset shell
 ```
 
+Deno `--watch` restarts that BFF when imported modules change.
+
 No Console MCP server or provider MCP is required to read an already persisted project
 and thread. `GET /api/project/capabilities` additionally observes the local Docker
 daemon and the code-owned Microsandbox image cache through fixed read-only inspections;
@@ -263,7 +265,11 @@ On the **evidence** surface, the projection must show:
 - `projectPath.activities` grouped by the persisted `activityId` and
   `predecessorRevisionId`, not by operation keys or labels;
 - `caseActivityJoins` from each typed Thread case to the Project activity that produced
-  its authority artifact, when the producer run is unique;
+  its authority artifact, when the producer run is unique. Joins stay digest-addressed;
+  `engineering-cases/1.1` keeps every exact case in `cases` and a `current` selection
+  per conflict-free `(family, id)`. That selection is not a Thread `supersedes` edge.
+  The Overview whiteboard is current-only and does not paint rN, prior/current members,
+  a revision counter, or History;
 - exact condensed Overview connectors through hidden documentary/evidence/result nodes,
   never an invented edge;
 - exact producer and consumed SHA-256 values for every claimed CAD handoff;

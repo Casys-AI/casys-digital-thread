@@ -1,7 +1,7 @@
 import type { OverviewHeroNode } from "../../overview-thread-hero-model.ts";
 import { overviewThreadD3FlowGroupIdentity } from "../../overview-thread-d3-flow-layout.ts";
 import type { ThreadViewerHierarchyProjection } from "../../../../../presentation/workbench/thread/viewer-hierarchy.ts";
-import type { OverviewHullContent } from "./types.ts";
+import { type OverviewHullContent, overviewHullRowGraphRefs } from "./types.ts";
 
 /**
  * Placement of actual recorded endpoints beside displayed rows. A navigation
@@ -19,7 +19,7 @@ export function overviewHullRowAnchors(
   );
   const result: Record<string, Record<string, number>> = {};
   for (const [groupKey, content] of contents) {
-    if (content.mode !== "tree") continue;
+    if (content.rows.length === 0) continue;
     const members = nodes.filter((node) =>
       overviewThreadD3FlowGroupIdentity(node.lane, node.groupKey) === groupKey
     );
@@ -31,6 +31,11 @@ export function overviewHullRowAnchors(
       candidates.set(key, rows);
     };
     for (const [index, row] of content.rows.entries()) {
+      const graphRefs = overviewHullRowGraphRefs(row);
+      if (row.graphRefs !== undefined) {
+        for (const graphRef of graphRefs) add(graphRef, index);
+        continue;
+      }
       if (row.endpoint && row.nodeKey) add(row.nodeKey, index);
       if (row.kind !== "navigation") continue;
       const occurrence = hierarchyById.get(row.key);

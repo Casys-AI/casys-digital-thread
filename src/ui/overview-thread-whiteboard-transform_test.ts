@@ -1,7 +1,9 @@
 import { assert, assertEquals } from "@std/assert";
+
 import {
   clampOverviewThreadWhiteboardTransform,
   fitOverviewThreadWhiteboardTransform,
+  nextOverviewWhiteboardTransformOnObservedResize,
   normalizeOverviewThreadWhiteboardTransform,
   type OverviewThreadWhiteboardBounds,
   overviewThreadWhiteboardContentBounds,
@@ -222,6 +224,45 @@ Deno.test("reset returns identity when possible and a constrained centred view o
       padding: 50,
     }),
     { x: 250, y: 200, k: 1 },
+  );
+});
+
+Deno.test("observed world growth keeps the current transform after initial hydration", () => {
+  const current = { x: -40, y: 12, k: 0.7 };
+  const grown: OverviewThreadWhiteboardBounds = {
+    viewport: { width: 800, height: 600 },
+    content: { x: 0, y: 0, width: 1600, height: 1200 },
+    padding: 50,
+    minScale: 0.4,
+    maxScale: 3,
+  };
+  const kept = nextOverviewWhiteboardTransformOnObservedResize({
+    viewportChanged: false,
+    touched: false,
+    current,
+    bounds: grown,
+  });
+  assertEquals(kept, current);
+  assert(kept === current);
+
+  const fitted = nextOverviewWhiteboardTransformOnObservedResize({
+    viewportChanged: true,
+    touched: false,
+    current,
+    bounds: BOUNDS,
+  });
+  assertEquals(fitted, fitOverviewThreadWhiteboardTransform(BOUNDS));
+
+  const panned = { x: -120, y: 30, k: 1.1 };
+  const normalized = nextOverviewWhiteboardTransformOnObservedResize({
+    viewportChanged: true,
+    touched: true,
+    current: panned,
+    bounds: BOUNDS,
+  });
+  assertEquals(
+    normalized,
+    normalizeOverviewThreadWhiteboardTransform(panned, BOUNDS),
   );
 });
 

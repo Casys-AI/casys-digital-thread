@@ -187,6 +187,9 @@ Deno.test("brief-source reading note follows only exact projected records", asyn
   const canvas = await Deno.readTextFile(
     new URL("./src/styles/19-project-thread-canvas.css", import.meta.url),
   );
+  const chrome = await Deno.readTextFile(
+    new URL("./src/ui/whiteboard.ts", import.meta.url),
+  );
 
   assertStringIncludes(note, "OverviewBriefSourceHeroNode");
   assertStringIncludes(
@@ -200,11 +203,19 @@ Deno.test("brief-source reading note follows only exact projected records", asyn
   assertStringIncludes(note, 'kind: "artifact"');
   assertEquals(note.includes("onOpenEvidence"), false);
   assertEquals(note.includes("fetch("), false);
+  assertStringIncludes(
+    note,
+    '"overview-thread-selection-note overview-thread-brief-source-note"',
+  );
+  assertStringIncludes(note, "whiteboardNote");
   assertStringIncludes(hero, 'selectedItem?.kind === "brief-source"');
   assertStringIncludes(hero, "onSelectRequirement={(requirementId)");
   assertStringIncludes(hero, 'if (item.kind === "brief-source") return [];');
   assertStringIncludes(flow, 'item.kind === "brief-source"');
   assertStringIncludes(flow, "Read brief source");
+  assertStringIncludes(canvas, ".overview-thread-selection-note {");
   assertStringIncludes(canvas, "z-index: 31;");
-  assertStringIncludes(canvas, "position: sticky;");
+  assertStringIncludes(canvas, "position: absolute;");
+  assertStringIncludes(note, 'whiteboardNotePart({ part: "header" })');
+  assertStringIncludes(chrome, "sticky top-0");
 });

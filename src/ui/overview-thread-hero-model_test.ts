@@ -3,6 +3,7 @@ import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-work
 import {
   buildOverviewThreadHero,
   isRecordedOverviewHeroNode,
+  OVERVIEW_DOMAIN_GROUP_KEYS,
   OVERVIEW_SEMANTIC_GROUP_KEYS,
   type OverviewActivityHeroNode,
   overviewGroupCaption,
@@ -140,6 +141,21 @@ Deno.test("overview hulls use exact producer families rather than recorder label
     OVERVIEW_SEMANTIC_GROUP_KEYS.assemblyIntegrity,
   );
   assertEquals(
+    overviewGroupKeyFor(node, artifact("verify.seal-proof-case@1")),
+    OVERVIEW_DOMAIN_GROUP_KEYS.fea,
+  );
+  assertEquals(
+    overviewGroupKeyFor(
+      node,
+      artifact("decide.accept-evaluation-closeout@1"),
+    ),
+    OVERVIEW_DOMAIN_GROUP_KEYS.fea,
+  );
+  assertEquals(
+    overviewGroupCaption(OVERVIEW_DOMAIN_GROUP_KEYS.fea, "verdicts"),
+    "FEA verdict",
+  );
+  assertEquals(
     overviewGroupKeyFor(node, artifact("unknown.operation@1")),
     "digital-thread",
   );
@@ -223,26 +239,16 @@ Deno.test("overview hulls keep exact containment after a one-to-one SysML usage 
   );
 });
 
-Deno.test("overview connects exact project dependency evidence to open activity hulls", () => {
+Deno.test("exact active evidence overlays its hull; completed work and missing relations omit", () => {
   const thread = structuredClone(GENERIC_THREAD_FIXTURE);
   const snapshotRevision = thread.evidenceFamilyGraph.asOf.revision;
   const evidenceRef = {
     snapshotId: thread.id,
     snapshotRevision,
     kind: "artifact" as const,
-    id: "project-document-admission",
+    id: "ART-CAD-018",
   };
-  thread.graph.nodes.push({
-    id: "graph:artifact:project-document-admission",
-    ref: { kind: "artifact", id: evidenceRef.id },
-    entityKind: "artifact",
-    artifactKind: "document",
-    label: "Project document admission",
-    system: "digital-thread",
-    freshness: "fresh",
-    summary: "Recorded documentary admission",
-  });
-  const baseline = {
+  const completed = {
     ...activityView(
       "activity:brief-baseline",
       "requirements",
@@ -254,24 +260,52 @@ Deno.test("overview connects exact project dependency evidence to open activity 
   const active = {
     ...activityView(
       "activity:active-build",
-      "system-model",
+      "geometry",
       "active",
       ["active-build"],
     ),
-    dependencyEvidenceRefs: [evidenceRef],
+    evidenceRefs: [evidenceRef],
   };
-
-  const hero = buildOverviewThreadHero(thread, [baseline, active]);
-  const evidence = hero.nodes.find((item) => item.key === `artifact:${evidenceRef.id}`);
-  const dependency = hero.edges.find((edge) => edge.kind === "project-dependency");
-
-  assertEquals(evidence?.lane, "requirements");
-  assertEquals(dependency?.fromKey, `artifact:${evidenceRef.id}`);
-  assertEquals(
-    dependency?.toKey,
-    "project-activity:activity:active-build",
+  const orphan = activityView(
+    "activity:orphaned-active",
+    "physics",
+    "active",
+    ["orphan"],
   );
-  assertEquals(dependency?.pathCount, 1);
+
+  const withoutActive = buildOverviewThreadHero(thread, [completed, orphan]);
+  const evidenceIdle = withoutActive.nodes.find((item) =>
+    item.key === `artifact:${evidenceRef.id}`
+  );
+  assertEquals(evidenceIdle?.kind, "recorded");
+  assertEquals(
+    evidenceIdle?.kind === "recorded" ? evidenceIdle.activityStatus : "missing",
+    undefined,
+  );
+  assertEquals(withoutActive.nodes.filter(isActivityHeroNode), []);
+  assertEquals(
+    withoutActive.edges.some((edge) => edge.kind === "project-dependency"),
+    false,
+  );
+
+  const withActive = buildOverviewThreadHero(thread, [
+    completed,
+    active,
+    orphan,
+  ]);
+  const evidence = withActive.nodes.find((item) =>
+    item.key === `artifact:${evidenceRef.id}`
+  );
+  assertEquals(evidence?.kind, "recorded");
+  assertEquals(
+    evidence?.kind === "recorded" ? evidence.activityStatus : undefined,
+    "active",
+  );
+  assertEquals(withActive.nodes.filter(isActivityHeroNode), []);
+  assertEquals(
+    withActive.edges.some((edge) => edge.toKey.startsWith("project-activity:")),
+    false,
+  );
 });
 
 Deno.test("Overview opens registered whole Apps without a native CAD fallback", async () => {
@@ -420,7 +454,7 @@ Deno.test("overview hero retains every recorded semantic point instead of trunca
   );
 });
 
-Deno.test("overview hero appends one non-completed activity marker per stable activity in its exact lane", () => {
+Deno.test("overview hero omits peer activity hulls without an exact evidence overlay", () => {
   const activities: readonly ProjectPathActivityView[] = [
     activityView("activity:geometry-next", "geometry", "planned", [
       "wi-g1",
@@ -429,37 +463,19 @@ Deno.test("overview hero appends one non-completed activity marker per stable ac
     activityView("activity:physics-run", "physics", "active", [
       "wi-p1",
     ]),
+    activityView("activity:physics-blocked", "physics", "blocked", [
+      "wi-p2",
+    ]),
     activityView("activity:requirements-done", "requirements", "completed", [
       "wi-r1",
     ]),
   ];
 
   const hero = buildOverviewThreadHero(GENERIC_THREAD_FIXTURE, activities);
-  const markers = hero.nodes.filter(isActivityHeroNode);
-
-  assertEquals(markers.map((item) => item.activity.id), [
-    "activity:geometry-next",
-    "activity:physics-run",
-  ]);
-  assertEquals(
-    markers.find((item) => item.activity.id === "activity:geometry-next")
-      ?.lane,
-    "geometry",
-  );
-  assertEquals(
-    markers.find((item) => item.activity.id === "activity:physics-run")
-      ?.lane,
-    "physics",
-  );
-  assertEquals(
-    markers.filter((item) => item.activity.id === "activity:geometry-next")
-      .length,
-    1,
-  );
+  assertEquals(hero.nodes.filter(isActivityHeroNode), []);
   assertEquals(
     hero.nodes.some((item) =>
-      item.kind === "activity" &&
-      item.activity.id === "activity:requirements-done"
+      item.kind === "recorded" && item.activityStatus !== undefined
     ),
     false,
   );

@@ -6,7 +6,9 @@ import type {
 import { overviewThreadD3FlowGroupIdentity } from "./src/project/overview-thread-d3-flow-layout.ts";
 import { OVERVIEW_DOMAIN_GROUP_KEYS } from "./src/project/overview/hulls/domain-groups.ts";
 import type { OverviewHullContent } from "./src/project/overview/hulls/types.ts";
+import { overviewHullRowGraphRefs } from "./src/project/overview/hulls/types.ts";
 import { overviewHullRowAnchors } from "./src/project/overview/hulls/row-anchors.ts";
+import { buildOverviewHullContents } from "./src/project/overview/hulls/content.ts";
 import {
   nextOverviewHullPresentationRowKey,
   overviewContextActionPresentationRowKey,
@@ -369,6 +371,77 @@ Deno.test("ambiguous SYSML roots or a nonmember architecture artifact fail close
   assertEquals(nonmember[SYSML_HULL], {});
 });
 
+Deno.test("raw and hierarchy projections retarget the same graph ref through graphRefs", () => {
+  const geometry = artifact(
+    GEOMETRY_ROOT_ID,
+    "geometry",
+    OVERVIEW_DOMAIN_GROUP_KEYS.geometry,
+  );
+  const raw = buildOverviewHullContents([geometry], []);
+  const rawRows = raw.get(GEOMETRY_HULL)!.rows;
+  const rawRow = rawRows.find((row) =>
+    row.key === `artifact:${GEOMETRY_ROOT_ID}`
+  )!;
+  assertEquals(overviewHullRowGraphRefs(rawRow), [
+    `artifact:${GEOMETRY_ROOT_ID}`,
+  ]);
+  const structuredNodes = [{
+    id: ROOT,
+    label: "Assembly",
+    partDefinitionElementId: "def-root",
+    geometryArtifactId: GEOMETRY_ROOT_ID,
+    artifactIds: [GEOMETRY_ROOT_ID],
+    sessionIds: [] as string[],
+  }];
+  const structuredHierarchy = hierarchy(structuredNodes);
+  const structured = buildOverviewHullContents(
+    [geometry],
+    [],
+    structuredHierarchy,
+  );
+  const structuredRows = structured.get(GEOMETRY_HULL)!.rows;
+  const overlay = structuredRows.find((row) =>
+    overviewHullRowGraphRefs(row).includes(`artifact:${GEOMETRY_ROOT_ID}`)
+  )!;
+  assertEquals(overlay.key, ROOT);
+  assertEquals(overlay.key === rawRow.key, false);
+  const known = new Set([`artifact:${GEOMETRY_ROOT_ID}`]);
+  const rawAnchors = overviewHullRowAnchors(raw, [geometry]);
+  const structuredAnchors = overviewHullRowAnchors(
+    structured,
+    [geometry],
+    structuredHierarchy,
+  );
+  assertEquals(
+    overviewHullMappedGraphKey(
+      GEOMETRY_HULL,
+      rawRow,
+      rawAnchors,
+      rawRows,
+      known,
+    ),
+    `artifact:${GEOMETRY_ROOT_ID}`,
+  );
+  assertEquals(
+    overviewHullMappedGraphKey(
+      GEOMETRY_HULL,
+      overlay,
+      structuredAnchors,
+      structuredRows,
+      known,
+    ),
+    `artifact:${GEOMETRY_ROOT_ID}`,
+  );
+  const graphKeys = overviewHullGraphKeysByPresentationRow(
+    structured,
+    structuredAnchors,
+  );
+  assertEquals(
+    graphKeys.get(overviewHullPresentationRowKey(GEOMETRY_HULL, overlay.key)),
+    [`artifact:${GEOMETRY_ROOT_ID}`],
+  );
+});
+
 Deno.test("toggle-off and explicit clear drop the presentation row without leaking the other hull", () => {
   const sysmlRoot = overviewHullPresentationRowKey(SYSML_HULL, ROOT);
   const geometryRoot = overviewHullPresentationRowKey(GEOMETRY_HULL, ROOT);
@@ -396,4 +469,52 @@ Deno.test("toggle-off and explicit clear drop the presentation row without leaki
     overviewContextActionPresentationRowKey(undefined) === geometryRoot,
     false,
   );
+});
+
+Deno.test("records-mode graphRefs stay exact identities and never select a folder key", () => {
+  const hullKey = overviewThreadD3FlowGroupIdentity(
+    "physics",
+    OVERVIEW_DOMAIN_GROUP_KEYS.fea,
+  );
+  const row: OverviewHullContent["rows"][number] = {
+    key: "artifact:fea-proof",
+    kind: "record",
+    label: "Proof",
+    depth: 0,
+    nodeKey: "artifact:fea-proof",
+    graphRefs: ["artifact:fea-proof"],
+    sessionIds: [],
+    endpoint: true,
+  };
+  const folder: OverviewHullContent["rows"][number] = {
+    key: "engineering-case:series",
+    kind: "navigation",
+    label: "Series",
+    depth: 0,
+    graphRefs: [],
+    sessionIds: [],
+    endpoint: false,
+  };
+  const contents = new Map([
+    [hullKey, {
+      groupKey: hullKey,
+      mode: "records" as const,
+      rows: [folder, row],
+      records: [row],
+    }],
+  ]);
+  const known = new Set(["artifact:fea-proof"]);
+  const anchors = overviewHullRowAnchors(contents, [
+    artifact("fea-proof", "physics", OVERVIEW_DOMAIN_GROUP_KEYS.fea),
+  ]);
+  assertEquals(anchors[hullKey], { "artifact:fea-proof": 1 });
+  assertEquals(
+    overviewHullMappedGraphKey(hullKey, row, anchors, [folder, row], known),
+    "artifact:fea-proof",
+  );
+  assertEquals(
+    overviewHullMappedGraphKey(hullKey, folder, anchors, [folder, row], known),
+    undefined,
+  );
+  assertEquals(overviewHullRowGraphRefs(folder), []);
 });

@@ -1,4 +1,6 @@
 import type { JSX } from "react";
+import { cn } from "../lib/utils.ts";
+import { whiteboardNoteLink, whiteboardTracePart } from "../ui/whiteboard.ts";
 import type {
   EngineeringWorkbenchRequirementsBriefTrace,
   ThreadGraphRef,
@@ -26,7 +28,12 @@ export function OverviewThreadRequirementsBriefTrace({
   if (claims.length === 0 && originals.length === 0) return null;
 
   return (
-    <section className="overview-thread-selection-brief-trace">
+    <section
+      className={cn(
+        "overview-thread-selection-brief-trace",
+        whiteboardTracePart({ part: "root" }),
+      )}
+    >
       {claims.map((trace) => (
         <AvailableBriefTrace
           key={trace.artifactId}
@@ -125,9 +132,16 @@ function OriginalBriefTrace({
 }): JSX.Element {
   if (trace.status === "TRACE GAP") {
     return (
-      <details className="overview-thread-selection-brief-trace">
-        <summary>Initial brief source: TRACE GAP</summary>
-        <p>
+      <details
+        className={cn(
+          "overview-thread-selection-brief-trace",
+          whiteboardTracePart({ part: "root" }),
+        )}
+      >
+        <summary className={whiteboardTracePart({ part: "summary" })}>
+          Initial brief source: TRACE GAP
+        </summary>
+        <p className={whiteboardTracePart({ part: "copy" })}>
           This requirements capture did not seal an approved-brief clause. No
           clause has been inferred from its requirement text or label.
         </p>
@@ -163,14 +177,19 @@ function AvailableBriefTrace({
     : trace.requirements;
   const isDocumentaryClaim = trace.declaration !== undefined;
   return (
-    <details className="overview-thread-selection-brief-trace">
-      <summary>
+    <details
+      className={cn(
+        "overview-thread-selection-brief-trace",
+        whiteboardTracePart({ part: "root" }),
+      )}
+    >
+      <summary className={whiteboardTracePart({ part: "summary" })}>
         {isDocumentaryClaim
           ? "Documentary requirement correspondence"
           : "Initial approved brief source"}
       </summary>
       {isDocumentaryClaim && (
-        <p>
+        <p className={whiteboardTracePart({ part: "copy" })}>
           <strong>Documentary claim</strong> ·{" "}
           <code>{trace.declaration.claimId}</code>
           {" · revision r"}
@@ -178,25 +197,25 @@ function AvailableBriefTrace({
         </p>
       )}
       {isDocumentaryClaim && (
-        <p>
+        <p className={whiteboardTracePart({ part: "copy" })}>
           Declared {trace.declaration.linkedAt} · documentary artifact{"  "}
           <code>{trace.declaration.artifactId}</code>
         </p>
       )}
       {isDocumentaryClaim && (
-        <p>
+        <p className={whiteboardTracePart({ part: "copy" })}>
           Requirements capture{" "}
           <code>{trace.declaration.requirementsArtifactId}</code>
         </p>
       )}
-      <p>
+      <p className={whiteboardTracePart({ part: "copy" })}>
         {isDocumentaryClaim ? "Declared brief" : "Initial brief"}{" "}
         <code>{trace.originalBrief.briefId}</code> · snapshot{" "}
         <code>{trace.originalBrief.snapshotId}</code>{" "}
         · r{trace.originalBrief.revision}
       </p>
       {trace.currentBrief && (
-        <p>
+        <p className={whiteboardTracePart({ part: "copy" })}>
           Current approved brief <code>{trace.currentBrief.briefId}</code>{" "}
           · snapshot <code>{trace.currentBrief.snapshotId}</code>{" "}
           · r{trace.currentBrief.revision}
@@ -206,7 +225,10 @@ function AvailableBriefTrace({
         requirements[0] !== undefined && onFollowBriefSource && (
         <button
           type="button"
-          className="overview-thread-selection-brief-source-link"
+          className={cn(
+            "overview-thread-selection-brief-source-link",
+            whiteboardNoteLink,
+          )}
           onClick={() =>
             onFollowBriefSource(
               overviewBriefSourceKey(
@@ -215,7 +237,6 @@ function AvailableBriefTrace({
               ),
             )}
         >
-          Brief r{trace.originalBrief.revision} ·{" "}
           {requirements[0]!.sourceItemId}
         </button>
       )}
@@ -254,12 +275,19 @@ function BriefClause({
   readonly state: string;
 }): JSX.Element {
   return (
-    <section className="overview-thread-selection-brief-clause">
-      <h5>{title}</h5>
-      <p>
+    <section
+      className={cn(
+        "overview-thread-selection-brief-clause",
+        whiteboardTracePart({ part: "clause" }),
+      )}
+    >
+      <h5 className={whiteboardTracePart({ part: "clauseTitle" })}>{title}</h5>
+      <p className={whiteboardTracePart({ part: "copy" })}>
         <code>{sourceItem.id}</code> · {sourceItem.kind} · {state}
       </p>
-      <p>{sourceItem.statement}</p>
+      <p className={whiteboardTracePart({ part: "copy" })}>
+        {sourceItem.statement}
+      </p>
       <ul>
         {sourceItem.sourceRefs.map((source, index) => (
           <li key={`${source.kind}:${source.reference}:${index}`}>

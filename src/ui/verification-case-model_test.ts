@@ -15,7 +15,7 @@ const caseA = "mechanical-proof:aaa";
 const caseB = "mechanical-proof:bbb";
 
 const catalog: EngineeringCaseCatalog = {
-  schemaVersion: "engineering-cases/1.0",
+  schemaVersion: "engineering-cases/1.1",
   status: "observed",
   coverage: [
     { family: "mechanical-proof", status: "observed" },
@@ -44,6 +44,20 @@ const catalog: EngineeringCaseCatalog = {
       scope: "Structural load case at 9 g",
       caseDigest: "b".repeat(64),
       authorityArtifactIds: ["case-b"],
+    },
+  ],
+  current: [
+    {
+      family: "mechanical-proof",
+      id: "structural-9g",
+      currentCaseKey: caseA,
+      revision: 2,
+    },
+    {
+      family: "mechanical-proof",
+      id: "thermal-hover",
+      currentCaseKey: caseB,
+      revision: 1,
     },
   ],
   issues: [],

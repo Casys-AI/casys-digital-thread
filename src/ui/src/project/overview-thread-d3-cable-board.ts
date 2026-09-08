@@ -68,6 +68,11 @@ export function overviewThreadD3CableBodyBox(
 /** A leaf inside a hull: one node's rectangle. */
 export interface OverviewThreadD3CableLeaf extends OverviewThreadD3CableBox {
   readonly key: string;
+  /**
+   * Visual cable dock this leaf shares. Graph identity stays on `key`;
+   * omitted when the leaf has its own take.
+   */
+  readonly dockKey?: string;
 }
 
 /**
@@ -88,10 +93,19 @@ export interface OverviewThreadD3CableTerminal<
   readonly hub: OverviewThreadD3CableVector;
   readonly departureTangent: OverviewThreadD3CableVector;
   readonly arrivalTangent: OverviewThreadD3CableVector;
+  /** Visual dock this terminal shares; graph identity stays on `leaf.key`. */
+  readonly dockKey: string;
   /** Identity of the fan-in field this terminal belongs to. */
   readonly fieldKey: string;
-  /** Identity of this terminal's own branch inside that field. */
+  /** Identity of this terminal's visual branch inside that field. */
   readonly branchKey: string;
+}
+
+/** Visual dock a leaf occupies; falls back to the exact graph key. */
+export function overviewThreadD3CableDockKey(
+  leaf: Pick<OverviewThreadD3CableLeaf, "key" | "dockKey">,
+): string {
+  return leaf.dockKey ?? leaf.key;
 }
 
 export function overviewThreadD3CableTerminal<
@@ -103,6 +117,7 @@ export function overviewThreadD3CableTerminal<
   side: OverviewThreadD3CableSide,
   role: OverviewThreadD3CableRole,
 ): OverviewThreadD3CableTerminal<Hull, Leaf> {
+  const dockKey = overviewThreadD3CableDockKey(leaf);
   const fieldKey = `${hull.key}|${role}|${side}`;
   return {
     hull,
@@ -113,8 +128,9 @@ export function overviewThreadD3CableTerminal<
     hub: overviewThreadD3CableHub(hull, side),
     departureTangent: overviewThreadD3CableDepartureTangent(side),
     arrivalTangent: overviewThreadD3CableArrivalTangent(side),
+    dockKey,
     fieldKey,
-    branchKey: `${fieldKey}|${leaf.key}`,
+    branchKey: `${fieldKey}|${dockKey}`,
   };
 }
 
@@ -223,10 +239,11 @@ interface FanInFieldDemand {
 /**
  * The fan-in fields of one layout pass.
  *
- * A field must see every leaf that shares a junction before it is solved: one
- * cable solved at a time reproduces the rigid one-strand-per-relation geometry
- * this whole module exists to avoid. So demand is collected first, solved
- * once, then read back per branch.
+ * A field must see every visual dock that shares a junction before it is
+ * solved: one cable solved at a time reproduces the rigid
+ * one-strand-per-relation geometry this whole module exists to avoid. Exact
+ * terminals that share a dock are merged first — identical anchors are
+ * refused — then demand is solved once and read back per branch.
  */
 export class OverviewThreadD3CableFanInFields {
   readonly #demands = new Map<string, FanInFieldDemand>();
@@ -245,9 +262,9 @@ export class OverviewThreadD3CableFanInFields {
       field = { terminal, leaves: new Map() };
       this.#demands.set(terminal.fieldKey, field);
     }
-    const leaf = field.leaves.get(terminal.leaf.key);
+    const leaf = field.leaves.get(terminal.dockKey);
     if (leaf) leaf.weight += weight;
-    else field.leaves.set(terminal.leaf.key, { terminal, weight });
+    else field.leaves.set(terminal.dockKey, { terminal, weight });
   }
 
   /**
@@ -265,6 +282,7 @@ export class OverviewThreadD3CableFanInFields {
     );
     for (const field of fields) {
       const leaves = [...field.leaves.values()].toSorted((left, right) =>
+        left.terminal.dockKey.localeCompare(right.terminal.dockKey) ||
         left.terminal.leaf.key.localeCompare(right.terminal.leaf.key)
       );
       try {
@@ -272,7 +290,7 @@ export class OverviewThreadD3CableFanInFields {
           junction: field.terminal.hub,
           trunkTangent: field.terminal.departureTangent,
           leaves: leaves.map(({ terminal, weight }) => ({
-            key: terminal.leaf.key,
+            key: terminal.dockKey,
             anchor: terminal.port,
             anchorTangent: terminal.departureTangent,
             weight,
@@ -280,7 +298,7 @@ export class OverviewThreadD3CableFanInFields {
           obstacles: obstaclesFor(field.terminal.hull),
         });
         for (const { terminal } of leaves) {
-          const route = solved.get(terminal.leaf.key);
+          const route = solved.get(terminal.dockKey);
           if (route) this.#branches.set(terminal.branchKey, route);
         }
       } catch {

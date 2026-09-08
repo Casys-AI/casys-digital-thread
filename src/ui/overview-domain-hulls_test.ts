@@ -1,17 +1,23 @@
 import { assertEquals } from "@std/assert";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import {
+  overviewDisambiguatedRecordLabel,
+  overviewRecordProvenanceQualifier,
+} from "./src/project/overview/hulls/domain-groups.ts";
+import {
   buildOverviewThreadHero,
   isRecordedOverviewHeroNode,
   OVERVIEW_DOMAIN_GROUP_KEYS,
   OVERVIEW_SEMANTIC_GROUP_KEYS,
   overviewGroupCaption,
 } from "./src/project/overview-thread-hero-model.ts";
+import { overviewRequirementSourceViewerAliases } from "./src/project/overview-thread-viewer-discovery.ts";
 import { buildOverviewHullContents } from "./src/project/overview-thread-hull-content.ts";
 import { overviewThreadD3FlowGroupIdentity as groupId } from "./src/project/overview-thread-d3-flow-layout.ts";
 import type { ProjectPathActivityView } from "./src/project/model.ts";
 import type {
   ThreadArtifact,
+  ThreadGraphEdge,
   ThreadGraphNode,
   ThreadObservation,
   ThreadWorkbenchSnapshot,
@@ -26,7 +32,12 @@ const CAD_SESSION_COUNT = 19;
 
 Deno.test("Requirements captures share the SYSML hull and blue without moving Brief", () => {
   const thread = domainCoverageThread();
-  const captures = ["syson_element_insert_sysml", "syson_constraint_extract"]
+  const captures = [
+    "syson_element_insert_sysml",
+    "syson_constraint_extract",
+    "model.write-requirements@2",
+    "model.recapture-requirements@2",
+  ]
     .map((tool, index) => ({
       ...workbenchArtifact({
         id: `capture-${index}`,
@@ -136,6 +147,179 @@ Deno.test("Requirements captures share the SYSML hull and blue without moving Br
   }
 });
 
+Deno.test("a new RadialArm write-requirements@2 capture stays in SYSML, not the activity lane", () => {
+  const thread = domainCoverageThread();
+  const captureId = "requirements-RadialArm-fdf16c35";
+  const requirementId = "REQ-RADIAL-ARM";
+  const capture = {
+    ...workbenchArtifact({
+      id: captureId,
+      label: "Requirements: RadialArm",
+      kind: "sysml-model",
+      system: "syson",
+      fingerprint: `sha256:${"c".repeat(64)}`,
+      producer: {
+        serverId: "syson",
+        tool: "model.write-requirements@2",
+        runId: "run:id01-queue-radial-arm-bench-requirements-r1-20260908",
+      },
+    }),
+    uri: `casys://requirements-capture/RadialArm/sha256/${"c".repeat(64)}`,
+  };
+  thread.artifacts.push(capture);
+  thread.graph.nodes.push(
+    graphArtifact(capture.id, capture.label, capture.system, capture.kind),
+    {
+      id: `graph:requirement:${requirementId}`,
+      ref: { kind: "requirement", id: requirementId },
+      entityKind: "requirement",
+      label: "RadialArmBenchDisplacementLimit",
+      system: "syson",
+      freshness: "fresh",
+      summary: "radial_arm_bench_max_displacement_mm",
+    },
+  );
+  thread.graph.edges.push({
+    id: `traces:${captureId}:${requirementId}`,
+    from: { kind: "artifact", id: captureId },
+    to: { kind: "requirement", id: requirementId },
+    relation: "traces_to",
+    rationale: "Requirements: RadialArm is the explicit source artifact.",
+    origin: "structure",
+  });
+  const snapshotRevision = thread.evidenceFamilyGraph.asOf.revision;
+  const activities: readonly ProjectPathActivityView[] = [
+    {
+      ...pathActivity({
+        id: "activity:author-radial-arm-bench-requirements-r1",
+        lane: "requirements",
+        title: "Author traced reviewed requirements in the system model",
+        status: "completed",
+      }),
+      evidenceRefs: [{
+        snapshotId: thread.id,
+        snapshotRevision,
+        kind: "artifact",
+        id: captureId,
+      }],
+    },
+    {
+      ...pathActivity({
+        id: "activity:physics-names-requirement",
+        lane: "physics",
+        title: "Run does not reclassify a typed requirement",
+        status: "completed",
+      }),
+      evidenceRefs: [{
+        snapshotId: thread.id,
+        snapshotRevision,
+        kind: "requirement",
+        id: requirementId,
+      }],
+    },
+  ];
+  const session: ThreadViewerSession = {
+    id: "radial-arm-requirements-app",
+    kind: "mcp-app",
+    anchor: { kind: "artifact", id: captureId },
+    app: { id: "io.casys.mcp-syson", version: "1.0.0" },
+    manifest: {
+      uri: "ui://mcp-syson/manifest",
+      fingerprint: `sha256:${"a".repeat(64)}`,
+    },
+    resource: {
+      uri: "ui://mcp-syson/requirements-viewer",
+      fingerprint: `sha256:${"b".repeat(64)}`,
+      ownership: "whole-view",
+      mimeType: "text/html;profile=mcp-app",
+      bytes: 1,
+    },
+    launchUri: "/api/viewer/app",
+    readResources: [],
+    session: {
+      action: "viewer.session.apply",
+      schema: "io.casys.mcp-syson.recorded-authored-requirements-session/1.0",
+      payload: {},
+      fingerprint: `sha256:${"c".repeat(64)}`,
+    },
+  };
+
+  const hero = buildOverviewThreadHero(thread, activities);
+  const recorded = hero.nodes.filter(isRecordedOverviewHeroNode);
+  const captureNode = recorded.find((item) =>
+    item.key === `artifact:${captureId}`
+  )!;
+  const requirement = recorded.find((item) =>
+    item.key === `requirement:${requirementId}`
+  )!;
+  const architecture = recorded.find((item) =>
+    item.key === "artifact:sysml-current"
+  )!;
+  const contents = buildOverviewHullContents(recorded, [session], undefined);
+  const sysmlKey = groupId(
+    "system-model",
+    OVERVIEW_DOMAIN_GROUP_KEYS.sysmlModel,
+  );
+  const activitySysmlKey = groupId(
+    "requirements",
+    OVERVIEW_DOMAIN_GROUP_KEYS.sysmlModel,
+  );
+  const aliases = overviewRequirementSourceViewerAliases(
+    recorded.map((item) => ({
+      key: item.key,
+      groupKey: item.groupKey,
+      ref: item.node.ref,
+      ...(item.isRequirementsCapture === true
+        ? { isRequirementsCapture: true }
+        : {}),
+    })),
+    thread.graph.edges,
+    [session],
+  );
+
+  assertEquals(captureNode.lane, "system-model");
+  assertEquals(captureNode.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.sysmlModel);
+  assertEquals(captureNode.isRequirementsCapture, true);
+  assertEquals(requirement.lane, "system-model");
+  assertEquals(requirement.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.sysmlModel);
+  assertEquals(requirement.label, "RadialArmBenchDisplacementLimit");
+  assertEquals(architecture.lane, "system-model");
+  assertEquals(
+    [...contents.keys()].filter((key) => key.includes("sysml-model")),
+    [sysmlKey],
+  );
+  assertEquals(contents.has(activitySysmlKey), false);
+  assertEquals(
+    contents.get(sysmlKey)?.records.some((row) =>
+      row.nodeKey === captureNode.key
+    ),
+    true,
+  );
+  assertEquals(
+    contents.get(sysmlKey)?.records.some((row) =>
+      row.nodeKey === requirement.key
+    ),
+    true,
+  );
+  assertEquals(
+    contents.get(sysmlKey)?.records.find((row) =>
+      row.nodeKey === requirement.key
+    )?.graphRefs,
+    [requirement.key],
+  );
+  assertEquals(
+    aliases.get(`requirement:${requirementId}`)?.map((target) => ({
+      sessionId: target.sessionId,
+      nodeKey: target.nodeKey,
+    })),
+    [{
+      sessionId: "radial-arm-requirements-app",
+      nodeKey: `artifact:${captureId}`,
+    }],
+  );
+  assertEquals(session.anchor, { kind: "artifact", id: captureId });
+});
+
 const canonicalIds = Array.from(
   { length: CANONICAL_COUNT },
   (_, index) => `geometry-part-${index + 1}`,
@@ -195,12 +379,16 @@ Deno.test("canonical geometry and exported STEP/GLB share one Geometry hull and 
     ]),
   );
   for (const id of canonicalIds.slice(0, CAD_SESSION_COUNT)) {
-    const record = hull.records.find((row) => row.nodeKey === `artifact:${id}`)!;
+    const record = hull.records.find((row) =>
+      row.nodeKey === `artifact:${id}`
+    )!;
     assertEquals(record.sessionIds, [`cad-session:${id}`]);
     assertEquals(record.label, `Housing ${id}`);
   }
   for (const id of exportIds) {
-    const record = hull.records.find((row) => row.nodeKey === `artifact:${id}`)!;
+    const record = hull.records.find((row) =>
+      row.nodeKey === `artifact:${id}`
+    )!;
     assertEquals(record.sessionIds, []);
   }
   assertEquals(
@@ -264,29 +452,27 @@ Deno.test("typed SysML, Requirements, Brief, FEA, and Simulation stay fail-close
     stage.label,
     stage.summary,
   ]);
-  const activities: readonly ProjectPathActivityView[] = [{
-    id: "activity:next-geometry",
-    lane: "geometry",
-    title: "Next geometry",
-    status: "planned",
-    revisions: [{
-      id: "wi-g1",
-      title: "wi-g1",
-      status: "ready",
-      attempts: [],
-    }],
-    approvedDecisions: 0,
-    requiredDecisions: 0,
-    evidenceCount: 0,
-    evidenceRefs: [],
-    dependencyEvidenceRefs: [],
-  }];
+  const activities: readonly ProjectPathActivityView[] = [
+    pathActivity({
+      id: "activity:seal-fea-proof",
+      lane: "physics",
+      title: "Seal the reviewed FEA proof case into the evidence thread",
+      status: "planned",
+    }),
+    pathActivity({
+      id: "activity:next-geometry",
+      lane: "geometry",
+      title: "Next geometry",
+      status: "active",
+    }),
+  ];
 
   const hero = buildOverviewThreadHero(thread, activities);
   const contents = buildOverviewHullContents(hero.nodes, [], undefined);
 
   const recorded = hero.nodes.filter(isRecordedOverviewHeroNode);
-  const byId = (id: string) => recorded.find((item) => item.node.ref.id === id)!;
+  const byId = (id: string) =>
+    recorded.find((item) => item.node.ref.id === id)!;
 
   assertEquals(
     byId("sysml-current").groupKey,
@@ -354,11 +540,20 @@ Deno.test("typed SysML, Requirements, Brief, FEA, and Simulation stay fail-close
     "Simulation",
   );
 
-  const activity = hero.nodes.find((item) => item.kind === "activity")!;
-  assertEquals(activity.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.projectActivity);
   assertEquals(
-    overviewGroupCaption(activity.groupKey),
-    "Project activities",
+    hero.nodes.some((item) => item.kind === "activity"),
+    false,
+  );
+  assertEquals(
+    hero.nodes.some((item) =>
+      item.kind === "recorded" &&
+      item.groupKey === OVERVIEW_DOMAIN_GROUP_KEYS.projectActivity
+    ),
+    false,
+  );
+  assertEquals(
+    [...contents.keys()].some((key) => key.includes("project-activity")),
+    false,
   );
   const sysml = contents.get(
     groupId("system-model", OVERVIEW_DOMAIN_GROUP_KEYS.sysmlModel),
@@ -390,7 +585,9 @@ Deno.test("typed SysML, Requirements, Brief, FEA, and Simulation stay fail-close
   );
   assertEquals(
     recorded.every((item) =>
-      thread.graph.nodes.some((node) => `${node.ref.kind}:${node.ref.id}` === item.key)
+      thread.graph.nodes.some((node) =>
+        `${node.ref.kind}:${node.ref.id}` === item.key
+      )
     ),
     true,
   );
@@ -408,6 +605,181 @@ Deno.test("typed SysML, Requirements, Brief, FEA, and Simulation stay fail-close
   assertEquals(byId("fea-static").label, "Static structural proof");
   assertEquals(byId("OBS-FEA").label, "Maximum von Mises stress");
   assertEquals(byId("arbitrary-solver").label, "Legacy CalculiX bundle");
+});
+
+Deno.test("camera-bracket FEA evaluation uses the evidencing operation, not syson", () => {
+  const thread = cameraBracketFeaThread();
+  const before = JSON.stringify(thread);
+  const hero = buildOverviewThreadHero(thread);
+  const recorded = hero.nodes.filter(isRecordedOverviewHeroNode);
+  const evaluation = recorded.find((item) =>
+    item.key === `evaluation:${CAMERA_BRACKET_EVALUATION_ID}`
+  )!;
+  const orphan = recorded.find((item) =>
+    item.key === "evaluation:orphan-syson-evaluation"
+  )!;
+  const ambiguous = recorded.find((item) =>
+    item.key === "evaluation:ambiguous-syson-evaluation"
+  )!;
+
+  assertEquals(evaluation.lane, "verdicts");
+  assertEquals(evaluation.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.fea);
+  assertEquals(
+    overviewGroupCaption(evaluation.groupKey, evaluation.lane),
+    "FEA verdict",
+  );
+  assertEquals(evaluation.label, "CameraBracketBenchStressLimit evaluation");
+  assertEquals(evaluation.node.system, "syson");
+  assertEquals(orphan.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.unassigned);
+  assertEquals(ambiguous.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.unassigned);
+  assertEquals(overviewGroupCaption(orphan.groupKey), "Recorded items");
+  assertEquals(overviewGroupCaption(ambiguous.groupKey), "Recorded items");
+  assertEquals(orphan.groupKey === "syson", false);
+  assertEquals(ambiguous.groupKey === "syson", false);
+  assertEquals(JSON.stringify(thread), before);
+});
+
+Deno.test("an exact active evidence relation overlays that hull; planned work does not", () => {
+  const thread = domainCoverageThread();
+  const snapshotRevision = thread.evidenceFamilyGraph.asOf.revision;
+  const evidenceRef = {
+    snapshotId: thread.id,
+    snapshotRevision,
+    kind: "artifact" as const,
+    id: "fea-static",
+  };
+  const hero = buildOverviewThreadHero(thread, [
+    {
+      ...pathActivity({
+        id: "activity:run-fea",
+        lane: "physics",
+        title: "Run the FEA proof",
+        status: "active",
+      }),
+      evidenceRefs: [evidenceRef],
+    },
+    pathActivity({
+      id: "activity:planned-geometry",
+      lane: "geometry",
+      title: "Later geometry",
+      status: "planned",
+    }),
+  ]);
+  const fea = hero.nodes.filter(isRecordedOverviewHeroNode).find((item) =>
+    item.key === "artifact:fea-static"
+  )!;
+  const contents = buildOverviewHullContents(hero.nodes, []);
+  const feaHull = contents.get(
+    groupId("physics", OVERVIEW_DOMAIN_GROUP_KEYS.fea),
+  )!;
+  const geometryHull = contents.get(
+    groupId("geometry", OVERVIEW_DOMAIN_GROUP_KEYS.geometry),
+  );
+  assertEquals(fea.activityStatus, "active");
+  assertEquals(feaHull.status, "active");
+  assertEquals(geometryHull?.status, undefined);
+  assertEquals(hero.nodes.some((item) => item.kind === "activity"), false);
+});
+
+Deno.test("a Season evaluation without exact evidence never becomes a Season hull", () => {
+  const thread = cameraBracketFeaThread();
+  thread.graph.nodes.push({
+    id: "graph:evaluation:season-orphan",
+    ref: { kind: "evaluation", id: "season-orphan" },
+    entityKind: "evaluation",
+    label: "Season evaluation without evidence",
+    system: "Season",
+    freshness: "fresh",
+    summary: "unresolved",
+  });
+  const hero = buildOverviewThreadHero(thread);
+  const orphan = hero.nodes.filter(isRecordedOverviewHeroNode).find((item) =>
+    item.key === "evaluation:season-orphan"
+  )!;
+  assertEquals(orphan.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.unassigned);
+  assertEquals(overviewGroupCaption(orphan.groupKey), "Recorded items");
+  assertEquals(orphan.groupKey === "Season", false);
+  assertEquals(orphan.node.system, "Season");
+});
+
+Deno.test("independent FEA results with the same label stay visible and use recorded run ids", () => {
+  const thread = cameraBracketFeaThread();
+  const hero = buildOverviewThreadHero(thread);
+  const recorded = hero.nodes.filter(isRecordedOverviewHeroNode);
+  const results = recorded.filter((item) =>
+    item.node.ref.id.startsWith("calculix-isolated-result-json-")
+  );
+  const observations = recorded.filter((item) =>
+    item.node.entityKind === "observation"
+  );
+  const unlabeled = recorded.filter((item) =>
+    item.node.ref.id.startsWith("calculix-unlabeled-")
+  );
+
+  assertEquals(
+    results.map((item) => item.node.ref.id).sort(),
+    [
+      "calculix-isolated-result-json-r1",
+      "calculix-isolated-result-json-r3",
+    ],
+  );
+  assertEquals(
+    new Set(results.map((item) => item.groupKey)),
+    new Set([OVERVIEW_DOMAIN_GROUP_KEYS.fea]),
+  );
+  assertEquals(
+    results.map((item) => item.label).sort(),
+    [
+      "Local CalculiX result.json · run:id01-queue-bench-fea-run-20260907",
+      "Local CalculiX result.json · run:id01-queue-bench-r3-fea-20260907",
+    ],
+  );
+  assertEquals(
+    observations.map((item) => item.label).sort(),
+    [
+      "CameraBracketBenchStressLimit measured by local CalculiX · run:id01-queue-bench-fea-run-20260907",
+      "CameraBracketBenchStressLimit measured by local CalculiX · run:id01-queue-bench-r3-fea-20260907",
+    ],
+  );
+  assertEquals(
+    unlabeled.map((item) => item.label),
+    ["Local CalculiX result.json", "Local CalculiX result.json"],
+  );
+  assertEquals(
+    overviewDisambiguatedRecordLabel(
+      "Local CalculiX result.json",
+      "run:r3",
+      2,
+      true,
+    ),
+    "Local CalculiX result.json · run:r3",
+  );
+  assertEquals(
+    overviewDisambiguatedRecordLabel(
+      "Local CalculiX result.json",
+      "run:r3",
+      1,
+      true,
+    ),
+    "Local CalculiX result.json",
+  );
+  assertEquals(
+    overviewRecordProvenanceQualifier({
+      artifact: workbenchArtifact({
+        id: "calculix-isolated-result-json-r3",
+        label: "Local CalculiX result.json",
+        kind: "solver-result",
+        system: "digital-thread",
+        fingerprint: "sha256:r3",
+        producer: {
+          serverId: "digital-thread",
+          tool: "verify.run-fea-static-proof@3",
+          runId: "run:id01-queue-bench-r3-fea-20260907",
+        },
+      }),
+    }),
+    "run:id01-queue-bench-r3-fea-20260907",
+  );
 });
 
 const cadRecordIds = new Set([...canonicalIds, ...exportIds]);
@@ -798,4 +1170,235 @@ function workbenchArtifact(spec: {
 
 function unique(values: readonly string[]): readonly string[] {
   return [...new Set(values)];
+}
+
+const CAMERA_BRACKET_EVALUATION_ID =
+  "requirement-camera-bracket-bench-evaluation-r3";
+
+function pathActivity(spec: {
+  id: string;
+  lane: ProjectPathActivityView["lane"];
+  title: string;
+  status: ProjectPathActivityView["status"];
+}): ProjectPathActivityView {
+  return {
+    id: spec.id,
+    lane: spec.lane,
+    title: spec.title,
+    status: spec.status,
+    revisions: [{
+      id: spec.id,
+      title: spec.title,
+      status: spec.status === "completed" ? "completed" : "ready",
+      attempts: [],
+    }],
+    approvedDecisions: 0,
+    requiredDecisions: 0,
+    evidenceCount: 0,
+    evidenceRefs: [],
+    dependencyEvidenceRefs: [],
+  };
+}
+
+function cameraBracketFeaThread(): ThreadWorkbenchSnapshot {
+  const r1Result = workbenchArtifact({
+    id: "calculix-isolated-result-json-r1",
+    label: "Local CalculiX result.json",
+    kind: "solver-result",
+    system: "digital-thread",
+    fingerprint: "sha256:result-r1",
+    producer: {
+      serverId: "digital-thread",
+      tool: "verify.run-fea-static-proof@3",
+      runId: "run:id01-queue-bench-fea-run-20260907",
+    },
+  });
+  const r3Result = workbenchArtifact({
+    id: "calculix-isolated-result-json-r3",
+    label: "Local CalculiX result.json",
+    kind: "solver-result",
+    system: "digital-thread",
+    fingerprint: "sha256:result-r3",
+    producer: {
+      serverId: "digital-thread",
+      tool: "verify.run-fea-static-proof@3",
+      runId: "run:id01-queue-bench-r3-fea-20260907",
+    },
+  });
+  const unlabeledA = workbenchArtifact({
+    id: "calculix-unlabeled-a",
+    label: "Local CalculiX result.json",
+    kind: "solver-result",
+    system: "digital-thread",
+    fingerprint: "sha256:unlabeled-a",
+    producer: {
+      serverId: "digital-thread",
+      tool: "verify.run-fea-static-proof@3",
+      runId: "run:shared-unlabeled",
+    },
+  });
+  const unlabeledB = workbenchArtifact({
+    id: "calculix-unlabeled-b",
+    label: "Local CalculiX result.json",
+    kind: "solver-result",
+    system: "digital-thread",
+    fingerprint: "sha256:unlabeled-b",
+    producer: {
+      serverId: "digital-thread",
+      tool: "verify.run-fea-static-proof@3",
+      runId: "run:shared-unlabeled",
+    },
+  });
+  const evidencing = workbenchArtifact({
+    id: "calculix-isolated-syson-evaluation-r3",
+    label: "SysON evaluation of isolated CalculiX evidence",
+    kind: "evidence",
+    system: "digital-thread",
+    fingerprint: "sha256:syson-eval-r3",
+    producer: {
+      serverId: "digital-thread",
+      tool: "verify.run-fea-static-proof@3",
+      runId: "run:id01-queue-bench-r3-fea-20260907",
+    },
+  });
+  const leftover = workbenchArtifact({
+    id: "calculix-isolated-syson-evaluation-extra",
+    label: "SysON evaluation of isolated CalculiX evidence",
+    kind: "evidence",
+    system: "digital-thread",
+    fingerprint: "sha256:syson-eval-extra",
+    producer: {
+      serverId: "digital-thread",
+      tool: "verify.run-fea-static-proof@3",
+      runId: "run:id01-queue-bench-r3-fea-20260907",
+    },
+  });
+  const observations: ThreadObservation[] = [
+    {
+      id: "OBS-FEA-R1",
+      label: "CameraBracketBenchStressLimit measured by local CalculiX",
+      value: 0.007638156,
+      unit: "MPa",
+      display: "0.007638156 MPa",
+      sourceArtifactId: r1Result.id,
+      requirementIds: ["REQ-BRACKET"],
+      freshness: "fresh",
+    },
+    {
+      id: "OBS-FEA-R3",
+      label: "CameraBracketBenchStressLimit measured by local CalculiX",
+      value: 0.007638156,
+      unit: "MPa",
+      display: "0.007638156 MPa",
+      sourceArtifactId: r3Result.id,
+      requirementIds: ["REQ-BRACKET"],
+      freshness: "fresh",
+    },
+  ];
+  const nodes: ThreadGraphNode[] = [
+    graphArtifact(r1Result.id, r1Result.label, r1Result.system, r1Result.kind),
+    graphArtifact(r3Result.id, r3Result.label, r3Result.system, r3Result.kind),
+    graphArtifact(
+      unlabeledA.id,
+      unlabeledA.label,
+      unlabeledA.system,
+      unlabeledA.kind,
+    ),
+    graphArtifact(
+      unlabeledB.id,
+      unlabeledB.label,
+      unlabeledB.system,
+      unlabeledB.kind,
+    ),
+    graphArtifact(
+      evidencing.id,
+      evidencing.label,
+      evidencing.system,
+      evidencing.kind,
+    ),
+    {
+      id: `graph:observation:${observations[0]!.id}`,
+      ref: { kind: "observation", id: observations[0]!.id },
+      entityKind: "observation",
+      label: observations[0]!.label,
+      system: "digital-thread",
+      freshness: "fresh",
+      summary: observations[0]!.display,
+      engineeringCaseRefs: [
+        "verification-case:mechanical-proof:ba1598b7c21bc117",
+      ],
+    },
+    {
+      id: `graph:observation:${observations[1]!.id}`,
+      ref: { kind: "observation", id: observations[1]!.id },
+      entityKind: "observation",
+      label: observations[1]!.label,
+      system: "digital-thread",
+      freshness: "fresh",
+      summary: observations[1]!.display,
+      engineeringCaseRefs: [
+        "verification-case:mechanical-proof:cc0c0f83875bd4b8",
+      ],
+    },
+    evaluationNode(
+      CAMERA_BRACKET_EVALUATION_ID,
+      "CameraBracketBenchStressLimit evaluation",
+    ),
+    evaluationNode(
+      "orphan-syson-evaluation",
+      "Orphan CameraBracketBenchStressLimit evaluation",
+    ),
+    evaluationNode(
+      "ambiguous-syson-evaluation",
+      "Ambiguous CameraBracketBenchStressLimit evaluation",
+    ),
+  ];
+  const thread = threadWith(nodes, [
+    r1Result,
+    r3Result,
+    unlabeledA,
+    unlabeledB,
+    evidencing,
+    leftover,
+  ], observations);
+  thread.graph = {
+    ...thread.graph,
+    edges: [
+      evidencesEdge(evidencing.id, CAMERA_BRACKET_EVALUATION_ID),
+      evidencesEdge(evidencing.id, "ambiguous-syson-evaluation"),
+      evidencesEdge(leftover.id, "ambiguous-syson-evaluation"),
+    ],
+  };
+  return thread;
+}
+
+function evaluationNode(id: string, label: string): ThreadGraphNode {
+  return {
+    id: `graph:evaluation:${id}`,
+    ref: { kind: "evaluation", id },
+    entityKind: "evaluation",
+    label,
+    system: "syson",
+    freshness: "fresh",
+    summary: "pass",
+    recordedAt: "2026-09-07T13:33:40.248Z",
+    selection: { kind: "requirement", id: "REQ-BRACKET" },
+    engineeringCaseRefs: [
+      "verification-case:mechanical-proof:cc0c0f83875bd4b8",
+    ],
+  };
+}
+
+function evidencesEdge(
+  fromArtifactId: string,
+  evaluationId: string,
+): ThreadGraphEdge {
+  return {
+    id: `evidences:${fromArtifactId}:${evaluationId}`,
+    from: { kind: "artifact", id: fromArtifactId },
+    to: { kind: "evaluation", id: evaluationId },
+    relation: "evidences",
+    rationale: "The immutable SysON envelope is the evaluation evidence.",
+    origin: "provenance",
+  };
 }

@@ -1,5 +1,5 @@
 import { compactEmbeddedFingerprints } from "../thread/compact-identifier-model.ts";
-import type { JSX, MouseEvent } from "react";
+import { type JSX, type MouseEvent } from "react";
 import { recordStatusVariant } from "./record-status.ts";
 import type {
   EngineeringAgentRun,
@@ -78,6 +78,8 @@ export interface ProjectOverviewProps {
   /** Exact browser-safe session descriptors from the read-only Workbench BFF. */
   readonly viewerSessions?: ThreadViewerSessionsProjection;
   readonly viewerSessionsReady?: boolean;
+  /** True only while the current hierarchy request is in flight. */
+  readonly viewerHierarchyPending?: boolean;
   readonly onNavigate: (view: ProjectWorkspaceView) => void;
   readonly onOpenActivity?: (decisionId?: string) => void;
   readonly onOpenDeepLink?: (target: ProjectDeepLinkTarget) => void;
@@ -98,6 +100,7 @@ export function ProjectOverview({
   requirementsBriefTraces,
   viewerSessions,
   viewerSessionsReady,
+  viewerHierarchyPending,
   onNavigate,
   onOpenActivity,
   onOpenDeepLink,
@@ -288,6 +291,7 @@ export function ProjectOverview({
             currentBrief={project.framing?.currentBrief}
             viewerSessions={viewerSessions}
             viewerSessionsReady={viewerSessionsReady}
+            viewerHierarchyPending={viewerHierarchyPending}
             requirementsBriefTraces={requirementsBriefTraces}
             activities={projectPath.activities}
             immersive

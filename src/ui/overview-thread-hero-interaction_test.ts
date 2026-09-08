@@ -1,19 +1,42 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
+import {
+  createOverviewWhiteboardControllerState,
+  nextOverviewHeroSelection,
+  reduceOverviewWhiteboard,
+} from "./src/project/overview/whiteboard/state.ts";
 
 Deno.test("Overview thread selection toggles graph focus without opening a viewer", async () => {
+  assertEquals(
+    nextOverviewHeroSelection("artifact:a", "artifact:a"),
+    undefined,
+  );
+  assertEquals(
+    nextOverviewHeroSelection("artifact:a", "artifact:b"),
+    "artifact:b",
+  );
+  const selected = reduceOverviewWhiteboard(
+    createOverviewWhiteboardControllerState(),
+    { type: "selection-toggled", key: "artifact:a" },
+  );
+  assertEquals(selected.presentation.selectedKey, "artifact:a");
+  const cleared = reduceOverviewWhiteboard(selected, {
+    type: "selection-toggled",
+    key: "artifact:a",
+  });
+  assertEquals(cleared.presentation.selectedKey, undefined);
+
   const source = await Deno.readTextFile(
     new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
   );
-
-  const selectionStart = source.indexOf("function nextOverviewHeroSelection(");
-  const selectionEnd = source.indexOf("function HeroNode(", selectionStart);
-  const selection = source.slice(selectionStart, selectionEnd);
-  assertEquals(selectionStart >= 0, true);
-  assertEquals(selectionEnd > selectionStart, true);
-  assertStringIncludes(
-    selection,
-    "return current === requested ? undefined : requested;",
+  const toggle = source.slice(
+    source.indexOf("const toggleSelection ="),
+    source.indexOf("const bringViewerFront ="),
   );
+  assertStringIncludes(
+    toggle,
+    'apply({ type: "selection-toggled", key: item.key })',
+  );
+  assertEquals(toggle.includes("openViewer("), false);
 });
 
 Deno.test("Overview thread keeps navigation explicit and keyboard accessible", async () => {
@@ -65,10 +88,7 @@ Deno.test("Overview hierarchy arrow navigation follows the two-dimensional node 
   assertEquals(navigation.includes("OVERVIEW_LANES"), false);
   assertEquals(navigation.includes("% laneNodes.length"), false);
 
-  assertStringIncludes(
-    source,
-    'useState<OverviewLayoutMode>("hierarchy")',
-  );
+  assertStringIncludes(source, "whiteboard.changeLayoutMode(next)");
   assertStringIncludes(source, "<OverviewThreadD3Flow");
   assertStringIncludes(source, 'onClick={() => changeLayoutMode("radial")}');
   assertStringIncludes(source, 'onClick={() => changeLayoutMode("hierarchy")}');
@@ -91,8 +111,15 @@ Deno.test("Overview hierarchy keeps dots compact while surfacing grounded group 
   assertEquals(renderer.includes("flowCardLines"), false);
   assertEquals(renderer.includes("overview-thread-flow-node-card"), false);
   assertStringIncludes(styles, '[data-inspection="hover"]');
-  assertStringIncludes(styles, ".overview-thread-flow-node-tooltip > span");
-  assertStringIncludes(renderer, "flowSegmentState(");
+  assertEquals(
+    styles.includes(".overview-thread-flow-node-tooltip > span"),
+    false,
+  );
+  assertStringIncludes(renderer, "overviewFlowSegmentPresentations(");
+  const segments = await Deno.readTextFile(
+    new URL("./src/project/overview/flow/segments.ts", import.meta.url),
+  );
+  assertStringIncludes(segments, "flowSegmentState(");
   const highlight = await Deno.readTextFile(
     new URL(
       "./src/project/overview-thread-d3-flow-highlight.ts",
@@ -104,14 +131,93 @@ Deno.test("Overview hierarchy keeps dots compact while surfacing grounded group 
     "route.segmentKeys.includes(segment.key)",
   );
   assertStringIncludes(renderer, "structureRowTooltip(");
-  assertStringIncludes(
-    styles,
-    ".overview-thread-flow-structure-row:hover .overview-thread-flow-node-tooltip",
+  const recipes = await Deno.readTextFile(
+    new URL("./src/ui/whiteboard.ts", import.meta.url),
+  );
+  assertStringIncludes(recipes, "group-hover:block group-focus-visible:block");
+  assertEquals(
+    styles.includes(
+      ".overview-thread-flow-structure-row:hover .overview-thread-flow-node-tooltip",
+    ),
+    false,
+  );
+  assertStringIncludes(renderer, "<FlowItemSurface");
+  assertEquals(
+    styles.includes(
+      '[data-hull-row-view="matrix"] > :not(.overview-thread-flow-node-tooltip)',
+    ),
+    false,
+  );
+});
+
+Deno.test("hull view switch uses nextHullViewPlacement instead of merging stale size", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
+  );
+  assertStringIncludes(source, "nextHullViewPlacement(");
+  assertStringIncludes(source, "onSetGroupView={(key, view) => {");
+  assertEquals(source.includes("changeHullPlacement(key, { view })"), false);
+  assertStringIncludes(source, "onResizeGroup={(key, size) => {");
+  assertStringIncludes(source, "changeHullPlacement(key, size)");
+});
+
+Deno.test("hierarchy pending keeps the whiteboard and only candidate hulls busy", async () => {
+  const hero = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
+  );
+  const flow = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-d3-flow.tsx", import.meta.url),
+  );
+  assertEquals(hero.includes("OverviewWhiteboardHierarchySkeleton"), false);
+  assertEquals(hero.includes("overview-thread-hierarchy-skeleton"), false);
+  assertEquals(hero.includes("viewerHierarchyPending ? null"), false);
+  assertEquals(
+    hero.includes(
+      'aria-busy={viewerHierarchyPending && layoutMode === "hierarchy"}',
+    ),
+    false,
   );
   assertStringIncludes(
-    styles,
-    '[data-hull-row-view="matrix"] > :not(.overview-thread-flow-node-tooltip)',
+    hero,
+    "pendingHierarchyGroupKeys={pendingHierarchyGroupKeys}",
   );
+  assertStringIncludes(
+    hero,
+    "overviewHullHierarchyPendingPlaceholders(view.nodes, hullContents)",
+  );
+  assertEquals(
+    hero.includes(
+      "viewerHierarchyPending\n        ? overviewHullHierarchyPendingPlaceholders",
+    ),
+    false,
+  );
+  assertStringIncludes(hero, "viewerHierarchyPending");
+  assertStringIncludes(hero, "candidateStructuredRowCounts.keys()");
+  assertStringIncludes(hero, "overviewHullStructureRowCounts(");
+  assertEquals(
+    hero.includes('content.mode === "tree"'),
+    false,
+  );
+  assertEquals(hero.includes("withOverviewCurrentBriefContent("), false);
+  assertStringIncludes(flow, "FlowHullPendingRows");
+  assertStringIncludes(flow, 'data-whiteboard-flow-pending="true"');
+  assertStringIncludes(
+    flow,
+    "aria-busy={pendingHierarchyGroupKeys?.has(group.key)",
+  );
+  assertEquals(
+    flow.includes('if (content?.mode !== "tree") return null;'),
+    false,
+  );
+  assertStringIncludes(flow, "if (!content || content.rows.length === 0)");
+  assertStringIncludes(flow, "pendingGroup.structureRowCount");
+  const nodesStart = flow.indexOf("{layout.nodes.map((position) => {");
+  const nodesEnd = flow.indexOf("function FlowHullPendingRows(", nodesStart);
+  const nodePaint = flow.slice(nodesStart, nodesEnd);
+  assertEquals(nodesStart >= 0, true);
+  assertEquals(nodesEnd > nodesStart, true);
+  assertStringIncludes(nodePaint, "pendingGroup.structureRowCount");
+  assertStringIncludes(nodePaint, "return null;");
 });
 
 Deno.test("Overview hierarchy integrates stage progress and semantic activity states", async () => {
@@ -133,7 +239,7 @@ Deno.test("Overview hierarchy integrates stage progress and semantic activity st
   assertStringIncludes(renderer, "overview-thread-flow-activity-legend");
   assertStringIncludes(renderer, "notableActivityStatuses.length > 0");
   assertStringIncludes(renderer, 'status !== "planned"');
-  assertStringIncludes(renderer, 'data-status={item.kind === "activity"');
+  assertStringIncludes(renderer, "data-status={activityStatus}");
   const captions = await Deno.readTextFile(
     new URL(
       "./src/project/overview/activity-status-caption.ts",
@@ -157,12 +263,25 @@ Deno.test("Overview hierarchy integrates stage progress and semantic activity st
   assertEquals(renderer.includes("Inspect current activity"), false);
   assertEquals(renderer.includes("Current activity"), false);
 
-  assertStringIncludes(styles, '[data-status="planned"]');
-  assertStringIncludes(styles, '[data-status="active"]');
-  assertStringIncludes(styles, '[data-status="blocked"]');
-  assertStringIncludes(styles, "border-style: dashed");
-  assertStringIncludes(styles, "var(--ui-success)");
-  assertStringIncludes(styles, "var(--ui-destructive)");
+  const recipes = await Deno.readTextFile(
+    new URL("./src/ui/whiteboard.ts", import.meta.url),
+  );
+  assertStringIncludes(recipes, 'status: "planned"');
+  assertStringIncludes(recipes, 'status: "active"');
+  assertStringIncludes(recipes, 'status: "blocked"');
+  assertStringIncludes(recipes, "border-dashed");
+  assertStringIncludes(recipes, "var(--ui-success)");
+  assertStringIncludes(recipes, "var(--ui-destructive)");
+  assertEquals(
+    styles.includes(
+      '.overview-thread-flow-node[data-kind="activity"] .overview-thread-flow-node-dot',
+    ),
+    false,
+  );
+  assertEquals(
+    styles.includes(".overview-thread-flow-activity-label {"),
+    false,
+  );
 
   assertStringIncludes(hero, "readonly immersive?: boolean");
   assertStringIncludes(
@@ -215,33 +334,46 @@ Deno.test("Overview immersive mode behaves as a fixed zoomable whiteboard", asyn
   assertStringIncludes(source, "onPointerDown={beginCanvasPan}");
   assertStringIncludes(source, "onPointerMove={moveCanvasPan}");
   assertStringIncludes(source, "onPointerUp={endCanvasPan}");
-  assertStringIncludes(source, 'className="overview-thread-whiteboard-world"');
+  assertIdentityClass(source, "overview-thread-whiteboard-world");
   assertStringIncludes(source, "translate3d(${whiteboardTransform.x}px");
   assertStringIncludes(source, "scale(${whiteboardTransform.k})");
   assertStringIncludes(source, "fitOverviewThreadWhiteboardTransform(");
   assertStringIncludes(source, "resetOverviewThreadWhiteboardTransform(");
   assertStringIncludes(
     source,
-    "normalizeOverviewThreadWhiteboardTransform(current, bounds)",
+    "nextOverviewWhiteboardTransformOnObservedResize({",
+  );
+  assertStringIncludes(source, "viewportChanged");
+  assertEquals(
+    source.includes(
+      "normalizeOverviewThreadWhiteboardTransform(current, bounds)",
+    ),
+    false,
   );
   assertStringIncludes(source, 'data-whiteboard-grid="true"');
   assertStringIncludes(
     source,
     "style={overviewWhiteboardViewportStyle(whiteboardTransform)}",
   );
+  assertIdentityClass(source, "overview-thread-layout-switch");
+  assertStringIncludes(source, "whiteboardToolbar");
 
   const blankClearStart = source.indexOf("onPointerDownCapture={(event) =>");
   const blankClearEnd = source.indexOf(
-    'className="overview-thread-layout-switch"',
+    '"overview-thread-layout-switch"',
     blankClearStart,
   );
   const blankClear = source.slice(blankClearStart, blankClearEnd);
   assertEquals(blankClearStart >= 0, true);
   assertEquals(blankClearEnd > blankClearStart, true);
-  assertStringIncludes(blankClear, "setSelectedKey(undefined);");
-  assertStringIncludes(blankClear, "setHoveredKey(undefined);");
-  assertStringIncludes(blankClear, ".overview-thread-flow-node");
-  assertStringIncludes(blankClear, ".overview-thread-viewer");
+  assertEquals(blankClear.includes("setSelectedKey(undefined)"), false);
+  assertEquals(blankClear.includes("setSelectedRowKey(undefined)"), false);
+  assertEquals(blankClear.includes("clearCanvasSelection("), false);
+  assertStringIncludes(pan, "overviewCanvasPointerBecamePan(");
+  assertStringIncludes(
+    pan,
+    'if (!wasPan && event.type === "pointerup") clearCanvasSelection()',
+  );
 });
 
 Deno.test("Whiteboard viewers remain free spatial objects and Fit recovers the whole scene", async () => {
@@ -270,11 +402,15 @@ Deno.test("Whiteboard viewers remain free spatial objects and Fit recovers the w
   const bounds = sourceSection(
     source,
     "function readOverviewWhiteboardBounds(",
-    "function overviewViewerGeometry(",
+    "function overviewThreadFlowSceneRects(",
   );
   assertStringIncludes(bounds, "overviewThreadWhiteboardContentBounds(");
   assertStringIncludes(bounds, "viewer.restoreGeometry ??");
   assertStringIncludes(bounds, "overviewViewerGeometry(viewer)");
+  assertStringIncludes(
+    source,
+    'from "./overview/whiteboard/index.ts"',
+  );
 
   const viewer = sourceSection(
     source,
@@ -332,12 +468,20 @@ Deno.test("Overview hierarchy drags whole group surfaces or labels while constra
 
   assertStringIncludes(hero, "groupPlacements,");
   assertStringIncludes(hero, "nodePlacements,");
+  const hullChrome = await Deno.readTextFile(
+    new URL(
+      "./src/project/overview/components/hull-chrome.tsx",
+      import.meta.url,
+    ),
+  );
+  assertIdentityClass(hullChrome, "overview-thread-flow-group-band");
+  assertIdentityClass(hullChrome, "overview-thread-flow-group-fold");
+  assertStringIncludes(renderer, "OverviewFlowGroupFold");
   assertStringIncludes(hero, "onMoveGroup={(key, position) =>");
   assertStringIncludes(hero, "setGroupPlacements((current) => ({");
   assertStringIncludes(hero, "onMoveNode={(key, delta) =>");
   assertStringIncludes(hero, "setNodePlacements((current) => ({");
-  assertStringIncludes(hero, "setGroupPlacements({});");
-  assertStringIncludes(hero, "setNodePlacements({});");
+  assertStringIncludes(hero, "resetLayout(");
 
   const flowLayoutStart = hero.indexOf("const flowLayout = useMemo(");
   const flowLayoutEnd = hero.indexOf(
@@ -501,7 +645,7 @@ Deno.test("Overview dynamic cables coalesce drag frames, flush the final point, 
   const segmentLayer = sourceSection(
     renderer,
     "function FlowSegmentLayer({",
-    "function overviewFlowSegmentPresentations(",
+    "function structureRowTooltip(",
   );
   assertStringIncludes(
     segmentLayer,
@@ -571,7 +715,7 @@ Deno.test("Whiteboard overlay plane keeps MCP viewers and hull monitor transform
     'className="overview-thread-viewport"',
   );
   const worldStart = source.indexOf(
-    'className="overview-thread-whiteboard-world"',
+    '"overview-thread-whiteboard-world"',
     viewportStart,
   );
   const worldClose = source.indexOf(
@@ -579,7 +723,7 @@ Deno.test("Whiteboard overlay plane keeps MCP viewers and hull monitor transform
     worldStart,
   );
   const viewerStart = source.indexOf(
-    'className="overview-thread-viewer-layer"',
+    '"overview-thread-viewer-layer"',
     worldClose,
   );
   const viewportClose = source.indexOf(
@@ -596,7 +740,7 @@ Deno.test("Whiteboard overlay plane keeps MCP viewers and hull monitor transform
   const viewerPlane = source.slice(viewerStart, viewportClose);
   assertStringIncludes(graphWorld, "<OverviewThreadD3Flow");
   assertEquals(
-    graphWorld.includes('className="overview-thread-viewer-layer"'),
+    graphWorld.includes("overview-thread-viewer-layer"),
     false,
   );
   assertStringIncludes(
@@ -610,9 +754,10 @@ Deno.test("Whiteboard overlay plane keeps MCP viewers and hull monitor transform
     viewerPlane,
     "`translate3d(${whiteboardTransform.x}px, ${whiteboardTransform.y}px, 0) scale(${whiteboardTransform.k})`",
   );
+  assertIdentityClass(viewerPlane, "overview-thread-viewer-connectors");
   assertStringIncludes(
     viewerPlane,
-    'className="overview-thread-viewer-connectors"',
+    'whiteboardViewerPart({ part: "connectors" })',
   );
   assertStringIncludes(
     viewerPlane,
@@ -724,12 +869,12 @@ Deno.test("Overview activity markers stay distinct from recorded Verification na
   assertEquals(marker.includes("selected"), false);
   assertStringIncludes(marker, 'width="8"');
   assertStringIncludes(marker, 'height="8"');
-  assertStringIncludes(marker, "activityMarkerColor(status)");
+  assertEquals(marker.includes("activityMarkerColor"), false);
+  assertStringIncludes(marker, "fill={color}");
+  assertStringIncludes(marker, 'stroke="#ffffff"');
   assertStringIncludes(marker, 'status === "planned"');
-  assertStringIncludes(marker, 'status === "active"');
-  assertStringIncludes(marker, 'status === "blocked"');
-  assertStringIncludes(marker, "var(--thread-muted)");
-  assertStringIncludes(marker, "var(--ui-destructive)");
+  assertEquals(marker.includes("var(--ui-destructive)"), false);
+  assertEquals(marker.includes("var(--ui-success)"), false);
   assertStringIncludes(source, "overviewActivityStatusCaption");
   assertEquals(source.includes("PENDING"), false);
   assertEquals(source.includes("Inspect current activity"), false);
@@ -758,6 +903,59 @@ Deno.test("Overview destinations keep Evidence and Activity without a Product ta
   assertStringIncludes(source, "<OverviewThreadHero");
 });
 
+Deno.test("visible hull adapters target displayed graph identities, not the full record", async () => {
+  const hero = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
+  );
+  const adapterContexts = hero.slice(
+    hero.indexOf("const hullEngineeringCases = useMemo("),
+    hero.indexOf("const hullContents = useMemo("),
+  );
+  const hullContents = hero.slice(
+    hero.indexOf("const hullContents = useMemo("),
+    hero.indexOf("const candidateStructuredRowCounts = useMemo("),
+  );
+  const recordHullContents = hero.slice(
+    hero.indexOf("const recordHullContents = useMemo("),
+    hero.indexOf("const groupRowAnchors = useMemo("),
+  );
+  const visibleContext = adapterContexts.slice(
+    adapterContexts.indexOf("const hullAdapterContext = useMemo("),
+    adapterContexts.indexOf("const recordHullAdapterContext = useMemo("),
+  );
+  const recordContext = adapterContexts.slice(
+    adapterContexts.indexOf("const recordHullAdapterContext = useMemo("),
+  );
+
+  assertEquals(adapterContexts.includes("const hullEngineeringCases"), true);
+  assertStringIncludes(visibleContext, "nodes: view.nodes");
+  assertEquals(visibleContext.includes("recordView.nodes"), false);
+  assertStringIncludes(
+    visibleContext,
+    "engineeringCases: hullEngineeringCases",
+  );
+  assertStringIncludes(recordContext, "nodes: recordView.nodes");
+  assertEquals(recordContext.includes("nodes: view.nodes"), false);
+  assertStringIncludes(recordContext, "engineeringCases: hullEngineeringCases");
+
+  assertStringIncludes(hullContents, "buildOverviewHullContents(");
+  assertStringIncludes(hullContents, "view.nodes,");
+  assertStringIncludes(
+    hullContents,
+    "{ ...hullAdapterContext, currentBrief }",
+  );
+  assertEquals(hullContents.includes("recordHullAdapterContext"), false);
+  assertEquals(hullContents.includes("recordView.nodes"), false);
+
+  assertStringIncludes(recordHullContents, "buildOverviewHullContents(");
+  assertStringIncludes(recordHullContents, "recordView.nodes,");
+  assertStringIncludes(recordHullContents, "recordHullAdapterContext");
+  assertEquals(
+    recordHullContents.includes("{ ...hullAdapterContext, currentBrief }"),
+    false,
+  );
+});
+
 Deno.test("Overview keeps current revisions and existing record access without extra hull controls", async () => {
   const hero = await Deno.readTextFile(
     new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
@@ -778,6 +976,23 @@ Deno.test("Overview keeps current revisions and existing record access without e
   assertEquals(hero.includes("graphWithoutAnalysisOverlay"), false);
   assertEquals(flow.includes("onToggleGroupHistory"), false);
   assertEquals(flow.includes('data-history="true"'), false);
+  assertEquals(flow.includes("onToggleCaseHistory"), false);
+  assertEquals(flow.includes('data-case-history="true"'), false);
+  assertEquals(flow.includes("onToggleHullHistory"), false);
+  assertEquals(hero.includes("onToggleHullHistory"), false);
+  assertEquals(flow.includes('data-hull-history="true"'), false);
+  assertEquals(flow.includes("overviewHullHistoryControl"), false);
+  assertEquals(hero.includes("historyExpandedHullKeys"), false);
+  assertEquals(hero.includes("setHistoryExpandedHullKeys"), false);
+  assertEquals(
+    flow.includes("whiteboardHullControl({ labeled: true })"),
+    false,
+  );
+  assertStringIncludes(flow, "data-native-action={row.nativeAction}");
+  assertStringIncludes(flow, "!group.collapsed");
+  assertStringIncludes(hero, "applyOverviewHullAdapters");
+  assertEquals(hero.includes("withOverviewCurrentEngineeringCases"), false);
+  assertEquals(hero.includes("projectEngineeringCaseSeries("), false);
   assertEquals(flow.includes("Preuves de"), false);
   assertStringIncludes(flow, "onMouseEnter");
   assertStringIncludes(flow, "inspection.graphKeys");
@@ -792,41 +1007,63 @@ Deno.test("Overview keeps current revisions and existing record access without e
   );
   assertStringIncludes(flow, "selectedRowKey");
   assertEquals(flow.includes("onActivateHullRow?.(row, group.key)"), true);
+  assertStringIncludes(hero, "activateOverviewHullRow(row, {");
+  assertStringIncludes(hero, "openCurrentBrief: () =>");
+  assertEquals(
+    hero.slice(
+      hero.indexOf("onActivateHullRow={(row, groupKey) => {"),
+      hero.indexOf("nodesByKey={nodesByKey}"),
+    ).includes("nativeAction"),
+    false,
+  );
+  assertEquals(hero.includes("row.nodeKey ?? row.key"), false);
+  assertStringIncludes(hero, "overviewHullRowActions(row)");
+  assertStringIncludes(hero, "overviewHullRowPrimaryGraphRef(row)");
+  assertEquals(hero.includes('content?.mode === "tree" ? content.rows'), false);
   assertStringIncludes(flow, "overviewHullPresentationRowKey(");
   assertStringIncludes(flow, "overviewEffectiveInspection(");
   assertStringIncludes(flow, "overviewHullHierarchyLinkState(");
   assertStringIncludes(hero, "hoveredKey ?? selectedKey");
   assertStringIncludes(hero, "openCurrentBriefViewer");
   assertStringIncludes(hero, 'kind: "current-brief"');
-  assertStringIncludes(hero, "nextOverviewHullPresentationRowKey(");
+  assertStringIncludes(hero, 'type: "row-activated"');
   assertStringIncludes(hero, "overviewHullMappedGraphKey(");
   assertStringIncludes(hero, "overviewHullPresentationRowLookup(");
   assertStringIncludes(hero, "setSelectedRowKey(undefined)");
   const background = hero.slice(
     hero.indexOf("onPointerDownCapture={(event) => {"),
-    hero.indexOf('className="overview-thread-layout-switch"'),
+    hero.indexOf('"overview-thread-layout-switch"'),
   );
-  assertStringIncludes(background, "setSelectedRowKey(undefined)");
+  assertEquals(background.includes("setSelectedRowKey(undefined)"), false);
   const selectionNoteClose = hero.slice(
     hero.indexOf("<OverviewThreadSelectionNote"),
     hero.indexOf("<OverviewThreadBriefSourceNote"),
   );
-  assertStringIncludes(selectionNoteClose, "setSelectedRowKey(undefined)");
+  assertStringIncludes(selectionNoteClose, "closeSelection()");
   const briefClose = hero.slice(
     hero.indexOf("<OverviewThreadBriefSourceNote"),
     hero.indexOf('className="overview-thread-viewport"'),
   );
-  assertStringIncludes(briefClose, "setSelectedRowKey(undefined)");
+  assertStringIncludes(briefClose, "closeSelection()");
   const toggle = hero.slice(
     hero.indexOf("const toggleSelection ="),
     hero.indexOf("const bringViewerFront ="),
   );
-  assertStringIncludes(toggle, "setSelectedRowKey(undefined)");
+  assertStringIncludes(toggle, 'type: "selection-toggled"');
+  assertEquals(toggle.includes("openViewer("), false);
   assertStringIncludes(helper, "buildVersionedProvenanceProjection");
   assertEquals(helper.includes("graphWithoutAnalysisOverlay"), false);
   assertEquals(helper.includes("producer"), false);
   assertEquals(helper.includes("recordedAt"), false);
 });
+
+function assertIdentityClass(source: string, identity: string): void {
+  assertEquals(
+    source.includes(`"${identity}"`) || source.includes(`'${identity}'`),
+    true,
+    `Missing identity class ${identity}`,
+  );
+}
 
 function cssRule(source: string, selector: string): string {
   const start = source.indexOf(selector);

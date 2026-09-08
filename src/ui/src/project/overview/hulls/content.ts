@@ -9,12 +9,81 @@ import {
 } from "../../overview-thread-d3-flow-layout.ts";
 import type { OverviewBriefSourceHeroNode } from "../../overview-thread-brief-correspondence.ts";
 import type { ThreadViewerSession } from "../../../thread/viewer-sessions-client.ts";
-import type { ThreadViewerHierarchyProjection } from "../../../../../presentation/workbench/thread/viewer-hierarchy.ts";
+import type {
+  ThreadViewerHierarchyNode,
+  ThreadViewerHierarchyProjection,
+} from "../../../../../presentation/workbench/thread/viewer-hierarchy.ts";
 import type { ThreadAnalysisSemanticRef } from "../../../../../presentation/workbench/thread/graph.ts";
 import type { OverviewViewerOpenTarget } from "../../overview-thread-viewer-discovery.ts";
-import type { OverviewHullContent, OverviewHullContentRow } from "./types.ts";
+import {
+  type OverviewHullContent,
+  type OverviewHullContentRow,
+  overviewHullFolderRow,
+} from "./types.ts";
+import { overviewHullBoundRowViewer } from "./row-viewer.ts";
 
 export type { OverviewHullContent, OverviewHullContentRow } from "./types.ts";
+
+/**
+ * Hulls whose known graph artifacts can later receive the viewer occurrence
+ * tree. Fail-closed: architecture and geometry artifacts only. Never invents
+ * occurrence identity or a final hierarchy count.
+ */
+export function overviewHullCanHostViewerHierarchy(
+  members: readonly OverviewHeroNode[],
+): boolean {
+  return members.some((member) =>
+    member.kind === "recorded" &&
+    member.node.ref.kind === "artifact" &&
+    (member.lane === "system-model" || member.lane === "geometry")
+  );
+}
+
+/**
+ * Structured row counts for hulls whose graph artifacts can host the viewer
+ * occurrence tree. While the request is in flight those counts size pending
+ * rows; after a terminal available or unavailable result they size the shared
+ * structured hull path. The count is the known graph outline or exact tree,
+ * never an invented occurrence identity.
+ */
+export function overviewHullHierarchyPendingPlaceholders(
+  nodes: readonly OverviewHeroNode[],
+  contents: ReadonlyMap<string, OverviewHullContent>,
+): ReadonlyMap<string, number> {
+  const membersByGroup = new Map<string, OverviewHeroNode[]>();
+  for (const node of nodes) {
+    const key = overviewThreadD3FlowGroupIdentity(node.lane, node.groupKey);
+    const members = membersByGroup.get(key);
+    if (members) members.push(node);
+    else membersByGroup.set(key, [node]);
+  }
+  const result = new Map<string, number>();
+  for (const [groupKey, members] of membersByGroup) {
+    if (!overviewHullCanHostViewerHierarchy(members)) continue;
+    const count = contents.get(groupKey)?.rows.length ?? 0;
+    if (count > 0) result.set(groupKey, count);
+  }
+  return result;
+}
+
+/**
+ * Hierarchy sizes every non-empty hull from its rows, in tree, list, and
+ * points. Pending placeholders overlay the same counts; they never invent a
+ * second dataset.
+ */
+export function overviewHullStructureRowCounts(
+  contents: ReadonlyMap<string, OverviewHullContent>,
+  pendingPlaceholders: ReadonlyMap<string, number> = new Map(),
+): Readonly<Record<string, number>> {
+  const counts: Record<string, number> = {};
+  for (const [key, content] of contents) {
+    if (content.rows.length > 0) counts[key] = content.rows.length;
+  }
+  for (const [key, count] of pendingPlaceholders) {
+    counts[key] = count;
+  }
+  return counts;
+}
 
 const NO_VIEWER_ALIASES: ReadonlyMap<
   string,
@@ -112,6 +181,10 @@ export function buildOverviewHullContents(
         ...(viewerId ? { viewerNodeKey: `artifact:${viewerId}` } : {}),
         sessionIds,
         endpoint: false,
+        graphRefs: [],
+        role: "folder" as const,
+        selectable: false,
+        focusable: true,
       };
     }) ?? [];
   for (const [groupKey, members] of groups) {
@@ -155,8 +228,27 @@ export function buildOverviewHullContents(
       ),
     );
     if (anchored && current) {
+      const namedCount = occurrenceArtifactNameCount(
+        current.nodes,
+        ownArtifactIds,
+      );
+      const uniqueArchitectureRoot = architectureAnchored &&
+        current.architectureArtifactId !== undefined &&
+        current.rootIds.length === 1 &&
+        ownArtifactIds.has(current.architectureArtifactId);
+      const identified = structureRows.map((row) => {
+        const occurrence = current.nodes.find((node) => node.id === row.key);
+        return withOccurrenceGraphIdentity(row, occurrence, {
+          architectureAnchored,
+          architectureArtifactId: current.architectureArtifactId,
+          uniqueArchitectureRoot,
+          rootIds: current.rootIds,
+          ownArtifactIds,
+          namedCount,
+        });
+      });
       const architectureRows = architectureAnchored
-        ? structureRows.map((
+        ? identified.map((
           { sessionIds: _sessionIds, viewerNodeKey: _viewer, ...row },
         ) => {
           const sessionIds = current.rootIds.includes(row.key)
@@ -177,20 +269,20 @@ export function buildOverviewHullContents(
               : {}),
           };
         })
-        : structureRows;
-      result.set(groupKey, {
+        : identified;
+      result.set(
         groupKey,
-        mode: "tree",
-        rows: architectureAnchored
-          ? [...architectureRows, ...requirementNav.rows]
-          : architectureRows,
-        records,
-      });
+        withHullOverlayStatus({
+          groupKey,
+          mode: "tree",
+          rows: architectureAnchored
+            ? [...architectureRows, ...requirementNav.rows]
+            : architectureRows,
+          records,
+        }, members),
+      );
       continue;
     }
-    const sources = members.filter((
-      member,
-    ): member is OverviewBriefSourceHeroNode => member.kind === "brief-source");
     const recorded = members.filter((
       member,
     ): member is OverviewRecordedHeroNode => member.kind === "recorded");
@@ -199,11 +291,7 @@ export function buildOverviewHullContents(
       sessionsByRecord,
       viewerAliases,
     );
-    const briefRows = briefNavigationRows(sources);
-    if (
-      analysis.rows.length > 0 || briefRows.length > 0 ||
-      requirementNav.rows.length > 0
-    ) {
+    if (analysis.rows.length > 0 || requirementNav.rows.length > 0) {
       const remaining = recorded
         .filter((member) =>
           !analysis.groupedKeys.has(member.key) &&
@@ -212,29 +300,34 @@ export function buildOverviewHullContents(
         )
         .toSorted((left, right) => left.key.localeCompare(right.key))
         .map((member) => recordRow(member, sessionsByRecord, viewerAliases, 0));
-      result.set(groupKey, {
+      result.set(
         groupKey,
-        mode: "tree",
-        rows: [
-          ...remaining,
-          ...analysis.rows,
-          ...briefRows,
-          ...requirementNav.rows,
-        ],
-        records,
-      });
+        withHullOverlayStatus({
+          groupKey,
+          mode: "tree",
+          rows: [
+            ...remaining,
+            ...analysis.rows,
+            ...requirementNav.rows,
+          ],
+          records,
+        }, members),
+      );
       continue;
     }
-    result.set(groupKey, {
+    result.set(
       groupKey,
-      mode: "records",
-      rows: captureKeys.size === 0
-        ? records
-        : records.filter((row) =>
-          row.nodeKey === undefined || !captureKeys.has(row.nodeKey)
-        ),
-      records,
-    });
+      withHullOverlayStatus({
+        groupKey,
+        mode: "records",
+        rows: captureKeys.size === 0
+          ? records
+          : records.filter((row) =>
+            row.nodeKey === undefined || !captureKeys.has(row.nodeKey)
+          ),
+        records,
+      }, members),
+    );
   }
   return result;
 }
@@ -269,10 +362,14 @@ function recordedRows(
     : outline.rows;
   return ordered.map(({ node, depth }) => {
     const parentKey = "parentKey" in node ? node.parentKey : undefined;
-    const viewer = boundRowViewer(node.key, sessionsByRecord, viewerAliases);
-    return {
+    const viewer = overviewHullBoundRowViewer(
+      node.key,
+      sessionsByRecord,
+      viewerAliases,
+    );
+    return graphBackedRow({
       key: node.key,
-      kind: "record" as const,
+      kind: "record",
       label: node.label,
       ...(node.recordedAt ? { detail: node.recordedAt } : {}),
       depth,
@@ -281,7 +378,10 @@ function recordedRows(
       ...(viewer.viewerNodeKey ? { viewerNodeKey: viewer.viewerNodeKey } : {}),
       sessionIds: viewer.sessionIds,
       endpoint: true,
-    };
+      ...(node.recordedAt
+        ? { provenance: { recordedAt: node.recordedAt } }
+        : {}),
+    });
   });
 }
 
@@ -302,14 +402,11 @@ function requirementsNavigationRows(
   if (unique.size === 0) {
     return { rows: [], groupedKeys: new Set() };
   }
-  const rows: OverviewHullContentRow[] = [{
+  const rows: OverviewHullContentRow[] = [overviewHullFolderRow({
     key: REQUIREMENTS_NAVIGATION_KEY,
-    kind: "navigation",
     label: "Requirements",
     depth: 0,
-    sessionIds: [],
-    endpoint: false,
-  }];
+  })];
   const groupedKeys = new Set<string>();
   const ordered = [...unique.values()].sort((left, right) =>
     left.key.localeCompare(right.key)
@@ -356,15 +453,12 @@ function analysisNavigationRows(
   );
   for (const [parentKey, groupMembers] of groups) {
     const basis = exactAnalysisBasis(groupMembers[0]!)!;
-    rows.push({
+    rows.push(overviewHullFolderRow({
       key: parentKey,
-      kind: "navigation",
       label: analysisBasisGroupLabel(basis.domain),
       detail: basis.basisFingerprint,
       depth: 0,
-      sessionIds: [],
-      endpoint: false,
-    });
+    }));
     for (const member of groupMembers) {
       groupedKeys.add(member.key);
       rows.push(
@@ -382,8 +476,12 @@ function recordRow(
   depth: number,
   parentKey?: string,
 ): OverviewHullContentRow {
-  const viewer = boundRowViewer(member.key, sessionsByRecord, viewerAliases);
-  return {
+  const viewer = overviewHullBoundRowViewer(
+    member.key,
+    sessionsByRecord,
+    viewerAliases,
+  );
+  return graphBackedRow({
     key: member.key,
     kind: "record",
     label: member.label,
@@ -394,29 +492,10 @@ function recordRow(
     ...(viewer.viewerNodeKey ? { viewerNodeKey: viewer.viewerNodeKey } : {}),
     sessionIds: viewer.sessionIds,
     endpoint: true,
-  };
-}
-
-function boundRowViewer(
-  nodeKey: string,
-  sessionsByRecord: ReadonlyMap<string, readonly string[]>,
-  viewerAliases: ReadonlyMap<string, readonly OverviewViewerOpenTarget[]>,
-): {
-  readonly sessionIds: readonly string[];
-  readonly viewerNodeKey?: string;
-} {
-  const direct = sessionsByRecord.get(nodeKey) ?? [];
-  if (direct.length > 0) {
-    return { sessionIds: direct, viewerNodeKey: nodeKey };
-  }
-  const aliased = viewerAliases.get(nodeKey);
-  if (aliased !== undefined && aliased.length > 0) {
-    return {
-      sessionIds: aliased.map((item) => item.sessionId),
-      viewerNodeKey: aliased[0]!.nodeKey,
-    };
-  }
-  return { sessionIds: [] };
+    ...(member.node.recordedAt
+      ? { provenance: { recordedAt: member.node.recordedAt } }
+      : {}),
+  });
 }
 
 function exactAnalysisBasis(
@@ -453,89 +532,112 @@ function analysisBasisGroupLabel(
   return `${domain} analysis`;
 }
 
-function briefNavigationRows(
-  sources: readonly OverviewBriefSourceHeroNode[],
-): readonly OverviewHullContentRow[] {
-  const unique = new Map<string, OverviewBriefSourceHeroNode>();
-  for (const source of sources) unique.set(source.key, source);
-  const ordered = [...unique.values()].sort((left, right) =>
-    left.key.localeCompare(right.key)
-  );
-  const bySnapshot = new Map<string, OverviewBriefSourceHeroNode[]>();
-  const ungrouped: OverviewBriefSourceHeroNode[] = [];
-  for (const source of ordered) {
-    const identity = exactBriefIdentity(source.brief);
-    if (!identity) {
-      ungrouped.push(source);
-      continue;
-    }
-    const bucket = bySnapshot.get(identity.snapshotId) ?? [];
-    bucket.push(source);
-    bySnapshot.set(identity.snapshotId, bucket);
-  }
-  const rows: OverviewHullContentRow[] = [];
-  const groups = [...bySnapshot.entries()].sort(([left], [right]) =>
-    left.localeCompare(right)
-  );
-  for (const [, members] of groups) {
-    const identities = new Set(
-      members.map((member) => JSON.stringify(exactBriefIdentity(member.brief))),
-    );
-    if (identities.size !== 1 || identities.has("null")) {
-      ungrouped.push(...members);
-      continue;
-    }
-    const brief = exactBriefIdentity(members[0]!.brief)!;
-    const parentKey = overviewBriefSnapshotGroupKey(brief);
-    rows.push({
-      key: parentKey,
-      kind: "navigation",
-      label: `Clauses sources · brief r${brief.revision}`,
-      detail: brief.snapshotId,
-      depth: 0,
-      sessionIds: [],
-      endpoint: false,
-    });
-    for (const source of members) {
-      rows.push(briefSourceRow(source, parentKey, 1));
-    }
-  }
-  ungrouped.sort((left, right) => left.key.localeCompare(right.key));
-  for (const source of ungrouped) {
-    rows.push(briefSourceRow(source, undefined, 0));
-  }
-  return rows;
+function withHullOverlayStatus(
+  content: OverviewHullContent,
+  members: readonly OverviewHeroNode[],
+): OverviewHullContent {
+  const status = uniqueHullOverlayStatus(members);
+  return status ? { ...content, status } : content;
 }
 
-function briefSourceRow(
-  source: OverviewBriefSourceHeroNode,
-  parentKey: string | undefined,
-  depth: number,
+function uniqueHullOverlayStatus(
+  members: readonly OverviewHeroNode[],
+): "active" | "blocked" | undefined {
+  const statuses = new Set<"active" | "blocked">();
+  for (const member of members) {
+    if (member.kind === "recorded" && member.activityStatus) {
+      statuses.add(member.activityStatus);
+    }
+  }
+  return statuses.size === 1 ? [...statuses][0] : undefined;
+}
+
+function graphBackedRow(
+  row: OverviewHullContentRow & { readonly nodeKey: string },
 ): OverviewHullContentRow {
   return {
-    key: source.key,
-    kind: "source",
-    label: source.sourceItem.id,
-    detail: source.sourceItem.kind,
-    depth,
-    ...(parentKey ? { parentKey } : {}),
-    nodeKey: source.key,
-    sessionIds: [],
-    endpoint: true,
+    ...row,
+    graphRefs: row.graphRefs ?? [row.nodeKey],
+    selectable: row.selectable ?? true,
+    focusable: row.focusable ?? true,
   };
 }
 
-function exactBriefIdentity(
-  brief: OverviewBriefSourceHeroNode["brief"],
-): OverviewBriefSourceHeroNode["brief"] | undefined {
-  if (
-    typeof brief.snapshotId !== "string" ||
-    brief.snapshotId.trim() === "" ||
-    typeof brief.briefId !== "string" ||
-    brief.briefId.trim() === "" ||
-    !Number.isInteger(brief.revision)
-  ) {
-    return undefined;
+function occurrenceNamedArtifactIds(
+  node: ThreadViewerHierarchyNode,
+): readonly string[] {
+  return [
+    ...new Set([
+      ...node.artifactIds ?? [],
+      ...node.geometryArtifactId ? [node.geometryArtifactId] : [],
+    ]),
+  ];
+}
+
+function occurrenceArtifactNameCount(
+  nodes: readonly ThreadViewerHierarchyNode[],
+  ownArtifactIds: ReadonlySet<string>,
+): ReadonlyMap<string, number> {
+  const counts = new Map<string, number>();
+  for (const node of nodes) {
+    for (const id of occurrenceNamedArtifactIds(node)) {
+      if (!ownArtifactIds.has(id)) continue;
+      counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
   }
-  return brief;
+  return counts;
+}
+
+function withOccurrenceGraphIdentity(
+  row: OverviewHullContentRow,
+  occurrence: ThreadViewerHierarchyNode | undefined,
+  spec: {
+    readonly architectureAnchored: boolean;
+    readonly architectureArtifactId: string | undefined;
+    readonly uniqueArchitectureRoot: boolean;
+    readonly rootIds: readonly string[];
+    readonly ownArtifactIds: ReadonlySet<string>;
+    readonly namedCount: ReadonlyMap<string, number>;
+  },
+): OverviewHullContentRow {
+  const graphRefs = occurrenceGraphRefs(row.key, occurrence, spec);
+  const overlay = graphRefs.length > 0;
+  return {
+    ...row,
+    graphRefs,
+    role: overlay ? "overlay" : "folder",
+    selectable: overlay,
+    focusable: true,
+  };
+}
+
+function occurrenceGraphRefs(
+  rowKey: string,
+  occurrence: ThreadViewerHierarchyNode | undefined,
+  spec: {
+    readonly architectureAnchored: boolean;
+    readonly architectureArtifactId: string | undefined;
+    readonly uniqueArchitectureRoot: boolean;
+    readonly rootIds: readonly string[];
+    readonly ownArtifactIds: ReadonlySet<string>;
+    readonly namedCount: ReadonlyMap<string, number>;
+  },
+): readonly string[] {
+  if (!occurrence) return [];
+  if (spec.architectureAnchored) {
+    if (
+      spec.uniqueArchitectureRoot &&
+      spec.rootIds[0] === rowKey &&
+      spec.architectureArtifactId &&
+      spec.ownArtifactIds.has(spec.architectureArtifactId)
+    ) {
+      return [`artifact:${spec.architectureArtifactId}`];
+    }
+    return [];
+  }
+  return occurrenceNamedArtifactIds(occurrence)
+    .filter((id) =>
+      spec.ownArtifactIds.has(id) && spec.namedCount.get(id) === 1
+    )
+    .map((id) => `artifact:${id}`);
 }

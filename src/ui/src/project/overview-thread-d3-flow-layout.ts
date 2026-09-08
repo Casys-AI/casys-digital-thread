@@ -14,6 +14,7 @@ import {
 import {
   OVERVIEW_THREAD_D3_HULL_HUB_MARGIN as GROUP_HUB_MARGIN,
   overviewThreadD3CableBodyBox,
+  overviewThreadD3CableDockKey,
   OverviewThreadD3CableFanInFields,
   overviewThreadD3CableHub,
   overviewThreadD3CableHullSides,
@@ -68,8 +69,6 @@ const HULL_TREE_INDENT = 12;
  */
 const HULL_LIST_TWO_COLUMN_WIDTH = 216;
 const HULL_LIST_THREE_COLUMN_WIDTH = 331;
-/** Rows a listed hull shows before the operator resizes it. */
-const HULL_LIST_DEFAULT_ROWS = 4;
 /** Below this the hull refuses to shrink: fewer rows is not a folder. */
 const HULL_LIST_MINIMUM_ROWS = 3;
 /**
@@ -174,9 +173,10 @@ export interface OverviewThreadD3FlowGroupPlacement {
   readonly offsetX?: number;
   readonly offsetY?: number;
   /**
-   * Operator-chosen hull size, in viewBox units. The matrix re-flows inside
-   * it; leaves are never dropped to make the hull fit, and a size below what
-   * one leaf needs is raised to that floor.
+   * Operator-chosen hull size, in viewBox units. Each reading mode treats it
+   * as a window (tree/list) or a column budget (points), never as a blank
+   * canvas carried over from another mode. Leaves are never dropped; a size
+   * below one leaf is raised to that floor.
    */
   readonly width?: number;
   readonly height?: number;
@@ -267,6 +267,11 @@ export interface OverviewThreadD3FlowNodeLayout
   readonly folded: boolean;
   /** An existing record docked to separately rendered content, not another card. */
   readonly rowAnchored?: boolean;
+  /**
+   * Visual cable dock shared by exact graph refs of one visible row.
+   * Graph identity stays on `key`.
+   */
+  readonly dockKey?: string;
   /** Drawn as a named row rather than a point. */
   readonly listed: boolean;
   /** Exact parent-first presentation depth; zero outside tree mode. */
@@ -433,6 +438,27 @@ export function rememberOverviewThreadHullPositions(
     };
   }
   return next ?? placements;
+}
+
+/**
+ * Next remembered hull box after an operator view switch. Origin, fold and
+ * sort stay; width, height and scrollRow are dropped so the new reading
+ * content-fits. Manual resize writes those dimensions only through
+ * `onResizeGroup`.
+ */
+export function nextHullViewPlacement(
+  current: OverviewThreadD3FlowGroupPlacement | undefined,
+  view: OverviewThreadD3FlowHullView,
+): OverviewThreadD3FlowGroupPlacement {
+  return {
+    ...(typeof current?.x === "number" ? { x: current.x } : {}),
+    ...(typeof current?.y === "number" ? { y: current.y } : {}),
+    ...(typeof current?.collapsed === "boolean"
+      ? { collapsed: current.collapsed }
+      : {}),
+    ...(current?.sort ? { sort: current.sort } : {}),
+    view,
+  };
 }
 
 type LaneTreeDatumKind = "lane" | "group" | "leaf";
@@ -714,24 +740,22 @@ export function buildOverviewThreadD3FlowLayout(
         OverviewThreadD3FlowPoint & {
           readonly width: number;
           readonly height: number;
+          readonly dockKey: string;
         }
       >();
       for (const [rowIndex, keys] of keysByRow) {
         const cell = rowCells.get(rowIndex)!;
         keys.sort();
         // The row owns one visible surface, possibly backed by several exact
-        // records. Give them disjoint subslots, not overlapping node glyphs.
+        // records. They share that dock so the row reads as one cable take.
         // Listed ports span the row; Points docks stay on its centered dot.
         const surface = overviewHullRowCableSurface(cell, hull.view, nodeSize);
-        const pitch = surface.height / (keys.length + 1);
-        const dockHeight = Math.min(nodeSize, pitch / 2);
-        for (const [slot, key] of keys.entries()) {
-          docks.set(key, {
-            x: surface.x,
-            y: surface.y + pitch * (slot + 1) - dockHeight / 2,
-            width: surface.width,
-            height: dockHeight,
-          });
+        const dockKey = structuredKey("row-dock", [
+          groupIdentity,
+          String(rowIndex),
+        ]);
+        for (const key of keys) {
+          docks.set(key, { ...surface, dockKey });
         }
       }
       const outline = hullOutlineRows(
@@ -836,7 +860,7 @@ export function buildOverviewThreadD3FlowLayout(
           topPort: { x: nodeCenterX, y: nodeY },
           bottomPort: { x: nodeCenterX, y: nodeY + nodeHeight },
           folded: hull.collapsed || (structureRowCount ? !dock : offWindow),
-          ...(dock ? { rowAnchored: true } : {}),
+          ...(dock ? { rowAnchored: true, dockKey: dock.dockKey } : {}),
           listed,
           depth: hull.view === "tree" ? outlineRow.depth : 0,
         });
@@ -1156,8 +1180,11 @@ export function buildOverviewThreadD3FlowLayout(
       hull.x + hull.width,
       orderedNodes.filter((node) =>
         node.lane === hull.lane && node.groupKey === hull.groupKey &&
-        !node.folded && node.key !== sourceNode.key &&
-        node.key !== targetNode.key
+        !node.folded &&
+        overviewThreadD3CableDockKey(node) !==
+          overviewThreadD3CableDockKey(sourceNode) &&
+        overviewThreadD3CableDockKey(node) !==
+          overviewThreadD3CableDockKey(targetNode)
       ),
       addSegment,
       routeSegmentKeys,
@@ -1472,12 +1499,13 @@ function appendNodeBranch(
   pushKey(
     route,
     addSegment({
-      // Role is part of the identity because the same physical branch is
-      // traversed in opposite orientations by A→B and B→A.
+      // Role and side belong to the identity because the same physical
+      // dock is traversed in opposite orientations by A→B and B→A. Exact
+      // graph refs of one row share this visual branch.
       key: structuredKey("node-branch", [
         terminal.role,
         terminal.side,
-        terminal.leaf.key,
+        terminal.dockKey,
       ]),
       kind: "node-branch",
       role: terminal.role,
@@ -1994,6 +2022,40 @@ function exactRoute(
 }
 
 /**
+ * One local detour for exact refs that share a visible row. The recorded
+ * route stays; a zero-length take on the shared port would collapse.
+ */
+function sameRowLocalDetour(
+  node: OverviewThreadD3FlowNodeLayout,
+  hullRight: number,
+): readonly OverviewThreadD3FlowPoint[] {
+  const start = node.rightPort;
+  const drop = Math.max(4, Math.min(INTRA_GROUP_BOW, node.height * 0.45));
+  const end = { x: start.x, y: start.y + drop };
+  const runX = hullRight + INTRA_GROUP_BOW;
+  return [
+    start,
+    { x: runX, y: start.y },
+    { x: runX, y: end.y },
+    end,
+  ];
+}
+
+function uniqueVisualDocks(
+  nodes: readonly OverviewThreadD3FlowNodeLayout[],
+): readonly OverviewThreadD3FlowNodeLayout[] {
+  const seen = new Set<string>();
+  const unique: OverviewThreadD3FlowNodeLayout[] = [];
+  for (const node of nodes) {
+    const id = overviewThreadD3CableDockKey(node);
+    if (seen.has(id)) continue;
+    seen.add(id);
+    unique.push(node);
+  }
+  return unique;
+}
+
+/**
  * Two leaves of one immutable hull are already neighbours. Their cable stays
  * local instead of leaving the hull for a shared junction and returning, which
  * reads as a spur pointing into empty board.
@@ -2010,10 +2072,25 @@ function addIntraGroupRoute(
   ) => string,
   route: string[],
 ): boolean {
-  const key = structuredKey("intra-group-cable", [
-    sourceNode.key,
-    targetNode.key,
-  ]);
+  const sourceDock = overviewThreadD3CableDockKey(sourceNode);
+  const targetDock = overviewThreadD3CableDockKey(targetNode);
+  if (sourceDock === targetDock) {
+    const points = sameRowLocalDetour(sourceNode, hullRight);
+    const d = overviewThreadD3FlowRoundedPath(points);
+    const segmentKey = addSegment({
+      key: structuredKey("intra-group-cable", [sourceDock]),
+      kind: "same-lane-trunk",
+      role: "shared",
+      direction: "same-lane",
+      points,
+      curve: "rounded",
+      ...(d ? { d } : {}),
+    }, edge);
+    if (!segmentKey) return false;
+    pushKey(route, segmentKey);
+    return true;
+  }
+  const key = structuredKey("intra-group-cable", [sourceDock, targetDock]);
   const columnGap = targetNode.centerX - sourceNode.centerX;
   const stacked = Math.abs(columnGap) < sourceNode.width;
   // Two leaves in one column are wired out to a run alongside the hull and
@@ -2038,12 +2115,12 @@ function addIntraGroupRoute(
       .y((point: OverviewThreadD3FlowPoint) => point.y).curve(curveBumpX)(
         points,
       );
-  const obstacles = otherLeaves.map((node) => {
-    // Exact co-docks remain obstacles, with clearance proportionate to their
-    // subslot. Inflating every tiny dock as a full glyph recreates overlaps.
+  const obstacles = uniqueVisualDocks(otherLeaves).map((node) => {
+    // Row-anchored docks are the cell surface. Clearance follows that box;
+    // co-records of one dock are the same obstacle, not stacked subslots.
     const margin = node.rowAnchored ? Math.min(0.6, node.height / 4) : 0.6;
     return {
-      key: node.key,
+      key: overviewThreadD3CableDockKey(node),
       minimumX: node.x - margin,
       maximumX: node.x + node.width + margin,
       minimumY: node.y - margin,
@@ -2426,11 +2503,51 @@ function hullListColumns(width: number): number {
   return width >= HULL_LIST_TWO_COLUMN_WIDTH ? 2 : 1;
 }
 
+function listedHullHeight(visibleRows: number): number {
+  return HULL_HEADER_HEIGHT + visibleRows * HULL_LIST_ROW_HEIGHT +
+    HULL_LIST_FOOTER_HEIGHT;
+}
+
 /**
- * Hull box after an operator resize.
+ * Points grid that actually holds leaves. Extra requested width is only a
+ * column budget; unused columns and leftover height are not painted.
+ */
+function matrixHullContentBox(
+  count: number,
+  nodeSize: number,
+  nodeGap: number,
+  widthBudget: number,
+): {
+  readonly width: number;
+  readonly height: number;
+  readonly columns: number;
+  readonly rows: number;
+} {
+  const leafCount = Math.max(1, count);
+  const columnBudget = Math.max(
+    1,
+    Math.floor((widthBudget + nodeGap) / (nodeSize + nodeGap)),
+  );
+  const columns = Math.max(1, Math.min(columnBudget, leafCount));
+  const rows = Math.ceil(leafCount / columns);
+  return {
+    width: Math.max(
+      HULL_MATRIX_MINIMUM_WIDTH,
+      columns * nodeSize + Math.max(0, columns - 1) * nodeGap,
+    ),
+    height: HULL_HEADER_HEIGHT + rows * nodeSize +
+      Math.max(0, rows - 1) * nodeGap,
+    columns,
+    rows,
+  };
+}
+
+/**
+ * Hull box after an operator resize or a reading-mode change.
  *
- * A resized hull keeps every leaf: the matrix re-flows to the new width, and
- * the height follows the rows that result unless the operator asked for more.
+ * A resized hull keeps every leaf. Tree and list treat height as a row
+ * window on the current contents; points re-flow to the used grid. Extra
+ * extent from another mode is dropped rather than painted as blank.
  * Shrinking below one leaf is refused rather than clipping the contents.
  */
 function resolveHullBox(
@@ -2457,9 +2574,13 @@ function resolveHullBox(
       : sizedWidth >= HULL_LIST_MINIMUM_WIDTH
       ? group.nodes.some((node) => node.parentKey) ? "tree" : "list"
       : "matrix");
+  const listedWidth = Math.max(
+    view === "tree" ? HULL_TREE_MINIMUM_WIDTH : HULL_LIST_MINIMUM_WIDTH,
+    sizedWidth,
+  );
   if (collapsed) {
     return {
-      width: sizedWidth,
+      width: view === "matrix" ? sizedWidth : listedWidth,
       height: HULL_HEADER_HEIGHT,
       columns: group.columns,
       rows: 0,
@@ -2469,34 +2590,24 @@ function resolveHullBox(
       visibleRows: 0,
     };
   }
+  const contentCount = structureRows ??
+    hullOutlineRows(group.nodes, placement?.sort, view === "tree").rows.length;
   if (view !== "matrix") {
-    const width = Math.max(
-      view === "tree" ? HULL_TREE_MINIMUM_WIDTH : HULL_LIST_MINIMUM_WIDTH,
-      sizedWidth,
-    );
-    const columns = view === "tree" ? 1 : hullListColumns(width);
+    const columns = view === "tree"
+      ? 1
+      : Math.min(hullListColumns(listedWidth), Math.max(1, contentCount));
     // Height is a window on the list, not a scale: the operator chooses how
-    // many rows to see, never how big a row is.
-    const requestedRows = requestedHeight === undefined
-      ? HULL_LIST_DEFAULT_ROWS
-      : Math.round(
-        (requestedHeight - HULL_HEADER_HEIGHT - HULL_LIST_FOOTER_HEIGHT) /
-          HULL_LIST_ROW_HEIGHT,
-      );
-    const capacity = Math.max(
-      1,
-      Math.ceil(
-        (structureRows
-          ? structureRows
-          : hullOutlineRows(group.nodes, placement?.sort, view === "tree").rows
-            .length) /
-          columns,
-      ),
+    // many rows to see, never how big a row is. With no explicit height the
+    // window is the content; extra height from another mode is not blank.
+    const capacity = Math.max(1, Math.ceil(contentCount / columns));
+    const requestedRows = requestedHeight === undefined ? capacity : Math.round(
+      (requestedHeight - HULL_HEADER_HEIGHT - HULL_LIST_FOOTER_HEIGHT) /
+        HULL_LIST_ROW_HEIGHT,
     );
     const visibleRows = clamp(
       requestedRows,
       Math.min(HULL_LIST_MINIMUM_ROWS, capacity),
-      Math.max(capacity, requestedRows),
+      capacity,
     );
     const scrollRow = clamp(
       Math.round(finiteOrZero(placement?.scrollRow)),
@@ -2504,9 +2615,8 @@ function resolveHullBox(
       Math.max(0, capacity - visibleRows),
     );
     return {
-      width,
-      height: HULL_HEADER_HEIGHT + visibleRows * HULL_LIST_ROW_HEIGHT +
-        HULL_LIST_FOOTER_HEIGHT,
+      width: listedWidth,
+      height: listedHullHeight(visibleRows),
       columns,
       rows: visibleRows,
       collapsed,
@@ -2530,23 +2640,21 @@ function resolveHullBox(
       visibleRows: group.rows,
     };
   }
-  const width = sizedWidth;
-  const columns = Math.max(
-    1,
-    Math.floor((width + nodeGap) / (nodeSize + nodeGap)),
+  const matrix = matrixHullContentBox(
+    contentCount,
+    nodeSize,
+    nodeGap,
+    sizedWidth,
   );
-  const rows = Math.ceil((structureRows ?? group.nodes.length) / columns);
-  const contentHeight = HULL_HEADER_HEIGHT + rows * nodeSize +
-    Math.max(0, rows - 1) * nodeGap;
   return {
-    width,
-    height: Math.max(contentHeight, requestedHeight ?? contentHeight),
-    columns,
-    rows,
+    width: matrix.width,
+    height: matrix.height,
+    columns: matrix.columns,
+    rows: matrix.rows,
     collapsed,
     view,
     scrollRow: 0,
-    visibleRows: rows,
+    visibleRows: matrix.rows,
   };
 }
 
