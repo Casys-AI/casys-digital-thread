@@ -337,6 +337,47 @@ authority-hygiene correction, not as a resolved motor interface. The ordinary bo
 CAD path can encode four explicit cutters once an exact datum is proven, but geometry
 capability does not supply the missing supplier fact.
 
+## F13 — no registered generic propulsion/energy pre-sizing authority (open, deferred)
+
+Project r672–r674 records the human priority and a pending brief r5 for a sourced
+mass–thrust–power–energy–endurance balance. Inspection of the current operation registry
+found no generic propulsion/energy pre-sizing route. The capability proposal returned by
+the brief review remains unchanged and still awaits confirmation: existing CAD, SysON,
+assembly-integrity and single-part static-FEA surfaces do not become an aerodynamic or
+battery-system solver merely because the new question exists.
+
+This is a real product-capability gap, but not a quick-win patch. CalculiX cannot invent
+operational loads; prescribed Chrono cannot establish thrust, torque or flight dynamics;
+the admitted Modelica subset cannot supply an unsourced motor–propeller–ESC–battery
+model. Adding a broad solver now would enlarge language, provider, evidence, validation
+and safety boundaries before the inputs and physical question are stable.
+
+The proportional response is the
+[documentary pre-sizing basis](propulsion-energy-presizing-basis-20260908.md): source
+candidate data, preserve unknowns, calculate only traceable consequences, and derive the
+smallest later verification need. Revisit a versioned capability extension only after a
+candidate packet and mission model reveal an exact unsupported calculation. F13 remains
+open and deliberately deferred; no runtime or registry change is made in this pass.
+
+## F14 — native Grok starts unrelated MCP plugins during bounded reviews (open, deferred)
+
+Three repository-aware, read-only Grok reviews completed successfully in this pass, but
+their startup loaded unrelated global plugins and emitted name-collision warnings, an
+unsupported-permission warning, a failed `caveman-shrink` handshake and an
+unauthenticated `magic` handshake. A prior third repository-free review also stopped
+advancing and was terminated according to the delegation workflow. A later
+supplier-identity review was cancelled after its permission auto-classifier timed out;
+Terra closed that bounded review instead. The completed answers remain usable because
+Codex independently checked their inputs and arithmetic; the startup noise is not
+project evidence.
+
+This is a real agent-workflow friction, but not a safe repo-local quick win. Repairing
+it would change the user's global Grok/plugin configuration outside the ID01 scope and
+could affect other work. Leave that configuration untouched here. For now, keep each
+Grok task bounded, observe live progress, stop rather than loop when it stalls, and use
+targeted Terra reinforcement if needed. Diagnose and clean the global plugin set in a
+separate, explicitly scoped maintenance pass.
+
 ## Expected states, not defects
 
 - The old preview was explicitly pinned to TPS03. It correctly ignored the new durable

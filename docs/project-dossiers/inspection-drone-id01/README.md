@@ -8,7 +8,10 @@ decisions. Re-read the control plane before continuing.
 
 ## Current project truth
 
-Latest resumption: project r671 / Thread r93. The fresh Airframe
+Latest resumption: project r674 / Thread r93. Project r672 proposed the bounded
+propulsion/energy priority question, r673 recorded the human-sourced
+`presize-before-simulations` answer, and r674 proposed brief r5. That brief is still
+pending; no new Thread evidence or capability was authorized. The fresh Airframe
 `RadialArm` ↔ `CentralDeck` assembly-integrity chain published L3 observation
 `assembly-integrity-observation-958ef913155ff5f8a6ab115003b00ff996f382b95becb408833fe68ce9a78704`
 at r91, L4 `pass` evaluation
@@ -27,8 +30,8 @@ bounded human-origin L5 acceptance published at r86. Both runs are `completed`. 
 collision at project r603 remains documented as F11 rather than erased.
 
 - Project: `inspection-drone-id01`.
-- Observed project revision: r671,
-  `inspection-drone-id01:project:r671:1a6c4813cd196fa6`. The current Thread is r93,
+- Observed project revision: r674,
+  `inspection-drone-id01:project:r674:6dd7744cb3c6ac54`. The current Thread is r93,
   `project:inspection-drone-id01:r93:decide-accept-assembly-integrity-evaluation-run:queue-assembly-integrity-accept-83f3d7926589703b-r92-r667`.
 - The first provider-free requirements-to-brief claim at project r591 / Thread r83
   remains historical evidence; it did not execute an FEA solver or a native requirements
@@ -36,11 +39,11 @@ collision at project r603 remains documented as F11 rather than erased.
 - Human-sourced intent: an unarmed observation/inspection pilot developed through the
   paired chat, with traceable multi-subsystem design and bounded real verification.
   Weapons, targeting, and attack support are excluded.
-- Canonical living brief r3, `inspection-drone-id01:brief:r3:bca2a461299be869`, was
-  approved at project r350 on 2026-09-06 at 18:37:47 UTC through the explicitly
-  requested local YOLO mode. It preserves the 28 prior items and adds the camera-bracket
-  bench assumptions and sourced scalar stress criterion. Its origin is
-  `local-yolo:startup-opt-in`, not an invented interactive signature.
+- Canonical living brief r4, `inspection-drone-id01:brief:r4:8366ffe2fb53e984`, was
+  approved at project r620 on 2026-09-08 at 01:49:53 UTC through the explicitly
+  requested local YOLO mode. It preserves the 30 prior items and adds the bounded
+  RadialArm compliance screen, its component identity and displacement criterion. Its
+  origin is `local-yolo:startup-opt-in`, not an invented interactive signature.
 - The current operational envelope was reported `authorized`; the registered operations
   still check exact source, basis, admission and runtime identities.
 - Mission selected by the human: visual inspection of civil buildings and infrastructure
@@ -224,11 +227,22 @@ capture. Its F08 blocker is closed and the deck holes are canonical, but its unm
 physical interfaces remain unresolved. Electrical, aerodynamic and flight-safety
 evidence remains outside these proof meanings; the pilot is not declared complete.
 
-The freshly restarted read-only BFF now serves project r671 / Thread r93, aligned
-`93/93`. The accepted assembly-integrity closeout is projected as a fresh artifact, and
-the RadialArm r2 case and project activity join remain present without the stale pre-`nm`
-`capture-invalid` symptom. This is current projection adoption, not a new visual UX
-audit. The latest
+The
+[propulsion and energy pre-sizing basis](propulsion-energy-presizing-basis-20260908.md)
+now records the first source-backed candidate motor data, its complete exact-row
+four-motor arithmetic envelope, the static propeller-proxy clearance screen and three
+official 4S battery candidates. All three candidate packs fail orthogonal containment in
+the current 38 × 34 × 25 mm battery reserve; that is a candidate-specific packaging
+finding, not proof that no 4S pack can fit. A partial source-backed COTS mass ledger is
+now explicit, while total vehicle mass and CG remain unresolved. The document also
+preserves the calculation contract and still-missing input packets. It is a documentary
+draft against pending brief r5, not a component selection or a new proof.
+
+The freshly restarted read-only BFF now projects project r674 / Thread r93 under
+`engineering-workbench/0.6` and `engineering-cases/1.1`. The accepted
+assembly-integrity closeout is projected as a fresh artifact, and the RadialArm r2 case
+and project activity join remain present without the stale pre-`nm` `capture-invalid`
+symptom. This is current projection adoption, not a new visual UX audit. The latest
 separate-profile browser interaction audit remains project r591 / Thread r83; no later
 visual audit is claimed here. The earlier project r583 / Thread r82 presentation
 established seven exact whole-App bindings for the six modules and updated root while
