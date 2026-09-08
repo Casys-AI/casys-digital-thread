@@ -47,11 +47,11 @@ strap, swelling, insulation, cooling, manufacturing tolerance and service access
 
 Each count is the number of the six axis permutations whose three pack dimensions are no
 larger than the named fixed box axes. For Tattu/Gens pages, the maximum screen uses the
-separately published fields `Length(+5 mm)`, `Width(+2 mm)` and `Height(+2 mm)`; that is
-not a blanket ±5 mm on every axis. The Tattu 450 page conflicts between 16.59 mm width
-in its prose and 16.95 mm in its field table, so the larger 16.95 mm value is used for
-the conservative screen. The GNB page publishes no dimensional tolerance; its maximum
-row therefore remains `unresolved`.
+positive side of the separately published fields `Length(±5 mm)`, `Width(±2 mm)` and
+`Height(±2 mm)`; that is not a blanket ±5 mm on every axis. The Tattu 450 page conflicts
+between 16.59 mm width in its prose and 16.95 mm in its field table, so the larger 16.95
+mm value is used for the conservative screen. The GNB page publishes no dimensional
+tolerance; its maximum row therefore remains `unresolved`.
 
 | Official candidate                                                                                                               | Nominal dimensions L × W × H | Maximum screen L × W × H | Reserve nominal / max | Inner nominal / max | Outer nominal / max |
 | -------------------------------------------------------------------------------------------------------------------------------- | ---------------------------: | -----------------------: | --------------------: | ------------------: | ------------------: |
@@ -86,10 +86,11 @@ current 1 mm lateral reserve-to-inner gap on each side, 2 mm side walls, 3 mm fl
 - `outer_y = p_y + 2×1 + 2×2 = p_y + 6`;
 - `outer_z = 3 + p_z + 7 = p_z + 10`.
 
-Relative to the current outer 44 × 40 × 35 mm tray, the corresponding symmetric size
-changes are `Δx = p_x − 38`, `Δy = p_y − 34` and `Δz = p_z − 25`. The Z relation is
-specific to the current open-top, floor-touching concept; a closed or vertically
-restrained design needs its own clearance rule.
+Relative to the current outer 44 × 40 × 35 mm tray, the corresponding symmetric growth
+terms are `Δx = max(0, p_x − 38)`, `Δy = max(0, p_y − 34)` and `Δz = max(0, p_z − 25)`.
+A negative unclamped difference would describe optional shrink, not required growth. The
+Z relation is specific to the current open-top, floor-touching concept; a closed or
+vertically restrained design needs its own clearance rule.
 
 This formula is a sensitivity, not an instruction to edit the source. A symmetric X
 increase consumes the current 3 mm gap to each skid after 6 mm total growth. A symmetric

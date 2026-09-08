@@ -255,6 +255,12 @@ mass and CG remain unresolved. The documents preserve the calculation contract a
 still-missing input packets. They are documentary drafts against pending brief r5, not a
 component selection or a new proof.
 
+The [configuration pre-selection matrix](configuration-preselection-matrix-20260908.md)
+now groups propulsion, battery/tray and power-module cards by mutually exclusive slot.
+It exposes the current-path and minimum tray-growth consequences without multiplying
+them into false vehicle configurations. Its verdict remains `HOLD`: no column closes
+identity, mass, usable energy, packaging and interfaces together.
+
 The [proportionate verification and test plan](verification-and-test-plan-20260908.md)
 now answers the wider engineering boundary explicitly. It keeps the two accepted
 single-part CalculiX cases and the geometric assembly closeout disjoint, then gates

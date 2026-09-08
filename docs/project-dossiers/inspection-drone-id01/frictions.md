@@ -393,6 +393,11 @@ reaping as DeadFailed`. Codex inspected the
 returned matrices and repository contracts; the warning is not treated as an engineering
 verdict or as proof of healthy Grok session cleanup.
 
+In the next four-way pre-selection review, three bounded sessions completed. The
+propulsion session instead started an internal delegation, waited on it repeatedly and
+was terminated without an accepted verdict. Codex completed that source review directly;
+the stalled session contributed no project fact.
+
 This is a real agent-workflow friction, but not a safe repo-local quick win. Repairing
 it would change the user's global Grok/plugin configuration outside the ID01 scope and
 could affect other work. Leave that configuration untouched here. For now, keep each
