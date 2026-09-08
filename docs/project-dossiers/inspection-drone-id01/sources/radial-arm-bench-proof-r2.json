@@ -1,0 +1,106 @@
+{
+  "schemaVersion": "mechanical-proof-case-source/1.0",
+  "id": "id01-radial-arm-bench",
+  "revision": 2,
+  "scope": "Theoretical 5 N transverse-compliance bench screening of the exact single current RadialArm; not a joint, the drone, or a physical experiment.",
+  "evidenceBoundary": "Approved Brief r4 RadialArm assumptions and radial-arm-bench-displacement criterion. The server must recross the unique current canonical part geometry, its engineering provenance and the native SysON requirement; none is declared by this source. Ideal fully clamped root end face at x = -50 mm; total force (0, 0, -5) N on the tip end face at x = 50 mm. Material is a theoretical EN AW-6082-T6 catalogue isotropic idealization with E = 70000 MPa and nu = 0.33, not an as-built claim. One 1 mm target mesh is not convergence evidence. Excludes joints, bolts, preload, contact, self-weight, motor torque, dynamic thrust, vibration, fatigue, buckling, impact, geometric or material nonlinearity, tolerances, factor of safety, manufacture, whole-drone behaviour, flight and certification. A pass does not resolve the motor interface or establish flight readiness. Revision 2 supersedes unproposed revision 1 because its evidence-boundary prose repeated server-owned CAD and STEP identities; revision 1 was abandoned before proposal or execution.",
+  "project": {
+    "id": "inspection-drone-id01",
+    "subjectId": "project:inspection-drone-id01"
+  },
+  "target": {
+    "id": "RadialArm",
+    "modelElementId": "444df600-019b-45d5-ac36-617ff0a0f791"
+  },
+  "requirementsSource": {
+    "editingContextId": "a36e27c1-7155-435d-82c0-8acad85f1d73",
+    "elementId": "07e458ff-8abc-4dec-add5-3d2bce1e6bf7"
+  },
+  "analysis": {
+    "kind": "linear-static",
+    "material": {
+      "model": "isotropic-linear-elastic",
+      "basis": "Theoretical EN AW-6082-T6 catalogue model from the official Hydro data sheet, read 2026-09-08: E 70000 MPa, nu 0.33. No selected product form, stock, heat-treatment preservation or batch certificate.",
+      "youngModulus": {
+        "value": 70000,
+        "unit": "MPa"
+      },
+      "poissonRatio": {
+        "value": 0.33,
+        "unit": "1"
+      }
+    },
+    "mesh": {
+      "kind": "tetrahedral-volume",
+      "targetSize": {
+        "value": 1,
+        "unit": "mm"
+      }
+    },
+    "supports": [
+      {
+        "id": "ideal-clamped-root-end-face",
+        "kind": "fixed",
+        "selection": {
+          "name": "BenchFixedRootFace",
+          "box": {
+            "min": [
+              -50.1,
+              -8.1,
+              -0.1
+            ],
+            "max": [
+              -49.9,
+              8.1,
+              5.1
+            ],
+            "unit": "mm"
+          }
+        }
+      }
+    ],
+    "loads": [
+      {
+        "id": "transverse-bench-tip-load",
+        "kind": "force",
+        "selection": {
+          "name": "BenchLoadedTipFace",
+          "box": {
+            "min": [
+              49.9,
+              -8.1,
+              -0.1
+            ],
+            "max": [
+              50.1,
+              8.1,
+              5.1
+            ],
+            "unit": "mm"
+          }
+        },
+        "force": {
+          "value": [
+            0,
+            0,
+            -5
+          ],
+          "unit": "N"
+        }
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "id": "radial-arm-bench-displacement",
+      "name": "RadialArmBenchDisplacementLimit",
+      "metric": "maximum-displacement",
+      "feature": "radial_arm_bench_max_displacement_mm",
+      "operator": "<=",
+      "limit": {
+        "value": 200000,
+        "unit": "nm"
+      }
+    }
+  ]
+}
