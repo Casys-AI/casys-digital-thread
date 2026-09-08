@@ -39,7 +39,7 @@ Deno.test("preview:thread launches the BFF on 5175 and Vite on 5173", () => {
   assertEquals(bff.args.includes("--node-modules-dir=auto"), true);
   assertEquals(
     bff.args.includes(
-      "--allow-read=state,src/ui/dist/thread,config/projects,config/thread-subjects,config/mcp-fleet.json,config/microsandbox-local.json,node_modules",
+      "--allow-read=state,src/ui/dist/thread,config/projects,config/thread-subjects,config/mcp-fleet.json,config/microsandbox-local.json,examples/bracket,node_modules",
     ),
     true,
   );
@@ -234,7 +234,7 @@ Deno.test("preview:cockpit grants the anchored state root to the read-only BFF",
   assertStringIncludes(config, '"preview:cockpit"');
   assertStringIncludes(
     config,
-    "--allow-read=state,src/ui/dist/thread,config/projects,config/thread-subjects,config/mcp-fleet.json,config/microsandbox-local.json,node_modules",
+    "--allow-read=state,src/ui/dist/thread,config/projects,config/thread-subjects,config/mcp-fleet.json,config/microsandbox-local.json,examples/bracket,node_modules",
   );
   assertStringIncludes(config, "--allow-run=docker");
   assertStringIncludes(config, "--allow-ffi=node_modules");

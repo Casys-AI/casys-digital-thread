@@ -62,7 +62,7 @@ export function buildPreviewThreadCommands(
         "--no-prompt",
         "--frozen",
         "--node-modules-dir=auto",
-        "--allow-read=state,src/ui/dist/thread,config/projects,config/thread-subjects,config/mcp-fleet.json,config/microsandbox-local.json,node_modules",
+        "--allow-read=state,src/ui/dist/thread,config/projects,config/thread-subjects,config/mcp-fleet.json,config/microsandbox-local.json,examples/bracket,node_modules",
         "--allow-write=state/local",
         "--allow-net=127.0.0.1",
         "--allow-run=docker",
