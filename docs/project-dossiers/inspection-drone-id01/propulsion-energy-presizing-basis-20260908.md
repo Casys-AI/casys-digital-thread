@@ -482,6 +482,16 @@ material and density are sourced or approved. Manufacturing process, infill or w
 strategy, inserts, coatings, tolerances and as-built mass remain unresolved, so neither
 a structural mass nor a mass-weighted aircraft CG is calculated.
 
+The separate
+[mass/position closure worksheet](mass-and-position-closure-worksheet-20260908.md#conditional-6082-consistency-screen--excluded-from-vehicle-mass)
+also records an explicitly excluded density-consistency check. Applying Hydro's
+`2.71 g/cm³` EN AW-6082 catalogue density to only the four arms and camera bracket that
+carry theoretical 6082 labels in their existing FEA branches gives `103.235905636 g`;
+extending it hypothetically to all ten structural occurrences gives `347.349252240 g`.
+Neither figure is a vehicle-mass term or a bound: the FEA labels are not as-built
+material selections, and no current authority assigns 6082 to the other five structural
+source families.
+
 ## Current static propeller-proxy clearance screen
 
 The captured placement basis puts the four motor centres 100 mm from the local origin at

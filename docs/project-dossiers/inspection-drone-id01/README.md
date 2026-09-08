@@ -258,9 +258,13 @@ source-backed COTS mass ledger and separate
 [mass/position closure worksheet](mass-and-position-closure-worksheet-20260908.md) now
 separates the exact 22-leaf canonical geometry census into ten structural solids and
 twelve envelopes/proxies, then keeps the absent installed items, structural masses and
-positions explicit. Total vehicle mass and CG remain unresolved. The documents preserve
-the calculation contract and still-missing input packets. They are documentary drafts
-against pending brief r5, not a component selection or a new proof.
+positions explicit. It now includes a visibly excluded 6082 density-consistency screen:
+`103.235905636 g` for the four arms plus camera bracket under their theoretical FEA
+material label, and `347.349252240 g` only if that same density were hypothetically
+extended to all ten solids. Neither value enters the vehicle sum or selects a material.
+Total vehicle mass and CG remain unresolved. The documents preserve the calculation
+contract and still-missing input packets. They are documentary drafts against pending
+brief r5, not a component selection or a new proof.
 
 The [configuration pre-selection matrix](configuration-preselection-matrix-20260908.md)
 now groups propulsion, ESC/control, battery/tray and power-module cards by mutually

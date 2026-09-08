@@ -74,6 +74,32 @@ This equation preserves the missing inputs; it supplies none. Infill, wall strat
 inserts, coatings and manufacturing variation can make a bulk catalogue density
 inappropriate. Weighing the finished occurrences is the stronger closure route.
 
+### Conditional 6082 consistency screen — excluded from vehicle mass
+
+The two existing single-part FEA branches label the four `RadialArm` occurrences and the
+one `CameraMountBracket` occurrence with a **theoretical** EN AW-6082-T6 catalogue
+idealization. That label is not an as-built material selection. The radial-arm source,
+Hydro's
+[EN AW-6082 technical datasheet](https://www.hydro.com/globalassets/08-about-hydro/hydro-worldwide/austria/nenzing/alloy-data-sheets/hydro-en-aw-6082.pdf),
+also reports a bulk density of `2.71 g/cm³`; density was not an input needed by either
+linear-static proof.
+
+The following arithmetic is therefore a documentary consistency screen only:
+
+| Conditional scope              |                                          Volume | Extra condition imposed for the calculation                   | Solid-equivalent mass |
+| ------------------------------ | ----------------------------------------------: | ------------------------------------------------------------- | --------------------: |
+| Four arms plus camera bracket  | `31.678300912 + 6.416129212 = 38.094430124 cm³` | all five occurrences use the same `2.71 g/cm³` bulk density   |     `103.235905636 g` |
+| All ten structural occurrences |                             `128.173155808 cm³` | extend that same density to deck, tray, carrier and skids too |     `347.349252240 g` |
+
+Neither result enters the vehicle ledger. The first reuses a theoretical material label
+from two proof cases that explicitly disclaim as-built material; the second additionally
+assigns 6082 to five source families for which the current authority assigns no material
+at all. Both assume fully solid manufactured geometry and omit inserts, coatings,
+fasteners and process variation. They are not lower bounds, upper bounds, mass
+estimates, recommendations or evidence that the parts can be made from the named alloy.
+Their useful conclusion is narrower: a catalogue density is available, but the
+material/process decision and finished-part evidence needed to close G0.2 are not.
+
 ## Purchased and installed-item census
 
 The table separates a sourced candidate mass from a selected installed occurrence. A CAD
@@ -159,5 +185,7 @@ Two bounded native Grok reviews independently audited the current source, placem
 mass ledgers. The later review returned `HOLD` on G0.2 closure and identified the
 22-leaf geometry split. Codex checked the controlled placement counts, recalculated the
 transformed structural centroids and retained only the documentary census and equations.
-No material density, component selection, vehicle sum, CG, provider run, broad test
-campaign or Astra consultation was introduced.
+Codex later added the explicitly excluded 6082 consistency screen above from the named
+catalogue density; it does not select a material or close a mass row. No component
+selection, vehicle sum, CG, provider run, broad test campaign or Astra consultation was
+introduced.
