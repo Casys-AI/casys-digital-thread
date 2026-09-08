@@ -175,7 +175,7 @@ alternative. Four catalogue motors would total `4 × 15 = 60 g`, which is 22.64 
 the four-motor F1404 candidate sum before propellers, attachment or any required CAD
 successor.
 
-The complete exact T3140 table is retained as a bounded, discrete sensitivity basis:
+The complete exact T3140 table is retained as a bounded, exact-row source lookup:
 
 | Throttle label | Thrust per motor | Voltage | Current per motor |      Speed | Reported efficiency | Four-motor equivalent supported mass | Four-motor current | Four-motor reported power |
 | -------------- | ---------------: | ------: | ----------------: | ---------: | ------------------: | -----------------------------------: | -----------------: | ------------------------: |
@@ -205,11 +205,11 @@ equivalent; that is not a vehicle mass ceiling or accepted operating limit. Supp
 clarification or a controlled replacement map is required before using the boundary for
 design.
 
-The eleven rows activate only **discrete candidate sensitivity**. They permit later
-lookup or bracketing once vehicle mass is closed; they do not authorize interpolation.
-Below 0.95260 kg equivalent the source has no lower T3140 point, and above 2.69532 kg it
-has no point at all. A mass between two rows needs an explicit interpolation method or a
-new bench point, plus the still-missing thrust-margin criterion.
+The eleven rows permit later lookup or bracketing once vehicle mass is closed; they do
+not authorize interpolation. Below 0.95260 kg equivalent the source has no lower T3140
+point, and above 2.69532 kg it has no point at all. A mass between two rows needs an
+explicit interpolation method or a new bench point, plus the still-missing thrust-margin
+criterion.
 
 The common 50–100% labels on the F1404 and F1507 pages are not common installed commands
 or equal operating conditions. The two tables use different candidate propellers and
@@ -330,7 +330,7 @@ policy must define `E_reserve`, either directly or through a named reserve phase
 must not be counted both ways. `E_usable` remains battery-, current-, temperature-, age-
 and cutoff-dependent and is not substituted by catalogue nameplate energy.
 
-The first exact four-motor bench row provides one arithmetic sensitivity only:
+The first exact four-motor bench row provides one unit-rate conversion only:
 `333.12 W / 60 = 5.552 Wh/min` of reported propulsion power at that row. Every actual
 auxiliary watt would add `1/60 Wh` per minute. The `5.552 Wh/min` value is neither a
 lower nor an upper bound on ID01 flight energy: the unresolved all-up mass can place
@@ -518,7 +518,7 @@ law.
 2. Build the mass/position ledger and mission phases; preserve unknowns instead of
    silently filling them.
 3. Evaluate the algebraic mass–thrust–power–energy–endurance balance with units and
-   sensitivity to the still-provisional inputs.
+   explicit bounded ranges for the still-provisional inputs.
 4. Check centre of gravity, static and deformed propeller clearances, current paths,
    thermal limits and physical interfaces.
 5. Derive named structural load cases from the selected operating envelope.
@@ -540,15 +540,16 @@ read only the relevant dossier files. They independently checked motor arithmeti
 battery screens, the partial mass ledger, mission equations, source identities,
 packaging, electrical architecture and the next mission-decision boundary. The latest
 four reviews covered one task each: alternative propulsion, mission sheet, power
-architecture and battery-tray sensitivity. A new four-way source-control pass then
-audited F1404, T3140, `GF3016`, and the F1507/T3140 assembly chain. All four completed;
-Codex independently inspected the linked official drawings and specification image
-before accepting the corrections. Two later sensitivity audits independently transcribed
-and recalculated all eleven F1507/T3140 rows. Codex accepted the full exact-row table
-but rejected a same-throttle candidate ranking because the source conditions differ and
-the manufacturer explicitly discourages inter-type comparison. A parallel battery search
-was cancelled after the recurring permission-classifier timeout and contributed no
-accepted verdict, as were an earlier STEP audit and supplier-identity run.
+architecture and battery-tray orientation screening. A new four-way source-control pass
+then audited F1404, T3140, `GF3016`, and the F1507/T3140 assembly chain. All four
+completed; Codex independently inspected the linked official drawings and specification
+image before accepting the corrections. Two later exact-row audits independently
+transcribed and recalculated all eleven F1507/T3140 rows. Codex accepted the full
+exact-row table but rejected a same-throttle candidate ranking because the source
+conditions differ and the manufacturer explicitly discourages inter-type comparison. A
+parallel battery search was cancelled after the recurring permission-classifier timeout
+and contributed no accepted verdict, as were an earlier STEP audit and supplier-identity
+run.
 
 Codex inspected the source pages and repository facts, recalculated the values, rehashed
 the selected source and STEP bytes, derived the simple constructive-solid volumes and

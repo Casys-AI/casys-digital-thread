@@ -75,26 +75,6 @@ the exact output of the earlier gate that supplies its inputs.
 G0 exits only when one candidate configuration can be calculated without filling an
 unknown with a default. Until then no solver is needed.
 
-## Sensitivity activation rule
-
-Sensitivity is already active where the inputs are explicit and reversible: the battery
-note checks every orthogonal orientation, the configuration matrix compares exclusive
-candidate substitutions, and the propulsion source packet calculates the
-static-clearance effect of replacing the 3.0-inch proxy by the sourced 3.1-inch T3140
-datum. The pre-sizing basis also retains all eleven exact F1507/T3140 rows as a discrete
-lookup basis, without interpolation or a same-throttle candidate ranking.
-
-A whole-vehicle sensitivity sweep is **not active yet**. It starts only after G0.1, G0.2
-and G0.4 provide one reviewed mission scenario, an installed-item census and one exact
-propulsion packet. Its first bounded variables will be sourced or human-approved ranges
-for total mass, mission-phase duration/power, usable battery energy, reserve and the
-applicable motor–propeller operating region. No default range or probability
-distribution is inserted by the agent.
-
-The registered `verify.evaluate-sensitivity-base@1` operation is not a generic vehicle
-sizing tool: it evaluates an exact FEA sensitivity-base identity and cannot replace this
-documentary configuration/mission analysis or authorize a source correction.
-
 ## G1–G2 — component, aerodynamic and structural evidence
 
 | ID | When                            | Verification question                                                                    | Entrance evidence                                                                                       | Smallest credible method and output                                                                                                    | Criterion owner                           | Explicit non-claim                                                           |

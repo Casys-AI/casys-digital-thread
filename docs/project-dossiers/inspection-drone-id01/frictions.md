@@ -412,7 +412,7 @@ failed optional MCP startup. Codex independently reopened and inspected the offi
 sources before accepting any engineering statement. The successful answers do not close
 F14: the noise and global configuration remain outside the ID01 repository's authority.
 
-Two subsequent sensitivity audits also completed and reproduced the startup noise. Their
+Two subsequent exact-row audits also completed and reproduced the startup noise. Their
 exact-row arithmetic was accepted only after Codex independently recalculated it; one
 proposed inter-type comparison was deliberately not promoted because the supplier warns
 against that interpretation.

@@ -273,9 +273,7 @@ propulsion benches, physical interfaces, electrical/thermal work, an external ca
 Current admitted Modelica may later carry only a sourced scalar question that fits its
 closed grammar; current prescribed Chrono may later carry an explicit revolute
 mechanism, not rotor or flight dynamics. The plan queues none of those activities and
-invents no criterion. It also makes sensitivity explicit: packaging and candidate
-substitution checks are active now, while whole-vehicle sweeps wait for one reviewed
-mission, installed census and exact propulsion packet.
+invents no criterion.
 
 The freshly restarted read-only BFF now projects project r674 / Thread r93 under
 `engineering-workbench/0.6` and `engineering-cases/1.1`. The accepted assembly-integrity
