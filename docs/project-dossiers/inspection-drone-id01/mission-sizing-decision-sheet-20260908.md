@@ -15,6 +15,12 @@ selected an unarmed civil exterior camera-inspection mission and the priority
 `presize-before-simulations`; no duration, range, height, inspection dwell, reserve,
 weather envelope, payload duty cycle or thrust-margin criterion has been selected.
 
+The source-backed
+[camera-to-target geometry basis](camera-mission-geometry-basis-20260908.md) now
+supplies a normalized full-resolution footprint and image-scale lookup for the
+provisional Camera Module 3 Standard. It selects no stand-off or image criterion and
+leaves every mission cell below unchanged.
+
 Blank cells below mean `unresolved`, never zero. A documentary scenario can organize
 questions, but it cannot silently become the mission requirement used to size the
 vehicle.
@@ -35,15 +41,16 @@ representative workflow.
 
 ## Human decisions still required
 
-| Decision                    | Allowed form                                                                                      | Why it is consequential                                         |
-| --------------------------- | ------------------------------------------------------------------------------------------------- | --------------------------------------------------------------- |
-| Mission shape               | choose, revise or reject A/B/C                                                                    | Changes phase order, time aloft and inspection duty             |
-| Site and operating envelope | named type of site, people exclusion, altitude/stand-off bounds, wind, temperature and visibility | Controls operational constraints and load/energy cases          |
-| Reserve policy              | explicit energy, time or named reserve phase, with one calculation rule                           | Prevents an invented or double-counted reserve                  |
-| Thrust-margin criterion     | approved total-thrust-to-weight or another explicit rule                                          | Determines whether a bench operating point is acceptable        |
-| Installed-item census       | include/exclude list for payload, navigation, radio, guards, harness, fasteners and retention     | Controls all-up mass and auxiliary power                        |
-| Candidate configuration     | exact motor, propeller, ESC, battery and power architecture packet                                | Determines which source data can enter the calculations         |
-| Battery keep-in status      | hard packaging constraint, soft starting hypothesis or replacement                                | Controls whether a pack is rejected or the structure is revised |
+| Decision                    | Allowed form                                                                                         | Why it is consequential                                            |
+| --------------------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
+| Mission shape               | choose, revise or reject A/B/C                                                                       | Changes phase order, time aloft and inspection duty                |
+| Site and operating envelope | named type of site, people exclusion, altitude/stand-off bounds, wind, temperature and visibility    | Controls operational constraints and load/energy cases             |
+| Inspection image criterion  | target/feature and claim verb; capture mode; image scale or pixels; incidence, blur and overlap rule | Turns stand-off and coverage into a reviewable inspection question |
+| Reserve policy              | explicit energy, time or named reserve phase, with one calculation rule                              | Prevents an invented or double-counted reserve                     |
+| Thrust-margin criterion     | approved total-thrust-to-weight or another explicit rule                                             | Determines whether a bench operating point is acceptable           |
+| Installed-item census       | include/exclude list for payload, navigation, radio, guards, harness, fasteners and retention        | Controls all-up mass and auxiliary power                           |
+| Candidate configuration     | exact motor, propeller, ESC, battery and power architecture packet                                   | Determines which source data can enter the calculations            |
+| Battery keep-in status      | hard packaging constraint, soft starting hypothesis or replacement                                   | Controls whether a pack is rejected or the structure is revised    |
 
 Codex may prepare options and consequences. It must not supply these human decisions by
 placing plausible numbers in the worksheet.
@@ -73,13 +80,14 @@ named phase already included in the sum. Only one representation may be used.
 
 ## Evidence acquisition plan
 
-| Evidence class   | Smallest next evidence                                                                           | Permitted consequence                                                  |
-| ---------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------- |
-| Human            | scenario shape, operating envelope, reserve form, margin criterion and include/exclude census    | turns the corresponding blank into an approved requirement or decision |
-| Observed         | timed dry-run of the representative inspection workflow, without claiming a flight test          | supplies phase timing and simultaneous duty states                     |
-| Supplier / bench | exact component identities, comparable motor–propeller map, battery curve and electrical ratings | supplies candidate-specific inputs only                                |
-| Measured         | all-up mass/CG, propulsion electrical/thrust bench and auxiliary-power trace at named states     | replaces catalogue or assumed terms at the measured condition          |
-| Calculated       | mass, thrust, current, power, usable-energy and phase-energy arithmetic from the named inputs    | supports a reviewable screen, not an operating authorization           |
+| Evidence class    | Smallest next evidence                                                                               | Permitted consequence                                                    |
+| ----------------- | ---------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Human             | scenario shape, operating envelope, reserve form, margin criterion and include/exclude census        | turns the corresponding blank into an approved requirement or decision   |
+| Source/calculated | exact camera variant plus the [normalized optical lookup](camera-mission-geometry-basis-20260908.md) | supplies footprint and nominal sampling only; never defect detectability |
+| Observed          | timed dry-run of the representative inspection workflow, without claiming a flight test              | supplies phase timing and simultaneous duty states                       |
+| Supplier / bench  | exact component identities, comparable motor–propeller map, battery curve and electrical ratings     | supplies candidate-specific inputs only                                  |
+| Measured          | all-up mass/CG, propulsion electrical/thrust bench and auxiliary-power trace at named states         | replaces catalogue or assumed terms at the measured condition            |
+| Calculated        | mass, thrust, current, power, usable-energy and phase-energy arithmetic from the named inputs        | supports a reviewable screen, not an operating authorization             |
 
 The current F1404 and F1507 tables are static manufacturer bench evidence. Their
 throttle labels are not mission commands, and neither table supplies a flight power
@@ -93,11 +101,13 @@ mission decisions or propulsion bench data.
 The first algebraic vehicle screen may start only when all of the following are named:
 
 1. one reviewed scenario with phase durations and reserve rule;
-2. one complete installed-item census and a closed mass estimate or measurement;
-3. one exact motor–propeller bench map and its valid operating limits;
-4. one exact ESC, battery and current-path architecture;
-5. one usable-energy basis at the relevant current, temperature and cutoff;
-6. one approved thrust-margin criterion.
+2. one approved inspection-image criterion and capture/stand-off/coverage basis that can
+   justify the inspection path and dwell;
+3. one complete installed-item census and a closed mass estimate or measurement;
+4. one exact motor–propeller bench map and its valid operating limits;
+5. one exact ESC, battery and current-path architecture;
+6. one usable-energy basis at the relevant current, temperature and cutoff;
+7. one approved thrust-margin criterion.
 
 Until then, the scenario shapes stay proposals and all numeric mission outputs remain
 `unresolved`.
@@ -107,4 +117,8 @@ Until then, the scenario shapes stay proposals and all numeric mission outputs r
 One bounded native Grok review independently checked the authority split and recommended
 opening a worksheet without a solver. Codex retained scenario A only as a reversible
 proposal and kept every consequential number and choice blank. No Project/Thread
-mutation, provider run, human answer, Astra consultation or flight claim was made.
+mutation, provider run, human answer, Astra consultation or flight claim was made. A
+later three-task Grok-native pass covered camera sources, first-order geometry and
+minimal dossier integration. Codex independently reopened the official sources,
+recalculated the retained coefficients and kept stand-off, capture settings and image
+criteria unresolved.

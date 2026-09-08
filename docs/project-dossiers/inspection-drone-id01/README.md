@@ -254,7 +254,12 @@ gap explicit; nameplate Wh and C-rate are not endurance evidence.
 
 The [mission sizing decision sheet](mission-sizing-decision-sheet-20260908.md) now keeps
 three reversible workflow shapes separate from human decisions and deliberately leaves
-every numeric mission cell blank. The
+every numeric mission cell blank. A separate
+[camera-to-target geometry basis](camera-mission-geometry-basis-20260908.md) uses the
+official Camera Module 3 Standard `66° × 41°` full-resolution field angles to publish a
+unit-distance footprint and nominal object-plane sampling lookup. It selects no
+stand-off, capture mode, target feature or image criterion and is not evidence of defect
+detectability, installed image quality or sensitivity. The
 [battery packaging sensitivity](battery-packaging-sensitivity-20260908.md) recomputes
 all six orthogonal orientations at nominal and published maximum dimensions and keeps
 the CAD unchanged pending a viable pack. The
@@ -294,7 +299,9 @@ Current admitted Modelica may later carry only a sourced scalar question that fi
 closed grammar; current prescribed Chrono may later carry an explicit revolute
 mechanism, not rotor or flight dynamics. The plan queues none of those activities and
 invents no criterion. If physical evidence is later authorized, it remains tied to its
-article and protocol; it is not automatically persisted as sensitivity.
+article and protocol; it is not automatically persisted as sensitivity. Its new G0.8
+gate keeps source-backed optical geometry separate from a human-owned inspection
+criterion and later measured image quality.
 
 The freshly restarted read-only BFF now projects project r674 / Thread r93 under
 `engineering-workbench/0.6` and `engineering-cases/1.1`. The accepted assembly-integrity

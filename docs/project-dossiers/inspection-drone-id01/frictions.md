@@ -429,6 +429,18 @@ once and completed. Only that complete retry was reviewed. Codex independently r
 the retained manufacturer pages, so the dossier does not depend on partial stream text
 or on the wrapper cleanup warnings.
 
+A subsequent three-task camera/mission pass completed but reproduced the same optional
+plugin warnings and intermittent web-fetch output errors. Codex independently reopened
+the official Raspberry Pi brief and documentation and recalculated the accepted optical
+coefficients. No dossier claim depends on a failed fetch, and the user's global
+Grok/plugin configuration was left untouched.
+
+The following bounded final-diff reviewer recalculated the camera coefficients and
+started source and anchor checks, then stopped producing useful progress without a final
+verdict. Codex terminated it rather than extending a proportional documentation review;
+none of its partial stream was accepted. The independent arithmetic, formatting, link
+and source checks remain the acceptance evidence.
+
 This is a real agent-workflow friction, but not a safe repo-local quick win. Repairing
 it would change the user's global Grok/plugin configuration outside the ID01 scope and
 could affect other work. Leave that configuration untouched here. For now, keep each
