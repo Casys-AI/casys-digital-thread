@@ -8,6 +8,9 @@ import {
   CHRONO_ARM64_EMULATION_QUALIFICATION_CANDIDATE_ID,
 } from "../../src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
 import {
+  CALCULIX_HTTP_ARM64_NATIVE_QUALIFICATION_CANDIDATE_ID,
+} from "../../src/adapters/control-plane/first-party-calculix-http-runtime-qualification-candidates.ts";
+import {
   createLocalCapabilityRuntimeQualificationComposition,
 } from "../../src/adapters/control-plane/local-capability-runtime-qualification-composition.ts";
 
@@ -33,7 +36,9 @@ const FORBIDDEN_FLAGS = [
 
 export interface CapabilityRuntimeQualificationCliRequest {
   readonly command: "review" | "apply" | "recover";
-  readonly candidate: typeof CHRONO_ARM64_EMULATION_QUALIFICATION_CANDIDATE_ID;
+  readonly candidate:
+    | typeof CHRONO_ARM64_EMULATION_QUALIFICATION_CANDIDATE_ID
+    | typeof CALCULIX_HTTP_ARM64_NATIVE_QUALIFICATION_CANDIDATE_ID;
   readonly reviewFingerprint?: {
     readonly algorithm: "sha256";
     readonly digest: string;
@@ -48,16 +53,21 @@ export function parseCapabilityRuntimeQualificationCli(
   if (command !== "review" && command !== "apply" && command !== "recover") {
     throw new Error(
       "Usage: capability-runtime-qualification <review|apply|recover> " +
-        "--candidate=chrono-arm64-emulation-v1 [--review-fingerprint=<sha256>] " +
+        "--candidate=<chrono-arm64-emulation-v1|calculix-http-arm64-native-v1> " +
+        "[--review-fingerprint=<sha256>] " +
         "[--confirm]",
     );
   }
   const flags = parseFlags(rest);
   assertAllowedFlags(command, flags);
   const candidate = required(flags, "candidate");
-  if (candidate !== CHRONO_ARM64_EMULATION_QUALIFICATION_CANDIDATE_ID) {
+  if (
+    candidate !== CHRONO_ARM64_EMULATION_QUALIFICATION_CANDIDATE_ID &&
+    candidate !== CALCULIX_HTTP_ARM64_NATIVE_QUALIFICATION_CANDIDATE_ID
+  ) {
     throw new Error(
-      "Capability runtime qualification accepts only the code-owned chrono-arm64-emulation-v1 candidate.",
+      "Capability runtime qualification accepts only the code-owned " +
+        "chrono-arm64-emulation-v1 or calculix-http-arm64-native-v1 candidate.",
     );
   }
   if (command === "review" || command === "recover") {

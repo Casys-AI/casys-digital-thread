@@ -34,9 +34,12 @@ import type {
 } from "../../domain/capability/runtime/capability-runtime-catalog.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "../../adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "../../adapters/control-plane/first-party-capability-runtime-qualification-specifications.ts";
+import { createFirstPartyCalculixHttpRuntimeQualificationCandidates } from "../../adapters/control-plane/first-party-calculix-http-runtime-qualification-candidates.ts";
+import { createFirstPartyCalculixHttpRuntimeQualificationSpecifications } from "../../adapters/control-plane/first-party-calculix-http-runtime-qualification-specifications.ts";
 import { createCapabilityRuntimeQualificationSpecification } from "../../domain/capability/runtime/capability-runtime-qualification-specification.ts";
 import {
   capabilityRuntimeQualificationStoppedOutcomeReference,
+  createCapabilityRuntimeQualificationAttestation,
   createChronoRuntimeQualificationAttestation,
 } from "./capability-runtime-qualification-attestation-factory.ts";
 import {
@@ -80,6 +83,162 @@ Deno.test("an exact Chrono emulation attestation qualifies only its binding and 
   assertEquals(
     binding(effective, "calculix-http-static-sensitivity").runtimeModes,
     [],
+  );
+});
+
+Deno.test("a native CalculiX HTTP WAL reconstructs through the generic attestation factory and activates only on every exact axis", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const host = observedHost(HOST_A);
+  const chrono = await provenChrono(host);
+  const [[candidate], [spec]] = await Promise.all([
+    createFirstPartyCalculixHttpRuntimeQualificationCandidates(),
+    createFirstPartyCalculixHttpRuntimeQualificationSpecifications(),
+  ]);
+  if (!candidate || !spec) throw new Error("CalculiX qualification contract absent.");
+  const attempt = {
+    ...chrono.attempt,
+    candidate: { id: candidate.id, fingerprint: candidate.fingerprint },
+    requestId: "calculix-http-runtime-qualification-request-v1",
+    sourceFingerprint: spec.sourceFingerprint,
+    loweringFingerprint: spec.loweringFingerprint,
+    caseFingerprint: spec.caseFingerprint,
+    caseSha256: spec.caseFingerprint.digest,
+    caseUri: `calculix-case:sha256:${spec.caseFingerprint.digest}`,
+    qualificationSpecFingerprint: spec.fingerprint,
+  };
+  const event = await createCapabilityRuntimeQualificationAttestation({
+    attempt,
+    candidate,
+    spec,
+  });
+  const wrongObservedHostCandidate = {
+    ...candidate,
+    observedHostPlatform: "linux/amd64" as const,
+  };
+  assertEquals(
+    matchesCapabilityRuntimeQualificationCandidate(
+      event,
+      wrongObservedHostCandidate,
+      host,
+      spec,
+    ),
+    false,
+  );
+  await assertRejects(
+    () =>
+      createCapabilityRuntimeQualificationAttestation({
+        attempt,
+        candidate: wrongObservedHostCandidate,
+        spec,
+      }),
+    TypeError,
+    "observed host platform does not match",
+  );
+  const active = evaluateCapabilityRuntimeQualifications({
+    catalog,
+    host,
+    attestations: [event],
+    specs: [spec],
+    candidates: [candidate],
+    provenAttestations: [event],
+  });
+  assertEquals(
+    binding(active, "calculix-http-static-sensitivity").qualification,
+    "qualified",
+  );
+  assertEquals(
+    binding(active, "calculix-http-static-sensitivity").runtimeModes,
+    [{
+      material: event.material,
+      targetPlatform: "linux/arm64",
+      mode: "native",
+      qualificationAttestationFingerprint: event.fingerprint,
+    }],
+  );
+
+  const variants = [
+    ["spec", (value: MutableAttestation) => {
+      value.qualificationSpec = { id: spec.id, fingerprint: SPEC };
+    }],
+    ["digest", (value: MutableAttestation) => {
+      value.material.imageDigest = "f".repeat(64);
+    }],
+    ["group", (value: MutableAttestation) => {
+      value.launchGroup = {
+        id: "wrong-group",
+        version: "1",
+        fingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+      };
+    }],
+    ["host", (value: MutableAttestation) => {
+      value.observedHost.identityFingerprint = HOST_B;
+    }],
+  ] as const;
+  for (const [label, mutate] of variants) {
+    const mismatch = await reattest(event, mutate);
+    const inactive = evaluateCapabilityRuntimeQualifications({
+      catalog,
+      host,
+      attestations: [mismatch],
+      specs: [spec],
+      candidates: [candidate],
+      provenAttestations: [mismatch],
+    });
+    assertEquals(
+      binding(inactive, "calculix-http-static-sensitivity").qualification,
+      "unqualified",
+      label,
+    );
+  }
+
+  const isolatedProof =
+    await createCapabilityRuntimeQualificationIsolatedDestructionProof({
+      runId: "calculix-qualification-test-run",
+      producerGeneration: 0,
+      receiptFingerprint: null,
+      destruction: {
+        status: "proven",
+        runId: "calculix-qualification-test-run",
+        proofFingerprint: { algorithm: "sha256", digest: "f".repeat(64) },
+      },
+    });
+  const stoppedWithoutHostProof = { ...attempt, runtimeStopProof: isolatedProof };
+  await assertRejects(
+    () =>
+      createCapabilityRuntimeQualificationAttestation({
+        attempt: stoppedWithoutHostProof,
+        candidate,
+        spec,
+      }),
+    TypeError,
+    "requires a host stop proof",
+  );
+  const loaded = await loadProvenCapabilityRuntimeQualificationAttestations({
+    attempts: {
+      read: () =>
+        Promise.resolve({
+          ...stoppedWithoutHostProof,
+          phase: "attested" as const,
+          attestationFingerprint: event.fingerprint,
+        }),
+    },
+    attestations: [event],
+    candidates: [candidate],
+    specs: [spec],
+    host,
+  });
+  assertEquals(loaded, []);
+  const inactive = evaluateCapabilityRuntimeQualifications({
+    catalog,
+    host,
+    attestations: [event],
+    specs: [spec],
+    candidates: [candidate],
+    provenAttestations: loaded,
+  });
+  assertEquals(
+    binding(inactive, "calculix-http-static-sensitivity").qualification,
+    "unqualified",
   );
 });
 

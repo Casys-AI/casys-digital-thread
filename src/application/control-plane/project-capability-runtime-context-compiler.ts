@@ -18,7 +18,7 @@ import {
   evaluateCapabilityRuntimeQualifications,
   loadProvenCapabilityRuntimeQualificationAttestations,
 } from "./evaluate-capability-runtime-qualifications.ts";
-import type { CapabilityRuntimeQualificationCandidate } from "../../domain/capability/runtime/capability-runtime-qualification-candidate.ts";
+import type { CapabilityRuntimeAttestableQualificationCandidate } from "../../domain/capability/runtime/capability-runtime-qualification-candidate.ts";
 import type { CapabilityRuntimeQualificationSpecification } from "../../domain/capability/runtime/capability-runtime-qualification-specification.ts";
 import type { CapabilityRuntimeQualificationAttemptStore } from "../ports/out/capability/capability-runtime-qualification-attempt-store.ts";
 import type { ProjectCapabilityEffectiveEnvelope } from "../../domain/capability/project-capability-authorization.ts";
@@ -90,7 +90,8 @@ export interface ProjectCapabilityRuntimeContextCompilerOptions {
   readonly registry: Pick<EngineeringOperationRegistry, "list">;
   readonly catalog: CapabilityRuntimeCatalog;
   readonly qualificationSpecs: readonly CapabilityRuntimeQualificationSpecification[];
-  readonly qualificationCandidates: readonly CapabilityRuntimeQualificationCandidate[];
+  readonly qualificationCandidates:
+    readonly CapabilityRuntimeAttestableQualificationCandidate[];
   readonly policy: CapabilityRuntimeAdminPolicyReader;
   readonly host: CapabilityRuntimeHostObservationReader;
   readonly lock: CapabilityRuntimeAdminLockReader;

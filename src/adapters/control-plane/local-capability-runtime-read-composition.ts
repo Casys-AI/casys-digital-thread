@@ -30,6 +30,8 @@ import {
 import { createFirstPartyNonpersistentMicrosandboxExpectations } from "./first-party-capability-runtime-nonpersistent-materials.ts";
 import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./first-party-capability-runtime-qualification-candidates.ts";
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./first-party-capability-runtime-qualification-specifications.ts";
+import { createFirstPartyCalculixHttpRuntimeQualificationCandidates } from "./first-party-calculix-http-runtime-qualification-candidates.ts";
+import { createFirstPartyCalculixHttpRuntimeQualificationSpecifications } from "./first-party-calculix-http-runtime-qualification-specifications.ts";
 import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "./first-party-capability-runtime-launch-groups.ts";
 import { GroupCapabilityRuntimeHostObservationReader } from "./group-capability-runtime-host-observation-reader.ts";
 import { FileCapabilityRuntimeHostIdentityStore } from "./file-capability-runtime-host-identity-store.ts";
@@ -114,6 +116,11 @@ export interface LocalCapabilityRuntimeReadComposition {
   readonly hostIdentity: FileCapabilityRuntimeHostIdentityStore;
   readonly qualifications: FileCapabilityRuntimeQualificationAttestationStore;
   readonly qualificationAttempts: FileCapabilityRuntimeQualificationAttemptStore;
+  /** Deterministic Chrono then CalculiX attestation reconstruction inputs. */
+  readonly qualificationCandidates:
+    readonly import("../../domain/capability/runtime/capability-runtime-qualification-candidate.ts").CapabilityRuntimeAttestableQualificationCandidate[];
+  readonly qualificationSpecs:
+    readonly import("../../domain/capability/runtime/capability-runtime-qualification-specification.ts").CapabilityRuntimeQualificationSpecification[];
   readonly ledgers: FileProjectCapabilityLedgerStore;
   readonly contexts: ProjectCapabilityRuntimeContextCompiler;
   readonly workbench: ProjectCapabilityWorkbenchProjector;
@@ -130,13 +137,25 @@ export async function createLocalCapabilityRuntimeReadComposition(
   const [
     catalog,
     launchGroups,
-    qualificationCandidates,
-    qualificationSpecs,
+    chronoQualificationCandidates,
+    chronoQualificationSpecs,
+    calculixQualificationCandidates,
+    calculixQualificationSpecs,
   ] = await Promise.all([
     createFirstPartyCapabilityRuntimeCatalog(),
     createFirstPartyCapabilityRuntimeLaunchGroupRegistry(),
     createFirstPartyCapabilityRuntimeQualificationCandidates(),
     createFirstPartyCapabilityRuntimeQualificationSpecifications(),
+    createFirstPartyCalculixHttpRuntimeQualificationCandidates(),
+    createFirstPartyCalculixHttpRuntimeQualificationSpecifications(),
+  ]);
+  const qualificationCandidates = Object.freeze([
+    ...chronoQualificationCandidates,
+    ...calculixQualificationCandidates,
+  ]);
+  const qualificationSpecs = Object.freeze([
+    ...chronoQualificationSpecs,
+    ...calculixQualificationSpecs,
   ]);
   const journal = new FileCapabilityRuntimeJournal();
   const secrets: CapabilityRuntimeSecretSlotObserver = options.secrets ?? {
@@ -216,6 +235,8 @@ export async function createLocalCapabilityRuntimeReadComposition(
     hostIdentity,
     qualifications,
     qualificationAttempts,
+    qualificationCandidates,
+    qualificationSpecs,
     ledgers,
     contexts,
     workbench: new ProjectCapabilityWorkbenchProjector({ contexts, states }),

@@ -10,7 +10,10 @@ import {
   createCapabilityRuntimeBindingQualificationAttestation,
   fingerprintCapabilityRuntimeBindingQualificationAttestation,
 } from "../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
-import type { CapabilityRuntimeQualificationCandidate } from "../../domain/capability/runtime/capability-runtime-qualification-candidate.ts";
+import type {
+  CapabilityRuntimeAttestableQualificationCandidate,
+  CapabilityRuntimeQualificationCandidate,
+} from "../../domain/capability/runtime/capability-runtime-qualification-candidate.ts";
 import type { CapabilityRuntimeQualificationSpecification } from "../../domain/capability/runtime/capability-runtime-qualification-specification.ts";
 import {
   type CapabilityRuntimeQualificationAttempt,
@@ -19,23 +22,28 @@ import {
 import { CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA } from "../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
 import { fingerprintsEqual } from "../../domain/kernel/deterministic-json.ts";
 
-export async function createChronoRuntimeQualificationAttestation(input: {
+/**
+ * Reconstructs the one attestation that a stopped, recorded qualification WAL
+ * can support. Fixture internals remain owned by each candidate; only its
+ * identity projection participates here.
+ */
+export async function createCapabilityRuntimeQualificationAttestation(input: {
   readonly attempt: Extract<
     CapabilityRuntimeQualificationAttempt,
     { readonly phase: "stopped" }
   >;
-  readonly candidate: CapabilityRuntimeQualificationCandidate;
+  readonly candidate: CapabilityRuntimeAttestableQualificationCandidate;
   readonly spec: CapabilityRuntimeQualificationSpecification;
 }): Promise<CapabilityRuntimeBindingQualificationAttestation> {
   const { attempt, candidate, spec } = input;
   if (attempt.phase !== "stopped") {
     throw new TypeError(
-      "Chrono qualification attestation requires a stopped recorded attempt.",
+      "Runtime qualification attestation requires a stopped recorded attempt.",
     );
   }
   if (attempt.outcome.status !== "qualified" || attempt.outcome.basis !== "recorded") {
     throw new TypeError(
-      "Chrono qualification attestation requires a recorded qualified outcome.",
+      "Runtime qualification attestation requires a recorded qualified outcome.",
     );
   }
   if (
@@ -43,12 +51,17 @@ export async function createChronoRuntimeQualificationAttestation(input: {
       CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA
   ) {
     throw new TypeError(
-      "Chrono qualification attestation requires a host stop proof.",
+      "Runtime qualification attestation requires a host stop proof.",
     );
   }
   if (!fingerprintsEqual(attempt.candidate.fingerprint, candidate.fingerprint)) {
     throw new TypeError(
-      "Chrono qualification attestation candidate fingerprint does not match.",
+      "Runtime qualification attestation candidate fingerprint does not match.",
+    );
+  }
+  if (attempt.observedHost.platform !== candidate.observedHostPlatform) {
+    throw new TypeError(
+      "Runtime qualification attestation observed host platform does not match the candidate.",
     );
   }
   if (
@@ -60,7 +73,7 @@ export async function createChronoRuntimeQualificationAttestation(input: {
     !fingerprintsEqual(attempt.qualificationSpecFingerprint, spec.fingerprint)
   ) {
     throw new TypeError(
-      "Chrono qualification attestation requires the exact current specification.",
+      "Runtime qualification attestation requires the exact current specification.",
     );
   }
   const body = {
@@ -93,6 +106,21 @@ export async function createChronoRuntimeQualificationAttestation(input: {
       body,
     ),
   });
+}
+
+/**
+ * Compatibility entry point for the existing Chrono writer. Its argument and
+ * produced bytes remain exactly the original Chrono contract.
+ */
+export async function createChronoRuntimeQualificationAttestation(input: {
+  readonly attempt: Extract<
+    CapabilityRuntimeQualificationAttempt,
+    { readonly phase: "stopped" }
+  >;
+  readonly candidate: CapabilityRuntimeQualificationCandidate;
+  readonly spec: CapabilityRuntimeQualificationSpecification;
+}): Promise<CapabilityRuntimeBindingQualificationAttestation> {
+  return await createCapabilityRuntimeQualificationAttestation(input);
 }
 
 export async function capabilityRuntimeQualificationStoppedOutcomeReference(

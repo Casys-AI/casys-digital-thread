@@ -198,6 +198,24 @@ export async function canonicalCalculixHttpRuntimeQualificationCandidateText(
   );
 }
 
+/**
+ * Reopens only the fixed repository fixture.  It deliberately takes no path,
+ * bytes, digest, or provider input from a caller.
+ */
+export async function readCalculixHttpRuntimeQualificationFixtureStepBytes(
+  candidate: CalculixHttpRuntimeQualificationCandidate,
+): Promise<Uint8Array> {
+  await validateCalculixHttpRuntimeQualificationCandidate(candidate);
+  const bytes = await Deno.readFile(BRACKET_STEP_FIXTURE);
+  if (
+    bytes.byteLength !== candidate.fixture.step.byteCount ||
+    await fingerprintResourceBytes(bytes) !== candidate.fixture.step.sha256
+  ) {
+    throw new TypeError("CalculiX qualification STEP fixture drifted.");
+  }
+  return bytes;
+}
+
 function qualificationMethod(): SensitivityStaticStructuralMethod {
   return deepFreeze({
     mesh: { kind: "tetrahedral-volume", targetSizeMm: 3 },

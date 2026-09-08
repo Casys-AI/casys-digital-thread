@@ -6,6 +6,10 @@ import {
   createLocalCapabilityRuntimeReadComposition,
   overlayExecutionProfiles,
 } from "./local-capability-runtime-read-composition.ts";
+import { CHRONO_ARM64_EMULATION_QUALIFICATION_CANDIDATE_ID } from "./first-party-capability-runtime-qualification-candidates.ts";
+import { CALCULIX_HTTP_ARM64_NATIVE_QUALIFICATION_CANDIDATE_ID } from "./first-party-calculix-http-runtime-qualification-candidates.ts";
+import { CHRONO_ARM64_EMULATION_QUALIFICATION_SPEC_ID } from "./first-party-capability-runtime-qualification-specifications.ts";
+import { CALCULIX_HTTP_ARM64_NATIVE_QUALIFICATION_SPEC_ID } from "./first-party-calculix-http-runtime-qualification-specifications.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import { createFirstPartyNonpersistentMicrosandboxExpectations } from "./first-party-capability-runtime-nonpersistent-materials.ts";
 
@@ -29,6 +33,24 @@ Deno.test("local read composition observes every catalogued microVM without opti
       "casys.geometry-module-assembler-worker\u0000geometry-module-assembler-worker-image",
     ),
     true,
+  );
+});
+
+Deno.test("local read composition deterministically supplies Chrono then CalculiX qualification reconstruction inputs", async () => {
+  const composition = await createLocalCapabilityRuntimeReadComposition();
+  assertEquals(
+    composition.qualificationCandidates.map((candidate) => candidate.id),
+    [
+      CHRONO_ARM64_EMULATION_QUALIFICATION_CANDIDATE_ID,
+      CALCULIX_HTTP_ARM64_NATIVE_QUALIFICATION_CANDIDATE_ID,
+    ],
+  );
+  assertEquals(
+    composition.qualificationSpecs.map((spec) => spec.id),
+    [
+      CHRONO_ARM64_EMULATION_QUALIFICATION_SPEC_ID,
+      CALCULIX_HTTP_ARM64_NATIVE_QUALIFICATION_SPEC_ID,
+    ],
   );
 });
 

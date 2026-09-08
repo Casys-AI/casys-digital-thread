@@ -32,6 +32,10 @@ Deno.test("the first-party Chrono qualification candidate is exact and code-owne
   assertEquals(candidate.mode, "emulated");
   assertEquals(candidate.fixture.source.bodies.length, 2);
   assertEquals(candidate.fixture.source.joints.length, 1);
+  assertEquals(candidate.fingerprint, {
+    algorithm: "sha256",
+    digest: "36664d5dad8f1eaad59f669bce97508e465e90464c096f8aa213375cab5ea2fa",
+  });
   assertEquals(Object.isFrozen(candidate), true);
 });
 

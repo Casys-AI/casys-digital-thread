@@ -1,7 +1,7 @@
 import { assertEquals } from "@std/assert";
 import { LocalChronoRuntimeSecretResolver } from "./local-chrono-runtime-secret-resolver.ts";
 
-Deno.test("qualification composition constructs one secret resolver for review, Compose overlay and Chrono client", async () => {
+Deno.test("qualification composition constructs one secret resolver and routes only the fixed Chrono and CalculiX probes", async () => {
   const text = await Deno.readTextFile(
     new URL("./local-capability-runtime-qualification-composition.ts", import.meta.url),
   );
@@ -15,6 +15,14 @@ Deno.test("qualification composition constructs one secret resolver for review, 
     text.includes("createLocalCapabilityRuntimeReadComposition({ secrets })"),
     true,
   );
+  assertEquals(
+    text.includes("CALCULIX_HTTP_ARM64_NATIVE_QUALIFICATION_CANDIDATE_ID"),
+    true,
+  );
+  assertEquals(text.includes("createFixedRecordedCalculixSensitivityProvider()"), true);
+  assertEquals(text.includes("createFixedCalculixSensitivityResourceReader()"), true);
+  assertEquals(text.includes("CapabilityRuntimeCalculixInputStagerFactory"), true);
+  assertEquals(text.includes("state/local/sensitivity-step-cache"), true);
   assertEquals(text.includes("src/tools/"), false);
   assertEquals(text.includes("orchestration/operations"), false);
   assertEquals(text.includes("FileCapabilityRuntimeRolloverSagaStore"), false);

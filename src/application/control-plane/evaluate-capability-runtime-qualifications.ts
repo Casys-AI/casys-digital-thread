@@ -16,14 +16,14 @@ import {
   fingerprintCapabilityRuntimeObservedHost,
 } from "../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
 import type { CapabilityRuntimeMaterialRuntimeMode } from "../../domain/capability/runtime/capability-runtime-material.ts";
-import type { CapabilityRuntimeQualificationCandidate } from "../../domain/capability/runtime/capability-runtime-qualification-candidate.ts";
+import type { CapabilityRuntimeAttestableQualificationCandidate } from "../../domain/capability/runtime/capability-runtime-qualification-candidate.ts";
 import type { CapabilityRuntimeQualificationSpecification } from "../../domain/capability/runtime/capability-runtime-qualification-specification.ts";
 import type { CapabilityRuntimeQualificationAttemptStore } from "../ports/out/capability/capability-runtime-qualification-attempt-store.ts";
 import { CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA } from "../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
 import { fingerprintsEqual } from "../../domain/kernel/deterministic-json.ts";
 import {
   capabilityRuntimeQualificationStoppedOutcomeReference,
-  createChronoRuntimeQualificationAttestation,
+  createCapabilityRuntimeQualificationAttestation,
   stoppedQualificationAttemptFrom,
 } from "./capability-runtime-qualification-attestation-factory.ts";
 import type {
@@ -39,7 +39,7 @@ export interface CapabilityRuntimeQualificationEvaluationInput {
   readonly host: CapabilityRuntimeHostObservation;
   readonly attestations: readonly CapabilityRuntimeBindingQualificationAttestation[];
   readonly specs: readonly CapabilityRuntimeQualificationSpecification[];
-  readonly candidates: readonly CapabilityRuntimeQualificationCandidate[];
+  readonly candidates: readonly CapabilityRuntimeAttestableQualificationCandidate[];
   /** Attestations reconstructed from exact phase-attested WAL attempts. */
   readonly provenAttestations:
     readonly CapabilityRuntimeBindingQualificationAttestation[];
@@ -175,7 +175,7 @@ function effectiveMaterialAttestation(
 export async function loadProvenCapabilityRuntimeQualificationAttestations(input: {
   readonly attempts: Pick<CapabilityRuntimeQualificationAttemptStore, "read">;
   readonly attestations: readonly CapabilityRuntimeBindingQualificationAttestation[];
-  readonly candidates: readonly CapabilityRuntimeQualificationCandidate[];
+  readonly candidates: readonly CapabilityRuntimeAttestableQualificationCandidate[];
   readonly specs: readonly CapabilityRuntimeQualificationSpecification[];
   readonly host: Pick<
     CapabilityRuntimeHostObservation,
@@ -208,7 +208,7 @@ export async function loadProvenCapabilityRuntimeQualificationAttestations(input
     ) {
       continue;
     }
-    const expected = await createChronoRuntimeQualificationAttestation({
+    const expected = await createCapabilityRuntimeQualificationAttestation({
       attempt: stoppedQualificationAttemptFrom(attempt),
       candidate,
       spec,
@@ -235,14 +235,14 @@ export async function loadProvenCapabilityRuntimeQualificationAttestations(input
 
 type CurrentSpecBinding = {
   readonly spec: CapabilityRuntimeQualificationSpecification;
-  readonly candidate: CapabilityRuntimeQualificationCandidate;
+  readonly candidate: CapabilityRuntimeAttestableQualificationCandidate;
 };
 
 type CurrentSpecIndex = Map<string, CurrentSpecBinding[]>;
 
 function indexCurrentSpecs(
   specs: readonly CapabilityRuntimeQualificationSpecification[],
-  candidates: readonly CapabilityRuntimeQualificationCandidate[],
+  candidates: readonly CapabilityRuntimeAttestableQualificationCandidate[],
 ): CurrentSpecIndex {
   const byCandidate = new Map(
     candidates.map((candidate) => [
@@ -293,7 +293,7 @@ function materialSpecKey(
 
 export function matchesCapabilityRuntimeQualificationCandidate(
   event: CapabilityRuntimeBindingQualificationAttestation,
-  candidate: CapabilityRuntimeQualificationCandidate,
+  candidate: CapabilityRuntimeAttestableQualificationCandidate,
   observedHost: Pick<
     CapabilityRuntimeObservedHost,
     "identityFingerprint" | "platform"
@@ -320,6 +320,7 @@ export function matchesCapabilityRuntimeQualificationCandidate(
     event.material.imageDigest === candidate.material.imageDigest &&
     event.targetPlatform === candidate.targetPlatform &&
     event.mode === candidate.mode &&
+    event.observedHost.platform === candidate.observedHostPlatform &&
     event.launchGroup !== null &&
     event.launchGroup.id === candidate.launchGroup.id &&
     event.launchGroup.version === candidate.launchGroup.version &&

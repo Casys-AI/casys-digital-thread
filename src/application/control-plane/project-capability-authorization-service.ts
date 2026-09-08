@@ -54,7 +54,7 @@ import {
   loadProvenCapabilityRuntimeQualificationAttestations,
 } from "./evaluate-capability-runtime-qualifications.ts";
 import type { CapabilityRuntimeQualificationAttemptStore } from "../ports/out/capability/capability-runtime-qualification-attempt-store.ts";
-import type { CapabilityRuntimeQualificationCandidate } from "../../domain/capability/runtime/capability-runtime-qualification-candidate.ts";
+import type { CapabilityRuntimeAttestableQualificationCandidate } from "../../domain/capability/runtime/capability-runtime-qualification-candidate.ts";
 import type { CapabilityRuntimeQualificationSpecification } from "../../domain/capability/runtime/capability-runtime-qualification-specification.ts";
 import type {
   CapabilityRuntimeAdminLockReader,
@@ -72,7 +72,8 @@ export interface ProjectCapabilityAuthorizationServiceDependencies {
   /** Server-composed CAS reader; callers never select a plan or provider. */
   readonly recordedPlans: ResolvedRunPlanReader;
   readonly qualificationSpecs: readonly CapabilityRuntimeQualificationSpecification[];
-  readonly qualificationCandidates: readonly CapabilityRuntimeQualificationCandidate[];
+  readonly qualificationCandidates:
+    readonly CapabilityRuntimeAttestableQualificationCandidate[];
   /** Durable local administrator policy or a fixed test fixture. */
   readonly policy:
     | CapabilityRuntimeAdminPolicy

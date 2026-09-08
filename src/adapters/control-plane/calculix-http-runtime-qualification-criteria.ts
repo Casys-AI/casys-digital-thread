@@ -26,7 +26,10 @@ export const CALCULIX_HTTP_QUALIFICATION_CRITERIA = deepFreeze({
 });
 
 export interface CalculixHttpQualificationEvidence {
-  readonly recordedDispatch: unknown;
+  /** Exact attempt-derived request id used for this host solve. */
+  readonly requestId: string;
+  /** Recovery has no persisted dispatch response; readback remains authoritative. */
+  readonly recordedDispatch?: unknown;
   readonly recordedReadback: unknown;
   readonly requestJsonBytes: Uint8Array;
   readonly resultJsonBytes: Uint8Array;
@@ -46,9 +49,11 @@ export async function assertCalculixHttpQualificationEvidence(
   candidate: CalculixHttpRuntimeQualificationCandidate,
   evidence: CalculixHttpQualificationEvidence,
 ): Promise<void> {
-  const dispatch = parseRecordedCalculixCompletedDispatch(evidence.recordedDispatch);
+  const dispatch = evidence.recordedDispatch === undefined
+    ? undefined
+    : parseRecordedCalculixCompletedDispatch(evidence.recordedDispatch);
   const completed = parseRecordedCalculixCompletedReadback(evidence.recordedReadback, {
-    requestId: candidate.fixture.case.requestId,
+    requestId: evidence.requestId,
     stepSha256: candidate.fixture.step.sha256,
     stepBytes: candidate.fixture.step.byteCount,
     dispatch,

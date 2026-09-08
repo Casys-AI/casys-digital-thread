@@ -326,7 +326,7 @@ export class McpCalculixSensitivitySolver implements SensitivityStaticStructural
         }`,
       );
     }
-    validateListedResourceBijection(listed, readback);
+    assertRecordedCalculixResourceListBijection(listed, readback);
     let captured: ProviderResourceCaptureResult<
       "calculix-sensitivity-provider-manifest"
     >;
@@ -447,10 +447,7 @@ export class McpCalculixSensitivitySolver implements SensitivityStaticStructural
 
 /** Only production constructor: all wire/runtime details stay server-owned. */
 export function createFixedMcpCalculixSensitivitySolver(): McpCalculixSensitivitySolver {
-  const endpoint = MCP_CALCULIX_SENSITIVITY_ENDPOINT;
-  const provider = new HttpRecordedCalculixSensitivityProvider(
-    new StatelessMcpHttpTransport({ mcpUrl: endpoint, timeoutMs: 180_000 }),
-  );
+  const provider = createFixedRecordedCalculixSensitivityProvider();
   const artifacts = new FileByteStore({
     kind: "calculix-sensitivity-provider-artifact",
     directory: "state/local/calculix-sensitivity-provider-artifacts",
@@ -460,7 +457,7 @@ export function createFixedMcpCalculixSensitivitySolver(): McpCalculixSensitivit
   return new McpCalculixSensitivitySolver({
     provider,
     capture: new ProviderResourceCaptureService({
-      reader: new HttpMcpResourceReader({ mcpUrl: endpoint, timeoutMs: 180_000 }),
+      reader: createFixedCalculixSensitivityResourceReader(),
       artifactStore: artifacts,
       ledgerStore: new FileByteStore({
         kind: "calculix-sensitivity-provider-ledger",
@@ -476,6 +473,30 @@ export function createFixedMcpCalculixSensitivitySolver(): McpCalculixSensitivit
       }),
     }),
     artifacts,
+  });
+}
+
+/**
+ * Fixed recorded-run client for host qualification and the product adapter.
+ * It exposes neither endpoint nor tool selection; both remain sealed here.
+ */
+export function createFixedRecordedCalculixSensitivityProvider(): RecordedCalculixSensitivityProvider {
+  return new HttpRecordedCalculixSensitivityProvider(
+    new StatelessMcpHttpTransport({
+      mcpUrl: MCP_CALCULIX_SENSITIVITY_ENDPOINT,
+      timeoutMs: 180_000,
+    }),
+  );
+}
+
+/**
+ * Fixed resource reader paired with the same sealed recorded-run endpoint.
+ * Callers must still supply each already-validated ledger tuple.
+ */
+export function createFixedCalculixSensitivityResourceReader(): HttpMcpResourceReader {
+  return new HttpMcpResourceReader({
+    mcpUrl: MCP_CALCULIX_SENSITIVITY_ENDPOINT,
+    timeoutMs: 180_000,
   });
 }
 
@@ -858,7 +879,12 @@ function parseReadbackResources(
   });
 }
 
-function validateListedResourceBijection(
+/**
+ * Proves that resources/list exposes exactly the recorded run ledger, in the
+ * provider-owned order. Qualification reuses this same adapter boundary so a
+ * host cannot qualify through a weaker resource contract than a product run.
+ */
+export function assertRecordedCalculixResourceListBijection(
   value: unknown,
   readback: SensitivityRecordedSolveReadback,
 ): void {

@@ -49,7 +49,49 @@ export interface CapabilityRuntimeQualificationFixture {
   readonly sourceFingerprint: ContentFingerprint;
 }
 
-export interface CapabilityRuntimeQualificationCandidate {
+/**
+ * The exact identity axes an attestation can bind.  Different runtime probes
+ * may retain their own closed fixture body, but must expose this small common
+ * projection so attestation and read-time overlaying do not depend on a
+ * particular provider's fixture format.
+ */
+export interface CapabilityRuntimeAttestableQualificationCandidate {
+  readonly id: string;
+  readonly version: string;
+  readonly binding: { readonly id: string; readonly version: string };
+  readonly selector: {
+    readonly capability: { readonly id: string; readonly version: string };
+    readonly use: "preparation" | "execution";
+  };
+  readonly contract: {
+    readonly id: string;
+    readonly version: string;
+    readonly source: string;
+  };
+  readonly profile: {
+    readonly id: string;
+    readonly version: string;
+    readonly fingerprint: ContentFingerprint | null;
+  } | null;
+  readonly unit: {
+    readonly id: string;
+    readonly version: string;
+    readonly manifestFingerprint: ContentFingerprint;
+  };
+  readonly material: CapabilityRuntimeMaterialIdentity;
+  readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+  readonly observedHostPlatform: CapabilityRuntimeQualificationCandidatePlatform;
+  readonly targetPlatform: CapabilityRuntimeQualificationCandidatePlatform;
+  readonly mode: CapabilityRuntimeQualificationCandidateMode;
+  readonly fixture: {
+    readonly id: string;
+    readonly sourceFingerprint: ContentFingerprint;
+  };
+  readonly fingerprint: ContentFingerprint;
+}
+
+export interface CapabilityRuntimeQualificationCandidate
+  extends CapabilityRuntimeAttestableQualificationCandidate {
   readonly schemaVersion:
     typeof CAPABILITY_RUNTIME_QUALIFICATION_CANDIDATE_SCHEMA_VERSION;
   readonly id: string;

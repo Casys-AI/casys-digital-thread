@@ -1,7 +1,7 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import { parseCapabilityRuntimeQualificationCli } from "./capability-runtime-qualification.ts";
 
-Deno.test("qualification CLI accepts only review, apply and recover with the code-owned candidate", () => {
+Deno.test("qualification CLI accepts review, apply and recover with either code-owned candidate", () => {
   assertEquals(
     parseCapabilityRuntimeQualificationCli([
       "review",
@@ -27,6 +27,26 @@ Deno.test("qualification CLI accepts only review, apply and recover with the cod
       "--candidate=chrono-arm64-emulation-v1",
     ]).command,
     "recover",
+  );
+  assertEquals(
+    parseCapabilityRuntimeQualificationCli([
+      "review",
+      "--candidate=calculix-http-arm64-native-v1",
+    ]),
+    {
+      command: "review",
+      candidate: "calculix-http-arm64-native-v1",
+      confirm: false,
+    },
+  );
+  assertEquals(
+    parseCapabilityRuntimeQualificationCli([
+      "apply",
+      "--candidate=calculix-http-arm64-native-v1",
+      `--review-fingerprint=${"b".repeat(64)}`,
+      "--confirm",
+    ]).candidate,
+    "calculix-http-arm64-native-v1",
   );
 });
 
@@ -65,7 +85,7 @@ Deno.test("qualification CLI refuses provider, image, digest, platform, mode, UR
         "--candidate=other-runtime",
       ]),
     Error,
-    "chrono-arm64-emulation-v1",
+    "calculix-http-arm64-native-v1",
   );
   assertThrows(
     () => parseCapabilityRuntimeQualificationCli(["status"]),

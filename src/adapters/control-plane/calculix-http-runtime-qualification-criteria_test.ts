@@ -142,6 +142,7 @@ async function evidence(
     artifacts,
   };
   return {
+    requestId: candidate.fixture.case.requestId,
     recordedDispatch: {
       schemaVersion: "2.0",
       kind: "static-solve-recorded",
