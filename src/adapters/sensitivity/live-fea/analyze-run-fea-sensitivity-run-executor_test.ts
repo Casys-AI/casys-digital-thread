@@ -56,6 +56,10 @@ import {
   AnalyzeRunFeaSensitivityRunExecutor,
 } from "./analyze-run-fea-sensitivity-run-executor.ts";
 import { FileSensitivityExperienceReuseAttemptStore } from "../experience/file-sensitivity-experience-reuse-attempt-store.ts";
+import {
+  BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
+  BUILD123D_ISOLATED_WORKER_UNIT_ID,
+} from "../../cad/isolated/worker-contract.ts";
 
 const AT = "2026-08-14T00:00:00.000Z";
 const PROJECT_ID = "desk-lamp-dl04";
@@ -104,6 +108,41 @@ Deno.test("the step used for the finite difference is the sealed case step", asy
     await fixture.executor.execute(AGENT, fixture.command);
     assertEquals(fixture.runner.sources[0]?.includes("size_z = 50"), true);
     assertEquals(fixture.runner.sources[1]?.includes("size_z = 51"), true);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("the capability session receives the exact Build123d Microsandbox profile attestation", async () => {
+  const fixture = await createFixture();
+  try {
+    await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(fixture.capabilitySessionProfiles, [[{
+      material: {
+        unitId: BUILD123D_ISOLATED_WORKER_UNIT_ID,
+        materialId: BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
+        imageDigest: BUILD123D_IMAGE_DIGEST,
+      },
+      executionProfileFingerprint: BUILD123D_PROFILE_FINGERPRINT,
+    }]]);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
+Deno.test("a Build123d Microsandbox digest mismatch is rejected before session or dispatch", async () => {
+  const fixture = await createFixture({
+    build123dLifecycleDigest: "8".repeat(64),
+  });
+  try {
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "does not match",
+    );
+    assertEquals(fixture.capabilitySessionProfiles, []);
+    assertEquals(fixture.runner.sources, []);
+    assertEquals(fixture.solver.calls, 0);
   } finally {
     await fixture.dispose();
   }
@@ -489,6 +528,7 @@ Deno.test("sensitivity refuses a divergent fail receipt on output-validation rep
 
 async function createFixture(options: {
   readonly admissionDigest?: string;
+  readonly build123dLifecycleDigest?: string;
   readonly experienceOutcome?: "miss" | "hit" | "hit-interrupt";
   readonly experienceAdmissionFails?: boolean;
   readonly rejectOutputValidation?: boolean;
@@ -890,7 +930,11 @@ async function createFixture(options: {
     step: studyCase.step,
     executionProfile: BUILD123D_EXECUTION_PROFILE,
   })).digest;
-  const runtimeOperation = sensitivityRuntimeOperation();
+  const build123dProfile = fakeProfile();
+  const runtimeOperation = sensitivityRuntimeOperation(
+    options.build123dLifecycleDigest ?? BUILD123D_IMAGE_DIGEST,
+  );
+  const capabilitySessionProfiles: unknown[] = [];
   const runtime = {
     operationalCapabilityFingerprint:
       await fingerprintResolvedCapabilityRuntimeOperation(runtimeOperation),
@@ -920,6 +964,7 @@ async function createFixture(options: {
     attempts,
     reuseAttempts,
     experienceStats,
+    capabilitySessionProfiles,
     planDigest,
     runtime,
     studyCaptures,
@@ -983,7 +1028,7 @@ async function createFixture(options: {
           ) {
             return Promise.reject(new Error("unsealed execution profile"));
           }
-          return Promise.resolve(fakeProfile());
+          return Promise.resolve(build123dProfile);
         },
       },
       runner,
@@ -996,10 +1041,16 @@ async function createFixture(options: {
         requireExecution: () => Promise.resolve(runtimeOperation as never),
       },
       capabilityRuntimeSession: {
-        async begin(input: { readonly recheck: () => Promise<unknown> }) {
+        async begin(input: {
+          readonly microsandboxExecutionProfiles: readonly unknown[];
+          readonly recheck: () => Promise<unknown>;
+        }) {
           if (options.failCapabilitySession) {
             throw new Error("fixture capability session unavailable");
           }
+          capabilitySessionProfiles.push(
+            structuredClone(input.microsandboxExecutionProfiles),
+          );
           await input.recheck();
           return {
             lease: {} as never,
@@ -1030,14 +1081,39 @@ function fakeProfile(): Build123dExecutionProfile {
       format: "step-ap214",
     }],
     maximumSourceBytes: 1_000_000,
+    runtimeBackend: {
+      id: "microsandbox-local",
+      version: "0.6.8",
+      lifecycle: "attached",
+      network: "none",
+      imageReference:
+        `docker.io/casys/build123d-microsandbox-worker@sha256:${BUILD123D_IMAGE_DIGEST}`,
+      imageDigest: BUILD123D_IMAGE_FINGERPRINT,
+    },
+    profileFingerprint: BUILD123D_PROFILE_FINGERPRINT,
   } as unknown as Build123dExecutionProfile;
 }
 
-function sensitivityRuntimeOperation() {
+const BUILD123D_IMAGE_DIGEST = "6".repeat(64);
+const BUILD123D_IMAGE_FINGERPRINT = {
+  algorithm: "sha256" as const,
+  digest: BUILD123D_IMAGE_DIGEST,
+};
+const BUILD123D_PROFILE_FINGERPRINT = {
+  algorithm: "sha256" as const,
+  digest: "7".repeat(64),
+};
+
+function sensitivityRuntimeOperation(build123dImageDigest: string) {
   const material = {
     unitId: "casys.mcp-calculix",
     materialId: "mcp-calculix-image",
     imageDigest: "4".repeat(64),
+  };
+  const build123dMaterial = {
+    unitId: BUILD123D_ISOLATED_WORKER_UNIT_ID,
+    materialId: BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
+    imageDigest: build123dImageDigest,
   };
   return {
     schemaVersion: "resolved-capability-runtime-operation/2.0" as const,
@@ -1047,6 +1123,36 @@ function sensitivityRuntimeOperation() {
     demandFingerprint: { algorithm: "sha256" as const, digest: "2".repeat(64) },
     registryFingerprint: { algorithm: "sha256" as const, digest: "3".repeat(64) },
     bindings: [{
+      capability: {
+        id: "geometry.execute-admitted-source",
+        version: "1",
+        use: "preparation" as const,
+        minimumQualification: "qualified" as const,
+      },
+      binding: {
+        id: "build123d-execute-admitted-source-preparation",
+        version: "1.0.0",
+      },
+      effectiveQualification: "qualified" as const,
+      adapter: {
+        id: "build123d-isolated-execution-adapter",
+        version: "1.0.0",
+        source: "fixture",
+      },
+      profile: null,
+      materials: [build123dMaterial],
+      runtimeModes: [{
+        material: build123dMaterial,
+        targetPlatform: "linux/arm64" as const,
+        mode: "native" as const,
+        qualificationAttestationFingerprint: null,
+      }],
+      hostLifecycles: [{
+        material: build123dMaterial,
+        kind: "ephemeral-microsandbox" as const,
+        launchGroup: null,
+      }],
+    }, {
       capability: {
         id: "mechanics.observe-static-structural-sensitivity",
         version: "1",

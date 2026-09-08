@@ -148,6 +148,10 @@ import type {
 } from "../experience/sensitivity-experience-coordinator.ts";
 import type { FileSensitivityExperienceReuseAttemptStore } from "../experience/file-sensitivity-experience-reuse-attempt-store.ts";
 import type { SensitivityExperienceReuseAttempt } from "../experience/file-sensitivity-experience-reuse-attempt-store.ts";
+import {
+  BUILD123D_ISOLATED_WORKER_MATERIAL_ID,
+  BUILD123D_ISOLATED_WORKER_UNIT_ID,
+} from "../../cad/isolated/worker-contract.ts";
 
 export { ANALYZE_RUN_FEA_SENSITIVITY_OPERATION };
 
@@ -365,10 +369,14 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     }
     await assertThreadWriteBasisAvailable(preClaim, preRun);
     await requireMrtrApproval(preClaim, preRun);
+    const build123dProfile = await this.#profiles.resolve(
+      BUILD123D_EXECUTION_PROFILE,
+    );
     const { capabilitySession, runtime } = await this.#beginCapabilitySession(
       preClaim,
       preRun,
       command.runId,
+      build123dProfile,
     );
     const terminal = async (result: EngineeringProjectSnapshot) => {
       await capabilitySession.releaseTerminal();
@@ -452,7 +460,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         throw invalidTransition("The sealed step did not change the admitted source.");
       }
 
-      const profile = await this.#profiles.resolve(BUILD123D_EXECUTION_PROFILE);
+      const profile = build123dProfile;
       let experienceTarget: SensitivityExperienceTarget | undefined;
       if (this.#experience) {
         try {
@@ -1788,6 +1796,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     project: EngineeringProjectSnapshot,
     run: EngineeringAgentRun,
     runId: string,
+    build123dProfile: Build123dExecutionProfile,
   ): Promise<{
     readonly capabilitySession: CapabilityRuntimeExecutionSession;
     readonly runtime: FeaSensitivityRuntimeAttestation;
@@ -1810,11 +1819,18 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       );
     }
     const runtime = await sensitivityRuntimeAttestation(operationalCapability);
+    const build123dLifecycle = exactSensitivityBuild123dMicrosandboxLifecycle(
+      operationalCapability,
+      build123dProfile,
+    );
     const capabilitySession = await this.#capabilityRuntimeSession.begin({
       project,
       runId,
       operationalCapability,
-      microsandboxExecutionProfiles: [],
+      microsandboxExecutionProfiles: [{
+        material: build123dLifecycle.material,
+        executionProfileFingerprint: build123dProfile.profileFingerprint,
+      }],
       recheck: async () => {
         const currentProject = await this.#requiredProject(project.project.id);
         const currentRun = requireRun(currentProject, runId);
@@ -2025,6 +2041,42 @@ async function sensitivityRuntimeAttestation(
     },
     launchGroup: lifecycle.launchGroup!,
   };
+}
+
+function exactSensitivityBuild123dMicrosandboxLifecycle(
+  operationalCapability: ResolvedCapabilityRuntimeOperation,
+  profile: Build123dExecutionProfile,
+) {
+  const microsandbox = operationalCapability.bindings.flatMap((binding) =>
+    binding.hostLifecycles.filter((lifecycle) =>
+      lifecycle.kind === "ephemeral-microsandbox"
+    )
+  );
+  if (microsandbox.length !== 1) {
+    throw invalidTransition(
+      "Recorded CalculiX sensitivity execution requires exactly one sealed Build123d Microsandbox material before host activation.",
+    );
+  }
+  const lifecycle = microsandbox[0]!;
+  if (
+    lifecycle.material.unitId !== BUILD123D_ISOLATED_WORKER_UNIT_ID ||
+    lifecycle.material.materialId !== BUILD123D_ISOLATED_WORKER_MATERIAL_ID
+  ) {
+    throw invalidTransition(
+      "Recorded CalculiX sensitivity execution requires the exact code-owned Build123d Microsandbox material before host activation.",
+    );
+  }
+  if (
+    lifecycle.material.imageDigest !== profile.runtimeBackend.imageDigest.digest ||
+    !profile.runtimeBackend.imageReference.endsWith(
+      `@sha256:${lifecycle.material.imageDigest}`,
+    )
+  ) {
+    throw invalidTransition(
+      "Recorded CalculiX sensitivity Build123d lifecycle does not match the freshly reopened server-owned execution profile.",
+    );
+  }
+  return lifecycle;
 }
 
 function isolatedOutputValidationFailure(

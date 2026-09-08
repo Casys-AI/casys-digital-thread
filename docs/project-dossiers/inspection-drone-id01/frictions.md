@@ -1073,6 +1073,24 @@ from diverging. Focused composition and qualification evaluation tests pass 56/5
 fix changes only effective qualification reconstruction; it does not auto-authorize the
 project, queue a run or create engineering evidence.
 
+## F41 — the sensitivity executor omitted its Build123d microVM profile attestation
+
+(mitigated, live queued-run replay pending, quick win)
+
+The first execution attempt for the queued sensitivity run stopped before claim, CAD,
+provider dispatch or execution WAL. Its authorized operation contained the exact
+ephemeral Build123d preparation lifecycle, but the executor supplied an empty
+`microsandboxExecutionProfiles` list to the capability session. The session correctly
+rejected the missing one-to-one profile attestation; the cache itself was never queried.
+
+The executor now reopens the code-owned Build123d profile before host activation,
+requires exactly one sealed lifecycle for the exact Build123d worker material, recrosses
+its image digest and pinned reference, and supplies that material with the profile
+fingerprint to the capability session. Tests prove the exact positive tuple and that a
+digest mismatch leaves session, CAD and provider untouched. Closure requires replaying
+the still-queued run through the real session; this code check alone is not a
+sensitivity result.
+
 ## Expected states, not defects
 
 - The old preview was explicitly pinned to TPS03. It correctly ignored the new durable
