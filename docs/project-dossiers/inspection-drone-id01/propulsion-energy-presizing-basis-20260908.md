@@ -20,6 +20,11 @@ quantified mission, a complete mass inventory, a selected motor/propeller/ESC/ba
 set, or comparable operating curves. Those states remain `unresolved`; the CAD envelopes
 and the 5 N RadialArm bench case are not substituted for them.
 
+The later
+[propulsion source-control packet](propulsion-source-control-packet-20260908.md) reopens
+the official motor drawings and T3140 product specification. It narrows several
+interfaces below without selecting a candidate or changing Project/Thread truth.
+
 ## Evidence classes
 
 | Class                   | Current evidence                                                                                                    | Permitted use                                                            |
@@ -41,6 +46,13 @@ lists several F1404 variants. For **KV4600** it reports 9.34 g including cable, 
 17.9 mm by height 16.6 mm, 138 mΩ internal resistance, 2 mm shaft, 3–4S LiPo, 0.6 A idle
 current at 10 V, 20 A peak current for 60 s, and 316 W maximum power for 60 s. These are
 catalogue facts, not an ID01 selection or compatibility proof.
+
+The same product packet's
+[official mechanical drawing](https://www.ligpower.com/images/202408/091723192759157166.jpg)
+instead labels the projecting shaft `Ø1.5`. It also depicts four M2 motor-base holes on
+a diameter-9 construction circle, without giving pitch, tolerance or usable thread
+depth. The base topology can now be retained as a candidate drawing fact; the shaft
+diameter cannot be chosen from the contradictory table and drawing.
 
 Two rows from the same manufacturer's KV4600 + **GF3016** bench table are retained as a
 minimal traceable bracket:
@@ -72,18 +84,18 @@ reports a 76.49 mm diameter, 1.6 inch pitch, 1.18 g mass, 5.5 mm hub thickness,
 three-hole mounting and recommended 1108–1303 motor classes, which do not include 1404.
 Its leading specification block says `1.5 mm, 2 mm, 3-hole design`, while its detailed
 table says only `1.5 mm, 3-hole design`. The LIGPOWER page specifies a 2 mm shaft for
-F1404 KV4600, while the official
+F1404 KV4600, while its own mechanical drawing and the official
 [T-Hobby store page for the same named variant](https://www.t-hobby.com/products/micro-fpv-drones-brushless-motor)
-specifies 1.5 mm. The bench proves only that something labelled `GF3016` was tested with
-the named motor; it does not resolve those conflicting shaft data or identify the same
-Gemfan maker, SKU, revision and mounting variant. Both **propeller identity** and the
-complete **mating interface** therefore remain `unresolved`. The smallest closing
-supplier packet is a written cross-reference from `GF3016` to its exact maker,
-SKU/revision, diameter, pitch, blade count and mounting variant, plus a controlled
-motor/propeller interface drawing and clarification of the 1.5-versus-2 mm shaft datum.
-If the 76.49 mm Gemfan diameter were later proven to be the tested part, the same
-nominal layout would give 64.931356 mm between adjacent discs and 11.755 mm radially to
-the deck planform.
+specify 1.5 mm; a T-Hobby specification image repeats 2 mm. The bench proves only that
+something labelled `GF3016` was tested with the named motor; it does not resolve those
+conflicting shaft data or identify the same Gemfan maker, SKU, revision and mounting
+variant. Both **propeller identity** and the complete **mating interface** therefore
+remain `unresolved`. The smallest closing supplier packet is a written cross-reference
+from `GF3016` to its exact maker, SKU/revision, diameter, pitch, blade count and
+mounting variant, plus a controlled motor/propeller interface drawing and clarification
+of the 1.5-versus-2 mm shaft datum. If the 76.49 mm Gemfan diameter were later proven to
+be the tested part, the same nominal layout would give 64.931356 mm between adjacent
+discs and 11.755 mm radially to the deck planform.
 
 ### Candidate ESC screen — F35A
 
@@ -149,10 +161,11 @@ The official
 [F1507 manufacturer page](https://www.ligpower.com/product/f1507-kv3800-fpv-motor.html)
 contains a table literally pairing **F1507 KV3800** with **T3140 Tri-Blade**. The same
 official product family exposes a separate
-[T3140 page](https://www.t-hobby.com/products/t3140?variant=61dc0ef6-74f9-49fd-87cd-a4207934cf3b)
-whose title and description identify T3140 as a tri-blade propeller with a 5 mm centre
-hub. This exact shared name is a stronger identity lead than decoding `GF3016`, but it
-is still not a controlled revision or complete physical-interface proof.
+[LIGPOWER T3140 page](https://www.ligpower.com/product/t3140-fpv-propeller.html), while
+the [T-Hobby store page](https://www.t-hobby.com/products/t3140) repeats the tri-blade
+name and `5 mm center hub` wording. This exact shared name is a stronger identity lead
+than decoding `GF3016`, but it is still not a controlled bench-to-product revision or
+complete physical-interface proof.
 
 For KV3800, the motor page reports 15 g including 100 mm 24 AWG cable, 18.9 mm diameter
 × 29.7 mm height, 81 mΩ internal resistance, 2 mm shaft, 3–4S LiPo, 0.9 A idle current
@@ -176,11 +189,22 @@ therefore preserved as a reported source row, not interpreted as a permitted con
 or 60-second operating point. Supplier clarification or a controlled replacement map is
 required before using that boundary for design.
 
-The separate propeller page does not provide a complete diameter, pitch, mass, inertia,
-revision or motor-attachment drawing in the accessible text used here. Its 5 mm centre
-hub and the motor page's 2 mm shaft are not silently treated as a complete mating
-interface. Propeller clearance and installed propulsion mass therefore remain
-`unresolved` for this alternative.
+The official T3140 specification image and catalogue row now supply `3.1 in`
+(`78.74 mm`) diameter, `4.0 in` pitch, three blades, polymer, `2 g` catalogue mass,
+`5 mm` mounting hole and `6 mm` centre-hub thickness. Four catalogue items would
+therefore sum conditionally to `8 g` before retention hardware. That arithmetic does not
+make the item selected, establish installed mass or supply inertia, tolerance, balance,
+rotation-hand allocation or revision.
+
+The
+[F1507 mechanical drawing](https://www.ligpower.com/images/202408/091723192900674709.jpg)
+distinguishes the `2 mm` rear/internal motor shaft from a front `M5 × 0.8` / `Ø5 mm`
+propeller adapter, and the packing list names an M5 self-locking nut. That adapter,
+T3140's `5 mm` hole and the M5 nut form a coherent nominal retention chain. They still
+do not provide a controlled fit/tolerance stack, seating face, usable engagement,
+tightening requirement or confirmation that the current T3140 revision is the bench
+specimen. Physical integration remains `unresolved`, but no longer because `2 mm` and
+`5 mm` were assumed to describe the same F1507 mating surface.
 
 Two other Grok-proposed alternatives are not retained as exact-identity candidates.
 `HQ3*3*3` in an F1404 KV3800 bench table is not a controlled cross-reference to the
@@ -318,7 +342,7 @@ from CAD volume.
 | [Raspberry Pi Camera Module 3 **standard**](https://www.raspberrypi.com/documentation/accessories/camera.html#hardware-specifications) |                                  4 g | Official hardware table; camera cable, mount and fasteners excluded                                                                                                              |
 | [Raspberry Pi Zero 2 W](https://www.raspberrypi.com/news/what-can-you-build-with-raspberry-pi-zero/)                                   | 12 g, lower-assurance external datum | Raspberry Pi's official 2025 editorial comparison reports 12 g, but the current product page and product brief omit mass; microSD, header, cable, cooling and enclosure excluded |
 | [Gemfan Hurricane 3016](https://www.gemfanhobby.com/3016-hurricane-pc-3-blade.html)                                                    |                 1.18 g per propeller | Official Gemfan candidate fact, but excluded from the configuration subtotal because identity with LIGPOWER's `GF3016` and F1404 fit remain unresolved                           |
-| [T-Hobby T3140](https://www.t-hobby.com/products/t3140?variant=61dc0ef6-74f9-49fd-87cd-a4207934cf3b)                                   |                         `unresolved` | Exact-name F1507 bench lead; accessible product text does not close propeller mass, complete geometry, revision or physical mounting interface                                   |
+| [LIGPOWER T3140](https://www.ligpower.com/product/t3140-fpv-propeller.html)                                                            |           `2 g` catalogue item datum | Exact-name F1507 bench lead; four-item arithmetic is conditionally `8 g`, but revision, tolerance, inertia, retention hardware and installed mass remain unresolved              |
 | [Holybro PM02 V3, SKU 15010](https://holybro.com/products/pm02-v3-12s-power-module)                                                    |                                 20 g | Candidate power-module mass only; no built-in PDB, installed harness, protection, connector adaptation or position; excluded from every subtotal                                 |
 | [Holybro PM06 V2 14S, SKU 15019](https://holybro.com/products/micro-power-module-pm06-v2)                                              |                                 24 g | Alternative candidate with four distribution pads; published height conflicts; installed harness, protection and position excluded                                               |
 | [Gens ace 200 mAh 4S](https://genstattu.com/gens-ace-200mah-4s-14-8v-30c-lipo-battery-pack-with-jst-plug/)                             |                         22 g nominal | Official page conflicts between ±5 g and ±20 g tolerances; geometrically fitting candidate, but excluded from a viable configuration because its label-current screen fails      |
@@ -418,6 +442,13 @@ deflection, motor-axis tolerances, shaft/hub fit, guards, nearby subsystems, air
 rotation. A selected propeller diameter and deformed operating envelope must replace the
 proxy before any dynamic-clearance claim.
 
+The sourced T3140 diameter gives a narrower candidate-only screen without changing CAD:
+`141.421356 − 78.74 = 62.681356 mm` between adjacent nominal discs,
+`200 − 78.74 = 121.26 mm` between opposite discs, and `100 − 78.74 / 2 − 50 = 10.63 mm`
+radially to the deck planform. The current proxy under-represents T3140 by `2.54 mm` in
+diameter. Positive nominal gaps do not establish rotating, deformed or tolerance-aware
+clearance.
+
 ## Calculation contract
 
 No default derating, reserve, thrust-to-weight ratio or safety factor is inserted. Each
@@ -443,16 +474,16 @@ law.
 
 ## Inputs still required
 
-| Input packet         | Minimum content                                                                                                                            | Current state                                                                                                               |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| Mission              | Endurance target, inspection dwell, transit, reserve, wind/temperature envelope, payload duty cycle                                        | `unresolved`                                                                                                                |
-| Mass and position    | Airframe, four propulsion units, battery, avionics, camera, wiring, fasteners and landing gear                                             | Closure worksheet now exposes every current class; materials, installed census, total mass and CG remain `unresolved`       |
-| Motor                | Exact variant, mass, dimensions, voltage/current/thermal limits and matching test map                                                      | F1404 KV4600 and F1507 KV3800 are documented alternatives only; F1507 exceeds the current CAD motor envelope                |
-| Propeller            | Exact maker/part, diameter, pitch, blade count, mass/inertia, hub interface and thrust/torque map                                          | `GF3016` identity unresolved; T3140 is an exact-name bench lead with incomplete physical identity/interface; CAD is a proxy |
-| ESC                  | Exact part, mass/envelope, voltage, continuous/burst current conditions, efficiency, cooling and protocol                                  | F35A passes a nameplate screen only; firmware, pairing, efficiency, cooling, wiring and installation remain `unresolved`    |
-| Battery              | Chemistry, series/parallel layout, pack mass/envelope, capacity curve, resistance, continuous/burst current, cutoff and temperature limits | Five sourced packs fail reserve containment; one fits geometrically but fails the first-row current screen                  |
-| Payload and avionics | Actual mass, centre, voltage/current and simultaneous duty                                                                                 | Typical Pi bare-board current and supply limits are sourced; mission duty and installed-system power remain `unresolved`    |
-| Interfaces           | Propeller–shaft, motor–arm, ESC cooling/wiring, battery retention/connector, power distribution, regulated rails and protection            | `unresolved`; separate electrical architecture basis now exposes the decision packet                                        |
+| Input packet         | Minimum content                                                                                                                            | Current state                                                                                                                                                                      |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Mission              | Endurance target, inspection dwell, transit, reserve, wind/temperature envelope, payload duty cycle                                        | `unresolved`                                                                                                                                                                       |
+| Mass and position    | Airframe, four propulsion units, battery, avionics, camera, wiring, fasteners and landing gear                                             | Closure worksheet now exposes every current class; materials, installed census, total mass and CG remain `unresolved`                                                              |
+| Motor                | Exact variant, mass, dimensions, voltage/current/thermal limits and matching test map                                                      | F1404 KV4600 and F1507 KV3800 are documented alternatives only; F1507 exceeds the current CAD motor envelope                                                                       |
+| Propeller            | Exact maker/part, diameter, pitch, blade count, mass/inertia, hub interface and thrust/torque map                                          | `GF3016` identity unresolved; T3140 has catalogue geometry/mass and a nominal M5 chain, but revision, tolerances, inertia and installed evidence remain unresolved; CAD is a proxy |
+| ESC                  | Exact part, mass/envelope, voltage, continuous/burst current conditions, efficiency, cooling and protocol                                  | F35A passes a nameplate screen only; firmware, pairing, efficiency, cooling, wiring and installation remain `unresolved`                                                           |
+| Battery              | Chemistry, series/parallel layout, pack mass/envelope, capacity curve, resistance, continuous/burst current, cutoff and temperature limits | Five sourced packs fail reserve containment; one fits geometrically but fails the first-row current screen                                                                         |
+| Payload and avionics | Actual mass, centre, voltage/current and simultaneous duty                                                                                 | Typical Pi bare-board current and supply limits are sourced; mission duty and installed-system power remain `unresolved`                                                           |
+| Interfaces           | Propeller–shaft, motor–arm, ESC cooling/wiring, battery retention/connector, power distribution, regulated rails and protection            | F1404 base and F1507/T3140 nominal drawings narrow two candidates; fit, tolerance, engagement and every selected installed interface remain `unresolved`                           |
 
 ## Verification sequence
 
@@ -475,16 +506,19 @@ law.
 
 ## Review boundary
 
-Fourteen completed native Grok consultations ran across seven bounded review passes. The
+Eighteen completed native Grok consultations ran across eight bounded review passes. The
 first pair used a clean, repository-free sandbox for method cross-checks; after the
 human explicitly requested continued Grok-native work on this project, the later reviews
 read only the relevant dossier files. They independently checked motor arithmetic,
 battery screens, the partial mass ledger, mission equations, source identities,
 packaging, electrical architecture and the next mission-decision boundary. The latest
 four reviews covered one task each: alternative propulsion, mission sheet, power
-architecture and battery-tray sensitivity. A parallel battery search was cancelled after
-the recurring permission-classifier timeout and contributed no accepted verdict, as were
-an earlier STEP audit and supplier-identity run.
+architecture and battery-tray sensitivity. A new four-way source-control pass then
+audited F1404, T3140, `GF3016`, and the F1507/T3140 assembly chain. All four completed;
+Codex independently inspected the linked official drawings and specification image
+before accepting the corrections. A parallel battery search was cancelled after the
+recurring permission-classifier timeout and contributed no accepted verdict, as were an
+earlier STEP audit and supplier-identity run.
 
 Codex inspected the source pages and repository facts, recalculated the values, rehashed
 the selected source and STEP bytes, derived the simple constructive-solid volumes and

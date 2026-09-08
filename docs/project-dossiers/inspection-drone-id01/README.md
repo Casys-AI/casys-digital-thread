@@ -230,14 +230,18 @@ complete.
 The
 [propulsion and energy pre-sizing basis](propulsion-energy-presizing-basis-20260908.md)
 now records two source-backed propulsion leads. F1404 KV4600 + `GF3016` retains a full
-exact-row arithmetic screen but unresolved propeller identity and conflicting shaft
-data. F1507 KV3800 + T3140 has a stronger exact-name bench link and a bounded two-row
-screen, but its 100% bench endpoint exceeds the same page's 60-second motor ratings and
-the motor is larger/heavier than the current CAD envelope. Neither is selected. Six
-official 4S battery candidates remain screened: five fail orthogonal containment in the
-current 38 × 34 × 25 mm reserve; the sixth fits geometrically but fails even the first
-retained F1404 label-current row. This bounded search found no candidate that passes
-both screens, not proof that no 4S pack can do so.
+exact-row arithmetic screen but unresolved propeller identity and an internal
+table-versus-drawing shaft conflict. The
+[propulsion source-control packet](propulsion-source-control-packet-20260908.md) now
+fingerprints the official drawings and T3140 specification. F1507 KV3800 + T3140 has a
+stronger exact-name bench link, sourced 3.1-inch geometry, 2 g catalogue mass and a
+coherent nominal M5 retention chain, but its revision/tolerances remain open, its 100%
+bench endpoint exceeds the same page's 60-second motor ratings, and both motor and
+propeller exceed the current CAD proxies. Neither is selected. Six official 4S battery
+candidates remain screened: five fail orthogonal containment in the current 38 × 34 × 25
+mm reserve; the sixth fits geometrically but fails even the first retained F1404
+label-current row. This bounded search found no candidate that passes both screens, not
+proof that no 4S pack can do so.
 
 The [mission sizing decision sheet](mission-sizing-decision-sheet-20260908.md) now keeps
 three reversible workflow shapes separate from human decisions and deliberately leaves
@@ -269,7 +273,9 @@ propulsion benches, physical interfaces, electrical/thermal work, an external ca
 Current admitted Modelica may later carry only a sourced scalar question that fits its
 closed grammar; current prescribed Chrono may later carry an explicit revolute
 mechanism, not rotor or flight dynamics. The plan queues none of those activities and
-invents no criterion.
+invents no criterion. It also makes sensitivity explicit: packaging and candidate
+substitution checks are active now, while whole-vehicle sweeps wait for one reviewed
+mission, installed census and exact propulsion packet.
 
 The freshly restarted read-only BFF now projects project r674 / Thread r93 under
 `engineering-workbench/0.6` and `engineering-cases/1.1`. The accepted assembly-integrity

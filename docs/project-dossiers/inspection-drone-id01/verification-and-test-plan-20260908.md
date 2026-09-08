@@ -62,18 +62,37 @@ the exact output of the earlier gate that supplies its inputs.
 
 ## G0 — documentary closure now
 
-| ID   | Verification question                       | Entrance evidence                                                           | Smallest credible method and output                                                                                                            | Criterion owner                                        | Explicit non-claim                                                                   |
-| ---- | ------------------------------------------- | --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
-| G0.1 | What mission is being sized?                | human-selected civil façade/roof mission kind; r5 pending                   | complete the [mission decision sheet](mission-sizing-decision-sheet-20260908.md) with one reviewed scenario, phases, envelope and reserve rule | human                                                  | scenario A/B/C proposals are not requirements or operating authorization             |
-| G0.2 | What is physically installed?               | current architecture, COTS leads and missing-item census                    | freeze include/exclude rows for every occurrence, harness, fastener, guard and retention item                                                  | human for inclusion; supplier or measurement for facts | an envelope occurrence is not an installed item                                      |
-| G0.3 | What are mass, CG and inertia inputs?       | G0.2 plus sourced/measured mass and position                                | complete `Σm` and `Σmr`; measure as-built items when available; retain inertia `unresolved` until sourced or measured                          | human measurement/process basis                        | CAD volume and geometric centroid are not physical mass, CoM or inertia              |
-| G0.4 | Which propulsion packet is exact?           | F1404/`GF3016` and F1507/T3140 conflicts                                    | supplier-controlled maker/SKU/revision, geometry, interface, limits and comparable bench map                                                   | human selects only after source closure                | a bench label or decoded product name is not a controlled cross-reference            |
-| G0.5 | Which battery and power topology are exact? | six battery screens; PM02/PM06 leads; no viable current+keep-in combination | select one pack and one main-path topology; draw every net, measurement plane, branch, regulator, connector and protection element             | human                                                  | catalogue C-rate and supply ratings are not delivered mission current or consumption |
-| G0.6 | What static packaging survives?             | exact selected envelopes and placement basis                                | orthogonal keep-in, connector/service volume, CG and nominal clearance worksheet                                                               | human clearance/keep-in policy                         | containment is not retention, cooling, electrical safety or dynamic clearance        |
-| G0.7 | What are the acceptance criteria?           | mission/configuration decisions above                                       | name thrust margin, usable-energy/reserve rule, electrical limits and interface/test criteria with provenance                                  | human or external authority                            | the agent does not choose plausible values                                           |
+| ID   | Verification question                       | Entrance evidence                                                                                           | Smallest credible method and output                                                                                                            | Criterion owner                                        | Explicit non-claim                                                                   |
+| ---- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ | ------------------------------------------------------------------------------------ |
+| G0.1 | What mission is being sized?                | human-selected civil façade/roof mission kind; r5 pending                                                   | complete the [mission decision sheet](mission-sizing-decision-sheet-20260908.md) with one reviewed scenario, phases, envelope and reserve rule | human                                                  | scenario A/B/C proposals are not requirements or operating authorization             |
+| G0.2 | What is physically installed?               | current architecture, COTS leads and missing-item census                                                    | freeze include/exclude rows for every occurrence, harness, fastener, guard and retention item                                                  | human for inclusion; supplier or measurement for facts | an envelope occurrence is not an installed item                                      |
+| G0.3 | What are mass, CG and inertia inputs?       | G0.2 plus sourced/measured mass and position                                                                | complete `Σm` and `Σmr`; measure as-built items when available; retain inertia `unresolved` until sourced or measured                          | human measurement/process basis                        | CAD volume and geometric centroid are not physical mass, CoM or inertia              |
+| G0.4 | Which propulsion packet is exact?           | [source-control packet](propulsion-source-control-packet-20260908.md): F1404/`GF3016` and F1507/T3140 HOLDs | supplier-controlled maker/SKU/revision, geometry, interface, limits and comparable bench map                                                   | human selects only after source closure                | a bench label or decoded product name is not a controlled cross-reference            |
+| G0.5 | Which battery and power topology are exact? | six battery screens; PM02/PM06 leads; no viable current+keep-in combination                                 | select one pack and one main-path topology; draw every net, measurement plane, branch, regulator, connector and protection element             | human                                                  | catalogue C-rate and supply ratings are not delivered mission current or consumption |
+| G0.6 | What static packaging survives?             | exact selected envelopes and placement basis                                                                | orthogonal keep-in, connector/service volume, CG and nominal clearance worksheet                                                               | human clearance/keep-in policy                         | containment is not retention, cooling, electrical safety or dynamic clearance        |
+| G0.7 | What are the acceptance criteria?           | mission/configuration decisions above                                                                       | name thrust margin, usable-energy/reserve rule, electrical limits and interface/test criteria with provenance                                  | human or external authority                            | the agent does not choose plausible values                                           |
 
 G0 exits only when one candidate configuration can be calculated without filling an
 unknown with a default. Until then no solver is needed.
+
+## Sensitivity activation rule
+
+Sensitivity is already active where the inputs are explicit and reversible: the battery
+note checks every orthogonal orientation, the configuration matrix compares exclusive
+candidate substitutions, and the propulsion source packet calculates the
+static-clearance effect of replacing the 3.0-inch proxy by the sourced 3.1-inch T3140
+datum.
+
+A whole-vehicle sensitivity sweep is **not active yet**. It starts only after G0.1, G0.2
+and G0.4 provide one reviewed mission scenario, an installed-item census and one exact
+propulsion packet. Its first bounded variables will be sourced or human-approved ranges
+for total mass, mission-phase duration/power, usable battery energy, reserve and the
+applicable motor–propeller operating region. No default range or probability
+distribution is inserted by the agent.
+
+The registered `verify.evaluate-sensitivity-base@1` operation is not a generic vehicle
+sizing tool: it evaluates an exact FEA sensitivity-base identity and cannot replace this
+documentary configuration/mission analysis or authorize a source correction.
 
 ## G1–G2 — component, aerodynamic and structural evidence
 

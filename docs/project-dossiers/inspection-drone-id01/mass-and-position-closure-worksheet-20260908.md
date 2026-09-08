@@ -59,12 +59,14 @@ its physical mass, or its mass centre.
 | Item/category                                         |            Current mass datum | Current position datum                               | Evidence class                                                      | In vehicle sum |
 | ----------------------------------------------------- | ----------------------------: | ---------------------------------------------------- | ------------------------------------------------------------------- | -------------- |
 | F1404 KV4600 motor ×4                                 | `9.34 g` each, cable included | four `MotorEnvelope` axes only; physical CoM absent  | official candidate catalogue; exact propeller pairing unresolved    | no             |
-| F1507 KV3800 motor ×4                                 |   `15 g` each, cable included | no fitting CAD envelope; physical CoM absent         | separate official candidate; T3140 bench name, interface unresolved | no             |
+| F1507 KV3800 motor ×4                                 |   `15 g` each, cable included | no fitting CAD envelope; physical CoM absent         | separate official candidate; nominal T3140/M5 chain, fit unresolved | no             |
 | F35A ESC ×4                                           |                  `4.3 g` each | no CAD occurrence or installation position           | official related-product image; pairing and installation unresolved | no             |
 | Pixhawk 6C Mini Model A Current ×1                    |                      `42.4 g` | `AutopilotEnvelope` pose only; physical CoM absent   | official technical specification, candidate                         | no             |
 | Camera Module 3 standard ×1                           |                         `4 g` | `CameraBoardEnvelope` pose only; physical CoM absent | official hardware table, candidate                                  | no             |
 | Raspberry Pi Zero 2 W ×1                              |                        `12 g` | provisional `CompanionComputerEnvelope` pose only    | lower-assurance official editorial mass; installed assembly absent  | no             |
-| Exact propeller ×4 plus attachment hardware           |                             — | static proxy axes only                               | `GF3016` unresolved; T3140 mass/interface also unresolved           | no             |
+| Exact `GF3016` propeller ×4 plus attachment hardware  |                             — | static proxy axes only                               | bench label has no controlled maker/SKU/revision or interface       | no             |
+| T3140 candidate propeller ×4                          |         `2 g` each, catalogue | static proxy axes only; physical CoM absent          | exact-name bench lead; revision, inertia and installed mass absent  | no             |
+| Propeller retention hardware ×4                       |                             — | —                                                    | F1507 drawing and packing show a nominal M5 chain only              | no             |
 | Selected battery plus restraint                       |                             — | reserved-volume keep-in only                         | no candidate passes both current bounded screens                    | no             |
 | Holybro PM02 V3 candidate ×1                          |                          20 g | —                                                    | official candidate; no built-in PDB; not selected                   | no             |
 | Holybro PM06 V2 14S candidate ×1                      |                          24 g | —                                                    | alternative with four PDB pads; height conflict; not selected       | no             |
@@ -85,6 +87,13 @@ original F1404-based subtotal. See the
 [electrical architecture basis](electrical-power-architecture-basis-20260908.md) and
 [battery packaging sensitivity](battery-packaging-sensitivity-20260908.md) before
 forming a configuration subtotal.
+
+The official T3140 card now permits the isolated conditional arithmetic `4 × 2 g = 8 g`.
+Combining it only with the four F1507 motor catalogue masses gives `60 + 8 = 68 g`
+before propeller nuts, other retention hardware, ESCs or wiring. The
+[source-control packet](propulsion-source-control-packet-20260908.md) keeps the missing
+revision, tolerance, inertia and installed-mass evidence visible; this arithmetic is not
+entered in the vehicle sum.
 
 ## Completion rule
 

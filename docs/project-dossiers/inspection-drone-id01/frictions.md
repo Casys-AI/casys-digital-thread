@@ -337,6 +337,14 @@ authority-hygiene correction, not as a resolved motor interface. The ordinary bo
 CAD path can encode four explicit cutters once an exact datum is proven, but geometry
 capability does not supply the missing supplier fact.
 
+Follow-up on 2026-09-08 directly retrieved and visually inspected the later official
+LIGPOWER drawing, fingerprinted in the
+[propulsion source-control packet](propulsion-source-control-packet-20260908.md). It
+depicts four M2 base holes on a diameter-9 construction circle. This later evidence
+narrows the candidate motor-base topology, but it does not retrospectively make the r613
+question answered, select F1404, state thread depth/tolerance or resolve the propeller
+interface. No CAD or Project mutation followed.
+
 ## F13 — no registered generic propulsion/energy pre-sizing authority (open, deferred)
 
 Project r672–r674 records the human priority and a pending brief r5 for a sourced
@@ -397,6 +405,12 @@ In the next four-way pre-selection review, three bounded sessions completed. The
 propulsion session instead started an internal delegation, waited on it repeatedly and
 was terminated without an accepted verdict. Codex completed that source review directly;
 the stalled session contributed no project fact.
+
+A later four-way source-control audit completed all four bounded Grok sessions, while
+repeating the same unrelated plugin collisions, unsupported-permission warnings and
+failed optional MCP startup. Codex independently reopened and inspected the official
+sources before accepting any engineering statement. The successful answers do not close
+F14: the noise and global configuration remain outside the ID01 repository's authority.
 
 This is a real agent-workflow friction, but not a safe repo-local quick win. Repairing
 it would change the user's global Grok/plugin configuration outside the ID01 scope and
@@ -459,12 +473,13 @@ F16 remains open and deferred.
 
 ## F17 — official F1404 shaft and `GF3016` identity data conflict (open, external evidence)
 
-The LIGPOWER page for F1404 KV4600 states a 2 mm shaft, while the official T-Hobby store
-page for the same named variant states 1.5 mm. The current Gemfan Hurricane 3016 page is
-also internally ambiguous: its leading block lists `1.5 mm, 2 mm, 3-hole design`, while
-its detailed table lists `1.5 mm, 3-hole design`. The LIGPOWER bench table names only
-`GF3016`; it supplies no maker, SKU, revision or controlled mounting drawing that proves
-which propeller and interface were tested.
+The LIGPOWER F1404 KV4600 product table states a 2 mm shaft, while its own official
+mechanical drawing labels the projecting shaft `Ø1.5`. The T-Hobby official storefront
+also mixes 1.5 mm text with a 2 mm specification image. The current Gemfan Hurricane
+3016 page is internally ambiguous: its leading block lists
+`1.5 mm, 2 mm, 3-hole design`, while its detailed table lists `1.5 mm, 3-hole design`.
+The LIGPOWER bench table names only `GF3016`; it supplies no maker, SKU, revision or
+controlled mounting drawing that proves which propeller and interface were tested.
 
 This is a real source-quality and physical-interface friction, not a safe CAD quick win.
 Choosing one visible number would silently invent authority and could put holes, a hub
@@ -498,9 +513,17 @@ thermal design without clarification.
 
 The smallest closure packet is a manufacturer-controlled revision of the KV3800 + T3140
 map, explicit allowable-current/power duration and temperature limits, and the exact
-propeller revision/interface. Until then the candidate remains unselected. No solver,
-CAD edit, provider operation or Project mutation can correct this external evidence
-conflict; F18 remains open for supplier follow-up.
+propeller revision/interface. A later official-source pass did close part of that
+documentary gap: the T3140 card now gives 3.1-inch diameter, 4.0-inch pitch, three
+polymer blades, 2 g catalogue mass, a 5 mm mounting hole and 6 mm hub thickness. The
+F1507 drawing separately shows a front M5 × 0.8 / Ø5 adapter, and its packing list names
+an M5 self-locking nut. This is a coherent nominal chain, not controlled proof of the
+bench revision, fit, tolerance, seating, engagement, tightening, inertia or CW/CCW
+allocation.
+
+Until those remaining fields and the 100% limit conflict are closed, the candidate
+remains unselected. No solver, CAD edit, provider operation or Project mutation can
+correct this external evidence conflict; F18 remains open for supplier follow-up.
 
 ## F19 — PM06 V2 output and height fields conflict (open, external evidence)
 

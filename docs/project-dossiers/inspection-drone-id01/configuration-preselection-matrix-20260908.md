@@ -9,6 +9,7 @@ readiness.
 
 Its source basis is the
 [propulsion and energy note](propulsion-energy-presizing-basis-20260908.md),
+[propulsion source-control packet](propulsion-source-control-packet-20260908.md),
 [battery packaging sensitivity](battery-packaging-sensitivity-20260908.md),
 [electrical architecture basis](electrical-power-architecture-basis-20260908.md),
 [mass/position worksheet](mass-and-position-closure-worksheet-20260908.md) and
@@ -28,18 +29,18 @@ closed; `candidate`, `screen-pass` and `fits nominally` never mean `selected`.
 
 ## Exclusive option cards
 
-| Slot                     | Card             | Evidence that may be retained                                                                            | Blockers that remain                                                                                                                                | Consequence if later selected                                                                                                         |
-| ------------------------ | ---------------- | -------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| Motor–propeller          | `P-F1404`        | F1404 KV4600 facts and exact manufacturer rows labelled `GF3016`; four motors conditionally `37.36 g`    | exact propeller maker/SKU/revision and mating interface; 1.5-versus-2 mm shaft conflict; comparable installed map                                   | preserves the current motor-envelope basis; does not preserve an unproven propeller identity                                          |
-| Motor–propeller          | `P-F1507`        | F1507 KV3800 facts and exact-name T3140 bench rows; four motors conditionally `60.00 g`                  | complete T3140 identity/interface/mass; supplier limit conflict at the 100% row; ESC pairing                                                        | requires a motor-envelope and interface successor; adds `22.64 g` versus the F1404 four-motor datum before propellers/hardware        |
-| Battery / current tray   | `B-Gens200`      | nominal and published-maximum geometry fit in at least one orientation                                   | `6.00 A` label-current screen is below the `20.92 A` first retained F1404 four-motor row; usable energy and installed envelope                      | keep-in may remain geometrically, but this card does not pass the retained current-label screen                                       |
-| Battery / tray successor | `B-GNB300-Y`     | nominal `53 × 24 × 17 mm`, `36 ± 2 g`, `4.56 Wh` nameplate arithmetic and `24.00 A` label-current screen | maximum dimensions, leads/restraint/service envelope, delivered-current curve, usable energy and mission point                                      | orienting 53 mm on Y requires `Δreserve,Y = 19 mm`; symmetric preserved-gap growth leaves only `1.5 mm` to the named camera footprint |
-| Battery / tray successor | `B-Tattu450-75C` | nominal `63 × 16 × 25 mm`, `6.66 Wh` and `33.75 A` label arithmetic                                      | same page reports both 52 and 58 g; installed envelope, usable energy and mission point                                                             | least nominal horizontal growth is `+25 mm` on X or `+29 mm` on Y, exceeding the named skid or camera gap respectively                |
-| Battery / tray successor | `B-Tattu450-HV`  | nominal `62.32 × 16.59/16.95 × 26.7 mm`, `49 g`, `6.84 Wh` and `42.75 A` label arithmetic                | conflicting width, large published mass tolerance, installed envelope, usable energy and mission point                                              | least nominal horizontal growth is `+24.32 mm` on X or `+28.32 mm` on Y, exceeding the named skid or camera gap respectively          |
-| Battery / tray successor | `B-RLine650`     | nominal `61 × 31 × 25 mm`, `82 g`, `9.62 Wh` and `61.75 A` label arithmetic                              | large published mass tolerance, installed envelope, usable energy and mission point; maximum height needs `+2 mm` if its long side stays horizontal | nominal long-side growth is `+23 mm` on X or `+27 mm` on Y; neither preserves the named neighbor gaps symmetrically                   |
-| Battery / tray successor | `B-Tattu650-HV`  | nominal `74 × 17 × 24.5 mm`, `60 g`, `9.88 Wh` and `61.75 A` label arithmetic                            | large published mass tolerance, installed envelope, usable energy and mission point                                                                 | nominal long-side growth is `+36 mm` on X or `+40 mm` on Y; neither preserves the named neighbor gaps symmetrically                   |
-| Power path               | `E-PM02`         | SKU 15010, 20 g, analog measurement/FC supply and recorded PCB ratings                                   | separate PDB, exact connector/harness/protection/cooling, placement and calibrated simultaneous loads                                               | adds one separate distribution slot; PM02 and PM06 must never both enter the mass sum                                                 |
-| Power path               | `E-PM06`         | SKU 15019, 24 g, analog measurement/FC supply, four ESC pads and recorded PCB ratings                    | published 5/10 mm height and 15.6/18 W conflicts; connector/harness/protection/cooling, placement and calibrated simultaneous loads                 | may remove the separate PDB slot, not the harness/protection/regulator gaps                                                           |
+| Slot                     | Card             | Evidence that may be retained                                                                                            | Blockers that remain                                                                                                                                | Consequence if later selected                                                                                                         |
+| ------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| Motor–propeller          | `P-F1404`        | F1404 KV4600 facts, candidate 4×M2/Ø9 base drawing and exact rows labelled `GF3016`; four motors conditionally `37.36 g` | exact propeller maker/SKU/revision and mating interface; internal 1.5-versus-2 mm shaft conflict; comparable installed map                          | preserves the current motor-envelope basis; does not preserve an unproven propeller identity                                          |
+| Motor–propeller          | `P-F1507`        | F1507 KV3800 facts and exact-name T3140 rows; T3140 `3.1 × 4.0 in`, three blades, polymer, `2 g` and nominal M5 chain    | bench-to-product revision; fit/tolerance, inertia and rotation pairing; supplier limit conflict at 100%; ESC pairing                                | needs motor and propeller-envelope successors; motor-only mass adds `22.64 g`, and four T3140 catalogue items add a conditional `8 g` |
+| Battery / current tray   | `B-Gens200`      | nominal and published-maximum geometry fit in at least one orientation                                                   | `6.00 A` label-current screen is below the `20.92 A` first retained F1404 four-motor row; usable energy and installed envelope                      | keep-in may remain geometrically, but this card does not pass the retained current-label screen                                       |
+| Battery / tray successor | `B-GNB300-Y`     | nominal `53 × 24 × 17 mm`, `36 ± 2 g`, `4.56 Wh` nameplate arithmetic and `24.00 A` label-current screen                 | maximum dimensions, leads/restraint/service envelope, delivered-current curve, usable energy and mission point                                      | orienting 53 mm on Y requires `Δreserve,Y = 19 mm`; symmetric preserved-gap growth leaves only `1.5 mm` to the named camera footprint |
+| Battery / tray successor | `B-Tattu450-75C` | nominal `63 × 16 × 25 mm`, `6.66 Wh` and `33.75 A` label arithmetic                                                      | same page reports both 52 and 58 g; installed envelope, usable energy and mission point                                                             | least nominal horizontal growth is `+25 mm` on X or `+29 mm` on Y, exceeding the named skid or camera gap respectively                |
+| Battery / tray successor | `B-Tattu450-HV`  | nominal `62.32 × 16.59/16.95 × 26.7 mm`, `49 g`, `6.84 Wh` and `42.75 A` label arithmetic                                | conflicting width, large published mass tolerance, installed envelope, usable energy and mission point                                              | least nominal horizontal growth is `+24.32 mm` on X or `+28.32 mm` on Y, exceeding the named skid or camera gap respectively          |
+| Battery / tray successor | `B-RLine650`     | nominal `61 × 31 × 25 mm`, `82 g`, `9.62 Wh` and `61.75 A` label arithmetic                                              | large published mass tolerance, installed envelope, usable energy and mission point; maximum height needs `+2 mm` if its long side stays horizontal | nominal long-side growth is `+23 mm` on X or `+27 mm` on Y; neither preserves the named neighbor gaps symmetrically                   |
+| Battery / tray successor | `B-Tattu650-HV`  | nominal `74 × 17 × 24.5 mm`, `60 g`, `9.88 Wh` and `61.75 A` label arithmetic                                            | large published mass tolerance, installed envelope, usable energy and mission point                                                                 | nominal long-side growth is `+36 mm` on X or `+40 mm` on Y; neither preserves the named neighbor gaps symmetrically                   |
+| Power path               | `E-PM02`         | SKU 15010, 20 g, analog measurement/FC supply and recorded PCB ratings                                                   | separate PDB, exact connector/harness/protection/cooling, placement and calibrated simultaneous loads                                               | adds one separate distribution slot; PM02 and PM06 must never both enter the mass sum                                                 |
+| Power path               | `E-PM06`         | SKU 15019, 24 g, analog measurement/FC supply, four ESC pads and recorded PCB ratings                                    | published 5/10 mm height and 15.6/18 W conflicts; connector/harness/protection/cooling, placement and calibrated simultaneous loads                 | may remove the separate PDB slot, not the harness/protection/regulator gaps                                                           |
 
 The battery growth values preserve the current 1 mm reserve-to-inner lateral gap and 2
 mm tray walls. A symmetric X growth consumes the total 6 mm skid-gap budget; a symmetric
@@ -82,6 +83,10 @@ prove F35A compatibility or form a vehicle configuration. None of these numbers 
 all-up mass or a lower bound, and none can produce CG while installed mass centres
 remain missing.
 
+The T3140 catalogue adds a separate conditional `4 × 2 = 8 g` propeller datum to the
+F1507 lead. It is not inserted into the partial vehicle subtotal because the exact bench
+revision, installed retention hardware and configuration decision remain open.
+
 ## Decision order
 
 1. Keep approved brief r4 current and proposed r5 pending until the human reviews the
@@ -101,12 +106,11 @@ interface for a bench lead that lacks a controlled propeller packet.
 
 ## Review boundary
 
-Three of four bounded native Grok 4.6 read-only reviews completed: battery/tray,
-electrical architecture and configuration/mass exclusivity. The propulsion review
-exceeded its bounded workflow through an internal delegation wait and was stopped; none
-of its unfinished output was accepted. Codex independently recomputed the orientation,
-current and mass arithmetic, inspected the official battery tolerance fields, and
-rejected two false review alerts: the official fields do use `±`, and using the larger
-conflicting Tattu width for a conservative maximum screen remains explicit. No Astra or
-Terra escalation, component selection, CAD edit, Project/Thread mutation, provider run
-or broad test campaign occurred.
+In the original pre-selection pass, three of four bounded native Grok 4.6 read-only
+reviews completed; the propulsion review exceeded its bounded workflow and was stopped,
+so none of its unfinished output was accepted. A later four-way source-control pass
+audited F1404, T3140, `GF3016`, and F1507/T3140 and all four completed. Codex
+independently inspected the official drawings and T3140 specification, recomputed the
+geometry, current and mass arithmetic, and retained the unresolved supplier states. No
+Astra or Terra escalation, component selection, CAD edit, Project/Thread mutation,
+provider run or broad test campaign occurred in that source-control pass.
