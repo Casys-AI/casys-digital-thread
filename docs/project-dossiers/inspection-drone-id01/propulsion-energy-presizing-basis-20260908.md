@@ -22,13 +22,13 @@ and the 5 N RadialArm bench case are not substituted for them.
 
 ## Evidence classes
 
-| Class                   | Current evidence                                                                                                    | Permitted use                                                                         |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------- |
-| Human intent            | Civil exterior camera inspection; pre-size propulsion and energy before another solver demonstration                | Orders the next work, without selecting hardware or a performance number              |
-| Project observation     | Four motor occurrences; one coarse motor envelope; a static 3-inch-class propeller proxy; a battery reserved volume | Defines architecture and packaging questions only                                     |
-| Primary external source | LIGPOWER F1404 product specification and bench table, inspected 2026-09-08                                          | Candidate data point, with exact variant, propeller, voltage and test caveat retained |
-| Calculated              | Unit conversions, sums and equations below                                                                          | Reproducible consequences of named inputs only                                        |
-| Assumption              | None accepted yet for the vehicle sizing                                                                            | Any future provisional value needs an owner and review trigger                        |
+| Class                   | Current evidence                                                                                                    | Permitted use                                                            |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| Human intent            | Civil exterior camera inspection; pre-size propulsion and energy before another solver demonstration                | Orders the next work, without selecting hardware or a performance number |
+| Project observation     | Four motor occurrences; one coarse motor envelope; a static 3-inch-class propeller proxy; a battery reserved volume | Defines architecture and packaging questions only                        |
+| Primary external source | Official motor/bench, ESC, battery and auxiliary-component pages inspected 2026-09-08                               | Candidate facts, with variant and source caveats retained                |
+| Calculated              | Unit conversions, current/energy/mass sums, source-derived structural volumes and equations below                   | Reproducible consequences of named inputs only                           |
+| Assumption              | None accepted yet for the vehicle sizing                                                                            | Any future provisional value needs an owner and review trigger           |
 
 The solid `MotorEnvelope` is not a motor mass model. The `StaticPropellerEnvelope` has
 no airfoil, pitch, twist, hub interface or rotation. The `BatteryReservedVolume` is not
@@ -81,11 +81,23 @@ mounting variant, plus the mating interface drawing. If the 76.49 mm diameter we
 proven to be the tested part, the same nominal layout would give 64.931356 mm between
 adjacent discs and 11.755 mm radially to the deck planform.
 
+### Candidate ESC screen — F35A
+
 The [F35A manufacturer page](https://www.ligpower.com/product/f35a-fpv-esc.html) is
-linked as a related product and describes a 3–6S individual racing ESC with DShot and
-AM32 support. A related-product link is not evidence that it is the correct ESC for ID01
-or for every point in the motor table. Exact continuous/burst conditions, mass,
-dimensions, efficiency, cooling, wiring and compatibility therefore remain unresolved.
+linked from the motor page as a related product. Its official specification image gives
+3–6S LiPo, 35 A continuous, 45 A peak for 10 s, no BEC, 4.3 g and 29 × 17 × 5 mm for the
+individual ESC. Four units would therefore add `4 × 4.3 = 17.2 g`. A 4S candidate is
+inside the stated voltage range, and the 35 A continuous nameplate exceeds both the
+motor's 20 A peak label and its 17.54 A current at the retained 100% bench row. This is
+only a per-channel catalogue screen: it does not prove motor–ESC pairing, thermal
+acceptability, cooling, installation, wiring, efficiency or operation at every point in
+the motor table.
+
+The same official page text advertises AM32 and DShot1200/600/300, while official
+product images and the linked user manual label the unit BLHeli_32. That literal
+firmware contradiction remains unresolved. `BEC: No` also means the F35A does not close
+the separate regulated supply required by the autopilot, companion computer, camera and
+other auxiliaries. A related-product link is not an ID01 component selection.
 
 ## Calculated exact-row four-motor envelope
 
@@ -131,37 +143,47 @@ cases.
 
 The current `BatteryReservedVolume` is a 38 × 34 × 25 mm orthogonal placeholder. The
 tray source has a 40 × 36 mm inner footprint, 32 mm wall height and a 44 × 40 × 35 mm
-outer bounding box. Three official Tattu 4S pages provide candidate facts; they do not
+outer bounding box. Four official maker pages provide candidate facts; they do not
 create an ID01 battery selection.
 
-| Candidate source                                                                                                                                       | Manufacturer nominal pack |                      Manufacturer mass state | Calculated nameplate energy | Calculated label-current screen | Reserve result              |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------: | -------------------------------------------: | --------------------------: | ------------------------------: | --------------------------- |
-| [R-Line 650 mAh 4S 14.8 V 95C, `TA-RL-95C-650-4S1P-XT30`](https://genstattu.com/tattu-r-line-95c-650mah-4s1p-xt30-plug-lipo-battery.html)              |           61 × 31 × 25 mm |                      82 g, page states ±20 g |    `14.8 × 0.650 = 9.62 Wh` |          `0.650 × 95 = 61.75 A` | **fail** for this candidate |
-| [650 mAh 4S 15.2 V 95C LiHV long, `TA-95C-650-4S1P-HV-L-XT30`](https://genstattu.com/tattu-650mah-4s-15-2v-95c-lipo-battery-long-pack-with-xt30-plug/) |         74 × 17 × 24.5 mm |                      60 g, page states ±20 g |    `15.2 × 0.650 = 9.88 Wh` |          `0.650 × 95 = 61.75 A` | **fail** for this candidate |
-| [450 mAh 4S 14.8 V 75C long, `TA-75C-450-4S1P-L-XT30`](https://genstattu.com/ta-75c-450-4s1p-l-xt30.html)                                              |           63 × 16 × 25 mm | **unresolved**: same page says 52 g and 58 g |    `14.8 × 0.450 = 6.66 Wh` |          `0.450 × 75 = 33.75 A` | **fail** for this candidate |
+| Candidate source                                                                                                                                       | Manufacturer nominal pack |                      Manufacturer mass state | Calculated nameplate energy | Calculated label-current screen | Reserve result               |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------: | -------------------------------------------: | --------------------------: | ------------------------------: | ---------------------------- |
+| [R-Line 650 mAh 4S 14.8 V 95C, `TA-RL-95C-650-4S1P-XT30`](https://genstattu.com/tattu-r-line-95c-650mah-4s1p-xt30-plug-lipo-battery.html)              |           61 × 31 × 25 mm |                      82 g, page states ±20 g |    `14.8 × 0.650 = 9.62 Wh` |          `0.650 × 95 = 61.75 A` | **fail** for this candidate  |
+| [650 mAh 4S 15.2 V 95C LiHV long, `TA-95C-650-4S1P-HV-L-XT30`](https://genstattu.com/tattu-650mah-4s-15-2v-95c-lipo-battery-long-pack-with-xt30-plug/) |         74 × 17 × 24.5 mm |                      60 g, page states ±20 g |    `15.2 × 0.650 = 9.88 Wh` |          `0.650 × 95 = 61.75 A` | **fail** for this candidate  |
+| [450 mAh 4S 14.8 V 75C long, `TA-75C-450-4S1P-L-XT30`](https://genstattu.com/ta-75c-450-4s1p-l-xt30.html)                                              |           63 × 16 × 25 mm | **unresolved**: same page says 52 g and 58 g |    `14.8 × 0.450 = 6.66 Wh` |          `0.450 × 75 = 33.75 A` | **fail** for this candidate  |
+| [Gens ace 200 mAh 4S 14.8 V 30C, `GA-B-30C-200-4S1P-JST`](https://genstattu.com/gens-ace-200mah-4s-14-8v-30c-lipo-battery-pack-with-jst-plug/)         |  32.65 × 17.86 × 23.62 mm |  22 g; page conflicts between ±5 g and ±20 g |    `14.8 × 0.200 = 2.96 Wh` |           `0.200 × 30 = 6.00 A` | geometry fits; current fails |
 
-No permutation of any candidate's nominal dimensions fits inside 38 × 34 × 25 mm: its
-largest dimension is respectively 61, 74 or 63 mm, while the reserve's largest dimension
-is 38 mm. Even the pages' stated minimum length after the ±5 mm tolerance is 56, 69 or
-58 mm, still greater than both the 38 mm reserve and the tray's largest 44 mm outer
-dimension. This is a robust nominal orthogonal-containment failure for these three packs
-only. It is not evidence that no 4S pack exists, and it ignores connector and cable
-keep-outs, swelling, cooling, restraint and a manufacturing-clearance policy.
+No permutation of the first three candidates' nominal dimensions fits inside 38 × 34 ×
+25 mm: their largest dimension is respectively 61, 74 or 63 mm, while the reserve's
+largest dimension is 38 mm. Even those pages' stated minimum length after the ±5 mm
+tolerance is 56, 69 or 58 mm, still greater than both the 38 mm reserve and the tray's
+largest 44 mm outer dimension. This is a robust orthogonal-containment failure for those
+three packs only.
+
+The 200 mAh pack is different. Its nominal dimensions fit in four of six orthogonal
+orientations. At the page's maximum stated dimensional tolerances, its sorted sides are
+37.65 × 25.62 × 19.86 mm, which still fit one orientation of the 38 × 34 × 25 mm reserve
+with axis margins 0.35, 8.38 and 5.14 mm. That is a geometric screen, not an
+installation approval: connector and cable keep-outs, swelling, cooling, restraint and a
+manufacturing-clearance policy remain unresolved. Its `6.00 A` C-label product is also
+below the `20.92 A` summed motor current at even the first retained four-motor row,
+before ESC losses and auxiliaries. It therefore fails the present electrical screen.
 
 At the exact LIGPOWER F1404 KV4600 + GF3016 50% row, `4 × 83.28 W = 333.12 W`. Dividing
-the three nameplate energies by that propulsion-only power gives respectively 1.733,
-1.780 and 1.200 minutes. These are only `E_nameplate / P_propulsion` ratios at one
-candidate bench row. They are not usable-energy values, an ID01 hover point, endurance
-estimates or physical ceilings. The same boundary applies to the C-rate products above:
-they are label-derived current screens, not proof of delivered current, burst duration,
-thermal acceptability or safety. For context only, the four-motor 100% row sums to 70.16
-A before ESC losses and auxiliaries.
+the first three nameplate energies by that propulsion-only power gives respectively
+1.733, 1.780 and 1.200 minutes. These are only `E_nameplate / P_propulsion` ratios at
+one candidate bench row. They are not usable-energy values, an ID01 hover point,
+endurance estimates or physical ceilings. No such ratio is promoted for the 200 mAh pack
+because its label-derived current screen already fails the row. The same boundary
+applies to every C-rate product above: it is not proof of delivered current, burst
+duration, thermal acceptability or safety. For context only, the four-motor 100% row
+sums to 70.16 A before ESC losses and auxiliaries.
 
-The immediate design consequence is therefore narrow: the present battery reserve must
-not be presented as compatible with any of these three candidates. Changing the CAD now
-would still be premature. The mission duration, closed mass ledger and a reviewable
-battery/propulsion candidate packet must first determine whether to enlarge or relocate
-the reserve, or to source a different pack.
+The immediate design consequence is therefore narrow: the first three packs do not fit
+the present reserve, while the fourth passes this geometric screen but fails the first
+electrical row. Changing the CAD now would still be premature. The mission duration,
+closed mass ledger and a reviewable battery/propulsion candidate packet must first
+determine whether to enlarge or relocate the reserve, or to source a different pack.
 
 ## Mission-energy worksheet without an invented mission
 
@@ -224,28 +246,77 @@ from CAD volume.
 | Candidate occurrence                                                                                                                   |               External mass evidence | Ledger treatment and exclusions                                                                                                                                                  |
 | -------------------------------------------------------------------------------------------------------------------------------------- | -----------------------------------: | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Four LIGPOWER F1404 **KV4600** motors](https://www.ligpower.com/product/f1404-kv4600-fpv-motor.html)                                  |                 `4 × 9.34 = 37.36 g` | Manufacturer mass includes each 150 mm motor cable; parts bags, fasteners, propellers and ESCs excluded                                                                          |
+| [Four LIGPOWER F35A ESCs](https://www.ligpower.com/product/f35a-fpv-esc.html)                                                          |                   `4 × 4.3 = 17.2 g` | Official specification-image mass; candidate related product only; motor wiring, power distribution, connector adaptation, cooling and regulated auxiliary supply excluded       |
 | [Holybro Pixhawk 6C Mini **Model A Current**](https://docs.holybro.com/autopilot/pixhawk-6c-mini/technical-specification)              |                               42.4 g | Manufacturer technical specification for this exact variant; cables, GPS and power module inclusion is not established and they remain excluded                                  |
 | [Raspberry Pi Camera Module 3 **standard**](https://www.raspberrypi.com/documentation/accessories/camera.html#hardware-specifications) |                                  4 g | Official hardware table; camera cable, mount and fasteners excluded                                                                                                              |
 | [Raspberry Pi Zero 2 W](https://www.raspberrypi.com/news/what-can-you-build-with-raspberry-pi-zero/)                                   | 12 g, lower-assurance external datum | Raspberry Pi's official 2025 editorial comparison reports 12 g, but the current product page and product brief omit mass; microSD, header, cable, cooling and enclosure excluded |
 | [Gemfan Hurricane 3016](https://www.gemfanhobby.com/3016-hurricane-pc-3-blade.html)                                                    |                 1.18 g per propeller | Official Gemfan candidate fact, but excluded from the configuration subtotal because identity with LIGPOWER's `GF3016` and F1404 fit remain unresolved                           |
+| [Gens ace 200 mAh 4S](https://genstattu.com/gens-ace-200mah-4s-14-8v-30c-lipo-battery-pack-with-jst-plug/)                             |                         22 g nominal | Official page conflicts between ±5 g and ±20 g tolerances; geometrically fitting candidate, but excluded from a viable configuration because its label-current screen fails      |
 
-The strict technical-specification subtotal for four motors, camera and autopilot is
-`37.36 + 4 + 42.4 = 83.76 g`. Adding the lower-assurance official editorial value for
-the companion board gives `95.76 g`. Conditional arithmetic with the non-fitting battery
-candidates is:
+The strict technical-specification subtotal for four motors, four candidate F35A ESCs,
+camera and autopilot is `37.36 + 17.2 + 4 + 42.4 = 100.96 g`. Adding the lower-assurance
+official editorial value for the companion board gives `112.96 g`. Conditional
+arithmetic with each screened battery is:
 
-| Conditional documentary subtotal         | Calculation          |                                                   Result |
-| ---------------------------------------- | -------------------- | -------------------------------------------------------: |
-| Named COTS plus R-Line 650 mAh 14.8 V    | `95.76 + 82`         |              177.76 g nominal; battery page states ±20 g |
-| Named COTS plus 650 mAh 15.2 V LiHV long | `95.76 + 60`         |              155.76 g nominal; battery page states ±20 g |
-| Named COTS plus 450 mAh 14.8 V long      | `95.76 + {52 or 58}` | 147.76 g or 153.76 g; source conflict prevents one value |
+| Conditional documentary subtotal         | Calculation           |                                                   Result |
+| ---------------------------------------- | --------------------- | -------------------------------------------------------: |
+| Named COTS plus R-Line 650 mAh 14.8 V    | `112.96 + 82`         |              194.96 g nominal; battery page states ±20 g |
+| Named COTS plus 650 mAh 15.2 V LiHV long | `112.96 + 60`         |              172.96 g nominal; battery page states ±20 g |
+| Named COTS plus 450 mAh 14.8 V long      | `112.96 + {52 or 58}` | 164.96 g or 170.96 g; source conflict prevents one value |
+| Named COTS plus Gens ace 200 mAh 4S      | `112.96 + 22`         |  134.96 g nominal; tolerance conflict prevents one range |
 
-These are not candidate configurations or vehicle masses: each listed battery has
-already failed the current containment screen, and the sums omit the complete airframe,
-landing gear, tray, carrier, camera bracket, four ESCs, four exact propellers,
-fasteners, retention, power distribution, non-motor wiring and connectors, GPS, radio,
-antennas, storage and any guards or protection. Installed positions and centre of
-gravity also remain unresolved.
+These are not candidate configurations or vehicle masses. Each row conditionally adds
+four F35A related-product ESCs and one battery to the same incomplete COTS subtotal; the
+first three packs fail reserve containment, while the fourth fails the first electrical
+row. The sums omit structural mass, four exact propellers, fasteners, retention, power
+distribution, non-motor wiring and connectors, GPS, radio, antennas, storage and any
+guards or protection. Installed positions and centre of gravity also remain unresolved.
+
+### Geometry-derived structural volume ledger
+
+The six current structural sources below have simple constructive geometry whose source
+hashes match their persisted canonical captures. The latest CentralDeck identity comes
+from the [camera/deck rebuild](camera-deck-rebuild-20260907.md); the five unchanged
+targets come from the [canonical target ledger](geometry-and-integrity-20260907.md).
+SHA-256 prefixes are shown only for readability; those linked ledgers retain the full
+identities.
+
+| Structural source                                     | Capture / STEP SHA-256 prefix   | Occurrences | Source-analytical volume per occurrence | Occurrence subtotal | Local geometric centroid `(x, y, z)` mm |
+| ----------------------------------------------------- | ------------------------------- | ----------: | --------------------------------------: | ------------------: | --------------------------------------: |
+| [CentralDeck](sources/central-deck.py)                | `335e7a221bac` / `9213a54a7c3c` |           1 |                       29,758.725684 mm³ |   29,758.725684 mm³ |        `(0.049877, 0.049877, 1.500000)` |
+| [RadialArm](sources/radial-arm.py)                    | `96fba39719f5` / `4351574f57e1` |           4 |                        7,919.575228 mm³ |   31,678.300912 mm³ |               `(0.304656, 0, 2.500000)` |
+| [BatteryTray](sources/battery-tray.py)                | `c9c34283fc5a` / `bc69476d7a45` |           1 |                       15,520.000000 mm³ |   15,520.000000 mm³ |                     `(0, 0, 13.046392)` |
+| [AvionicsCarrier](sources/avionics-carrier.py)        | `a5beef7c9bec` / `e26bafa27d23` |           1 |                       19,200.000000 mm³ |   19,200.000000 mm³ |                      `(0, 0, 1.500000)` |
+| [LandingSkid](sources/landing-skid.py)                | `0f248d7f9d02` / `4d9968a0b397` |           2 |                       12,800.000000 mm³ |   25,600.000000 mm³ |                     `(0, 0, 15.750000)` |
+| [CameraMountBracket](sources/camera-mount-bracket.py) | `ae70dd592870` / `b821e5598b75` |           1 |                        6,416.129212 mm³ |    6,416.129212 mm³ |              `(0, 7.030110, 10.559538)` |
+
+The sum over these ten named structural occurrences is
+`128,173.155808 mm³ = 128.173155808 cm³`. This is an occurrence-volume sum, not a
+whole-drone union and not mass. It deliberately excludes `BatteryReservedVolume`,
+`AutopilotEnvelope`, `CompanionComputerEnvelope`, `MotorEnvelope`, `CameraBoardEnvelope`
+and `StaticPropellerEnvelope`, because they are packaging proxies or reserved volumes
+rather than structural material.
+
+Applying the persisted nested placements gives the following geometric centroids in the
+root frame: deck `(0, 0.070537, 51.500000)` mm; symmetric four-arm set
+`(0, 0, 55.500000)` mm; tray `(0, 10.000000, 28.046392)` mm; carrier `(0, 0, 59.500000)`
+mm; symmetric two-skid set `(0, 0, 21.750000)` mm; bracket `(0, -28.969890, 39.440462)`
+mm. They are local or grouped **geometric** centroids, not component mass centres and
+not aircraft centre of gravity.
+
+A separate import of the exact sealed STEP bytes with pinned `occt-import-js@0.0.23` and
+fine tessellation (`0.002 mm` linear, `0.01 rad` angular) reproduced the six
+source-derived volumes with a maximum absolute difference below `0.0011 mm³`. That is a
+triangulated cross-check, not exact BRep mass-property authority or an uncertainty
+bound. The [current module and root integrity evidence](camera-deck-rebuild-20260907.md)
+also reports zero positive pairwise intersection volume; at the root, that covers all 15
+subsystem pairs plus five contact diagnostics. No cross-occurrence overlap correction is
+therefore introduced here. Contact does not establish a joint or load path.
+
+Physical structural mass remains `m_structure = Σ ρ_k V_k` only after each occurrence's
+material and density are sourced or approved. Manufacturing process, infill or wall
+strategy, inserts, coatings, tolerances and as-built mass remain unresolved, so neither
+a structural mass nor a mass-weighted aircraft CG is calculated.
 
 ## Current static propeller-proxy clearance screen
 
@@ -295,11 +366,11 @@ law.
 | Input packet         | Minimum content                                                                                                                            | Current state                                                                                                            |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
 | Mission              | Endurance target, inspection dwell, transit, reserve, wind/temperature envelope, payload duty cycle                                        | `unresolved`                                                                                                             |
-| Mass and position    | Airframe, four propulsion units, battery, avionics, camera, wiring, fasteners and landing gear                                             | Partial COTS ledger only; total and CG `unresolved`; CAD volume is not mass                                              |
+| Mass and position    | Airframe, four propulsion units, battery, avionics, camera, wiring, fasteners and landing gear                                             | Partial COTS ledger plus structural occurrence volumes/geometric centroids; materials, total mass and CG `unresolved`    |
 | Motor                | Exact variant, mass, dimensions, voltage/current/thermal limits and matching test map                                                      | F1404 KV4600 is a documented candidate only                                                                              |
 | Propeller            | Exact maker/part, diameter, pitch, blade count, mass/inertia, hub interface and thrust/torque map                                          | `GF3016` identity/fit `unresolved`; current CAD is a proxy                                                               |
-| ESC                  | Exact part, mass/envelope, voltage, continuous/burst current conditions, efficiency, cooling and protocol                                  | `unresolved`                                                                                                             |
-| Battery              | Chemistry, series/parallel layout, pack mass/envelope, capacity curve, resistance, continuous/burst current, cutoff and temperature limits | Three sourced candidates fail current containment; selection remains `unresolved`                                        |
+| ESC                  | Exact part, mass/envelope, voltage, continuous/burst current conditions, efficiency, cooling and protocol                                  | F35A passes a nameplate screen only; firmware, pairing, efficiency, cooling, wiring and installation remain `unresolved` |
+| Battery              | Chemistry, series/parallel layout, pack mass/envelope, capacity curve, resistance, continuous/burst current, cutoff and temperature limits | Three sourced packs fail reserve containment; one fits geometrically but fails the first-row current screen              |
 | Payload and avionics | Actual mass, centre, voltage/current and simultaneous duty                                                                                 | Typical Pi bare-board current and supply limits are sourced; mission duty and installed-system power remain `unresolved` |
 | Interfaces           | Propeller–shaft, motor–arm, ESC cooling/wiring, battery retention/connector and protection                                                 | `unresolved`                                                                                                             |
 
@@ -324,19 +395,23 @@ law.
 
 ## Review boundary
 
-Seven completed native Grok consultations ran across four bounded review passes. The
+Eight completed native Grok consultations ran across five bounded review passes. The
 first pair used a clean, repository-free sandbox for method cross-checks; after the
 human explicitly requested continued Grok-native work on this project, the later reviews
 read only the relevant dossier files and independently checked the full motor
-arithmetic, battery screen, partial mass ledger and mission-energy equations. The latest
-review preserved losses as a separate term and confirmed that `5.552 Wh/min` is not a
-bound on flight energy. A separate supplier-identity run was cancelled after a
-permission-classifier timeout and contributed no accepted verdict. Codex inspected the
-source pages and repository facts, recalculated the values, retained the useful
-equations and sequencing, and rejected three overreaches: current CAD cannot supply
-physical mass or inertia without sourced material and component data,
-`E_nameplate / P_bench` is not an endurance ceiling, and an official editorial mass is
-not equivalent to a technical-sheet datum. Terra was used for three targeted checks:
-authority order, unresolved propeller identity, then primary-source classification of
-auxiliary-power facts. No Astra consultation, broad test campaign, provider execution or
-project confirmation was used for this note.
+arithmetic, battery screen, partial mass ledger, mission-energy equations and the latest
+supplier packet. The latest completed Grok review supplied the F35A and 200 mAh battery
+facts. A parallel STEP review was cancelled after the recurring permission-classifier
+timeout and contributed no accepted verdict, as was an earlier supplier-identity run.
+
+Codex inspected the source pages and repository facts, recalculated the values, rehashed
+the selected source and STEP bytes, derived the simple constructive-solid volumes and
+retained only bounded conclusions. Four overreaches were rejected: current CAD cannot
+supply physical mass or inertia without sourced material and component data;
+`E_nameplate / P_bench` is not an endurance ceiling; an official editorial mass is not
+equivalent to a technical-sheet datum; and the 200 mAh pack does fit the reserve in one
+maximum-tolerance orientation despite the Grok review's contrary geometry verdict. Terra
+was used for four targeted checks: authority order, unresolved propeller identity,
+primary-source classification of auxiliary-power facts, then independent structural
+volume/centroid arithmetic and wording. No Astra consultation, broad test campaign,
+provider execution or project confirmation was used for this note.

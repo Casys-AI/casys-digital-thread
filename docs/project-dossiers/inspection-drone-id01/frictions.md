@@ -371,6 +371,13 @@ Terra closed that bounded review instead. The completed answers remain usable be
 Codex independently checked their inputs and arithmetic; the startup noise is not
 project evidence.
 
+A later bounded STEP mass-property audit reproduced the same auto-classifier timeout
+after completing useful read-only inspection. It was cancelled without an accepted
+verdict or retry loop. Codex finished the source/STEP arithmetic directly, and one
+targeted Terra cross-check independently returned `SHIP`; no Astra escalation was
+needed. This repetition strengthens the workflow-friction evidence but does not change
+the proportional workaround.
+
 This is a real agent-workflow friction, but not a safe repo-local quick win. Repairing
 it would change the user's global Grok/plugin configuration outside the ID01 scope and
 could affect other work. Leave that configuration untouched here. For now, keep each
@@ -405,6 +412,30 @@ Do not delete those projects, backfill signed history, skip invalid entries or w
 the validator as an ID01 fix. A later migration/legacy-reopen design must decide how to
 preserve the original bytes and provenance while presenting historical contracts. This
 is a real compatibility project, not another quick win; it remains open and deferred.
+
+## F16 — canonical STEP captures omit exact BRep mass properties (open, deferred)
+
+The current canonical geometry captures preserve exact source and STEP identities, but
+they do not publish volume, geometric centroid or inertia as exact BRep properties. The
+repository's pinned `occt-import-js@0.0.23` path exposes tessellated meshes rather than
+an exact mass-property API. A generic agent therefore cannot presently reopen an
+arbitrary current part and cite server-owned exact volume or centroid directly from the
+capture contract.
+
+For the six simple ID01 structural sources, this pass used the smallest adequate
+workaround: source-derived constructive-solid formulas, exact source/STEP rehashing, and
+a fine-tessellation STEP cross-check. The mesh-derived values agreed with the analytical
+values within 0.0011 mm³, which is sufficient for this explicitly documentary
+occurrence-volume ledger. It is not exact BRep mass-property evidence, an uncertainty
+bound, material mass, inertia, manufacturability or flight evidence.
+
+Adding provider-computed mass properties would require a versioned output schema,
+unit/provenance rules, deterministic capture/reopen behaviour, coverage decisions for
+assemblies and non-solid geometry, and focused provider/runtime validation. That is not
+a safe documentation quick win and is unnecessary to answer the current bounded
+question. Keep the workaround local to the named simple sources; revisit a registered
+capability only when a real downstream decision requires general exact mass properties.
+F16 remains open and deferred.
 
 ## Expected states, not defects
 
