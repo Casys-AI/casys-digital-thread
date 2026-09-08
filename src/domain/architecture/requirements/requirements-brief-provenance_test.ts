@@ -86,6 +86,51 @@ Deno.test(
 );
 
 Deno.test(
+  "buildRequirementsBriefProvenance records fractional-mm-to-nm for declared 0.2 mm",
+  async () => {
+    const brief = syntheticBrief();
+    const basis = syntheticBasis();
+    const proposal = await tracedProposal(brief, basis);
+    const first = proposal.requirements[0]!;
+    const second = proposal.requirements[1]!;
+    const firstOrigin = proposal.briefSource.requirements[0]!;
+    const secondOrigin = proposal.briefSource.requirements[1]!;
+    const nmProposal: TracedRequirementsProposal = {
+      ...proposal,
+      requirements: [
+        { ...first, threshold: { value: 200_000, unit: "nm" } },
+        second,
+      ],
+      briefSource: {
+        ...proposal.briefSource,
+        requirements: [
+          {
+            ...firstOrigin,
+            declaredThreshold: { value: 0.2, unit: "mm" },
+            transformation: "fractional-mm-to-nm",
+          },
+          secondOrigin,
+        ],
+      },
+    };
+    const provenance = await buildRequirementsBriefProvenance({
+      brief,
+      basis,
+      proposal: nmProposal,
+    });
+    assertEquals(provenance.requirements[0]?.declaredThreshold, {
+      value: 0.2,
+      unit: "mm",
+    });
+    assertEquals(provenance.requirements[0]?.transformation, "fractional-mm-to-nm");
+    const parsed = parseRequirementsBriefProvenance(
+      JSON.parse(JSON.stringify(provenance)),
+    );
+    assertEquals(parsed.requirements[0]?.transformation, "fractional-mm-to-nm");
+  },
+);
+
+Deno.test(
   "buildRequirementsBriefProvenance rejects a tampered source item id",
   async () => {
     const brief = syntheticBrief();

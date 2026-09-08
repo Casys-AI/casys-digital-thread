@@ -140,6 +140,20 @@ Deno.test(
 );
 
 Deno.test(
+  "buildOracleValues still forwards CalculiX displacement as mm when the limit is nm",
+  () => {
+    const nmReq: MechanicalRequirement = {
+      ...DISP_REQ,
+      limit: { value: 200_000, unit: "nm" },
+    };
+    const values = buildOracleValues(SOLVER_METRICS, [nmReq]);
+    assertEquals(values[nmReq.feature], { value: 0.42, unit: "mm" });
+    const oracle = projectProofRequirementToOracle(nmReq);
+    assertEquals(oracle.limit, { value: 200_000, unit: "nm" });
+  },
+);
+
+Deno.test(
   "buildOracleValues does not use req.metric as the key — key equals req.feature",
   () => {
     const values = buildOracleValues(SOLVER_METRICS, [DISP_REQ]);

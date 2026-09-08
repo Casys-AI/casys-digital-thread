@@ -208,11 +208,22 @@ const SYSML_ID = /^[A-Za-z_][A-Za-z0-9_]*$/;
  *           NOT oracle-admissible yet; a buckling load-factor verdict must
  *           stay not_evaluated until a green probe closes this gap.
  *
+ *   2026-09-08, same probe runner:
+ *     nm  → LengthValue (status: ok, extractedUnit: "nm";
+ *           sandbox probe-requirement-units-a19bc1c4-cd16-4fd0-9792-5df8d71bce52,
+ *           editing context 87467186-3514-4421-8aee-c3d2f01d7f0a,
+ *           sandbox deleted true)
+ *   Refused on the same date:
+ *     um  → LengthValue (type_mismatch: FeatureReferenceExpression)
+ *     µm  → LengthValue (MICRO SIGN extracted as "m")
+ *     μm  → LengthValue (GREEK MU extracted as "m")
+ *
  * To add a unit, run a probe that confirms insertion → extraction round-trip
  * and document the evidence here before merging.
  */
 const UNIT_TO_SYSML_TYPE: ReadonlyMap<string, string> = new Map([
   ["mm", "LengthValue"],
+  ["nm", "LengthValue"],
   ["Pa", "PressureValue"],
   // Confirmed 2026-08-08 via scripts/probes/probe-requirement-units.ts against
   // SysON 0.5.1 on 127.0.0.1:3009 — all sandboxes deleted by syson_project_delete.
@@ -356,6 +367,8 @@ function renderOracleRequirementMembers(
  *     per-unit dates and the refused candidates (m2, N*m, N.m, kPa, deg)
  *     are recorded inline in UNIT_TO_SYSML_TYPE and in
  *     docs/reference/providers/oracle-units.md.
+ *   nm — 2026-09-08, scripts/probes/probe-requirement-units.ts, status ok.
+ *     um / µm / μm were refused the same day and are not admitted.
  */
 export const SUPPORTED_ORACLE_UNITS: readonly string[] = [
   ...UNIT_TO_SYSML_TYPE.keys(),

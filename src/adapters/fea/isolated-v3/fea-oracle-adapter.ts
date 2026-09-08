@@ -25,11 +25,12 @@
  *
  * UNIT CONVENTION
  *   CalculiX reports: maxDisplacement in mm, maxVonMises in MPa.
- *   The proof declares limits in mm (displacement) and Pa (von Mises).
- *   SysON converts units internally when calling syson_constraint_evaluate —
- *   confirmed by probe on 2026-08-04 (Pa and MPa round-trip documented in
- *   syson-constraint-oracle-outcome.ts). Local arithmetic is intentionally
- *   absent: the oracle is the sole authority on the verdict.
+ *   The proof declares displacement limits in mm or nm, and von Mises in Pa.
+ *   Observations stay in the solver units. SysON converts internally when
+ *   calling syson_constraint_evaluate — confirmed by probe on 2026-08-04
+ *   (Pa and MPa) and 2026-09-08 (mm observations against a 200000 nm limit).
+ *   Local arithmetic is intentionally absent: the oracle is the sole
+ *   authority on the verdict.
  */
 
 import type {

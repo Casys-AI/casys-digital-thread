@@ -107,10 +107,16 @@ comparison, not a semantic verdict or an automatic invalidation/rerun.
 ### Units
 
 A threshold declared in `MPa` is rescaled to `Pa` and the provenance entry names the
-step as `transformation: "MPa-to-Pa"`; every other unit passes through as `identity`.
+step as `transformation: "MPa-to-Pa"`. Integer millimetre stays identity. An exact
+non-integer millimetre that is an integer number of nanometres becomes `nm` with
+`transformation: "fractional-mm-to-nm"` (example: declared `0.2 mm` → canonical
+`200000 nm`). A non-exact or sub-nanometre millimetre stays identity and is then
+refused by the safe-integer grammar. Never rounds. Canonical Thread/Workbench
+expression is the integer nanometre value; provenance retains the declared millimetre.
 Any unit outside the server-owned allowlist is refused by the grammar itself. See
-[Oracle units](../../reference/providers/oracle-units.md) for why `MPa` cannot be native
-and why the conversion is done here rather than left to the agent.
+[Oracle units](../../reference/providers/oracle-units.md) for why `MPa` cannot be native,
+why `nm` is native, and why these conversions are done here rather than left to the
+agent.
 
 ## Architecture
 

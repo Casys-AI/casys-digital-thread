@@ -419,6 +419,60 @@ Deno.test(
   },
 );
 
+Deno.test("mechanical proof declaration accepts a 200000 nm displacement limit", () => {
+  const nmCase = caseInput();
+  object(array(nmCase.requirements)[0]).limit = { value: 200_000, unit: "nm" };
+  const proofCase = validateMechanicalProofCase(nmCase);
+  assertEquals(proofCase.requirements[0]?.limit, { value: 200_000, unit: "nm" });
+});
+
+Deno.test("mechanical proof declaration rejects an unrelated displacement unit", () => {
+  const umCase = caseInput();
+  object(array(umCase.requirements)[0]).limit = { value: 200, unit: "um" };
+  assertThrows(
+    () => validateMechanicalProofCase(umCase),
+    TypeError,
+    '$case.requirements[0].limit.unit must equal "mm" or "nm"',
+  );
+});
+
+Deno.test("mechanical capture admission treats omitted nm as a missing mechanical obligation", () => {
+  assertEquals(
+    mechanicalProofRequirementsMatchCapture(
+      [stressCapture("arm_max_von_mises")],
+      [nmDisplacementDeclared("arm_max_displacement")],
+    ),
+    false,
+  );
+});
+
+Deno.test("mechanical capture admission refuses extra nm because V1 capture has no kind", () => {
+  assertEquals(
+    mechanicalProofRequirementsMatchCapture(
+      [
+        displacementCapture("arm_max_displacement"),
+        {
+          metric: "clearance",
+          operator: "<=",
+          limit: { value: 200_000, unit: "nm" },
+        },
+      ],
+      [displacementDeclared("arm_max_displacement")],
+    ),
+    false,
+  );
+});
+
+Deno.test("mechanical capture admission matches an exact 200000 nm displacement criterion", () => {
+  assertEquals(
+    mechanicalProofRequirementsMatchCapture(
+      [nmDisplacementCapture("arm_max_displacement")],
+      [nmDisplacementDeclared("arm_max_displacement")],
+    ),
+    true,
+  );
+});
+
 function displacementCapture(feature: string) {
   return {
     metric: feature,
@@ -443,6 +497,25 @@ function displacementDeclared(feature: string) {
     feature,
     operator: "<=" as const,
     limit: { value: 1, unit: "mm" as const },
+  };
+}
+
+function nmDisplacementCapture(feature: string) {
+  return {
+    metric: feature,
+    operator: "<=",
+    limit: { value: 200_000, unit: "nm" },
+  };
+}
+
+function nmDisplacementDeclared(feature: string) {
+  return {
+    id: "proof-deflection",
+    name: feature,
+    metric: "maximum-displacement" as const,
+    feature,
+    operator: "<=" as const,
+    limit: { value: 200_000, unit: "nm" as const },
   };
 }
 

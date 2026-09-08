@@ -360,6 +360,26 @@ Deno.test(
   },
 );
 
+Deno.test("renderOracleRequirementsSysml maps nm onto LengthValue", () => {
+  const text = renderOracleRequirementsSysml(
+    "BracketRequirements",
+    validateOracleRequirements([{
+      id: "max_displacement",
+      name: "Maximum displacement",
+      metric: "max_displacement",
+      operator: "<=",
+      limit: { value: 200_000, unit: "nm" },
+    }]),
+  );
+  assertEquals(text.includes("attribute max_displacement : LengthValue;"), true);
+  assertEquals(
+    text.includes(
+      "constraint max_displacement_limit { max_displacement <= 200000 [nm] }",
+    ),
+    true,
+  );
+});
+
 Deno.test(
   "renderTargetedOracleRequirementsSysml emits a native requirement subject and required constraints",
   () => {

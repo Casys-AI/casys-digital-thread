@@ -77,7 +77,9 @@ proof-case
 #### [`src/domain/kernel/unit-normalisation.ts`](../../../src/domain/kernel/unit-normalisation.ts)
 
 Code-owned compilation-boundary rescale onto `SUPPORTED_ORACLE_UNITS`. Affine and
-multiplicative transforms are named functions, not coefficients
+multiplicative transforms are named functions, not coefficients. Exact fractional
+millimetre may become nanometre as `fractional-mm-to-nm` without a native-`mm` map
+entry
 
 #### `deno task mcp:call --name=<tool> --args='{}'`
 

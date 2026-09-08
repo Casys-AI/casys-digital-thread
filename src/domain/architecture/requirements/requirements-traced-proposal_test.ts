@@ -163,6 +163,31 @@ Deno.test(
 );
 
 Deno.test(
+  "parseTracedRequirementsProposalParameters canonicalises declared 0.2 mm onto 200000 nm",
+  () => {
+    const proposal = parseTracedRequirementsProposalParameters([
+      ...briefIdentity(),
+      param("requirement.r1.name", "Max displacement"),
+      param("requirement.r1.metric", "maxDisplacement"),
+      param("requirement.r1.operator", "<="),
+      param("requirement.r1.threshold", 200_000, "nm"),
+      param("requirement.r1.sourceItemId", "item:max-displacement"),
+      param("requirement.r1.declaredThreshold", 0.2, "mm"),
+    ]);
+    assertEquals(proposal.requirements[0]!.threshold, {
+      value: 200_000,
+      unit: "nm",
+    });
+    assertEquals(proposal.briefSource.requirements[0], {
+      requirementId: "maxDisplacement",
+      sourceItemId: "item:max-displacement",
+      declaredThreshold: { value: 0.2, unit: "mm" },
+      transformation: "fractional-mm-to-nm",
+    });
+  },
+);
+
+Deno.test(
   "parseTracedRequirementsProposalParameters rescales declared MPa onto canonical Pa",
   () => {
     const proposal = parseTracedRequirementsProposalParameters(mpaParams());
@@ -364,7 +389,7 @@ Deno.test(
   },
 );
 
-for (const decimal of [0.5, 1.5]) {
+for (const decimal of [0.5, 1.5, 0.2, 0.0000001]) {
   Deno.test(
     `parseTracedRequirementsProposalParameters rejects decimal normalised threshold ${decimal}`,
     () => {

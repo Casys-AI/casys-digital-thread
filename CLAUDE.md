@@ -78,6 +78,7 @@ Sondes diagnostiques, sans écriture ni révision :
 ```bash
 deno task probe:constraint-solver --editing-context-id=<id> --element-id=<id>
 deno task probe:requirement-units --unit=<unit> --type=<SysmlType>
+deno task probe:requirement-literals --form=decimal|fraction|scientific
 ```
 
 Compose racine — **probe mainteneur seulement**. Projet Docker distinct des groupes H1

@@ -46,6 +46,7 @@ evidence lives beside the map in `proof-case.ts` and must not be summarised away
 | `A`   | `ElectricCurrentValue`                 | 2026-08-14                   |
 | `Hz`  | `FrequencyValue`                       | 2026-08-14                   |
 | `rad` | `AngleValue`                           | 2026-08-14                   |
+| `nm`  | `LengthValue`                          | 2026-09-08                   |
 
 ## Admitting a new unit
 
@@ -94,7 +95,32 @@ Note that `mm` is a prefixed unit and passes — the cause is not prefixes as su
 specific declarations present in SysON's SI bundle.
 
 `MPa`, `kPa`, `bar`, `kN`, `kJ`, `MJ` are handled at the compilation boundary (see
-section below).
+section below). Native millimetre stays native; exact non-integer millimetre
+thresholds that are integer nanometres are canonicalised as `fractional-mm-to-nm`
+without putting `mm` in that map.
+
+### Length prefixes (2026-09-08)
+
+```
+deno task probe:requirement-units --unit=nm --type=LengthValue
+→ status: "ok", extractedUnit: "nm"
+  sandbox probe-requirement-units-a19bc1c4-cd16-4fd0-9792-5df8d71bce52
+  editing context 87467186-3514-4421-8aee-c3d2f01d7f0a; sandbox deleted true
+
+deno task probe:requirement-units --unit=um --type=LengthValue
+→ status: "type_mismatch", extractedUnit: "FeatureReferenceExpression";
+  sandbox deleted true
+
+MICRO SIGN `µm` and GREEK MU `μm`
+→ each extracted as `m`; sandbox deleted true. Not admitted.
+```
+
+Direct `syson_constraint_evaluate` of `probeValue <= 200000 [nm]` against millimetre
+observations proved exact conversion on the same day: 0.199 mm → pass, computedValue
+199000, threshold 200000, margin 1000, unit nm; 0.2 mm → pass, margin 0; 0.201 mm →
+fail, computedValue 201000, margin -1000. Decimal SysML spellings of `0.2 [mm]` remain
+unavailable (see the literal probe). This is not a physical-adequacy or provider
+qualification claim beyond those exact probes.
 
 ## Canonicalisation at the compilation boundary
 
@@ -113,6 +139,14 @@ provenance entry.
 | `kJ`        | `J`         | ×1 000                | `kJ-to-J`   | `J` OK 2026-08-14                            |
 | `bar`       | `Pa`        | ×100 000              | `bar-to-Pa` | `Pa` OK 2026-08-04                           |
 | `degC`      | `K`         | + 273.15 (**affine**) | `degC-to-K` | `K` OK 2026-08-14                            |
+
+Exact non-integer millimetre is **not** a map entry. `normaliseThreshold` keeps integer
+`mm` as `{same value, mm, identity}`. A finite non-integer `mm` value becomes integer
+`nm` with label `fractional-mm-to-nm` only when `value * 1_000_000` is a safe integer
+and dividing that integer by `1_000_000` is `Object.is`-equal to the original number.
+Otherwise the value stays millimetre identity and the safe-integer proposal grammar
+refuses it. Never rounds. Canonical Thread/Workbench expression is then `200000 nm`
+while provenance retains declared `0.2 mm` and `fractional-mm-to-nm`.
 
 Why convert rather than refuse: refusing does not remove the conversion, it moves it
 into the agent, where nothing records that `90000000` was meant to be `90 MPa`. Doing it

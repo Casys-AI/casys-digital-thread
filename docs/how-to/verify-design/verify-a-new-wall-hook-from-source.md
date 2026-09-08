@@ -119,7 +119,8 @@ declare CAD handles for later unique `parameterizes` joins:
 - `length`, `width`, `thickness`
 - parent = the unique WallHook `PartDefinition`
 
-Thresholds stay safe integers. Brief `MPa` → stored `Pa` is the one code-owned rescale.
+Thresholds stay safe integers. Named compilation-boundary rescales include brief
+`MPa` → stored `Pa` and exact `0.2 mm` → `200000 nm`. Do not invent another.
 
 ## 4. Load the two-file CAD source
 

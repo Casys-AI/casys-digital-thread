@@ -170,6 +170,70 @@ Deno.test(
 );
 
 Deno.test(
+  "brief requirements review canonicalises exact 0.2 mm to 200000 nm and names the step",
+  async () => {
+    const review = await reviewFor(await approvedProjectStore());
+
+    const result = await review.execute({
+      projectId: PROJECT_ID,
+      containerComponent: "ArticulatedArm",
+      containerSourceItemId: "mission-articulated-arm",
+      requirements: [{ ...DISPLACEMENT, threshold: 0.2, unit: "mm" }],
+    });
+
+    assertEquals(result.status, "resolved");
+    assertExists(result.decisionParameters);
+    const parsed = parseTracedRequirementsProposalParameters(
+      result.decisionParameters,
+    );
+    assertEquals(parsed.requirements[0]?.threshold, {
+      value: 200_000,
+      unit: "nm",
+    });
+    assertEquals(parsed.briefSource.requirements[0], {
+      requirementId: "arm_max_displacement",
+      sourceItemId: "success-max-displacement",
+      declaredThreshold: { value: 0.2, unit: "mm" },
+      transformation: "fractional-mm-to-nm",
+    });
+    const threshold = result.decisionParameters.find((parameter) =>
+      parameter.key === "requirement.arm-displacement.threshold"
+    );
+    assertEquals(threshold?.value, 200_000);
+    assertEquals(threshold?.unit, "nm");
+    const declared = result.decisionParameters.find((parameter) =>
+      parameter.key === "requirement.arm-displacement.declaredThreshold"
+    );
+    assertEquals(declared?.value, 0.2);
+    assertEquals(declared?.unit, "mm");
+    const traced = result.provenance.find((entry) =>
+      entry.parameterKey === "requirement.arm-displacement.threshold"
+    );
+    assertEquals(traced?.transformation, "fractional-mm-to-nm");
+  },
+);
+
+Deno.test(
+  "brief requirements review leaves a sub-nanometre millimetre to the integer grammar",
+  async () => {
+    const review = await reviewFor(await approvedProjectStore());
+
+    const result = await review.execute({
+      projectId: PROJECT_ID,
+      containerComponent: "ArticulatedArm",
+      containerSourceItemId: "mission-articulated-arm",
+      requirements: [{ ...DISPLACEMENT, threshold: 0.0000001, unit: "mm" }],
+    });
+
+    assertEquals(result.status, "unresolved");
+    assertEquals(result.decisionParameters, undefined);
+    assertEquals(result.diagnostics.map((item) => item.code), [
+      "proposal-grammar-rejected",
+    ]);
+  },
+);
+
+Deno.test(
   "brief requirements review leaves unit admissibility to the production grammar",
   async () => {
     const review = await reviewFor(await approvedProjectStore());

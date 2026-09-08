@@ -15,10 +15,10 @@ Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stay
 Architecture authorities: `renderer/` (`model.write-architecture@1` +
 `sysml-source-capture/1.0`), `agent-seal/` (`model.seal-architecture-sysml@1` +
 agent-authored CAS, never SysON), `seed/` (`architecture.seed-syson-model@2`),
-`requirements/` (`model.write-requirements@1`), `part-definitions/`
-(`model.capture-part-definitions@1`). `product-structure-ref.ts` owns exact
-`ProductStructureElementRef` / `ProductStructureOccurrenceRef` (PartUsage path nonempty;
-a PartDefinition is never an occurrence). Not interchangeable. Product
+`requirements/` (`model.write-requirements@2`; `@1` historical only),
+`part-definitions/` (`model.capture-part-definitions@1`). `product-structure-ref.ts`
+owns exact `ProductStructureElementRef` / `ProductStructureOccurrenceRef` (PartUsage
+path nonempty; a PartDefinition is never an occurrence). Not interchangeable. Product
 `architecture.author-inspection-drone@3` /
 `model.capture-inspection-drone-part-definitions@1` are retired and unregistered
 
@@ -113,6 +113,14 @@ Closed MRTR grammar for `architecture.seed-syson-model@2`: server-owned keys, pi
 Read-only z3 diagnostic with explicit SysON context and element; no product default and
 no publication
 
+#### `deno task probe:requirement-literals --form=decimal|fraction|scientific`
+
+Maintainer-only SysON sandbox probe of insertion/extraction fidelity for the scalar
+`0.2 mm` under three closed spellings. One attempt; always deletes a successfully
+created sandbox. Live 2026-09-08: decimal and scientific produced no extracted
+constraint plus `LiteralRational`; fraction extracted as division. Not a product
+capability. CLI qualification requires `status: ok` and `sandboxProjectDeleted: true`
+
 #### [`src/adapters/architecture/renderer/rendered-architecture-sysml-analyzer.ts`](../../../src/adapters/architecture/renderer/rendered-architecture-sysml-analyzer.ts)
 
 Compiler companion for the bounded server-rendered SysML forms; consumes the typed
@@ -181,7 +189,7 @@ one; no brief bytes, parameter keys or unit policy from the caller
 #### [`src/application/use-cases/architecture/requirements/prepare-project-brief-requirements-review.ts`](../../../src/application/use-cases/architecture/requirements/prepare-project-brief-requirements-review.ts)
 
 Reopens the human-approved canonical brief server-side, checks each declaration's
-provenance, and compiles `model.write-requirements@1` parameters through the production
+provenance, and compiles `model.write-requirements@2` parameters through the production
 grammar; read-only, no MRTR authority
 
 #### [`src/application/use-cases/architecture/agent-seal/preview-project-architecture-sysml.ts`](../../../src/application/use-cases/architecture/agent-seal/preview-project-architecture-sysml.ts)
@@ -270,7 +278,8 @@ unit
 
 #### [`src/adapters/architecture/requirements/model-write-requirements-run-executor.ts`](../../../src/adapters/architecture/requirements/model-write-requirements-run-executor.ts)
 
-Generic trusted executor for `model.write-requirements@1`
+Shared trusted executor for current traced `model.write-requirements@2` and historical
+completed `@1` records
 
 #### [`src/adapters/architecture/requirements/file-requirements-attempt-store.ts`](../../../src/adapters/architecture/requirements/file-requirements-attempt-store.ts)
 

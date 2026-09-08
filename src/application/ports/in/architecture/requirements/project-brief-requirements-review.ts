@@ -18,6 +18,7 @@ import type {
   EngineeringApprovedBriefBasis,
   EngineeringDecisionProposalParameter,
 } from "../../../../../domain/project/engineering-project.ts";
+import type { UnitNormalisationLabel } from "../../../../../domain/kernel/unit-normalisation.ts";
 
 /** One reviewed measurable criterion transcribed from an exact brief item. */
 export interface BriefRequirementDeclaration {
@@ -61,12 +62,7 @@ export interface BriefRequirementsProvenanceEntry {
 
 export type BriefRequirementsTransformation =
   | "identity"
-  | "MPa-to-Pa"
-  | "kN-to-N"
-  | "MJ-to-J"
-  | "kJ-to-J"
-  | "bar-to-Pa"
-  | "degC-to-K";
+  | UnitNormalisationLabel;
 
 export type BriefRequirementsDiagnosticCode =
   | "brief-item-absent"

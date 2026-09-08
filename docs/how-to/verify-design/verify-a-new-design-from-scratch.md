@@ -32,7 +32,7 @@ below is a **typed refusal** or a lookalike. Surface it. Do not work around it.
 | Unharnessed move                          | Harness                                                                                                                           |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
 | Seed in `project_plan_publish`            | Seed only via `project_change_append` ([sequence the seed](../agents/sequence-a-syson-seed.md))                                   |
-| Agent-authored SysML on the renderer path | `model.write-architecture@1` / `model.write-requirements@1`                                                                       |
+| Agent-authored SysML on the renderer path | `model.write-architecture@1` / `model.write-requirements@2`                                                                       |
 | Isolated seal as FEA geometry             | `design.seal-isolated-geometry@1` is a Thread **document**. Proof binds `design.write-geometry@1` STEP                            |
 | `@1` / `@2` / `@3` swapped                | Distinct authorities. Product FEA is isolated `@3`. Historical MCP `@1`/`@2` are rejected identities, not routes or prerequisites |
 | Study metrics aliased to requirement ids  | `UNLINKED`. Reseal from a template whose metric ids Object.is-equal. Never map                                                    |
@@ -104,9 +104,10 @@ One question at a time (`project_question_propose` / `project_answer_record`).
 ## 4. Architecture and requirements
 
 `project_brief_architecture_review` then `model.write-architecture@1`.
-`project_brief_requirements_review` then `model.write-requirements@1`. Thresholds are
-safe integers (SysON 0.5.1). One code-owned rescale exists: brief `MPa` → stored `Pa`,
-recorded in provenance. Do not invent another.
+`project_brief_requirements_review` then `model.write-requirements@2`. Thresholds are
+safe integers (SysON 0.5.1). Named compilation-boundary rescales include brief `MPa` →
+stored `Pa` and exact `0.2 mm` → `200000 nm` (`fractional-mm-to-nm`). Do not invent
+another.
 
 ## 5. Geometry
 

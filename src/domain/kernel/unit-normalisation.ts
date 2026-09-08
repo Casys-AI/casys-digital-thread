@@ -20,11 +20,15 @@
  * immediately and loudly during development, before a malformed parameter
  * ever reaches the MRTR signing step.
  *
- * Adding a new entry requires:
+ * Adding a new map entry requires:
  *   1. A live probe proving the targetUnit survives the SysON round-trip.
  *   2. A unit test that pins the emitted value for both a typical input and
  *      a boundary case (zero is mandatory for affine transforms).
- *   3. The corresponding label added to `UnitNormalisationLabel`.
+ *   3. The corresponding label added to `UNIT_NORMALISATION_LABELS`.
+ *
+ * Native millimetre is not a map entry. Exact non-integer millimetre values
+ * that are integer nanometres are canonicalised in `normaliseThreshold` as
+ * `fractional-mm-to-nm`. Integer millimetre stays identity.
  */
 
 import { SUPPORTED_ORACLE_UNITS } from "./proof-case.ts";
@@ -40,14 +44,31 @@ export type UnitNormalisationEntry<L extends string = string> = {
   readonly apply: (value: number) => number;
 };
 
-/** All normalisation labels that the compilation boundary currently declares. */
-export type UnitNormalisationLabel =
-  | "MPa-to-Pa"
-  | "kN-to-N"
-  | "MJ-to-J"
-  | "kJ-to-J"
-  | "bar-to-Pa"
-  | "degC-to-K";
+/**
+ * Closed vocabulary of named compilation-boundary transformations.
+ *
+ * Provenance parsers accept only these labels plus `"identity"`. The first six
+ * names are the historical map-entry labels and must remain byte-identical.
+ * `fractional-mm-to-nm` is value-dependent and is not a `UNIT_NORMALISATION`
+ * map key: millimetre is already oracle-native.
+ */
+export const UNIT_NORMALISATION_LABELS = [
+  "MPa-to-Pa",
+  "kN-to-N",
+  "MJ-to-J",
+  "kJ-to-J",
+  "bar-to-Pa",
+  "degC-to-K",
+  "fractional-mm-to-nm",
+] as const;
+
+export type UnitNormalisationLabel = typeof UNIT_NORMALISATION_LABELS[number];
+
+export const UNIT_NORMALISATION_LABEL_SET: ReadonlySet<string> = new Set(
+  UNIT_NORMALISATION_LABELS,
+);
+
+const MM_TO_NM = 1_000_000;
 
 /**
  * Validate and register a single normalisation entry, throwing if the
@@ -67,6 +88,11 @@ function declareEntry<L extends UnitNormalisationLabel>(
           SUPPORTED_ORACLE_UNITS.join(", ")
         }). ` +
         `Run the probe and add the unit to UNIT_TO_SYSML_TYPE before adding an entry here.`,
+    );
+  }
+  if (!UNIT_NORMALISATION_LABEL_SET.has(entry.label)) {
+    throw new Error(
+      `Unit normalisation "${entry.label}" is not in UNIT_NORMALISATION_LABELS.`,
     );
   }
   return [sourceUnit, entry];
@@ -92,6 +118,8 @@ function declareEntry<L extends UnitNormalisationLabel>(
  *           passed the 2026-08-04 probe.
  *   degC — first affine entry: K = degC + 273.15.  K passed the 2026-08-14
  *           probe.  The mandatory boundary test is apply(0) === 273.15 (not 0).
+ *
+ * Native millimetre is not declared here. See `exactFractionalMmToNm`.
  */
 export const UNIT_NORMALISATION: ReadonlyMap<
   string,
@@ -144,8 +172,32 @@ export const UNIT_NORMALISATION: ReadonlyMap<
 ]);
 
 /**
+ * Exact millimetre → nanometre canonicalisation used only for non-integer
+ * finite millimetre thresholds whose nanometre image is a safe integer and
+ * inverts with `Object.is`. Never rounds. Returns undefined so the caller
+ * keeps identity and the safe-integer proposal grammar can refuse.
+ */
+function exactFractionalMmToNm(value: number): number | undefined {
+  if (!Number.isFinite(value) || Number.isInteger(value)) {
+    return undefined;
+  }
+  const scaled = value * MM_TO_NM;
+  if (!Number.isSafeInteger(scaled)) {
+    return undefined;
+  }
+  if (!Object.is(scaled / MM_TO_NM, value)) {
+    return undefined;
+  }
+  return scaled;
+}
+
+/**
  * Apply the normalisation for `unit`, or return the value and unit unchanged
- * with an `"identity"` label if no entry is registered.
+ * with an `"identity"` label if no conversion applies.
+ *
+ * Integer millimetre is identity. A non-integer finite millimetre value may
+ * become integer nanometres with label `fractional-mm-to-nm` only when the
+ * exactness guards in `exactFractionalMmToNm` both pass.
  */
 export function normaliseThreshold(
   value: number,
@@ -155,6 +207,17 @@ export function normaliseThreshold(
   readonly unit: string;
   readonly transformation: UnitNormalisationLabel | "identity";
 } {
+  if (unit === "mm") {
+    const nanometres = exactFractionalMmToNm(value);
+    if (nanometres !== undefined) {
+      return {
+        value: nanometres,
+        unit: "nm",
+        transformation: "fractional-mm-to-nm",
+      };
+    }
+    return { value, unit, transformation: "identity" };
+  }
   const entry = UNIT_NORMALISATION.get(unit);
   if (!entry) {
     return { value, unit, transformation: "identity" };

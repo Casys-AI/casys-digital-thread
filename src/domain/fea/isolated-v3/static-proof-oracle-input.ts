@@ -1,9 +1,11 @@
 /**
  * Closed static-proof oracle payload and evaluation mapping.
  *
- * Exactly the current two mechanical metrics and their native units. The
- * adapter adds the provider tool envelope and parses the wire response. This
- * module names no MCP client, tool, URL, or provider.
+ * Exactly the current two mechanical metrics and their solver observation
+ * units. Displacement observations stay `mm` even when the declared limit is
+ * `nm`; SysON converts. The adapter adds the provider tool envelope and
+ * parses the wire response. This module names no MCP client, tool, URL, or
+ * provider.
  */
 
 import {

@@ -172,6 +172,8 @@ export interface MechanicalForceLoad {
   readonly force: VectorQuantity<"N">;
 }
 
+export type MechanicalDisplacementLimitUnit = "mm" | "nm";
+
 export type MechanicalRequirement =
   | {
     readonly id: string;
@@ -179,7 +181,7 @@ export type MechanicalRequirement =
     readonly metric: "maximum-displacement";
     readonly feature: string;
     readonly operator: "<=";
-    readonly limit: ScalarQuantity<"mm">;
+    readonly limit: ScalarQuantity<MechanicalDisplacementLimitUnit>;
   }
   | {
     readonly id: string;
@@ -385,11 +387,12 @@ export interface MechanicalProofCaptureCriterion {
 
 /**
  * V1 capture/proof join units for the closed linear-static metrics.
- * Feature names are arbitrary. Distinct from solver-native MPa in
- * STATIC_PROOF_METRIC_UNITS.
+ * Feature names are arbitrary. Distinct from solver-native mm/MPa in
+ * STATIC_PROOF_METRIC_UNITS. Displacement limits may be `mm` or `nm`;
+ * stress stays `Pa`. Matching remains exact on feature/operator/value/unit.
  */
 export function isMechanicalProofLimitUnit(unit: string): boolean {
-  return unit === "mm" || unit === "Pa";
+  return unit === "mm" || unit === "nm" || unit === "Pa";
 }
 
 /**
@@ -397,11 +400,11 @@ export function isMechanicalProofLimitUnit(unit: string): boolean {
  *
  * Every declared criterion must match capture exactly on feature, operator,
  * value and unit. Capture rows whose unit is not a mechanical proof unit may
- * coexist. Capture rows whose unit is mm or Pa are treated as mechanical
+ * coexist. Capture rows whose unit is mm, nm or Pa are treated as mechanical
  * obligations, including when their SysON feature name is arbitrary.
  *
  * Limitation: V1 `requirements-capture` has no semantic kind. A non-FEA
- * criterion that happens to use mm or Pa is therefore refused if omitted
+ * criterion that happens to use mm, nm or Pa is therefore refused if omitted
  * from the proof. Do not invent a metric-name catalog or a temperature
  * exception to paper over that missing kind.
  */
@@ -682,7 +685,7 @@ function requirement(value: unknown, path: string): MechanicalRequirement {
     operator: "<=" as const,
   };
   if (input.metric === "maximum-displacement") {
-    const limit = scalar(input.limit, "mm", `${path}.limit`);
+    const limit = scalarOneOf(input.limit, ["mm", "nm"], `${path}.limit`);
     if (limit.value <= 0) {
       throw new Error(`${path}.limit.value must be greater than zero.`);
     }
@@ -914,6 +917,28 @@ function scalar<Unit extends string>(
   const input = exactRecord(value, ["value", "unit"], path);
   literalValue(input.unit, unit, `${path}.unit`);
   return { value: finite(input.value, `${path}.value`), unit };
+}
+
+function scalarOneOf<const Units extends readonly string[]>(
+  value: unknown,
+  units: Units,
+  path: string,
+): ScalarQuantity<Units[number]> {
+  const input = exactRecord(value, ["value", "unit"], path);
+  if (
+    typeof input.unit !== "string" ||
+    !(units as readonly string[]).includes(input.unit)
+  ) {
+    throw new TypeError(
+      `${path}.unit must equal ${
+        units.map((unit) => JSON.stringify(unit)).join(" or ")
+      }.`,
+    );
+  }
+  return {
+    value: finite(input.value, `${path}.value`),
+    unit: input.unit as Units[number],
+  };
 }
 
 function vector<Unit extends string>(

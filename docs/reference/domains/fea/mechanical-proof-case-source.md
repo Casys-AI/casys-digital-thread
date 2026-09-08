@@ -30,7 +30,10 @@ The compiled internal declaration remains
 | Criteria | One or two positive upper bounds: `maximum-displacement` / `maximum-von-mises-stress` |
 
 Numeric values stay sourced project data. Units and operators stay the closed capability
-(`MPa`, `mm`, `N`, `Pa`, `<=`).
+(`MPa`, `mm`, `nm`, `N`, `Pa`, `<=`). After canonical requirements capture, a
+`maximum-displacement` criterion that restates a traced `0.2 mm` brief threshold
+declares `{ value: 200000, unit: "nm" }`; it must not restate `0.2 mm`. Mesh,
+selections and solver observations stay `mm`. Stress stays `Pa`.
 
 ## Forbidden
 

@@ -25,10 +25,17 @@ observed feature >= dimensioned limit
 Only `<=` and `>=` are registered. Metric names are SysML identifiers and every limit
 has a mandatory unit. Generic requirement authoring currently accepts safe integer
 thresholds only because the qualified round trip does not preserve decimal literals.
+Live 2026-09-08 `probe:requirement-literals`: decimal `0.2 [mm]` and scientific
+`2e-1 [mm]` produced no extracted constraint plus
+`[lib/syson] Cannot parse literal value from 'LiteralRational'`; fraction `1 / 5 [mm]`
+extracted as a binary division, not a literal. All three sandboxes deleted true. The
+canonical Thread expression for a traced `0.2 mm` brief threshold is therefore
+`200000 nm`, with provenance retaining the declared millimetre and
+`fractional-mm-to-nm`. The probe does not evaluate, solve, or change product grammar.
 
 | Accepted authoring units | SysML value type       |
 | ------------------------ | ---------------------- |
-| `mm`, `m`                | `LengthValue`          |
+| `mm`, `nm`, `m`          | `LengthValue`          |
 | `Pa`                     | `PressureValue`        |
 | `kg`                     | `MassValue`            |
 | `N`                      | `ForceValue`           |

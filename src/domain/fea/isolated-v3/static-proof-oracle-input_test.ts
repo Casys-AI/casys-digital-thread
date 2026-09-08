@@ -54,6 +54,65 @@ Deno.test("static proof oracle input is the closed two-metric payload without a 
   assertEquals(encoded.includes("mcp-"), false);
 });
 
+Deno.test(
+  "static proof oracle values keep CalculiX displacement in mm when the declared limit is nm",
+  () => {
+    const nmDisp: MechanicalRequirement = {
+      ...DISP,
+      limit: { value: 200_000, unit: "nm" },
+    };
+    const input = buildStaticProofOracleInput(METRICS, [nmDisp]);
+    assertEquals(input.values[nmDisp.feature], { value: 0.42, unit: "mm" });
+    assertEquals(input.constraints[0]?.expression.right, {
+      kind: "literal",
+      value: 200_000,
+      unit: "nm",
+    });
+  },
+);
+
+Deno.test(
+  "static proof oracle evaluations keep the declared nm unit from SysON",
+  () => {
+    const nmDisp: MechanicalRequirement = {
+      ...DISP,
+      limit: { value: 200_000, unit: "nm" },
+    };
+    const evaluations = evaluationsFromStaticProofOracle(
+      new Map([[nmDisp.id, {
+        status: "pass",
+        computedValue: 199_000,
+        threshold: 200_000,
+        margin: 1_000,
+        unit: "nm",
+      }]]),
+      [nmDisp],
+      {
+        verdictCaptureFp: VERDICT_FP,
+        evaluatedAt: "2026-09-08T00:00:00.000Z",
+        evidenceArtifactId: "eval-capture",
+        observationIds: ["obs-disp"],
+        threadRequirementIds: new Map([[nmDisp.id, "thread-disp"]]),
+        evaluator: { serverId: "oracle", tool: "evaluate", runId: "capture:aa" },
+      },
+    );
+    assertEquals(evaluations[0]?.status, "pass");
+    assertEquals(evaluations[0]?.comparison?.normalizedUnit, "nm");
+    assertEquals(evaluations[0]?.comparison?.actual, {
+      value: 199_000,
+      unit: "nm",
+    });
+    assertEquals(evaluations[0]?.comparison?.limit, {
+      value: 200_000,
+      unit: "nm",
+    });
+    assertEquals(evaluations[0]?.comparison?.margin, {
+      value: 1_000,
+      unit: "nm",
+    });
+  },
+);
+
 Deno.test("static proof oracle input rejects an unsupported metric", () => {
   const bad = {
     ...DISP,

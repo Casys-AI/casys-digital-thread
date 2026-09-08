@@ -29,7 +29,7 @@ test/conformance data only. It is **not** live production authority.
 | Mesh     | `tetrahedral-volume`; positive target size in `mm`                                                                       |
 | Supports | One or more fully `fixed` supports selected by closed axis-aligned boxes in `mm`                                         |
 | Loads    | One or more non-zero force vectors in `N`, also selected by closed axis-aligned boxes                                    |
-| Criteria | **One or two** positive upper bounds: `maximum-displacement` in `mm`, `maximum-von-mises-stress` in `Pa`, or both        |
+| Criteria | **One or two** positive upper bounds: `maximum-displacement` in `mm` or `nm`, `maximum-von-mises-stress` in `Pa`, or both |
 
 Support and load selection names are unique. Their closed boxes must not overlap; even
 touching faces or edges are rejected because they can select shared mesh entities. IDs,

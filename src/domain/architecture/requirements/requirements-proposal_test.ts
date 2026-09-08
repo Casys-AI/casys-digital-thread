@@ -285,7 +285,7 @@ Deno.test(
   },
 );
 
-for (const decimal of [0.5, 1.5]) {
+for (const decimal of [0.5, 1.5, 0.2, 0.0000001]) {
   Deno.test(
     `parseRequirementsProposalParameters rejects decimal threshold ${decimal} for the SysON 0.5.1 round-trip`,
     () => {
@@ -302,6 +302,19 @@ for (const decimal of [0.5, 1.5]) {
     },
   );
 }
+
+Deno.test(
+  "parseRequirementsProposalParameters accepts a canonical 200000 nm threshold",
+  () => {
+    const proposal = parseRequirementsProposalParameters(
+      minimalParams({ threshold: 200_000, unit: "nm" }),
+    );
+    assertEquals(proposal.requirements[0]?.threshold, {
+      value: 200_000,
+      unit: "nm",
+    });
+  },
+);
 
 Deno.test(
   "parseRequirementsProposalParameters rejects a missing name field with missing_requirement_field",

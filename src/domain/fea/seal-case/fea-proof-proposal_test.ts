@@ -263,6 +263,50 @@ Deno.test("encode→parse round-trip is symmetric for the imported-or-reconstruc
 
 // ── feaProofDecisionParametersToMap: duplicate rejection ─────────────────────
 
+Deno.test("encode→parse round-trip accepts a 200000 nm displacement limit", () => {
+  const raw = structuredClone(PROOF_JSON) as Record<string, unknown>;
+  const requirements = raw.requirements as Record<string, unknown>[];
+  (requirements[0] as Record<string, unknown>).limit = {
+    value: 200_000,
+    unit: "nm",
+  };
+  const proofCase = validateMechanicalProofCase(raw);
+  const encoded = encodeFeaProofDecisionParameters(
+    "c".repeat(64),
+    proofCase,
+    GEOMETRY_ARTIFACT,
+    REQUIREMENTS_ARTIFACT,
+    SOURCE_FINGERPRINT,
+  );
+  const parsed = parseFeaProofDecisionParameters(
+    feaProofDecisionParametersToMap(encoded),
+  );
+  assertEquals(parsed.requirements[0]?.limitUnit, "nm");
+  assertEquals(parsed.requirements[0]?.limitValue, 200_000);
+  verifyFeaProofParametersMatchCase(parsed, proofCase);
+});
+
+Deno.test("parseFeaProofDecisionParameters rejects nm on a von Mises criterion", () => {
+  const proofCase = makeParametricProofCase();
+  const encoded = encodeFeaProofDecisionParameters(
+    "d".repeat(64),
+    proofCase,
+    GEOMETRY_ARTIFACT,
+    REQUIREMENTS_ARTIFACT,
+    SOURCE_FINGERPRINT,
+  );
+  const map = new Map(feaProofDecisionParametersToMap(encoded));
+  map.set("fea.proof.requirements.1.limit.unit", "nm");
+  const err = (() => {
+    try {
+      parseFeaProofDecisionParameters(map);
+    } catch (e) {
+      return e as FeaProofProposalError;
+    }
+  })();
+  assertEquals(err?.code, "invalid_format");
+});
+
 Deno.test("feaProofDecisionParametersToMap rejects duplicate_parameter", () => {
   const params = [
     { key: "fea.proof.id", value: "first" },

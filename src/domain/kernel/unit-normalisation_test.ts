@@ -1,6 +1,11 @@
 import { assertEquals } from "@std/assert";
 import { SUPPORTED_ORACLE_UNITS } from "./proof-case.ts";
-import { normaliseThreshold, UNIT_NORMALISATION } from "./unit-normalisation.ts";
+import {
+  normaliseThreshold,
+  UNIT_NORMALISATION,
+  UNIT_NORMALISATION_LABEL_SET,
+  UNIT_NORMALISATION_LABELS,
+} from "./unit-normalisation.ts";
 
 Deno.test(
   "unit normalisation table targets only admitted oracle units at load time",
@@ -180,4 +185,73 @@ Deno.test("normaliseThreshold rescales bar to Pa and names the transformation", 
   assertEquals(result.value, 150_000);
   assertEquals(result.unit, "Pa");
   assertEquals(result.transformation, "bar-to-Pa");
+});
+
+Deno.test(
+  "normalisation label vocabulary keeps historical names and adds fractional-mm-to-nm",
+  () => {
+    assertEquals([...UNIT_NORMALISATION_LABELS], [
+      "MPa-to-Pa",
+      "kN-to-N",
+      "MJ-to-J",
+      "kJ-to-J",
+      "bar-to-Pa",
+      "degC-to-K",
+      "fractional-mm-to-nm",
+    ]);
+    assertEquals(UNIT_NORMALISATION.has("mm"), false);
+    assertEquals(UNIT_NORMALISATION.has("nm"), false);
+    const mapLabels = [...UNIT_NORMALISATION.values()].map((entry) => entry.label);
+    assertEquals(mapLabels.includes("fractional-mm-to-nm"), false);
+    for (const label of mapLabels) {
+      assertEquals(UNIT_NORMALISATION_LABEL_SET.has(label), true);
+    }
+    assertEquals(UNIT_NORMALISATION_LABEL_SET.has("fractional-mm-to-nm"), true);
+    assertEquals(UNIT_NORMALISATION_LABEL_SET.has("agent-conversion"), false);
+  },
+);
+
+Deno.test("normaliseThreshold keeps integer millimetre as identity", () => {
+  const result = normaliseThreshold(5, "mm");
+  assertEquals(result.value, 5);
+  assertEquals(result.unit, "mm");
+  assertEquals(result.transformation, "identity");
+});
+
+Deno.test("normaliseThreshold canonicalises exact 0.2 mm to 200000 nm", () => {
+  const result = normaliseThreshold(0.2, "mm");
+  assertEquals(result.value, 200_000);
+  assertEquals(result.unit, "nm");
+  assertEquals(result.transformation, "fractional-mm-to-nm");
+});
+
+Deno.test("normaliseThreshold canonicalises the smallest exact millimetre to 1 nm", () => {
+  const result = normaliseThreshold(0.000001, "mm");
+  assertEquals(result.value, 1);
+  assertEquals(result.unit, "nm");
+  assertEquals(result.transformation, "fractional-mm-to-nm");
+});
+
+Deno.test(
+  "normaliseThreshold leaves a sub-nanometre millimetre as identity rather than rounding",
+  () => {
+    const result = normaliseThreshold(0.0000001, "mm");
+    assertEquals(result.value, 0.0000001);
+    assertEquals(result.unit, "mm");
+    assertEquals(result.transformation, "identity");
+  },
+);
+
+Deno.test("normaliseThreshold returns identity for a native nanometre threshold", () => {
+  const result = normaliseThreshold(200_000, "nm");
+  assertEquals(result.value, 200_000);
+  assertEquals(result.unit, "nm");
+  assertEquals(result.transformation, "identity");
+});
+
+Deno.test("nm is an admitted oracle unit and um is not", () => {
+  assertEquals(SUPPORTED_ORACLE_UNITS.includes("nm"), true);
+  assertEquals(SUPPORTED_ORACLE_UNITS.includes("um"), false);
+  assertEquals(SUPPORTED_ORACLE_UNITS.includes("µm"), false);
+  assertEquals(SUPPORTED_ORACLE_UNITS.includes("μm"), false);
 });

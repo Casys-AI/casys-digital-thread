@@ -29,7 +29,7 @@ import {
 } from "../../kernel/deterministic-json.ts";
 import {
   normaliseThreshold,
-  UNIT_NORMALISATION,
+  UNIT_NORMALISATION_LABEL_SET,
   type UnitNormalisationLabel,
 } from "../../kernel/unit-normalisation.ts";
 import type { EngineeringApprovedBriefBasis } from "../../project/engineering-project.ts";
@@ -94,10 +94,6 @@ const PROJECT_BRIEF_SOURCE_KINDS: readonly ProjectBriefSourceKind[] = [
   "document",
   "expert",
 ];
-
-const UNIT_NORMALISATION_LABELS: ReadonlySet<string> = new Set(
-  [...UNIT_NORMALISATION.values()].map((entry) => entry.label),
-);
 
 export async function buildRequirementsBriefProvenance(input: {
   brief: ProjectBriefRevision;
@@ -485,7 +481,7 @@ function parseTransformation(
   path: string,
 ): UnitNormalisationLabel | "identity" {
   if (value === "identity") return "identity";
-  if (typeof value === "string" && UNIT_NORMALISATION_LABELS.has(value)) {
+  if (typeof value === "string" && UNIT_NORMALISATION_LABEL_SET.has(value)) {
     return value as UnitNormalisationLabel;
   }
   throw new TypeError(

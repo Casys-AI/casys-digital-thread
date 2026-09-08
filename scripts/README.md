@@ -119,6 +119,7 @@ and
 | `probes/probe-architecture-attribute-value.ts` | `probe:architecture-attribute-value` | write |
 | `probes/probe-archive-cascade.ts`              | `probe:archive-cascade`              | read  |
 | `probes/probe-requirement-units.ts`            | `probe:requirement-units`            | write |
+| `probes/probe-requirement-literals.ts`         | `probe:requirement-literals`         | write |
 
 ## serve/ — serve local preview; preview:thread and preview:cockpit start focus-first
 

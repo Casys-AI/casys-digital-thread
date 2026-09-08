@@ -75,7 +75,9 @@ through the output CAS as one complete batch.
 | `result.json`  | Normalized mesh, constraints, maximum displacement and maximum von Mises metrics    |
 
 `result.json` always carries maximum displacement in `mm` and maximum von Mises stress
-in `MPa`, including their node or element identities. The proof may declare one or both
+in `MPa`, including their node or element identities. The Digital Thread forwards those
+solver units to SysON without local scaling. A declared displacement limit may be `nm`;
+SysON converts millimetre observations to that limit. The proof may declare one or both
 corresponding criteria; only declared criteria become Thread observations.
 
 A completed operation publishes eleven artifacts: the nine files, one isolated-execution

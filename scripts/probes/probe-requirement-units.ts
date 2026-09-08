@@ -1,5 +1,7 @@
 /**
- * D4 unit probe for `model.write-requirements@1`.
+ * D4 unit probe for the scalar requirements writer surface. The current
+ * product route is `model.write-requirements@2`; historical `@1` uses the
+ * same unit renderer but is retired for new planning.
  *
  * This script verifies that a unit string produces a round-trippable SysML
  * attribute via syson_element_insert_sysml → syson_constraint_extract. Only
@@ -16,6 +18,10 @@
  * ALREADY PROVEN UNITS (verified against SysON on 127.0.0.1:3009):
  *   mm → LengthValue   (probe-requirements-2026-08-04, element d6793ccf)
  *   Pa → PressureValue (probe-requirements-2026-08-04, element d6793ccf)
+ *   nm → LengthValue   (2026-09-08, sandbox
+ *        probe-requirement-units-a19bc1c4-cd16-4fd0-9792-5df8d71bce52,
+ *        editing context 87467186-3514-4421-8aee-c3d2f01d7f0a, deleted true)
+ *   um / µm / μm refused 2026-09-08 (type_mismatch or extracted as "m")
  *
  * USAGE:
  *   deno task probe:requirement-units                     # probe default units
@@ -79,6 +85,15 @@ export interface ProbeRequirementUnitsResult {
   readonly cleanupNote: string;
 }
 
+/** CLI qualification: every unit round-trips and sandbox deletion is confirmed. */
+export function requirementUnitProbeQualifies(
+  result: ProbeRequirementUnitsResult,
+): boolean {
+  return result.sandboxProjectDeleted === true &&
+    result.units.length > 0 &&
+    result.units.every((unit) => unit.status === "ok");
+}
+
 /**
  * Run the unit round-trip probe and return a machine-readable result.
  *
@@ -93,7 +108,7 @@ export async function probeRequirementUnits(
   const endpoint = options.endpoint ?? DEFAULT_ENDPOINT;
   const unit = options.unit ?? "mm";
   const sysmlType = options.sysmlType ??
-    (unit === "mm"
+    (unit === "mm" || unit === "nm"
       ? "LengthValue"
       : unit === "Pa"
       ? "PressureValue"
@@ -480,13 +495,15 @@ async function withCleanup(
   result: ProbeRequirementUnitsResult,
 ): Promise<ProbeRequirementUnitsResult> {
   try {
-    await client.callTool({
+    const deleted = await client.callTool({
       name: "syson_project_delete",
       arguments: { project_id: projectId },
     });
-    return { ...result, sandboxProjectDeleted: true };
+    return {
+      ...result,
+      sandboxProjectDeleted: deleted.structuredContent.deleted === true,
+    };
   } catch {
-    // Cleanup failure is not fatal — the probe result stands.
     return { ...result, sandboxProjectDeleted: false };
   }
 }
@@ -501,8 +518,5 @@ if (import.meta.main) {
     sysmlType: args["type"],
   });
   console.log(JSON.stringify(result, null, 2));
-  const failed = result.units.some(
-    (u) => u.status !== "ok" && u.status !== "syson_unavailable",
-  );
-  if (failed) Deno.exitCode = 1;
+  if (!requirementUnitProbeQualifies(result)) Deno.exitCode = 1;
 }

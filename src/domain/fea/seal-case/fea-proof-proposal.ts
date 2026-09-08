@@ -114,7 +114,7 @@ export interface FeaProofRequirementParams {
   readonly feature: string;
   readonly operator: "<=";
   readonly limitValue: number;
-  readonly limitUnit: "mm" | "Pa";
+  readonly limitUnit: "mm" | "nm" | "Pa";
 }
 
 /**
@@ -604,11 +604,23 @@ export function parseFeaProofDecisionParameters(
     }
     const limitValue = finiteNum(`fea.proof.requirements.${i}.limit.value`);
     const limitUnit = str(`fea.proof.requirements.${i}.limit.unit`);
-    if (limitUnit !== "mm" && limitUnit !== "Pa") {
-      invalid(
-        "invalid_format",
-        `fea.proof.requirements.${i}.limit.unit must be mm or Pa (got: ${limitUnit}).`,
-      );
+    let parsedLimitUnit: "mm" | "nm" | "Pa";
+    if (metric === "maximum-displacement") {
+      if (limitUnit !== "mm" && limitUnit !== "nm") {
+        invalid(
+          "invalid_format",
+          `fea.proof.requirements.${i}.limit.unit must be mm or nm (got: ${limitUnit}).`,
+        );
+      }
+      parsedLimitUnit = limitUnit === "nm" ? "nm" : "mm";
+    } else {
+      if (limitUnit !== "Pa") {
+        invalid(
+          "invalid_format",
+          `fea.proof.requirements.${i}.limit.unit must be Pa (got: ${limitUnit}).`,
+        );
+      }
+      parsedLimitUnit = "Pa";
     }
     requirements.push({
       id: reqId,
@@ -617,7 +629,7 @@ export function parseFeaProofDecisionParameters(
       feature,
       operator: "<=",
       limitValue,
-      limitUnit,
+      limitUnit: parsedLimitUnit,
     });
   }
 

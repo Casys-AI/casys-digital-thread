@@ -484,6 +484,33 @@ Deno.test("requirements recaptures preserve their exact provenance era and trace
   );
 });
 
+Deno.test("traced captures preserve 0.2 mm declaration while rechecking exact native 200000 nm", () => {
+  for (const readOnly of [false, true]) {
+    const value = tracedCapture(readOnly);
+    const [requirement] = value.requirements as Record<string, unknown>[];
+    requirement!.limit = { value: 200_000, unit: "nm" };
+    const provenance = value.briefProvenance as Record<string, unknown>;
+    const [origin] = provenance.requirements as Record<string, unknown>[];
+    origin!.declaredThreshold = { value: 0.2, unit: "mm" };
+    origin!.transformation = "fractional-mm-to-nm";
+    const parsed = parseExactRequirementsCapture(value);
+    if (!isTracedRequirementsCapture(parsed)) {
+      throw new Error("Expected traced capture.");
+    }
+    assertEquals(parsed.briefProvenance.requirements[0]!.declaredThreshold, {
+      value: 0.2,
+      unit: "mm",
+    });
+    assertEquals(
+      parsed.briefProvenance.requirements[0]!.transformation,
+      "fractional-mm-to-nm",
+    );
+    assertEquals(parsed.requirements[0]!.limit, { value: 200_000, unit: "nm" });
+    origin!.transformation = "identity";
+    assertThrows(() => parseExactRequirementsCapture(value));
+  }
+});
+
 Deno.test("traced captures preserve MPa declaration while rechecking exact native Pa threshold", () => {
   for (const readOnly of [false, true]) {
     const value = tracedCapture(readOnly);

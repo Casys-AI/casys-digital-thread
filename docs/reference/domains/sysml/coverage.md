@@ -24,7 +24,7 @@ write/recapture path still needs qualification:
 | Architecture renderer  | One package; one root `PartDefinition`; zero or more target `PartDefinition`s; typed `PartUsage` occurrences `part usage : Target;`; and bare `AttributeUsage` declarations `attribute name;`. Definitions and attributes use bounded textual insertion. Each usage is lowered natively as `PartUsage` plus `FeatureTyping`, then typed through code-owned AQL.                         |
 | Architecture readback  | The adapter rereads the exact package, its `PartDefinition`s and one-level owned `PartUsage`/`AttributeUsage` children. It resolves each usage target through the pinned `FeatureTyping.type` AQL expression, then saves `architecture-capture/4.0` with sealed `scopeRoot` and `semanticRoot` ids.                                                                                     |
 | PartDefinition capture | `model.capture-part-definitions@1` rereads only the identities sealed by the active generic architecture capture and publishes `part-definitions-capture/1.0`; it is not a live whole-model inventory.                                                                                                                                                                                  |
-| Scalar requirements    | `model.write-requirements@1` writes native per-metric typed attributes, `require constraint`, a subject relation and qualified SI imports against one exact captured `PartDefinition`. Current thresholds are safe integers with `<=` or `>=` and a qualified unit; extraction must round-trip every metric, operator, value, unit and identity.                                        |
+| Scalar requirements    | `model.write-requirements@2` writes traced native scalar limits and approved-brief provenance in `requirements-capture/5.0` against one captured `PartDefinition`. Limits stay safe integers and round-trip exactly. Native `nm` is admitted; `0.2 mm` becomes `200000 nm` via `fractional-mm-to-nm`. Decimal literals stay unavailable; `@1` is historical only.                       |
 | Agent-authored source  | Profile `sysml-architecture-closed-subset-v1`. Public capture takes `profileId`, `sourceId`, and a full `resourceRef` from `project_resource_capture` (no `sourceText`). Preview takes that opaque `sourceRef` only. Tokens, one-form rule, and 262144-byte bound: [language](language.md). Documentary Thread only after `model.seal-architecture-sysml@1`.                            |
 | Requirements recapture | `model.recapture-requirements@1` rereads one complete unchanged integer-scalar family on the exact current architecture after a new MRTR. It publishes `requirements-capture/4.0` with its exact predecessor; historical schema 3 is accepted only from `model.write-requirements@1`, schema 4 only from this recapture operation. No native mutation, evaluation or inherited verdict. |
 
@@ -121,8 +121,10 @@ validators, WAL/recovery and the complete configured subset are maintained in th
   (`scripts/probes/probe-architecture-attribute-value.ts`) inserted
   `attribute probeHandle : LengthValue = 1 [mm];`: type reread `LengthValue`; value
   reread `OperatorExpression` without a scalar or unit (`unresolved`).
-- Arbitrary requirement grammar or decimal thresholds; initial requirements writing and
-  unchanged requirements recapture share the bounded integer scalar grammar.
+- Arbitrary requirement grammar or decimal SysML literals; initial requirements writing
+  and unchanged requirements recapture share the bounded integer scalar grammar.
+  Declared `0.2 mm` is compiled to integer `200000 nm` before that grammar; it is not a
+  relaxation of the integer capture guard.
 - Delete, move, rename, retype or merge of an existing generic architecture construct;
   neither enrichment nor a replay is a repair API.
 - Treating a source seal, SysON model, requirement capture or successful provider write
