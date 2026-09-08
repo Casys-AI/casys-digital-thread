@@ -527,9 +527,10 @@ export class CalculixHttpRuntimeQualificationService {
               }
               recordedDispatch = response;
             } catch {
-              attempt = await this.options.attempts.markQuarantined(identity, {
-                reason: "malformed",
-              });
+              // Dispatch already owns the durable request id, so a malformed
+              // acknowledgement is an uncertain response rather than proof
+              // that the provider failed. Keep the dispatching WAL and recover
+              // exclusively through calculix_run_get below; never redispatch.
             }
           }
         }

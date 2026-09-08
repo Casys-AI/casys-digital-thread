@@ -18,6 +18,10 @@ Deno.test("CalculiX HTTP qualification criteria accept only a completed exact re
     await createFirstPartyCalculixHttpRuntimeQualificationCandidates();
   if (!candidate) throw new Error("candidate absent");
   await assertCalculixHttpQualificationEvidence(candidate, await evidence(candidate));
+  const { recordedDispatch: _lostAcknowledgement, ...readbackOnly } = await evidence(
+    candidate,
+  );
+  await assertCalculixHttpQualificationEvidence(candidate, readbackOnly);
 });
 
 Deno.test("CalculiX HTTP qualification criteria fail closed on status, request bytes, units, bounds, and ledger order", async () => {

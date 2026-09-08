@@ -900,6 +900,72 @@ the retired anonymous-mount container is again strictly `degraded` and cannot be
 as owned for a new mutation. The dedicated recovery tests and the strict Compose host
 suite pass.
 
+## F34 — the successor manifest drifted from the host admin lock
+
+(closed, quick win)
+
+The first review of the sealed `casys-mcp-calculix@1.0.0` launch group failed before
+host mutation with literal `CalculiX qualification admin lock drifted`. The host lock
+still named the predecessor manifest, so accepting the successor implicitly would have
+bypassed the separate administrative authority.
+
+The private H1 admin review was applied explicitly and advanced the lock to revision 3
+for manifest fingerprint
+`e65e0fef7d6e59be313063c77aa5aa703c23321cc9c0a628fe4585b23237b88d`. The desired runtime
+state remains `inactive`; the update neither started the provider nor qualified the
+binding.
+
+## F35 — a malformed dispatch acknowledgement bypassed exact recorded readback
+
+(mitigated, live successor requalification pending)
+
+The first successor qualification did execute the fixed native Gmsh/CalculiX case and
+durably publish one completed run with nine ordered artifacts. The qualification WAL,
+however, classified the dispatch acknowledgement as `malformed`, skipped
+`calculix_run_get`, terminalized `unavailable`, and stopped the group. The provider run
+is real but remains outside qualification and Thread authority; it must not be promoted
+retroactively.
+
+The qualification protocol now treats a missing or malformed acknowledgement as an
+uncertain response after the durable dispatch claim. It performs only the exact
+same-request readback and never redispatches that attempt. Qualification can proceed
+only after the existing request identity, STEP identity, nine-entry ledger,
+`resources/list` bijection, nine byte hashes and closed factual criteria all pass. The
+protocol fingerprint advanced to `calculix-http-qualification-protocol/1.1`, so the old
+terminal attempt cannot be reused as a new attestation. Focused recovery, malformed-
+acknowledgement, resource-list and criteria tests pass; closure still requires a fresh
+live qualification reaching a stopped qualified WAL and an exact host attestation.
+
+## F36 — the sealed sensitivity case can be mistaken for a sensitivity result
+
+(open, demo sequencing friction)
+
+Thread r94 contains the reviewed RadialArm sensitivity case, not an executed sensitivity
+result. A real result requires two comparable static FEA solves — base and stepped
+geometry — followed by the registered `model.write-sensitivity-edges@1` operation. The
+semantic outcome is a derived parameter-to-response relation backed by those two solve
+receipts, not an autonomous sensitivity node placed in a hull.
+
+Do not close this with a whiteboard-only node or UI special case. Close it only when the
+physical study is captured in the Thread and the registered edge writer has persisted
+and read back the exact SysML relations.
+
+## F37 — qualification WAL flattens distinct contract failures to `malformed`
+
+(open, deferred hard friction)
+
+The current WAL does not retain a bounded stage code for dispatch parsing, run-get
+parsing, resource-list bijection, individual resource reads or byte-hash validation. It
+therefore proved the literal `malformed` state for the failed live attempt but could not
+identify the exact rejected wire field afterward. A read-only audit found no static
+incompatibility between the pinned provider and client envelopes.
+
+A later control-plane observability lot should persist a closed, non-sensitive failure
+stage enum and cover the exact `@casys/mcp-server` envelope fixture. It must not persist
+raw provider payloads, weaken validation, reinterpret old attempts or broaden the ID01
+engineering claim. F35's same-request recovery is sufficient to continue the pilot; this
+diagnostic improvement is deliberately deferred.
+
 ## Expected states, not defects
 
 - The old preview was explicitly pinned to TPS03. It correctly ignored the new durable

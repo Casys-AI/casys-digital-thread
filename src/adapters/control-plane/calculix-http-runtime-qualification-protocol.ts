@@ -10,10 +10,12 @@ import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 
 export const CALCULIX_HTTP_QUALIFICATION_PROTOCOL = deepFreeze({
-  schemaVersion: "calculix-http-qualification-protocol/1.0",
+  schemaVersion: "calculix-http-qualification-protocol/1.1",
   dispatchTool: MCP_CALCULIX_RECORDED_STATIC_TOOL,
   readbackTool: MCP_CALCULIX_RUN_GET_TOOL,
   acceptedRunState: "completed",
+  acknowledgementRecovery:
+    "A missing or malformed dispatch acknowledgement is recovered by exact request-id readback only; it is never redispatched.",
   resources: CALCULIX_RECORDED_RESOURCE_ORDER,
   evidenceBoundary:
     "Recorded solve and readback only; no product, Thread, requirement, safety, or engineering verdict.",

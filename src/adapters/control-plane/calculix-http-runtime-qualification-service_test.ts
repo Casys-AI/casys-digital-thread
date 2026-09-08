@@ -254,30 +254,61 @@ Deno.test("CalculiX quarantine deadline resolves unavailable through the termina
   }
 });
 
-Deno.test("CalculiX rejects a malformed dispatch acknowledgement and a non-bijective resources/list", async () => {
-  for (
-    const options of [
-      { dispatch: "malformed" as const },
-      { resourceList: "empty" as const },
-    ]
-  ) {
-    const runtime = await fixture(options);
-    try {
-      const review = await runtime.service.review(runtime.candidate.id);
-      const result = await runtime.service.apply(review);
-      assertEquals(result.phase, "stopped");
-      if (result.phase !== "stopped") throw new Error("stopped WAL absent");
-      assertEquals(result.outcome.status, "unavailable");
-      assertEquals((await runtime.attestations.list()).length, 0);
-      assertEquals(
-        (await runtime.states.observe([runtime.candidate.material])).get(
-          capabilityRuntimeMaterialKey(runtime.candidate.material),
-        )?.runtime,
-        "inactive",
-      );
-    } finally {
-      await runtime.close();
-    }
+Deno.test("CalculiX recovers a malformed dispatch acknowledgement by exact readback without redispatch", async () => {
+  const runtime = await fixture({
+    dispatch: "malformed",
+    readbacks: ["absent", "complete"],
+  });
+  try {
+    const review = await runtime.service.review(runtime.candidate.id);
+    const first = await runtime.service.apply(review);
+    assertEquals(first.phase, "quarantined");
+    const recovered = await runtime.service.recover(runtime.candidate.id);
+    assertEquals(recovered.phase, "attested");
+    assertEquals(runtime.provider.dispatches, 1);
+    assertEquals(runtime.provider.readbacks, 2);
+    assertEquals((await runtime.attestations.list()).length, 1);
+  } finally {
+    await runtime.close();
+  }
+});
+
+Deno.test("CalculiX accepts a complete exact readback after a malformed dispatch acknowledgement", async () => {
+  const runtime = await fixture({ dispatch: "malformed" });
+  try {
+    const review = await runtime.service.review(runtime.candidate.id);
+    const result = await runtime.service.apply(review);
+    assertEquals(result.phase, "attested");
+    assertEquals(runtime.provider.dispatches, 1);
+    assertEquals(runtime.provider.readbacks, 1);
+    assertEquals(runtime.provider.resourceLists, 1);
+    assertEquals(runtime.resourceReads, 9);
+    assertEquals((await runtime.attestations.list()).length, 1);
+  } finally {
+    await runtime.close();
+  }
+});
+
+Deno.test("CalculiX rejects a non-bijective resources/list", async () => {
+  const runtime = await fixture({
+    dispatch: "malformed",
+    resourceList: "empty",
+  });
+  try {
+    const review = await runtime.service.review(runtime.candidate.id);
+    const result = await runtime.service.apply(review);
+    assertEquals(result.phase, "stopped");
+    if (result.phase !== "stopped") throw new Error("stopped WAL absent");
+    assertEquals(result.outcome.status, "unavailable");
+    assertEquals((await runtime.attestations.list()).length, 0);
+    assertEquals(
+      (await runtime.states.observe([runtime.candidate.material])).get(
+        capabilityRuntimeMaterialKey(runtime.candidate.material),
+      )?.runtime,
+      "inactive",
+    );
+  } finally {
+    await runtime.close();
   }
 });
 
