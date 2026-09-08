@@ -1075,7 +1075,7 @@ project, queue a run or create engineering evidence.
 
 ## F41 — the sensitivity executor omitted its Build123d microVM profile attestation
 
-(mitigated, live queued-run replay pending, quick win)
+(closed, quick win)
 
 The first execution attempt for the queued sensitivity run stopped before claim, CAD,
 provider dispatch or execution WAL. Its authorized operation contained the exact
@@ -1087,9 +1087,36 @@ The executor now reopens the code-owned Build123d profile before host activation
 requires exactly one sealed lifecycle for the exact Build123d worker material, recrosses
 its image digest and pinned reference, and supplies that material with the profile
 fingerprint to the capability session. Tests prove the exact positive tuple and that a
-digest mismatch leaves session, CAD and provider untouched. Closure requires replaying
-the still-queued run through the real session; this code check alone is not a
-sensitivity result.
+digest mismatch leaves session, CAD and provider untouched. The live replay of the
+still-queued ID01 run crossed this exact profile-attestation layer and reached the next,
+separate cache prerequisite. That closes the omitted-attestation defect without claiming
+CAD execution, provider dispatch or a sensitivity result.
+
+## F42 — the exact Build123d microVM distribution for the active pin is unavailable
+
+(open, deferred hard friction)
+
+The live replay stopped before claim, CAD, provider dispatch or execution WAL because
+the exact Microsandbox cache prerequisite for
+`casys.build123d-isolated-worker/build123d-isolated-worker-image` is unavailable. The
+authorized preload attempted acquisition twice and both durable preparation terminals
+record `acquisition-failed`. The corresponding mutable local Docker source tag is also
+absent. The ID01 sensitivity run therefore remains queued and cold; this is not a FEA or
+sensitivity observation.
+
+The active distribution matrix names
+`docker.io/casys/build123d-microsandbox-worker@sha256:0e19aee61aaab326ec29e50753a0ef56432d255fb44fd21c40988e90ff7601f8`
+as the exact qualification target, not as a recoverable byte source. No local release
+receipt, candidate import record or exact Build123d OCI source exists in this checkout,
+and the public registry lookup for that exact digest is unavailable. The current
+Build123d bootstrap descriptor deliberately remains `trusted-dockerfile`; rebuilding it
+does not prove byte identity with the active pin.
+
+Close this only through a reviewed immutable distribution — or the full
+candidate-to-qualification-to-catalog-promotion path — followed by successful exact
+cache acquisition and the queued run crossing the prerequisite. Do not manually inject,
+load or retag a merely plausible image, and do not replace the required base/stepped FEA
+receipts plus typed sensitivity edge with a whiteboard node.
 
 ## Expected states, not defects
 
