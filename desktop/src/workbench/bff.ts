@@ -1,7 +1,7 @@
 import {
   createFocusedWorkspaceHandler,
   createNativeWorkbenchHandler,
-  type NativeWorkbenchProjectCatalog,
+  readPersistedProjectCatalog,
 } from "../../../scripts/serve/serve-native-workbench.ts";
 import { FileCockpitFocusStore } from "../../../src/adapters/project/file-cockpit-focus-store.ts";
 import {
@@ -198,53 +198,6 @@ export function createPackagedWorkbenchBff(
     }
     return await focused(request);
   };
-}
-
-async function readPersistedProjectCatalog(
-  store: FileEngineeringProjectRevisionStore,
-  directory: string,
-): Promise<NativeWorkbenchProjectCatalog> {
-  try {
-    const projects = [];
-    try {
-      for await (const entry of Deno.readDir(directory)) {
-        if (!entry.isDirectory || entry.isSymlink) continue;
-        let projectId: string;
-        try {
-          projectId = decodeURIComponent(entry.name);
-        } catch {
-          throw new Error("A persisted project directory has an invalid identity.");
-        }
-        const project = await store.get(projectId);
-        if (!project) {
-          throw new Error(`Persisted project ${projectId} has no published revision.`);
-        }
-        projects.push({
-          id: project.project.id,
-          name: project.project.name,
-          revision: project.revision,
-          subjectId: project.project.subjectId,
-        });
-      }
-    } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
-    }
-    projects.sort((left, right) =>
-      left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
-    );
-    return Object.freeze({
-      schemaVersion: "native-workbench-project-catalog/1.0",
-      state: "available",
-      projects: Object.freeze(projects),
-    });
-  } catch {
-    return Object.freeze({
-      schemaVersion: "native-workbench-project-catalog/1.0",
-      state: "unavailable",
-      projects: [] as const,
-      reason: "Persisted project revisions could not be reopened exactly.",
-    });
-  }
 }
 
 function captureAt<Kind extends string>(

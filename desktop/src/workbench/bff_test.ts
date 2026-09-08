@@ -32,6 +32,22 @@ Deno.test("packaged Workbench wires the explicit viewer registry and fails close
 
     const token = "a".repeat(64);
     const handler = createPackagedWorkbenchBff(token, root);
+    const projects = await handler(
+      new Request("http://127.0.0.1/api/projects", {
+        headers: { [WORKBENCH_ACCESS_HEADER]: token },
+      }),
+    );
+    assertEquals(projects.status, 200);
+    assertEquals(await projects.json(), {
+      schemaVersion: "native-workbench-project-catalog/1.0",
+      state: "available",
+      projects: [{
+        id: PROJECT_ID,
+        name: "Packaged viewer project",
+        revision: 1,
+        subjectId: "packaged-viewer-subject",
+      }],
+    });
     const response = await handler(
       new Request("http://127.0.0.1/api/thread/viewer-sessions", {
         headers: { [WORKBENCH_ACCESS_HEADER]: token },

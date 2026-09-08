@@ -246,6 +246,60 @@ export type NativeWorkbenchProjectCatalog =
   };
 
 /**
+ * Reopen the latest validated revision for every persisted project directory.
+ *
+ * Discovery is deliberately fail-closed: a malformed identity or a project
+ * directory without an exactly reopenable head makes the whole navigation
+ * projection unavailable instead of returning a misleading partial list.
+ */
+export async function readPersistedProjectCatalog(
+  store: Pick<EngineeringProjectRevisionStore, "get">,
+  directory: string,
+): Promise<NativeWorkbenchProjectCatalog> {
+  try {
+    const projects: NativeWorkbenchProjectCatalogItem[] = [];
+    try {
+      for await (const entry of Deno.readDir(directory)) {
+        if (!entry.isDirectory || entry.isSymlink) continue;
+        let projectId: string;
+        try {
+          projectId = decodeURIComponent(entry.name);
+        } catch {
+          throw new Error("A persisted project directory has an invalid identity.");
+        }
+        const project = await store.get(projectId);
+        if (!project) {
+          throw new Error(`Persisted project ${projectId} has no published revision.`);
+        }
+        projects.push({
+          id: project.project.id,
+          name: project.project.name,
+          revision: project.revision,
+          subjectId: project.project.subjectId,
+        });
+      }
+    } catch (error) {
+      if (!(error instanceof Deno.errors.NotFound)) throw error;
+    }
+    projects.sort((left, right) =>
+      left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
+    );
+    return Object.freeze({
+      schemaVersion: "native-workbench-project-catalog/1.0",
+      state: "available",
+      projects: Object.freeze(projects),
+    });
+  } catch {
+    return Object.freeze({
+      schemaVersion: "native-workbench-project-catalog/1.0",
+      state: "unavailable",
+      projects: [] as const,
+      reason: "Persisted project revisions could not be reopened exactly.",
+    });
+  }
+}
+
+/**
  * A caller that names a project does not also have to know the project's
  * internal thread-subject identity.
  */
@@ -1854,6 +1908,8 @@ if (import.meta.main) {
       readDeclaredCockpitFleet(
         cliArgs["fleet-manifest"] ?? "config/mcp-fleet.json",
       ),
+    projectCatalog: () =>
+      readPersistedProjectCatalog(projectStore, activeProjectDirectory),
     capabilityWorkbench,
   });
   const workspaceHandler = workspaceId === undefined || !cockpitFocus
@@ -1862,6 +1918,8 @@ if (import.meta.main) {
       focus: cockpitFocus,
       workspaceId,
       native: handler,
+      projectCatalog: () =>
+        readPersistedProjectCatalog(projectStore, activeProjectDirectory),
     });
 
   Deno.serve({
