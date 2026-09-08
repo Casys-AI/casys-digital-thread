@@ -81,7 +81,8 @@ Sensitivity is already active where the inputs are explicit and reversible: the 
 note checks every orthogonal orientation, the configuration matrix compares exclusive
 candidate substitutions, and the propulsion source packet calculates the
 static-clearance effect of replacing the 3.0-inch proxy by the sourced 3.1-inch T3140
-datum.
+datum. The pre-sizing basis also retains all eleven exact F1507/T3140 rows as a discrete
+lookup basis, without interpolation or a same-throttle candidate ranking.
 
 A whole-vehicle sensitivity sweep is **not active yet**. It starts only after G0.1, G0.2
 and G0.4 provide one reviewed mission scenario, an installed-item census and one exact

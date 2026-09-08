@@ -234,14 +234,14 @@ exact-row arithmetic screen but unresolved propeller identity and an internal
 table-versus-drawing shaft conflict. The
 [propulsion source-control packet](propulsion-source-control-packet-20260908.md) now
 fingerprints the official drawings and T3140 specification. F1507 KV3800 + T3140 has a
-stronger exact-name bench link, sourced 3.1-inch geometry, 2 g catalogue mass and a
-coherent nominal M5 retention chain, but its revision/tolerances remain open, its 100%
-bench endpoint exceeds the same page's 60-second motor ratings, and both motor and
-propeller exceed the current CAD proxies. Neither is selected. Six official 4S battery
-candidates remain screened: five fail orthogonal containment in the current 38 × 34 × 25
-mm reserve; the sixth fits geometrically but fails even the first retained F1404
-label-current row. This bounded search found no candidate that passes both screens, not
-proof that no 4S pack can do so.
+stronger exact-name bench link, a full eleven-row discrete table, sourced 3.1-inch
+geometry, 2 g catalogue mass and a coherent nominal M5 retention chain, but its
+revision/tolerances remain open, its 100% bench endpoint exceeds the same page's
+60-second motor ratings, and both motor and propeller exceed the current CAD proxies.
+Neither is selected. Six official 4S battery candidates remain screened: five fail
+orthogonal containment in the current 38 × 34 × 25 mm reserve; the sixth fits
+geometrically but fails even the first retained F1404 label-current row. This bounded
+search found no candidate that passes both screens, not proof that no 4S pack can do so.
 
 The [mission sizing decision sheet](mission-sizing-decision-sheet-20260908.md) now keeps
 three reversible workflow shapes separate from human decisions and deliberately leaves

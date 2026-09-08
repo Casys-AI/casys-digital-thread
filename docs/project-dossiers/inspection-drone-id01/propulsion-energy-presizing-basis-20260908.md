@@ -175,19 +175,46 @@ alternative. Four catalogue motors would total `4 × 15 = 60 g`, which is 22.64 
 the four-motor F1404 candidate sum before propellers, attachment or any required CAD
 successor.
 
-Two exact T3140 table rows are retained as a bounded alternative screen:
+The complete exact T3140 table is retained as a bounded, discrete sensitivity basis:
 
-| Throttle label | Thrust per motor | Voltage | Current per motor | Reported power per motor | Four-motor equivalent supported mass | Four-motor current | Four-motor reported power |
-| -------------- | ---------------: | ------: | ----------------: | -----------------------: | -----------------------------------: | -----------------: | ------------------------: |
-| 50%            |        238.15 gf | 15.36 V |            6.16 A |                  94.57 W |                           0.95260 kg |            24.64 A |                  378.28 W |
-| 100%           |        673.83 gf | 15.14 V |           25.87 A |                 391.57 W |                           2.69532 kg |           103.48 A |                1,566.28 W |
+| Throttle label | Thrust per motor | Voltage | Current per motor |      Speed | Reported efficiency | Four-motor equivalent supported mass | Four-motor current | Four-motor reported power |
+| -------------- | ---------------: | ------: | ----------------: | ---------: | ------------------: | -----------------------------------: | -----------------: | ------------------------: |
+| 50%            |        238.15 gf | 15.36 V |            6.16 A | 24,742 rpm |           2.52 gf/W |                           0.95260 kg |            24.64 A |                  378.28 W |
+| 55%            |        274.91 gf | 15.32 V |            7.52 A | 26,270 rpm |           2.39 gf/W |                           1.09964 kg |            30.08 A |                  460.56 W |
+| 60%            |        309.43 gf | 15.28 V |            8.86 A | 28,161 rpm |           2.29 gf/W |                           1.23772 kg |            35.44 A |                  541.16 W |
+| 65%            |        351.90 gf | 15.51 V |           10.50 A | 30,122 rpm |           2.16 gf/W |                           1.40760 kg |            42.00 A |                  651.32 W |
+| 70%            |        394.52 gf | 15.58 V |           12.07 A | 31,605 rpm |           2.10 gf/W |                           1.57808 kg |            48.28 A |                  752.28 W |
+| 75%            |        447.79 gf | 15.58 V |           14.28 A | 33,458 rpm |           2.01 gf/W |                           1.79116 kg |            57.12 A |                  890.16 W |
+| 80%            |        468.07 gf | 15.54 V |           15.34 A | 34,305 rpm |           1.96 gf/W |                           1.87228 kg |            61.36 A |                  953.16 W |
+| 85%            |        513.40 gf | 15.48 V |           17.62 A | 35,847 rpm |           1.88 gf/W |                           2.05360 kg |            70.48 A |                1,090.80 W |
+| 90%            |        547.14 gf | 15.42 V |           19.60 A | 37,313 rpm |           1.81 gf/W |                           2.18856 kg |            78.40 A |                1,209.28 W |
+| 95%            |        588.80 gf | 15.37 V |           21.94 A | 38,329 rpm |           1.75 gf/W |                           2.35520 kg |            87.76 A |                1,348.88 W |
+| 100%           |        673.83 gf | 15.14 V |           25.87 A | 40,588 rpm |           1.72 gf/W |                           2.69532 kg |           103.48 A |                1,566.28 W |
 
 The source reports 73 °C motor-surface temperature after the 100% one-minute run at 28
-°C ambient and says the bench data are reference-only. Its 100% row also exceeds the
-same page's 23 A / 372 W 60-second motor ratings by 2.87 A and 19.57 W. The endpoint is
-therefore preserved as a reported source row, not interpreted as a permitted continuous
-or 60-second operating point. Supplier clarification or a controlled replacement map is
-required before using that boundary for design.
+°C ambient and says the bench data are reference-only. Recomputing `V × I` differs from
+reported per-motor power by at most `0.1018 W` across all eleven rows, within the
+display rounding of voltage and current. Only the 100% row exceeds the same page's 23 A
+/ 372 W 60-second motor ratings: by 2.87 A and 19.57 W. The 95% row is still below both
+labels at 21.94 A and 337.22 W.
+
+The 100% endpoint is therefore preserved as a reported source row, not interpreted as a
+permitted continuous or 60-second operating point. The last tabulated row without that
+literal conflict is 95%, whose four-motor static-thrust arithmetic is 2.35520 kg
+equivalent; that is not a vehicle mass ceiling or accepted operating limit. Supplier
+clarification or a controlled replacement map is required before using the boundary for
+design.
+
+The eleven rows activate only **discrete candidate sensitivity**. They permit later
+lookup or bracketing once vehicle mass is closed; they do not authorize interpolation.
+Below 0.95260 kg equivalent the source has no lower T3140 point, and above 2.69532 kg it
+has no point at all. A mass between two rows needs an explicit interpolation method or a
+new bench point, plus the still-missing thrust-margin criterion.
+
+The common 50–100% labels on the F1404 and F1507 pages are not common installed commands
+or equal operating conditions. The two tables use different candidate propellers and
+ambient temperatures, and the manufacturer discourages comparison across motor types. No
+same-label efficiency ranking or winner is therefore produced.
 
 The official T3140 specification image and catalogue row now supply `3.1 in`
 (`78.74 mm`) diameter, `4.0 in` pitch, three blades, polymer, `2 g` catalogue mass,
@@ -506,7 +533,7 @@ law.
 
 ## Review boundary
 
-Eighteen completed native Grok consultations ran across eight bounded review passes. The
+Twenty completed native Grok consultations ran across nine bounded review passes. The
 first pair used a clean, repository-free sandbox for method cross-checks; after the
 human explicitly requested continued Grok-native work on this project, the later reviews
 read only the relevant dossier files. They independently checked motor arithmetic,
@@ -516,9 +543,12 @@ four reviews covered one task each: alternative propulsion, mission sheet, power
 architecture and battery-tray sensitivity. A new four-way source-control pass then
 audited F1404, T3140, `GF3016`, and the F1507/T3140 assembly chain. All four completed;
 Codex independently inspected the linked official drawings and specification image
-before accepting the corrections. A parallel battery search was cancelled after the
-recurring permission-classifier timeout and contributed no accepted verdict, as were an
-earlier STEP audit and supplier-identity run.
+before accepting the corrections. Two later sensitivity audits independently transcribed
+and recalculated all eleven F1507/T3140 rows. Codex accepted the full exact-row table
+but rejected a same-throttle candidate ranking because the source conditions differ and
+the manufacturer explicitly discourages inter-type comparison. A parallel battery search
+was cancelled after the recurring permission-classifier timeout and contributed no
+accepted verdict, as were an earlier STEP audit and supplier-identity run.
 
 Codex inspected the source pages and repository facts, recalculated the values, rehashed
 the selected source and STEP bytes, derived the simple constructive-solid volumes and

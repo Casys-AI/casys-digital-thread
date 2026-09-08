@@ -412,6 +412,11 @@ failed optional MCP startup. Codex independently reopened and inspected the offi
 sources before accepting any engineering statement. The successful answers do not close
 F14: the noise and global configuration remain outside the ID01 repository's authority.
 
+Two subsequent sensitivity audits also completed and reproduced the startup noise. Their
+exact-row arithmetic was accepted only after Codex independently recalculated it; one
+proposed inter-type comparison was deliberately not promoted because the supplier warns
+against that interpretation.
+
 This is a real agent-workflow friction, but not a safe repo-local quick win. Repairing
 it would change the user's global Grok/plugin configuration outside the ID01 scope and
 could affect other work. Leave that configuration untouched here. For now, keep each

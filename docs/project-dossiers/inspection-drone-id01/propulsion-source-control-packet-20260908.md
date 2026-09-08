@@ -142,6 +142,12 @@ Those values exceed the same page's 60-second labels by `2.87 A` and `19.57 W`. 
 remains a source observation, not a permitted design point. The 50% row remains only a
 first documented table point, not hover.
 
+The
+[pre-sizing basis](propulsion-energy-presizing-basis-20260908.md#alternative-exact-name-bench-lead--f1507-kv3800-with-t3140)
+now retains all eleven exact 50–100% T3140 rows as a discrete sensitivity input. It does
+not interpolate or compare same-percentage F1404/F1507 points as equivalent operating
+conditions.
+
 ## Prepared supplier clarification packet — not sent
 
 The smallest useful request is:
@@ -187,5 +193,7 @@ plugin-startup warnings remain workflow friction rather than engineering evidenc
 independently reopened the official pages, downloaded and visually inspected the three
 official drawings/specification images, verified their SHA-256 values, recomputed the
 dimensional and electrical arithmetic, and accepted only the bounded statements above.
-No Terra or Astra escalation, provider execution, CAD edit, Project/Thread mutation or
-broad test campaign occurred.
+Two later Grok read-only audits checked the full F1507 table and the sensitivity
+boundary; Codex accepted the exact-row expansion but not an inter-type ranking. No Terra
+or Astra escalation, provider execution, CAD edit, Project/Thread mutation or broad test
+campaign occurred.
