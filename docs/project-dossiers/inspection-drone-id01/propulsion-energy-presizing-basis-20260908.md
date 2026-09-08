@@ -71,15 +71,19 @@ LIGPOWER page. The official
 reports a 76.49 mm diameter, 1.6 inch pitch, 1.18 g mass, 5.5 mm hub thickness,
 three-hole mounting and recommended 1108–1303 motor classes, which do not include 1404.
 Its leading specification block says `1.5 mm, 2 mm, 3-hole design`, while its detailed
-table says only `1.5 mm, 3-hole design`. LIGPOWER specifies a 2 mm F1404 shaft and
-nevertheless reports `GF3016` bench rows on that motor. A nominal 2 mm propeller variant
-could match that one diameter, but the shared label does not prove the same maker, SKU,
-revision or mounting variant, nor the complete shaft/hub/three-hole interface. The
-literal verdict remains **identity unresolved**. The smallest closing supplier packet is
-a cross-reference from the bench label to an exact propeller maker, SKU/revision and
-mounting variant, plus the mating interface drawing. If the 76.49 mm diameter were later
-proven to be the tested part, the same nominal layout would give 64.931356 mm between
-adjacent discs and 11.755 mm radially to the deck planform.
+table says only `1.5 mm, 3-hole design`. The LIGPOWER page specifies a 2 mm shaft for
+F1404 KV4600, while the official
+[T-Hobby store page for the same named variant](https://www.t-hobby.com/products/micro-fpv-drones-brushless-motor)
+specifies 1.5 mm. The bench proves only that something labelled `GF3016` was tested with
+the named motor; it does not resolve those conflicting shaft data or identify the same
+Gemfan maker, SKU, revision and mounting variant. Both **propeller identity** and the
+complete **mating interface** therefore remain `unresolved`. The smallest closing
+supplier packet is a written cross-reference from `GF3016` to its exact maker,
+SKU/revision, diameter, pitch, blade count and mounting variant, plus a controlled
+motor/propeller interface drawing and clarification of the 1.5-versus-2 mm shaft datum.
+If the 76.49 mm Gemfan diameter were later proven to be the tested part, the same
+nominal layout would give 64.931356 mm between adjacent discs and 11.755 mm radially to
+the deck planform.
 
 ### Candidate ESC screen — F35A
 
@@ -143,22 +147,27 @@ cases.
 
 The current `BatteryReservedVolume` is a 38 × 34 × 25 mm orthogonal placeholder. The
 tray source has a 40 × 36 mm inner footprint, 32 mm wall height and a 44 × 40 × 35 mm
-outer bounding box. Four official maker pages provide candidate facts; they do not
-create an ID01 battery selection.
+outer bounding box. Six official maker pages provide candidate facts from a bounded
+search; they do not create an ID01 battery selection or establish that no other pack can
+meet the need.
 
-| Candidate source                                                                                                                                       | Manufacturer nominal pack |                      Manufacturer mass state | Calculated nameplate energy | Calculated label-current screen | Reserve result               |
-| ------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------: | -------------------------------------------: | --------------------------: | ------------------------------: | ---------------------------- |
-| [R-Line 650 mAh 4S 14.8 V 95C, `TA-RL-95C-650-4S1P-XT30`](https://genstattu.com/tattu-r-line-95c-650mah-4s1p-xt30-plug-lipo-battery.html)              |           61 × 31 × 25 mm |                      82 g, page states ±20 g |    `14.8 × 0.650 = 9.62 Wh` |          `0.650 × 95 = 61.75 A` | **fail** for this candidate  |
-| [650 mAh 4S 15.2 V 95C LiHV long, `TA-95C-650-4S1P-HV-L-XT30`](https://genstattu.com/tattu-650mah-4s-15-2v-95c-lipo-battery-long-pack-with-xt30-plug/) |         74 × 17 × 24.5 mm |                      60 g, page states ±20 g |    `15.2 × 0.650 = 9.88 Wh` |          `0.650 × 95 = 61.75 A` | **fail** for this candidate  |
-| [450 mAh 4S 14.8 V 75C long, `TA-75C-450-4S1P-L-XT30`](https://genstattu.com/ta-75c-450-4s1p-l-xt30.html)                                              |           63 × 16 × 25 mm | **unresolved**: same page says 52 g and 58 g |    `14.8 × 0.450 = 6.66 Wh` |          `0.450 × 75 = 33.75 A` | **fail** for this candidate  |
-| [Gens ace 200 mAh 4S 14.8 V 30C, `GA-B-30C-200-4S1P-JST`](https://genstattu.com/gens-ace-200mah-4s-14-8v-30c-lipo-battery-pack-with-jst-plug/)         |  32.65 × 17.86 × 23.62 mm |  22 g; page conflicts between ±5 g and ±20 g |    `14.8 × 0.200 = 2.96 Wh` |           `0.200 × 30 = 6.00 A` | geometry fits; current fails |
+| Candidate source                                                                                                                                              | Manufacturer nominal pack |                                     Manufacturer mass state | Calculated nameplate energy | Calculated label-current screen | Reserve result                                 |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------: | ----------------------------------------------------------: | --------------------------: | ------------------------------: | ---------------------------------------------- |
+| [R-Line 650 mAh 4S 14.8 V 95C, `TA-RL-95C-650-4S1P-XT30`](https://genstattu.com/tattu-r-line-95c-650mah-4s1p-xt30-plug-lipo-battery.html)                     |           61 × 31 × 25 mm |                                     82 g, page states ±20 g |    `14.8 × 0.650 = 9.62 Wh` |          `0.650 × 95 = 61.75 A` | **fail** for this candidate                    |
+| [650 mAh 4S 15.2 V 95C LiHV long, `TA-95C-650-4S1P-HV-L-XT30`](https://genstattu.com/tattu-650mah-4s-15-2v-95c-lipo-battery-long-pack-with-xt30-plug/)        |         74 × 17 × 24.5 mm |                                     60 g, page states ±20 g |    `15.2 × 0.650 = 9.88 Wh` |          `0.650 × 95 = 61.75 A` | **fail** for this candidate                    |
+| [450 mAh 4S 14.8 V 75C long, `TA-75C-450-4S1P-L-XT30`](https://genstattu.com/ta-75c-450-4s1p-l-xt30.html)                                                     |           63 × 16 × 25 mm |                **unresolved**: same page says 52 g and 58 g |    `14.8 × 0.450 = 6.66 Wh` |          `0.450 × 75 = 33.75 A` | **fail** for this candidate                    |
+| [Gens ace 200 mAh 4S 14.8 V 30C, `GA-B-30C-200-4S1P-JST`](https://genstattu.com/gens-ace-200mah-4s-14-8v-30c-lipo-battery-pack-with-jst-plug/)                |  32.65 × 17.86 × 23.62 mm |                 22 g; page conflicts between ±5 g and ±20 g |    `14.8 × 0.200 = 2.96 Wh` |           `0.200 × 30 = 6.00 A` | geometry fits; current fails                   |
+| [GNB 300 mAh 4S LiHV 80C, `GNB3004S80AHV`](https://www.gaoneng.shop/products/gaoneng-gnb-lihv-4s-15.2v-300mah-80c-xt30-lipo-battery)                          |           24 × 17 × 53 mm |                                                    36 ± 2 g |    `15.2 × 0.300 = 4.56 Wh` |          `0.300 × 80 = 24.00 A` | geometry fails; current is only a label screen |
+| [Tattu 450 mAh 4S LiHV 95C long, `TA-95C-450-4S1P-HV-L-XT30`](https://genstattu.com/tattu-450mah-4s-95c-15-2v-hv-lipo-battery-pack-with-xt30-plug-long-size/) |   62.32 × 16.59 × 26.7 mm | 49 g, page states ±20 g; same page also says 16.95 mm width |    `15.2 × 0.450 = 6.84 Wh` |          `0.450 × 95 = 42.75 A` | geometry fails; current is only a label screen |
 
-No permutation of the first three candidates' nominal dimensions fits inside 38 × 34 ×
-25 mm: their largest dimension is respectively 61, 74 or 63 mm, while the reserve's
-largest dimension is 38 mm. Even those pages' stated minimum length after the ±5 mm
-tolerance is 56, 69 or 58 mm, still greater than both the 38 mm reserve and the tray's
-largest 44 mm outer dimension. This is a robust orthogonal-containment failure for those
-three packs only.
+No permutation of the first, second, third, fifth or sixth candidates' nominal
+dimensions fits inside 38 × 34 × 25 mm: their largest dimension is respectively 61, 74,
+63, 53 or 62.32 mm, while the reserve's largest dimension is 38 mm. The first three and
+sixth pages also state a ±5 mm dimensional tolerance; even their minimum listed lengths
+remain greater than both the 38 mm reserve and the tray's largest 44 mm outer dimension.
+The 53 mm GNB length is a nominal manufacturer datum without an equivalent tolerance
+proof here. These are candidate-specific orthogonal-containment failures, not a
+universal battery-market result.
 
 The 200 mAh pack is different. Its nominal dimensions fit in four of six orthogonal
 orientations. At the page's maximum stated dimensional tolerances, its sorted sides are
@@ -174,16 +183,20 @@ the first three nameplate energies by that propulsion-only power gives respectiv
 1.733, 1.780 and 1.200 minutes. These are only `E_nameplate / P_propulsion` ratios at
 one candidate bench row. They are not usable-energy values, an ID01 hover point,
 endurance estimates or physical ceilings. No such ratio is promoted for the 200 mAh pack
-because its label-derived current screen already fails the row. The same boundary
-applies to every C-rate product above: it is not proof of delivered current, burst
-duration, thermal acceptability or safety. For context only, the four-motor 100% row
-sums to 70.16 A before ESC losses and auxiliaries.
+because its label-derived current screen already fails the row, nor for the two later
+near-misses because their reserve containment already fails. The same boundary applies
+to every C-rate product above: it is not proof of delivered current, burst duration,
+thermal acceptability or safety. For context only, the four-motor 100% row sums to 70.16
+A before ESC losses and auxiliaries; none of the six label-current products reaches that
+value.
 
-The immediate design consequence is therefore narrow: the first three packs do not fit
-the present reserve, while the fourth passes this geometric screen but fails the first
-electrical row. Changing the CAD now would still be premature. The mission duration,
-closed mass ledger and a reviewable battery/propulsion candidate packet must first
-determine whether to enlarge or relocate the reserve, or to source a different pack.
+The immediate design consequence is therefore narrow. The bounded search found no pack
+that passes both screens: the 200 mAh Gens ace is the geometry-pass/current-fail
+counterexample, while the GNB 300 mAh and Tattu 450 mAh LiHV packs pass only the
+first-row label-current arithmetic and fail geometry. Changing the CAD now would still
+be premature. The mission duration, closed mass ledger and a reviewable
+battery/propulsion candidate packet must first determine whether to enlarge or relocate
+the reserve, source a different pack, or reconsider the propulsion combination.
 
 ## Mission-energy worksheet without an invented mission
 
@@ -252,6 +265,8 @@ from CAD volume.
 | [Raspberry Pi Zero 2 W](https://www.raspberrypi.com/news/what-can-you-build-with-raspberry-pi-zero/)                                   | 12 g, lower-assurance external datum | Raspberry Pi's official 2025 editorial comparison reports 12 g, but the current product page and product brief omit mass; microSD, header, cable, cooling and enclosure excluded |
 | [Gemfan Hurricane 3016](https://www.gemfanhobby.com/3016-hurricane-pc-3-blade.html)                                                    |                 1.18 g per propeller | Official Gemfan candidate fact, but excluded from the configuration subtotal because identity with LIGPOWER's `GF3016` and F1404 fit remain unresolved                           |
 | [Gens ace 200 mAh 4S](https://genstattu.com/gens-ace-200mah-4s-14-8v-30c-lipo-battery-pack-with-jst-plug/)                             |                         22 g nominal | Official page conflicts between ±5 g and ±20 g tolerances; geometrically fitting candidate, but excluded from a viable configuration because its label-current screen fails      |
+| [GNB 300 mAh 4S LiHV](https://www.gaoneng.shop/products/gaoneng-gnb-lihv-4s-15.2v-300mah-80c-xt30-lipo-battery)                        |                             36 ± 2 g | Official candidate datum; excluded from a viable configuration because the 53 mm pack fails the present reserve screen                                                           |
+| [Tattu 450 mAh 4S LiHV 95C long](https://genstattu.com/tattu-450mah-4s-95c-15-2v-hv-lipo-battery-pack-with-xt30-plug-long-size/)       |              49 g, page states ±20 g | Official candidate datum; excluded from a viable configuration because its stated dimensions fail the present reserve screen                                                     |
 
 The strict technical-specification subtotal for four motors, four candidate F35A ESCs,
 camera and autopilot is `37.36 + 17.2 + 4 + 42.4 = 100.96 g`. Adding the lower-assurance
@@ -264,13 +279,19 @@ arithmetic with each screened battery is:
 | Named COTS plus 650 mAh 15.2 V LiHV long | `112.96 + 60`         |              172.96 g nominal; battery page states ±20 g |
 | Named COTS plus 450 mAh 14.8 V long      | `112.96 + {52 or 58}` | 164.96 g or 170.96 g; source conflict prevents one value |
 | Named COTS plus Gens ace 200 mAh 4S      | `112.96 + 22`         |  134.96 g nominal; tolerance conflict prevents one range |
+| Named COTS plus GNB 300 mAh 4S LiHV      | `112.96 + 36`         |                                 148.96 ± 2 g conditional |
+| Named COTS plus Tattu 450 mAh 4S LiHV    | `112.96 + 49`         |              161.96 g nominal; battery page states ±20 g |
 
 These are not candidate configurations or vehicle masses. Each row conditionally adds
 four F35A related-product ESCs and one battery to the same incomplete COTS subtotal; the
-first three packs fail reserve containment, while the fourth fails the first electrical
-row. The sums omit structural mass, four exact propellers, fasteners, retention, power
-distribution, non-motor wiring and connectors, GPS, radio, antennas, storage and any
-guards or protection. Installed positions and centre of gravity also remain unresolved.
+first, second, third, fifth and sixth packs fail reserve containment, while the fourth
+fails the first electrical row. The sums omit structural mass, four exact propellers,
+fasteners, retention, power distribution, non-motor wiring and connectors, GPS, radio,
+antennas, storage and any guards or protection. Installed positions and centre of
+gravity also remain unresolved. The separate
+[mass-and-position closure worksheet](mass-and-position-closure-worksheet-20260908.md)
+keeps those absent terms and positions visible without silently entering them into a
+vehicle sum.
 
 ### Geometry-derived structural volume ledger
 
@@ -366,11 +387,11 @@ law.
 | Input packet         | Minimum content                                                                                                                            | Current state                                                                                                            |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
 | Mission              | Endurance target, inspection dwell, transit, reserve, wind/temperature envelope, payload duty cycle                                        | `unresolved`                                                                                                             |
-| Mass and position    | Airframe, four propulsion units, battery, avionics, camera, wiring, fasteners and landing gear                                             | Partial COTS ledger plus structural occurrence volumes/geometric centroids; materials, total mass and CG `unresolved`    |
+| Mass and position    | Airframe, four propulsion units, battery, avionics, camera, wiring, fasteners and landing gear                                             | Closure worksheet now exposes every current class; materials, installed census, total mass and CG remain `unresolved`    |
 | Motor                | Exact variant, mass, dimensions, voltage/current/thermal limits and matching test map                                                      | F1404 KV4600 is a documented candidate only                                                                              |
-| Propeller            | Exact maker/part, diameter, pitch, blade count, mass/inertia, hub interface and thrust/torque map                                          | `GF3016` identity/fit `unresolved`; current CAD is a proxy                                                               |
+| Propeller            | Exact maker/part, diameter, pitch, blade count, mass/inertia, hub interface and thrust/torque map                                          | `GF3016` identity and mating interface `unresolved`; official F1404 shaft data conflict; current CAD is a proxy          |
 | ESC                  | Exact part, mass/envelope, voltage, continuous/burst current conditions, efficiency, cooling and protocol                                  | F35A passes a nameplate screen only; firmware, pairing, efficiency, cooling, wiring and installation remain `unresolved` |
-| Battery              | Chemistry, series/parallel layout, pack mass/envelope, capacity curve, resistance, continuous/burst current, cutoff and temperature limits | Three sourced packs fail reserve containment; one fits geometrically but fails the first-row current screen              |
+| Battery              | Chemistry, series/parallel layout, pack mass/envelope, capacity curve, resistance, continuous/burst current, cutoff and temperature limits | Five sourced packs fail reserve containment; one fits geometrically but fails the first-row current screen               |
 | Payload and avionics | Actual mass, centre, voltage/current and simultaneous duty                                                                                 | Typical Pi bare-board current and supply limits are sourced; mission duty and installed-system power remain `unresolved` |
 | Interfaces           | Propeller–shaft, motor–arm, ESC cooling/wiring, battery retention/connector and protection                                                 | `unresolved`                                                                                                             |
 
@@ -395,23 +416,27 @@ law.
 
 ## Review boundary
 
-Eight completed native Grok consultations ran across five bounded review passes. The
-first pair used a clean, repository-free sandbox for method cross-checks; after the
-human explicitly requested continued Grok-native work on this project, the later reviews
-read only the relevant dossier files and independently checked the full motor
-arithmetic, battery screen, partial mass ledger, mission-energy equations and the latest
-supplier packet. The latest completed Grok review supplied the F35A and 200 mAh battery
-facts. A parallel STEP review was cancelled after the recurring permission-classifier
-timeout and contributed no accepted verdict, as was an earlier supplier-identity run.
+Ten completed native Grok consultations ran across six bounded review passes. The first
+pair used a clean, repository-free sandbox for method cross-checks; after the human
+explicitly requested continued Grok-native work on this project, the later reviews read
+only the relevant dossier files and independently checked the full motor arithmetic,
+battery screen, partial mass ledger, mission-energy equations and the latest supplier
+packet. The latest two completed reviews audited the propeller-identity evidence and the
+mass/position closure boundary. A parallel battery search was cancelled after the
+recurring permission-classifier timeout and contributed no accepted verdict, as were an
+earlier STEP audit and supplier-identity run.
 
 Codex inspected the source pages and repository facts, recalculated the values, rehashed
 the selected source and STEP bytes, derived the simple constructive-solid volumes and
-retained only bounded conclusions. Four overreaches were rejected: current CAD cannot
-supply physical mass or inertia without sourced material and component data;
-`E_nameplate / P_bench` is not an endurance ceiling; an official editorial mass is not
-equivalent to a technical-sheet datum; and the 200 mAh pack does fit the reserve in one
-maximum-tolerance orientation despite the Grok review's contrary geometry verdict. Terra
-was used for four targeted checks: authority order, unresolved propeller identity,
-primary-source classification of auxiliary-power facts, then independent structural
-volume/centroid arithmetic and wording. No Astra consultation, broad test campaign,
-provider execution or project confirmation was used for this note.
+retained only bounded conclusions. Six overreaches or fetch artefacts were rejected:
+current CAD cannot supply physical mass or inertia without sourced material and
+component data; `E_nameplate / P_bench` is not an endurance ceiling; an official
+editorial mass is not equivalent to a technical-sheet datum; and the 200 mAh pack does
+fit the reserve in one maximum-tolerance orientation despite a contrary review verdict.
+A Grok fetch failure also did not make the live Gemfan page unavailable, and a targeted
+battery review's single-axis reading did not override valid orthogonal orientation.
+Terra was used for five targeted checks: authority order, unresolved propeller identity,
+primary-source classification of auxiliary-power facts, independent structural
+volume/centroid arithmetic and wording, then the bounded battery near-miss search after
+Grok blocked. No Astra consultation, broad test campaign, provider execution or project
+confirmation was used for this note.

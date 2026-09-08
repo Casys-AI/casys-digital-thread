@@ -378,6 +378,12 @@ targeted Terra cross-check independently returned `SHIP`; no Astra escalation wa
 needed. This repetition strengthens the workflow-friction evidence but does not change
 the proportional workaround.
 
+A subsequent bounded battery-candidate search stopped at the same classifier timeout
+after a read-only tool response. It was also cancelled without a retry loop or accepted
+verdict; one targeted Terra search supplied only near-miss candidates, and Codex checked
+the official pages and arithmetic. The project result is therefore not made dependent on
+the stalled Grok session.
+
 This is a real agent-workflow friction, but not a safe repo-local quick win. Repairing
 it would change the user's global Grok/plugin configuration outside the ID01 scope and
 could affect other work. Leave that configuration untouched here. For now, keep each
@@ -436,6 +442,27 @@ a safe documentation quick win and is unnecessary to answer the current bounded
 question. Keep the workaround local to the named simple sources; revisit a registered
 capability only when a real downstream decision requires general exact mass properties.
 F16 remains open and deferred.
+
+## F17 — official F1404 shaft and `GF3016` identity data conflict (open, external evidence)
+
+The LIGPOWER page for F1404 KV4600 states a 2 mm shaft, while the official T-Hobby store
+page for the same named variant states 1.5 mm. The current Gemfan Hurricane 3016 page is
+also internally ambiguous: its leading block lists `1.5 mm, 2 mm, 3-hole design`, while
+its detailed table lists `1.5 mm, 3-hole design`. The LIGPOWER bench table names only
+`GF3016`; it supplies no maker, SKU, revision or controlled mounting drawing that proves
+which propeller and interface were tested.
+
+This is a real source-quality and physical-interface friction, not a safe CAD quick win.
+Choosing one visible number would silently invent authority and could put holes, a hub
+or an adapter into the wrong geometry. Keep both propeller identity and mating interface
+`unresolved`; do not modify the `RadialArm`, motor envelope or propeller proxy from
+these pages.
+
+The smallest closure packet is supplier confirmation tying the exact bench `GF3016` to
+maker, SKU/revision, diameter, pitch, blade count and mounting variant, plus a
+controlled motor/propeller interface drawing and explicit resolution of the 1.5-versus-2
+mm shaft datum. F17 remains open until that external evidence exists; no provider,
+registry, source-workspace or Project mutation is justified by the conflict alone.
 
 ## Expected states, not defects
 

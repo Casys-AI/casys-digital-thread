@@ -221,52 +221,56 @@ topology is not proven by the current primary evidence. A question proposed too
 precisely at project r613 was immediately answered `unknown` at r614; it records no
 human choice and authorizes no motor geometry. A manufacturer-confirmed mechanical
 drawing or supplier clarification is required before framing that consequential datum
-decision. The
-[remaining-boundary record](remaining-integration-boundaries.md) stays a preserved r70
-capture. Its F08 blocker is closed and the deck holes are canonical, but its unmodeled
-physical interfaces remain unresolved. Electrical, aerodynamic and flight-safety
-evidence remains outside these proof meanings; the pilot is not declared complete.
+decision. The [remaining-boundary record](remaining-integration-boundaries.md) stays a
+preserved r70 capture. Its F08 blocker is closed and the deck holes are canonical, but
+its unmodeled physical interfaces remain unresolved. Electrical, aerodynamic and
+flight-safety evidence remains outside these proof meanings; the pilot is not declared
+complete.
 
 The
 [propulsion and energy pre-sizing basis](propulsion-energy-presizing-basis-20260908.md)
 now records the first source-backed candidate motor data, its complete exact-row
-four-motor arithmetic envelope, the static propeller-proxy clearance screen and three
-official 4S battery candidates. All three candidate packs fail orthogonal containment in
-the current 38 × 34 × 25 mm battery reserve; that is a candidate-specific packaging
-finding, not proof that no 4S pack can fit. A partial source-backed COTS mass ledger is
-now explicit, while total vehicle mass and CG remain unresolved. The document also
-preserves the calculation contract and still-missing input packets. It is a documentary
-draft against pending brief r5, not a component selection or a new proof.
+four-motor arithmetic envelope, the static propeller-proxy clearance screen and six
+official 4S battery candidates. Five candidate packs fail orthogonal containment in the
+current 38 × 34 × 25 mm reserve; the sixth fits that geometric screen but fails even the
+first retained four-motor label-current row. This bounded search found no candidate that
+passes both screens, not proof that no 4S pack can do so. The official F1404 pages also
+conflict between 1.5 and 2 mm shaft data, so `GF3016` identity and mating interface stay
+`unresolved`. A partial source-backed COTS mass ledger and separate
+[mass/position closure worksheet](mass-and-position-closure-worksheet-20260908.md) now
+make the absent installed items, structural masses and positions explicit; total vehicle
+mass and CG remain unresolved. The documents preserve the calculation contract and
+still-missing input packets. They are documentary drafts against pending brief r5, not a
+component selection or a new proof.
 
 The freshly restarted read-only BFF now projects project r674 / Thread r93 under
-`engineering-workbench/0.6` and `engineering-cases/1.1`. The accepted
-assembly-integrity closeout is projected as a fresh artifact, and the RadialArm r2 case
-and project activity join remain present without the stale pre-`nm` `capture-invalid`
-symptom. This is current projection adoption, not a new visual UX audit. The latest
-separate-profile browser interaction audit remains project r591 / Thread r83; no later
-visual audit is claimed here. The earlier project r583 / Thread r82 presentation
-established seven exact whole-App bindings for the six modules and updated root while
-preserving all twenty-five prior bindings; the registry contains thirty-two entries.
-Fresh root and Airframe App checks verified their exact GLB digests, rendered canvases
-and passed Fit/zoom and read-only network checks. Both canvases were visually inspected.
-The scripts, screenshots, hashes and presentation-only limits are in the current rebuild
-ledger. Chromium's existing unsupported `webrtc` CSP-directive warning remains. The
-Product tab remains removed as requested; 3D stays on Project. The older r69
-presentation ledger remains historical. Source attachments may be `different-basis`;
-preserved captures and historical admissions are not silently rewritten. Recross only
-through a registered surface when a current authoring capture or closure requires it.
-The BFF now declares the available v1 requirements-to-brief claim while retaining the
-original `TRACE GAP` separately. A fresh separate-profile headless browser audit of
-project r591 / Thread r83 selected the native camera-bracket requirement with no page
-errors and no non-GET API requests. It found the exact brief-r3
-`camera-bracket-bench-stress` source node in the Brief hull, its one direct cable to the
-sole requirement, and no stand-alone retrospective-document wrapper node on that hero
-surface. Requirement-to-source and source-to-requirement navigation both worked; the
-source note stayed readable above restored viewers, and a planned-only detached
-`PENDING` legend was absent without hiding the actual planned activity. This is
-presentation QA only: it does not prove claim semantics, native-writer qualification,
-requirement satisfaction, FEA, or provider runtime. The older literal `TRACE GAP`
-remains separate historical provenance.
+`engineering-workbench/0.6` and `engineering-cases/1.1`. The accepted assembly-integrity
+closeout is projected as a fresh artifact, and the RadialArm r2 case and project
+activity join remain present without the stale pre-`nm` `capture-invalid` symptom. This
+is current projection adoption, not a new visual UX audit. The latest separate-profile
+browser interaction audit remains project r591 / Thread r83; no later visual audit is
+claimed here. The earlier project r583 / Thread r82 presentation established seven exact
+whole-App bindings for the six modules and updated root while preserving all twenty-five
+prior bindings; the registry contains thirty-two entries. Fresh root and Airframe App
+checks verified their exact GLB digests, rendered canvases and passed Fit/zoom and
+read-only network checks. Both canvases were visually inspected. The scripts,
+screenshots, hashes and presentation-only limits are in the current rebuild ledger.
+Chromium's existing unsupported `webrtc` CSP-directive warning remains. The Product tab
+remains removed as requested; 3D stays on Project. The older r69 presentation ledger
+remains historical. Source attachments may be `different-basis`; preserved captures and
+historical admissions are not silently rewritten. Recross only through a registered
+surface when a current authoring capture or closure requires it. The BFF now declares
+the available v1 requirements-to-brief claim while retaining the original `TRACE GAP`
+separately. A fresh separate-profile headless browser audit of project r591 / Thread r83
+selected the native camera-bracket requirement with no page errors and no non-GET API
+requests. It found the exact brief-r3 `camera-bracket-bench-stress` source node in the
+Brief hull, its one direct cable to the sole requirement, and no stand-alone
+retrospective-document wrapper node on that hero surface. Requirement-to-source and
+source-to-requirement navigation both worked; the source note stayed readable above
+restored viewers, and a planned-only detached `PENDING` legend was absent without hiding
+the actual planned activity. This is presentation QA only: it does not prove claim
+semantics, native-writer qualification, requirement satisfaction, FEA, or provider
+runtime. The older literal `TRACE GAP` remains separate historical provenance.
 
 Working split: Astra directly operates Digital Thread and authors the engineering
 proposals/sources; native Grok investigates or implements bounded platform changes under
