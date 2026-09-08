@@ -655,7 +655,9 @@ affect every engineering project. Defer it as a product-capability extension; un
 exists, keep the worksheets documentary and let the next whiteboard node come only from
 a semantically valid registered operation over real evidence.
 
-## F22 — a later brief cannot widen an existing capability ceiling (open, product bug)
+## F22 — a later brief cannot widen an existing capability ceiling (open, product bug;
+
+ID01 mitigated)
 
 At project r677, pending brief r6 proposes the explicit
 `static-structural-fea-sensitivity@1.0` verification authority needed for the next ID01
@@ -674,9 +676,15 @@ ledger, or confirm stale brief fingerprints. The smallest repair must preserve t
 pending brief's exact reviewed capability proposal and apply a separately reviewed delta
 to the existing ledger before that later brief becomes canonical.
 
-## F23 — the live sensitivity metric map confuses physics with Thread identity (open,
+For ID01, the live mitigation kept the authority change out of the editorial brief:
+brief r7 was confirmed canonically at project r679, then the sensitivity seal and run
+were appended to the published plan so the existing capability-delta route could inspect
+their actual runtime demand. This unblocks the pilot without repairing the generic
+later-brief widening contract; that product hole remains open.
 
-quick win in progress)
+## F23 — the live sensitivity metric map confused physics with Thread identity (closed,
+
+quick win)
 
 The accepted RadialArm proof uses physical metric `maximum-displacement`, exact Thread
 feature `radial_arm_bench_max_displacement_mm`, and result unit `mm`. The static-proof
@@ -691,9 +699,15 @@ from the already closed static-proof metric contract, retain the exact requireme
 feature as the study metric id, and map the current live response by its validated
 unit/physical observation. Unknown response units must remain refused.
 
-## F24 — sensitivity requests a qualified preparation use that the catalogue omits
+Closed in `c9dc99be`: proof-derived offers now retain the exact Thread feature and
+derive the physical response from the closed proof contract; the live method maps the
+two admitted observations through their validated `mm` / `MPa` units and refuses any
+unknown unit. The focused sensitivity suites (51 tests, then 23 executor/catalog tests),
+the full Deno check and `git diff --check` passed.
 
-(open, quick win in progress)
+## F24 — sensitivity requested a qualified preparation use that the catalogue omitted
+
+(closed, quick win)
 
 `analyze.run-fea-sensitivity@1` demands `geometry.execute-admitted-source@1` with
 `use: preparation`. The first-party catalogue contains the already qualified isolated
@@ -705,6 +719,11 @@ The bounded repair is a distinct preparation binding over the same pinned adapte
 profile and worker unit. It authorizes only preparation of exact admitted CAD for this
 workflow; it does not make isolated output canonical and does not qualify the later
 CalculiX sensitivity solver.
+
+Closed in `c9dc99be` with the separate `build123d-execute-admitted-source-preparation`
+binding. The live capability review at project r687 selects that qualified preparation
+binding; it is no longer among the blockers. The remaining unresolved demand is only the
+CalculiX HTTP observation binding.
 
 ## F25 — CalculiX HTTP sensitivity lacks a real host-local qualification case (open,
 
@@ -724,9 +743,16 @@ provider arguments, reuse a discovery-only probe, or promote provider health int
 engineering verdict. This is the remaining hard runtime gate after the metric,
 preparation and catalogue quick wins.
 
-## F26 — no ID01 sensitivity template exists and proof selections are not perturbation
+The gate is now reproduced against real project state, not inferred from the catalogue:
+after the case was sealed into Thread r94 and the live run was appended at project r687,
+`project_capability_change_review` returned literal `unresolved`. It selected the
+Build123d preparation binding but reported `calculix-http-static-sensitivity` as
+`incompatible`, with no qualified native `linux/arm64` material. No run was queued or
+provider called.
 
-safe (open, quick win in progress)
+## F26 — no ID01 sensitivity template existed and proof selections were not perturbation
+
+safe (closed, quick win)
 
 The RadialArm admission exposes five named numeric CAD levers, so the signed
 proof-derived offer correctly remains `lever-ambiguous`; the server must not choose one.
@@ -740,6 +766,14 @@ Thread feature, and needs a reviewed finite step, mesh and union-of-base-and-ste
 selection boxes. The template must state remeshing, coarse-mesh/AABB and isolated-bench
 limitations literally. A catalogue case can resolve the ambiguity; it is not a solver
 run, qualification, convergence proof, airframe proof or flight verdict.
+
+Closed in `c9dc99be` by the reviewed `id01-radial-arm-height-isolated` catalog case:
+`arm_height = 5 mm`, finite step `1 mm`, mesh target `1 mm`, exact displacement feature,
+and support/load AABBs widened to cover the base and stepped Z envelope. The server
+compiled it without diagnostics and the provider-free seal published
+`sensitivity-case-feaaa17e7265c336935d6a15bd42258745f7b7a20c2cb135f0f7452d9aac473e` in
+Thread r94. This closes template authority only; F25 still gates the two physical
+solves.
 
 ## F27 — sensitivity reuse is implemented below production composition but not yet a
 
@@ -773,6 +807,23 @@ record each task's baseline and allowed path set or use isolated worktrees befor
 controlled integration. That orchestration change is outside the ID01 engineering
 capability lot; do not solve it by broad resets or by treating all dirty files as agent-
 owned.
+
+## F29 — the large native Grok qualification task exhausted its usage balance (open,
+
+workflow friction)
+
+The bounded CalculiX host-qualification implementation spent eighteen model calls
+mapping the existing Chrono-specific service and then exited with HTTP 402
+`Grok Build usage balance exhausted` before editing any qualification file. Its
+read-only predecessor audit remains usable and Codex independently verified the exact
+host/image architecture, but the failed implementation contributed no code or test
+evidence.
+
+Do not retry the same monolithic Grok prompt or alter the user's Grok/plugin
+configuration. The fallback now uses the explicitly allowed Terra reinforcement, split
+into a contract lot, a separate review and a later integration lot; Codex keeps
+responsibility for the combined diff, live qualification and engineering claim. This
+usage limit is not a CalculiX or ID01 physics failure.
 
 ## Expected states, not defects
 

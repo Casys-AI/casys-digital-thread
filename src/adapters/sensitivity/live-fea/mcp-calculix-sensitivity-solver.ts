@@ -144,7 +144,7 @@ export class McpCalculixSensitivitySolver implements SensitivityStaticStructural
       ...input.execution,
       stepSha256,
     });
-    const exactRequest = lowerRecordedStaticRequest({
+    const exactRequest = lowerRecordedCalculixStaticRequest({
       requestId,
       stepSha256,
       stagedPath,
@@ -344,7 +344,7 @@ export class McpCalculixSensitivitySolver implements SensitivityStaticStructural
     let requestBinding:
       SensitivityRecordedSolveCapture["providerCapture"]["requestBinding"];
     try {
-      requestBinding = await verifyCapturedRecordedRequest({
+      requestBinding = await verifyCapturedRecordedCalculixRequest({
         bytes: requestBytes,
         readback,
         method,
@@ -355,7 +355,7 @@ export class McpCalculixSensitivitySolver implements SensitivityStaticStructural
     const bytes = await this.#readCapturedResource(readback, "result.json");
     let result: StaticStructuralSolveResult;
     try {
-      result = parseRecordedResult(bytes, readback, method);
+      result = parseRecordedCalculixStaticResultBytes(bytes, readback, method);
     } catch (error) {
       throw providerError(error, "result.json");
     }
@@ -583,32 +583,12 @@ function parseRunLookup(
     throw unknown("calculix_run_get returned an unsupported schema version.");
   }
   if (root.status === "completed") {
-    const completed = exactRecord(root, [
-      "schemaVersion",
-      "status",
-      "lookup",
-      "requestId",
-      "runId",
-      "run",
-    ], "$calculixRunGet");
-    parseRequestLookup(completed.lookup, plan.requestId, "$calculixRunGet.lookup");
-    const run = parseCompletedRun(completed.run, "$calculixRunGet.run");
-    if (
-      parseRequestId(completed.requestId, "$calculixRunGet.requestId") !==
-        run.requestId ||
-      parseRunId(completed.runId, "$calculixRunGet.runId") !== run.runId
-    ) {
-      throw unknown("calculix_run_get envelope disagrees with its recorded run.");
-    }
-    assertRunMatchesPlan(run, plan);
-    if (
-      expected && (expected.requestId !== run.requestId ||
-        expected.runId !== run.runId ||
-        expected.requestSha256 !== run.requestSha256)
-    ) {
-      throw unknown("calculix_run_get changed the acknowledged recorded-run identity.");
-    }
-    return run;
+    return parseRecordedCalculixCompletedReadback(value, {
+      requestId: plan.requestId,
+      stepSha256: plan.inputArtifact.fingerprint.digest,
+      stepBytes: plan.inputArtifact.byteCount,
+      dispatch: expected,
+    });
   }
   if (root.status === "quarantined" || root.status === "evicted") {
     const terminal = exactRecord(root, [
@@ -646,6 +626,75 @@ function parseRunLookup(
 
 interface ParsedCompletedRun extends SensitivityRecordedDispatch {
   readonly artifacts: readonly SensitivityRecordedProviderResource[];
+}
+
+export function parseRecordedCalculixCompletedDispatch(
+  value: unknown,
+): SensitivityRecordedDispatch {
+  const root = exactRecord(value, [
+    "schemaVersion",
+    "kind",
+    "inputArtifact",
+    "mesh",
+    "constraints",
+    "metrics",
+    "run",
+  ], "$calculixRecordedDispatch");
+  literalValue(root.schemaVersion, "2.0", "$calculixRecordedDispatch.schemaVersion");
+  literalValue(root.kind, "static-solve-recorded", "$calculixRecordedDispatch.kind");
+  const run = parseCompletedRun(root.run, "$calculixRecordedDispatch.run");
+  return {
+    requestId: run.requestId,
+    runId: run.runId,
+    requestSha256: run.requestSha256,
+  };
+}
+
+export function parseRecordedCalculixCompletedReadback(
+  value: unknown,
+  expected: {
+    readonly requestId: string;
+    readonly stepSha256: string;
+    readonly stepBytes: number;
+    readonly dispatch?: SensitivityRecordedDispatch;
+  },
+): ParsedCompletedRun {
+  const completed = exactRecord(value, [
+    "schemaVersion",
+    "status",
+    "lookup",
+    "requestId",
+    "runId",
+    "run",
+  ], "$calculixRunGet");
+  literalValue(completed.schemaVersion, "1.0", "$calculixRunGet.schemaVersion");
+  literalValue(completed.status, "completed", "$calculixRunGet.status");
+  parseRequestLookup(completed.lookup, expected.requestId, "$calculixRunGet.lookup");
+  const run = parseCompletedRun(completed.run, "$calculixRunGet.run");
+  if (
+    parseRequestId(completed.requestId, "$calculixRunGet.requestId") !==
+      run.requestId ||
+    parseRunId(completed.runId, "$calculixRunGet.runId") !== run.runId
+  ) {
+    throw unknown("calculix_run_get envelope disagrees with its recorded run.");
+  }
+  if (
+    run.requestId !== expected.requestId ||
+    run.artifacts[0]?.sha256 !== expected.stepSha256 ||
+    run.artifacts[0]?.byteCount !== expected.stepBytes
+  ) {
+    throw unknown(
+      "Recorded CalculiX run does not match the exact qualification input.",
+    );
+  }
+  if (
+    expected.dispatch && (expected.dispatch.requestId !== run.requestId ||
+      expected.dispatch.runId !== run.runId ||
+      expected.dispatch.requestSha256 !== run.requestSha256)
+  ) {
+    throw unknown("calculix_run_get changed the acknowledged recorded-run identity.");
+  }
+  return run;
 }
 
 function parseCompletedRun(value: unknown, path: string): ParsedCompletedRun {
@@ -847,7 +896,7 @@ function validateListedResourceBijection(
  * server-owned physical input from the sealed sensitivity method. Provider
  * completion remains an observation source, never a qualification or verdict.
  */
-async function verifyCapturedRecordedRequest(input: {
+export async function verifyCapturedRecordedCalculixRequest(input: {
   readonly bytes: Uint8Array;
   readonly readback: SensitivityRecordedSolveReadback;
   readonly method: SensitivityStaticStructuralMethod;
@@ -869,7 +918,7 @@ async function verifyCapturedRecordedRequest(input: {
     );
   }
   const request = parseCapturedRecordedRequest(input.bytes);
-  const expected = lowerRecordedStaticRequest({
+  const expected = lowerRecordedCalculixStaticRequest({
     requestId: input.readback.requestId,
     stepSha256: input.readback.stepSha256,
     stagedPath: exactStagedPath(input.readback.stepSha256),
@@ -1026,7 +1075,7 @@ function parseRecordedEngineIdentity(
   return { command, version };
 }
 
-function lowerRecordedStaticRequest(input: {
+export function lowerRecordedCalculixStaticRequest(input: {
   readonly requestId: string;
   readonly stepSha256: string;
   readonly stagedPath: string;
@@ -1073,7 +1122,7 @@ function sameBytes(left: Uint8Array, right: Uint8Array): boolean {
   return true;
 }
 
-function parseRecordedResult(
+export function parseRecordedCalculixStaticResultBytes(
   bytes: Uint8Array,
   readback: SensitivityRecordedSolveReadback,
   method: SensitivityStaticStructuralMethod,
