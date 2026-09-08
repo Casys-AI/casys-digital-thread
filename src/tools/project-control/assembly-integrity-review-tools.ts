@@ -25,7 +25,7 @@ export function registerProjectAssemblyIntegrityReviewTools(
   app.registerTool(projectAssemblyIntegrityReviewTool, async (args) => {
     const result = await review.execute(args);
     const content = result.status === "resolved"
-      ? "Resolved the exact current Thread basis and unique primary geometry-module identity for a factual assembly-integrity observation. Paste next.append.arguments when present, then next.propose.arguments. This review is read-only: no observation ran, no provider was called, no project or Thread state was written, and no verdict was produced. After human approval, queue and execute the registered operation separately."
+      ? "Resolved the exact current Thread basis and unique primary geometry-module identity for a factual assembly-integrity observation. Paste next.append.arguments when present, then next.propose.arguments. Returned envelopes are complete except issuedAt: deno task mcp:call fills it; a direct client must add issuedAt. When append is present, propose.expectedRevision is the project revision after that successful append. This review is read-only: no observation ran, no provider was called, no project or Thread state was written, and no verdict was produced. After human approval, queue and execute the registered operation separately."
       : result.status === "unavailable"
       ? "Unavailable: the exact current Thread basis or primary geometry module could not be reopened. No admission, decisionParameters, append, proposal, observation, or verdict was produced."
       : "Unresolved: the named exact basis or geometry module was not the current unique primary identity. No admission, decisionParameters, append, proposal, observation, or verdict was produced.";

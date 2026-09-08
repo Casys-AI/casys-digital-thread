@@ -52,7 +52,10 @@ export type AssemblyIntegrityReviewResolution =
     readonly status: "resolved";
     /** Full signed-input identity selected only after exact state recross. */
     readonly admission: AssemblyIntegrityObservationAdmission;
-    /** Current EngineeringProject aggregate revision used by next.append. */
+    /**
+     * Current EngineeringProject aggregate revision. New-work append targets
+     * it; existing-work propose targets it; new-work propose targets it + 1.
+     */
     readonly expectedProjectRevision: number;
     /** Present only when a matching planned leaf already exists. */
     readonly existingWork?: AssemblyIntegrityReviewExistingWork;

@@ -47,9 +47,29 @@ export interface ProjectAssemblyIntegrityReviewDecision {
 }
 
 /**
- * Paste-ready project mutations for the review. A pre-existing structurally
- * exact planned leaf receives only the MRTR proposal; otherwise the review
- * retains the bounded append-plus-propose fallback without a gate claim.
+ * Paste-ready `project_decision_propose` envelope. `issuedAt` is omitted so
+ * `deno task mcp:call` can fill it; a direct client must add it.
+ */
+export interface ProjectAssemblyIntegrityReviewProposal {
+  readonly tool: "project_decision_propose";
+  readonly arguments: {
+    readonly commandId: string;
+    readonly projectId: string;
+    readonly expectedRevision: number;
+    readonly decisionId: string;
+    readonly proposal: {
+      readonly summary: string;
+      readonly parameters: readonly EngineeringDecisionProposalParameter[];
+    };
+  };
+}
+
+/**
+ * Paste-ready project mutations for the review. Propose omits only issuedAt.
+ * A pre-existing structurally exact planned leaf receives only the MRTR
+ * proposal at the current project revision; otherwise the review retains the
+ * bounded append-plus-propose fallback without a gate claim, and propose
+ * targets the project revision after that append.
  */
 export type ProjectAssemblyIntegrityReviewNext =
   | {
@@ -83,28 +103,10 @@ export type ProjectAssemblyIntegrityReviewNext =
         }[];
       };
     };
-    readonly propose: {
-      readonly tool: "project_decision_propose";
-      readonly arguments: {
-        readonly decisionId: string;
-        readonly proposal: {
-          readonly summary: string;
-          readonly parameters: readonly EngineeringDecisionProposalParameter[];
-        };
-      };
-    };
+    readonly propose: ProjectAssemblyIntegrityReviewProposal;
   }
   | {
-    readonly propose: {
-      readonly tool: "project_decision_propose";
-      readonly arguments: {
-        readonly decisionId: string;
-        readonly proposal: {
-          readonly summary: string;
-          readonly parameters: readonly EngineeringDecisionProposalParameter[];
-        };
-      };
-    };
+    readonly propose: ProjectAssemblyIntegrityReviewProposal;
   };
 
 export type ProjectAssemblyIntegrityReviewResult =

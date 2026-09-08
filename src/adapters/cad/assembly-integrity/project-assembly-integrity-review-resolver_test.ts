@@ -208,8 +208,24 @@ Deno.test("assembly-integrity review resolver uses one structurally exact planne
   const review = await new PrepareProjectAssemblyIntegrityReview({ resolver })
     .execute(request());
   if (review.status !== "resolved") throw new Error("Expected resolved review.");
+  const current = await planned.store.get(PROJECT_ID);
+  if (current === undefined) throw new Error("Expected planned project.");
   assertEquals("append" in review.next, false);
   assertEquals(review.next.propose.arguments.decisionId, "assembly-decision-1");
+  assertEquals(review.next.propose.arguments.projectId, PROJECT_ID);
+  assertEquals(
+    review.next.propose.arguments.expectedRevision,
+    current.revision,
+  );
+  assertEquals(
+    review.next.propose.arguments.commandId,
+    `propose-assembly-integrity-${"a".repeat(16)}-r1-r${current.revision}`,
+  );
+  assertEquals(
+    Object.keys(review.next.propose.arguments).sort(),
+    ["commandId", "decisionId", "expectedRevision", "projectId", "proposal"],
+  );
+  assertEquals("issuedAt" in review.next.propose.arguments, false);
   assertEquals(inputs.calls.length, 2);
 });
 

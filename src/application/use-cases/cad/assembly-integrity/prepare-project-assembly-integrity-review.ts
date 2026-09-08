@@ -173,11 +173,23 @@ function resolved(
   existingWork: AssemblyIntegrityReviewExistingWork | undefined,
 ): ProjectAssemblyIntegrityReviewResult {
   const operation = operationFor(command);
+  const digestPrefix = command.geometryModule.fingerprint.digest.slice(0, 16);
+  const token = `${digestPrefix}-r${command.basis.revision}`;
   const proposed = {
     summary:
       "Prepare a factual assembly-integrity observation over the exact current canonical geometry module.",
     parameters: decisionParameters,
   } as const;
+  // EngineeringProjectCommandService.apply persists current.revision + 1 after
+  // a successful (non-replay) mutation and refuses a mismatched head. New-work
+  // propose therefore targets the post-append revision; existing-work has no
+  // append and proposes at the current head. Command identity includes that
+  // proposal target so a later re-proposal after reject does not collide.
+  const proposeExpectedRevision = existingWork === undefined
+    ? expectedProjectRevision + 1
+    : expectedProjectRevision;
+  const proposeCommandId =
+    `propose-assembly-integrity-${token}-r${proposeExpectedRevision}`;
   if (existingWork !== undefined) {
     const selected = parseExistingWork(existingWork);
     return deepFreeze({
@@ -206,6 +218,9 @@ function resolved(
         propose: {
           tool: "project_decision_propose" as const,
           arguments: {
+            commandId: proposeCommandId,
+            projectId: command.projectId,
+            expectedRevision: proposeExpectedRevision,
             decisionId: selected.decision.id,
             proposal: proposed,
           },
@@ -214,14 +229,10 @@ function resolved(
       grants: "none" as const,
     });
   }
-  const digestPrefix = command.geometryModule.fingerprint.digest.slice(0, 16);
-  const phaseId = `phase-assembly-integrity-${digestPrefix}-r${command.basis.revision}`;
-  const workItemId =
-    `work-assembly-integrity-${digestPrefix}-r${command.basis.revision}`;
-  const decisionId =
-    `decision-assembly-integrity-${digestPrefix}-r${command.basis.revision}`;
-  const appendCommandId =
-    `append-assembly-integrity-${digestPrefix}-r${command.basis.revision}`;
+  const phaseId = `phase-assembly-integrity-${token}`;
+  const workItemId = `work-assembly-integrity-${token}`;
+  const decisionId = `decision-assembly-integrity-${token}`;
+  const appendCommandId = `append-assembly-integrity-${token}`;
   const phase = {
     id: phaseId,
     name: "Assembly integrity observation",
@@ -267,10 +278,11 @@ function resolved(
     propose: {
       tool: "project_decision_propose" as const,
       arguments: {
+        commandId: proposeCommandId,
+        projectId: command.projectId,
+        expectedRevision: proposeExpectedRevision,
         decisionId,
-        proposal: {
-          ...proposed,
-        },
+        proposal: proposed,
       },
     },
   });

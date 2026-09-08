@@ -4,6 +4,7 @@ import type {
   ProjectAssemblyIntegrityReviewResult,
 } from "../../../ports/in/cad/assembly-integrity/project-assembly-integrity-review.ts";
 import type {
+  AssemblyIntegrityReviewExistingWork,
   AssemblyIntegrityReviewResolution,
   AssemblyIntegrityReviewResolutionRequest,
   AssemblyIntegrityReviewResolver,
@@ -120,6 +121,14 @@ Deno.test("assembly-integrity review compiles one exact current primary geometry
   assertEquals(result.next.append.arguments.projectId, input.projectId);
   assertEquals(result.next.append.arguments.expectedRevision, 24);
   assertEquals(result.next.append.arguments.workItems[0]?.operation, result.operation);
+  assertCompleteProposeExceptIssuedAt(result, {
+    expectedRevision: 25,
+    decisionId: "decision-assembly-integrity-aaaaaaaaaaaaaaaa-r12",
+  });
+  assertEquals(
+    result.next.propose.arguments.expectedRevision,
+    result.next.append.arguments.expectedRevision + 1,
+  );
   assertEquals("queue" in result.next, false);
   assertEquals(
     parseAssemblyIntegrityObservationAdmissionParameters(result.decisionParameters),
@@ -199,7 +208,10 @@ Deno.test("assembly-integrity review proposes a structurally selected planned le
   if (result.status !== "resolved") throw new Error("Expected resolved review.");
 
   assertEquals("append" in result.next, false);
-  assertEquals(result.next.propose.arguments.decisionId, "review-assembly-current");
+  assertCompleteProposeExceptIssuedAt(result, {
+    expectedRevision: 24,
+    decisionId: "review-assembly-current",
+  });
   assertEquals(result.work, {
     phaseId: "verify-assembly-current",
     workItemId: "observe-assembly-current",
@@ -212,6 +224,137 @@ Deno.test("assembly-integrity review proposes a structurally selected planned le
   });
   assertEquals(result.decision.decisionId, "review-assembly-current");
   assertEquals(result.grants, "none");
+});
+
+Deno.test("assembly-integrity review next.propose is a complete project_decision_propose envelope except issuedAt", async () => {
+  const input = command();
+  const service = new PrepareProjectAssemblyIntegrityReview({
+    resolver: new FakeResolver({
+      status: "resolved",
+      admission: admission(input),
+      expectedProjectRevision: 24,
+    }),
+  });
+  const appended = await service.execute(input);
+  if (appended.status !== "resolved") throw new Error("Expected resolved review.");
+  if (!("append" in appended.next)) {
+    throw new Error("Expected fallback review to append its bounded plan leaf.");
+  }
+
+  assertCompleteProposeExceptIssuedAt(appended, {
+    expectedRevision: 25,
+    decisionId: "decision-assembly-integrity-aaaaaaaaaaaaaaaa-r12",
+  });
+  assertEquals(appended.next.propose.arguments.commandId.length <= 160, true);
+  assertEquals(
+    appended.next.propose.arguments.expectedRevision,
+    appended.next.append.arguments.expectedRevision + 1,
+  );
+
+  const existing = await new PrepareProjectAssemblyIntegrityReview({
+    resolver: new FakeResolver({
+      status: "resolved",
+      admission: admission(input),
+      expectedProjectRevision: 24,
+      existingWork: {
+        phaseId: "verify-assembly-current",
+        workItemId: "observe-assembly-current",
+        decision: {
+          id: "review-assembly-current",
+          title: "Approve factual assembly observation",
+          question: "May this exact factual observation be dispatched?",
+        },
+        gateClaims: [],
+      },
+    }),
+  }).execute(input);
+  if (existing.status !== "resolved") throw new Error("Expected resolved review.");
+
+  assertEquals("append" in existing.next, false);
+  assertCompleteProposeExceptIssuedAt(existing, {
+    expectedRevision: 24,
+    decisionId: "review-assembly-current",
+  });
+  assertEquals(
+    existing.next.propose.arguments.commandId ===
+      appended.next.propose.arguments.commandId,
+    false,
+  );
+});
+
+Deno.test("assembly-integrity review proposal command ids follow the proposal target revision", async () => {
+  const input = command();
+  const planned = {
+    phaseId: "verify-assembly-current",
+    workItemId: "observe-assembly-current",
+    decision: {
+      id: "review-assembly-current",
+      title: "Approve factual assembly observation",
+      question: "May this exact factual observation be dispatched?",
+    },
+    gateClaims: [],
+  } as const;
+
+  const rejected = await reviewAt(input, {
+    expectedProjectRevision: 24,
+    existingWork: planned,
+  });
+  const retryRejected = await reviewAt(input, {
+    expectedProjectRevision: 24,
+    existingWork: planned,
+  });
+  const rereviewed = await reviewAt(input, {
+    expectedProjectRevision: 30,
+    existingWork: planned,
+  });
+  if (
+    rejected.status !== "resolved" || retryRejected.status !== "resolved" ||
+    rereviewed.status !== "resolved"
+  ) {
+    throw new Error("Expected resolved existing-work reviews.");
+  }
+
+  assertEquals("append" in rejected.next, false);
+  assertEquals("append" in rereviewed.next, false);
+  assertEquals(rejected.next.propose.arguments.expectedRevision, 24);
+  assertEquals(rereviewed.next.propose.arguments.expectedRevision, 30);
+  assertEquals(
+    retryRejected.next.propose.arguments.commandId,
+    rejected.next.propose.arguments.commandId,
+  );
+  assertEquals(
+    rejected.next.propose.arguments.commandId,
+    proposeCommandId(input, 24),
+  );
+  assertEquals(
+    rereviewed.next.propose.arguments.commandId,
+    proposeCommandId(input, 30),
+  );
+  assertEquals(
+    rejected.next.propose.arguments.commandId ===
+      rereviewed.next.propose.arguments.commandId,
+    false,
+  );
+
+  const firstNew = await reviewAt(input, { expectedProjectRevision: 24 });
+  const laterNew = await reviewAt(input, { expectedProjectRevision: 30 });
+  if (firstNew.status !== "resolved" || laterNew.status !== "resolved") {
+    throw new Error("Expected resolved new-work reviews.");
+  }
+  if (!("append" in firstNew.next) || !("append" in laterNew.next)) {
+    throw new Error("Expected fallback review to append its bounded plan leaf.");
+  }
+  assertEquals(firstNew.next.append.arguments.expectedRevision, 24);
+  assertEquals(firstNew.next.propose.arguments.expectedRevision, 25);
+  assertEquals(laterNew.next.append.arguments.expectedRevision, 30);
+  assertEquals(laterNew.next.propose.arguments.expectedRevision, 31);
+  assertEquals(firstNew.next.propose.arguments.commandId, proposeCommandId(input, 25));
+  assertEquals(laterNew.next.propose.arguments.commandId, proposeCommandId(input, 31));
+  assertEquals(
+    firstNew.next.propose.arguments.commandId ===
+      laterNew.next.propose.arguments.commandId,
+    false,
+  );
 });
 
 Deno.test("assembly-integrity review refuses closed-command extras, latest aliases, and geometry aliases before resolving", async () => {
@@ -281,3 +424,64 @@ Deno.test("assembly-integrity review reports an unavailable exact resolver witho
   assertEquals(result.grants, "none");
   assertEquals("operation" in result, false);
 });
+
+const PROJECT_DECISION_PROPOSE_REQUIRED_EXCEPT_ISSUED_AT = [
+  "commandId",
+  "decisionId",
+  "expectedRevision",
+  "projectId",
+  "proposal",
+];
+
+function proposeCommandId(
+  input: ProjectAssemblyIntegrityReviewCommand,
+  expectedRevision: number,
+): string {
+  return `propose-assembly-integrity-${
+    input.geometryModule.fingerprint.digest.slice(0, 16)
+  }-r${input.basis.revision}-r${expectedRevision}`;
+}
+
+function assertCompleteProposeExceptIssuedAt(
+  result: Extract<ProjectAssemblyIntegrityReviewResult, { status: "resolved" }>,
+  expected: {
+    readonly expectedRevision: number;
+    readonly decisionId: string;
+  },
+) {
+  const input = command();
+  assertEquals(
+    Object.keys(result.next.propose.arguments).sort(),
+    PROJECT_DECISION_PROPOSE_REQUIRED_EXCEPT_ISSUED_AT,
+  );
+  assertEquals(
+    result.next.propose.arguments.commandId,
+    proposeCommandId(input, expected.expectedRevision),
+  );
+  assertEquals(result.next.propose.arguments.projectId, input.projectId);
+  assertEquals(
+    result.next.propose.arguments.expectedRevision,
+    expected.expectedRevision,
+  );
+  assertEquals(result.next.propose.arguments.decisionId, expected.decisionId);
+  assertEquals("issuedAt" in result.next.propose.arguments, false);
+}
+
+async function reviewAt(
+  input: ProjectAssemblyIntegrityReviewCommand,
+  resolution: {
+    readonly expectedProjectRevision: number;
+    readonly existingWork?: AssemblyIntegrityReviewExistingWork;
+  },
+): Promise<ProjectAssemblyIntegrityReviewResult> {
+  return await new PrepareProjectAssemblyIntegrityReview({
+    resolver: new FakeResolver({
+      status: "resolved",
+      admission: admission(input),
+      expectedProjectRevision: resolution.expectedProjectRevision,
+      ...(resolution.existingWork === undefined
+        ? {}
+        : { existingWork: resolution.existingWork }),
+    }),
+  }).execute(input);
+}
