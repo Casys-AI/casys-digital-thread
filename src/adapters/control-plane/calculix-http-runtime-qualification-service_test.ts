@@ -147,6 +147,25 @@ Deno.test("CalculiX dispatch acknowledgement loss is recovered by readback only,
   }
 });
 
+Deno.test("CalculiX classifies structured incomplete readback states without parsing them as completed", async () => {
+  for (const readback of ["not_found", "outcome_unknown"] as const) {
+    const runtime = await fixture({ readbacks: [readback] });
+    try {
+      const review = await runtime.service.review(runtime.candidate.id);
+      const result = await runtime.service.apply(review);
+      assertEquals(result.phase, "quarantined");
+      assertEquals(runtime.quarantines, [{
+        reason: "absent",
+        stage: "provider-readback",
+      }]);
+      assertEquals(runtime.provider.dispatches, 1);
+      assertEquals((await runtime.attestations.list()).length, 0);
+    } finally {
+      await runtime.close();
+    }
+  }
+});
+
 Deno.test("CalculiX replays a durable recorded WAL after a post-record crash without redispatch", async () => {
   const runtime = await fixture({ crashAfterMarkRecorded: 1 });
   try {
@@ -263,6 +282,10 @@ Deno.test("CalculiX recovers a malformed dispatch acknowledgement by exact readb
     const review = await runtime.service.review(runtime.candidate.id);
     const first = await runtime.service.apply(review);
     assertEquals(first.phase, "quarantined");
+    assertEquals(runtime.quarantines, [{
+      reason: "uncertain",
+      stage: "provider-readback",
+    }]);
     const recovered = await runtime.service.recover(runtime.candidate.id);
     assertEquals(recovered.phase, "attested");
     assertEquals(runtime.provider.dispatches, 1);
@@ -300,6 +323,10 @@ Deno.test("CalculiX rejects a non-bijective resources/list", async () => {
     assertEquals(result.phase, "stopped");
     if (result.phase !== "stopped") throw new Error("stopped WAL absent");
     assertEquals(result.outcome.status, "unavailable");
+    assertEquals(runtime.quarantines, [{
+      reason: "malformed",
+      stage: "provider-resource-list",
+    }]);
     assertEquals((await runtime.attestations.list()).length, 0);
     assertEquals(
       (await runtime.states.observe([runtime.candidate.material])).get(
@@ -307,6 +334,22 @@ Deno.test("CalculiX rejects a non-bijective resources/list", async () => {
       )?.runtime,
       "inactive",
     );
+  } finally {
+    await runtime.close();
+  }
+});
+
+Deno.test("CalculiX records a closed resource-content stage without provider detail", async () => {
+  const runtime = await fixture({ resourceRead: "throw" });
+  try {
+    const review = await runtime.service.review(runtime.candidate.id);
+    const result = await runtime.service.apply(review);
+    assertEquals(result.phase, "stopped");
+    assertEquals(runtime.quarantines, [{
+      reason: "malformed",
+      stage: "provider-resource-content",
+    }]);
+    assertEquals((await runtime.attestations.list()).length, 0);
   } finally {
     await runtime.close();
   }
@@ -396,8 +439,14 @@ Deno.test("CalculiX will not attest if the group reactivates after its attestati
 async function fixture(options: {
   readonly dispatch?: "complete" | "throw" | "malformed";
   readonly resourceList?: "exact" | "empty";
-  readonly readbacks?: readonly ("complete" | "absent")[];
+  readonly readbacks?: readonly (
+    | "complete"
+    | "absent"
+    | "not_found"
+    | "outcome_unknown"
+  )[];
   readonly displacementMm?: number;
+  readonly resourceRead?: "exact" | "throw";
   readonly crashBeforeMarkActive?: number;
   readonly crashAfterMarkActive?: number;
   readonly crashAfterMarkRecorded?: number;
@@ -442,6 +491,9 @@ async function fixture(options: {
   let remainingAfterActive = options.crashAfterMarkActive ?? 0;
   let remainingAfterRecorded = options.crashAfterMarkRecorded ?? 0;
   let markAttestedCalls = 0;
+  const quarantineInputs: Parameters<
+    CapabilityRuntimeQualificationAttemptStore["markQuarantined"]
+  >[1][] = [];
   const attempts = new HookedAttemptStore(innerAttempts, {
     beforeMarkActive: () => {
       if (remainingBeforeActive-- > 0) throw new Error("crash-before-mark-active");
@@ -457,6 +509,7 @@ async function fixture(options: {
     beforeMarkAttested: () => {
       markAttestedCalls++;
     },
+    beforeMarkQuarantined: (input) => quarantineInputs.push(input),
   });
   const innerAttestations = new FileCapabilityRuntimeQualificationAttestationStore(
     `${directory}/attestations`,
@@ -546,6 +599,9 @@ async function fixture(options: {
     provider,
     readResource: async (resource) => {
       resourceReads++;
+      if (options.resourceRead === "throw") {
+        throw new Error("provider detail must not enter qualification WAL");
+      }
       return provider.resource(resource.sha256);
     },
     now,
@@ -570,6 +626,9 @@ async function fixture(options: {
     },
     get markAttestedCalls() {
       return markAttestedCalls;
+    },
+    get quarantines() {
+      return quarantineInputs;
     },
     attestations,
     advance: (milliseconds: number) => {
@@ -621,6 +680,11 @@ class HookedAttemptStore implements CapabilityRuntimeQualificationAttemptStore {
       readonly afterMarkActive?: () => void;
       readonly afterMarkRecorded?: () => void;
       readonly beforeMarkAttested?: () => void;
+      readonly beforeMarkQuarantined?: (
+        input: Parameters<
+          CapabilityRuntimeQualificationAttemptStore["markQuarantined"]
+        >[1],
+      ) => void;
     },
   ) {}
   read(...args: Parameters<CapabilityRuntimeQualificationAttemptStore["read"]>) {
@@ -671,6 +735,7 @@ class HookedAttemptStore implements CapabilityRuntimeQualificationAttemptStore {
   markQuarantined(
     ...args: Parameters<CapabilityRuntimeQualificationAttemptStore["markQuarantined"]>
   ) {
+    this.hooks.beforeMarkQuarantined?.(args[1]);
     return this.inner.markQuarantined(...args);
   }
   markOutcome(
@@ -742,7 +807,12 @@ class FixtureProvider implements RecordedCalculixSensitivityProvider {
   >[number];
   readonly #step: Uint8Array;
   readonly #displacementMm: number;
-  #nextReadback: ("complete" | "absent")[];
+  #nextReadback: (
+    | "complete"
+    | "absent"
+    | "not_found"
+    | "outcome_unknown"
+  )[];
   #dispatch: "complete" | "throw" | "malformed";
   readonly #resourceList: "exact" | "empty";
   private constructor(
@@ -752,7 +822,12 @@ class FixtureProvider implements RecordedCalculixSensitivityProvider {
       >[number];
       readonly step: Uint8Array;
       readonly displacementMm: number;
-      readonly readbacks: readonly ("complete" | "absent")[];
+      readonly readbacks: readonly (
+        | "complete"
+        | "absent"
+        | "not_found"
+        | "outcome_unknown"
+      )[];
       readonly dispatch: "complete" | "throw" | "malformed";
       readonly resourceList: "exact" | "empty";
     },
@@ -771,7 +846,12 @@ class FixtureProvider implements RecordedCalculixSensitivityProvider {
     options: {
       readonly dispatch: "complete" | "throw" | "malformed";
       readonly resourceList: "exact" | "empty";
-      readonly readbacks: readonly ("complete" | "absent")[];
+      readonly readbacks: readonly (
+        | "complete"
+        | "absent"
+        | "not_found"
+        | "outcome_unknown"
+      )[];
       readonly displacementMm: number;
     },
   ): Promise<FixtureProvider> {
@@ -795,8 +875,12 @@ class FixtureProvider implements RecordedCalculixSensitivityProvider {
   }
   async getRun(requestId: string): Promise<unknown> {
     this.readbacks++;
-    if ((this.#nextReadback.shift() ?? "complete") === "absent") {
+    const readback = this.#nextReadback.shift() ?? "complete";
+    if (readback === "absent") {
       throw new Error("not_found");
+    }
+    if (readback === "not_found" || readback === "outcome_unknown") {
+      return { schemaVersion: "1.0", status: readback };
     }
     return {
       schemaVersion: "1.0",

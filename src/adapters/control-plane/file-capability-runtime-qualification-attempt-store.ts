@@ -6,6 +6,8 @@ import type {
   CapabilityRuntimeQualificationAttemptKey,
   CapabilityRuntimeQualificationAttemptOutcome,
   CapabilityRuntimeQualificationDispatchingAttempt,
+  CapabilityRuntimeQualificationQuarantineReason,
+  CapabilityRuntimeQualificationQuarantineStage,
 } from "../../domain/capability/runtime/capability-runtime-qualification-attempt.ts";
 import type {
   CapabilityRuntimeQualificationAttemptStore,
@@ -240,7 +242,10 @@ export class FileCapabilityRuntimeQualificationAttemptStore
 
   markQuarantined(
     identityValue: CapabilityRuntimeQualificationAttemptIdentity,
-    input: { readonly reason: "uncertain" | "absent" | "malformed" },
+    input: {
+      readonly reason: CapabilityRuntimeQualificationQuarantineReason;
+      readonly stage?: CapabilityRuntimeQualificationQuarantineStage;
+    },
   ): Promise<CapabilityRuntimeQualificationAttempt> {
     return this.#transition(
       identityValue,

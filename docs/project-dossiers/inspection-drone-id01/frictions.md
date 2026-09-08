@@ -930,11 +930,17 @@ The qualification protocol now treats a missing or malformed acknowledgement as 
 uncertain response after the durable dispatch claim. It performs only the exact
 same-request readback and never redispatches that attempt. Qualification can proceed
 only after the existing request identity, STEP identity, nine-entry ledger,
-`resources/list` bijection, nine byte hashes and closed factual criteria all pass. The
-protocol fingerprint advanced to `calculix-http-qualification-protocol/1.1`, so the old
-terminal attempt cannot be reused as a new attestation. Focused recovery, malformed-
-acknowledgement, resource-list and criteria tests pass; closure still requires a fresh
-live qualification reaching a stopped qualified WAL and an exact host attestation.
+`resources/list` bijection, nine byte hashes and closed factual criteria all pass.
+
+A second physical successor attempt, under protocol 1.1, crossed the acknowledgement
+recovery and again produced a completed nine-artifact provider run. It nevertheless
+terminalized `unavailable/malformed` during the downstream evidence read, before an
+attestation could be issued. That second solve also remains outside qualification and
+Thread authority. Protocol 1.2 adds only the closed diagnostic staging described by F37;
+its new fingerprint ensures neither failed attempt can be reused as a new attestation.
+Focused recovery, structured incomplete-readback, resource-list, resource-content and
+criteria tests pass; closure still requires a fresh live qualification reaching a
+stopped qualified WAL and an exact host attestation.
 
 ## F36 — the sealed sensitivity case can be mistaken for a sensitivity result
 
@@ -950,21 +956,26 @@ Do not close this with a whiteboard-only node or UI special case. Close it only 
 physical study is captured in the Thread and the registered edge writer has persisted
 and read back the exact SysML relations.
 
-## F37 — qualification WAL flattens distinct contract failures to `malformed`
+## F37 — qualification WAL flattened distinct contract failures to `malformed`
 
-(open, deferred hard friction)
+(mitigated, live confirmation pending, quick win)
 
-The current WAL does not retain a bounded stage code for dispatch parsing, run-get
-parsing, resource-list bijection, individual resource reads or byte-hash validation. It
-therefore proved the literal `malformed` state for the failed live attempt but could not
-identify the exact rejected wire field afterward. A read-only audit found no static
+The protocol 1.1 WAL did not retain a bounded stage code for run-get parsing,
+resource-list bijection, individual resource reads or byte-hash validation. It therefore
+proved the literal `malformed` state for the second failed live attempt but could not
+identify the exact rejected evidence layer afterward. A read-only audit found no static
 incompatibility between the pinned provider and client envelopes.
 
-A later control-plane observability lot should persist a closed, non-sensitive failure
-stage enum and cover the exact `@casys/mcp-server` envelope fixture. It must not persist
-raw provider payloads, weaken validation, reinterpret old attempts or broaden the ID01
-engineering claim. F35's same-request recovery is sufficient to continue the pilot; this
-diagnostic improvement is deliberately deferred.
+The WAL now optionally persists one closed, non-sensitive stage: `provider-readback`,
+`provider-resource-list` or `provider-resource-content`. Historical events without the
+field remain valid, and a recorded diagnosis is immutable. The code stores no provider
+message or payload, does not weaken validation, does not reinterpret old attempts and
+does not add a second dispatch path. Structured schema-1.0 `not_found`/`outcome_unknown`
+responses are classified before the completed-run parser; malformed acknowledgements
+remain readback-only facts and are not misrepresented as a terminal dispatch stage.
+Thirty-eight focused tests, whole-repository type checking and an independent read-only
+review pass. Live protocol-1.2 qualification must still show that the stage is useful or
+that the full evidence path succeeds before F37 closes.
 
 ## Expected states, not defects
 

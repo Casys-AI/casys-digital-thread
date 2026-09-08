@@ -38,6 +38,16 @@ export const CAPABILITY_RUNTIME_QUALIFICATION_ATTEMPT_SCHEMA =
 export const CAPABILITY_RUNTIME_QUALIFICATION_ATTEMPT_OUTCOME_SCHEMA =
   "capability-runtime-qualification-attempt-outcome/1.0" as const;
 
+export type CapabilityRuntimeQualificationQuarantineReason =
+  | "uncertain"
+  | "absent"
+  | "malformed";
+
+export type CapabilityRuntimeQualificationQuarantineStage =
+  | "provider-readback"
+  | "provider-resource-list"
+  | "provider-resource-content";
+
 const IDENTITY_FIELDS = [
   "candidate",
   "observedHost",
@@ -114,7 +124,9 @@ export type CapabilityRuntimeQualificationAttempt =
   })
   | (Base & Active & Submitted & {
     readonly phase: "quarantined";
-    readonly quarantineReason: "uncertain" | "absent" | "malformed";
+    readonly quarantineReason: CapabilityRuntimeQualificationQuarantineReason;
+    /** Closed diagnostic only; historical WAL events legitimately omit it. */
+    readonly quarantineStage?: CapabilityRuntimeQualificationQuarantineStage;
     readonly claimedAt: string;
     readonly deadlineAt: string;
   })
@@ -258,7 +270,7 @@ export async function validateCapabilityRuntimeQualificationAttempt(
     throw integrity(`${path} must be an object.`);
   }
   const phase = (value as Record<string, unknown>).phase;
-  const root = exactRecord(value, fieldsFor(phase), path);
+  const root = exactRecord(value, fieldsFor(phase, value), path);
   literalValue(
     root.schemaVersion,
     CAPABILITY_RUNTIME_QUALIFICATION_ATTEMPT_SCHEMA,
@@ -320,12 +332,16 @@ export async function validateCapabilityRuntimeQualificationAttempt(
     });
   }
   if (phase === "quarantined") {
+    const stage = Object.hasOwn(root, "quarantineStage")
+      ? quarantineStage(root.quarantineStage)
+      : undefined;
     return freeze({
       ...base(identity, preparedAt),
       phase,
       ...active,
       ...submitted,
       quarantineReason: quarantineReason(root.quarantineReason),
+      ...(stage === undefined ? {} : { quarantineStage: stage }),
       claimedAt: timestamp(root.claimedAt, `${path}.claimedAt`),
       deadlineAt: timestamp(root.deadlineAt, `${path}.deadlineAt`),
     });
@@ -577,13 +593,20 @@ export function recordQualificationAttempt(
 
 export function quarantineQualificationAttempt(
   current: CapabilityRuntimeQualificationAttempt,
-  input: { readonly reason: "uncertain" | "absent" | "malformed" },
+  input: {
+    readonly reason: CapabilityRuntimeQualificationQuarantineReason;
+    readonly stage?: CapabilityRuntimeQualificationQuarantineStage;
+  },
 ): CapabilityRuntimeQualificationAttempt {
   if (current.phase === "recorded") return current;
   const reason = quarantineReason(input.reason);
+  const stage = input.stage === undefined ? undefined : quarantineStage(input.stage);
   if (current.phase === "quarantined") {
-    if (current.quarantineReason !== reason) {
-      throw integrity("Qualification quarantine reason cannot be rewritten.");
+    if (
+      current.quarantineReason !== reason ||
+      current.quarantineStage !== stage
+    ) {
+      throw integrity("Qualification quarantine diagnosis cannot be rewritten.");
     }
     return current;
   }
@@ -596,6 +619,7 @@ export function quarantineQualificationAttempt(
     ...activeOf(current),
     ...submittedOf(current),
     quarantineReason: reason,
+    ...(stage === undefined ? {} : { quarantineStage: stage }),
     claimedAt: current.claimedAt,
     deadlineAt: current.deadlineAt,
   });
@@ -907,7 +931,7 @@ export async function resolveQualificationAttempts(
     quarantined ?? dispatching ?? submitted ?? active ?? prepared;
 }
 
-function fieldsFor(phase: unknown): readonly string[] {
+function fieldsFor(phase: unknown, value: unknown): readonly string[] {
   const base = [...IDENTITY_FIELDS, "preparedAt", "schemaVersion", "phase"];
   if (phase === "prepared") return base;
   if (phase === "start-failed-cleaned") return [...base, "cleanupProof"];
@@ -936,7 +960,7 @@ function fieldsFor(phase: unknown): readonly string[] {
     ];
   }
   if (phase === "quarantined") {
-    return [
+    const fields = [
       ...base,
       "runtimeStartFingerprint",
       "caseSha256",
@@ -945,6 +969,10 @@ function fieldsFor(phase: unknown): readonly string[] {
       "claimedAt",
       "deadlineAt",
     ];
+    return typeof value === "object" && value !== null && !Array.isArray(value) &&
+        Object.hasOwn(value, "quarantineStage")
+      ? [...fields, "quarantineStage"]
+      : fields;
   }
   if (phase === "outcome") {
     return [...base, "runtimeStartFingerprint", "caseSha256", "caseUri", "outcome"];
@@ -1341,11 +1369,24 @@ function timestamp(value: unknown, path: string): string {
   }
   return text;
 }
-function quarantineReason(value: unknown): "uncertain" | "absent" | "malformed" {
+function quarantineReason(
+  value: unknown,
+): CapabilityRuntimeQualificationQuarantineReason {
   if (value === "uncertain" || value === "absent" || value === "malformed") {
     return value;
   }
   throw integrity("Qualification quarantine reason is unsupported.");
+}
+
+function quarantineStage(
+  value: unknown,
+): CapabilityRuntimeQualificationQuarantineStage {
+  if (
+    value === "provider-readback" ||
+    value === "provider-resource-list" ||
+    value === "provider-resource-content"
+  ) return value;
+  throw integrity("Qualification quarantine stage is unsupported.");
 }
 function freeze<T>(value: T): T {
   return deepFreeze(value);

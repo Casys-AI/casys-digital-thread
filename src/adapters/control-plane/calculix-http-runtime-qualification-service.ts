@@ -14,6 +14,8 @@ import {
   type CapabilityRuntimeQualificationAttempt,
   type CapabilityRuntimeQualificationAttemptIdentity,
   type CapabilityRuntimeQualificationAttemptOutcome,
+  type CapabilityRuntimeQualificationQuarantineReason,
+  type CapabilityRuntimeQualificationQuarantineStage,
   createCapabilityRuntimeQualificationAttemptOutcome,
   fingerprintCapabilityRuntimeQualificationAttempt,
   qualificationAttemptIdentityOf,
@@ -72,7 +74,14 @@ const LEASE_TTL_MS = 6 * 60 * 60 * 1000;
 const DEADLINE_MS = 5 * 60 * 1000;
 
 export class CalculixHttpRuntimeQualificationError extends Error {}
-class CalculixHttpReadbackUnavailable extends Error {}
+class CalculixHttpReadbackQuarantine extends Error {
+  constructor(
+    readonly reason: CapabilityRuntimeQualificationQuarantineReason,
+    readonly stage: CapabilityRuntimeQualificationQuarantineStage,
+  ) {
+    super("CalculiX qualification readback requires quarantine.");
+  }
+}
 
 export interface CalculixHttpRuntimeQualificationReview {
   readonly candidate: { readonly id: string; readonly fingerprint: ContentFingerprint };
@@ -493,7 +502,12 @@ export class CalculixHttpRuntimeQualificationService {
         });
       }
     }
-    let recordedDispatch: unknown | undefined;
+    let recordedDispatch:
+      | {
+        readonly raw: unknown;
+        readonly parsed: ReturnType<typeof parseRecordedCalculixCompletedDispatch>;
+      }
+      | undefined;
     if (attempt.phase === "case-submitted") {
       if (revoked) {
         attempt = await this.#preDispatchUnavailable(identity, attempt);
@@ -525,7 +539,7 @@ export class CalculixHttpRuntimeQualificationService {
                   "CalculiX qualification dispatch acknowledged another request id.",
                 );
               }
-              recordedDispatch = response;
+              recordedDispatch = { raw: response, parsed };
             } catch {
               // Dispatch already owns the durable request id, so a malformed
               // acknowledgement is an uncertain response rather than proof
@@ -598,7 +612,10 @@ export class CalculixHttpRuntimeQualificationService {
       CapabilityRuntimeQualificationAttempt,
       { readonly phase: "dispatching" | "quarantined" }
     >,
-    recordedDispatch?: unknown,
+    recordedDispatch?: {
+      readonly raw: unknown;
+      readonly parsed: ReturnType<typeof parseRecordedCalculixCompletedDispatch>;
+    },
   ): Promise<CapabilityRuntimeQualificationAttempt> {
     let evidence: {
       readonly receiptFingerprint: ContentFingerprint;
@@ -612,13 +629,15 @@ export class CalculixHttpRuntimeQualificationService {
       );
     } catch (error) {
       if (attempt.phase === "quarantined") return attempt;
+      if (error instanceof CalculixHttpReadbackQuarantine) {
+        return await this.options.attempts.markQuarantined(identity, {
+          reason: error.reason,
+          stage: error.stage,
+        });
+      }
       const message = error instanceof Error ? error.message : String(error);
       return await this.options.attempts.markQuarantined(identity, {
-        reason: /not_found|outcome_unknown/.test(message)
-          ? "absent"
-          : error instanceof CalculixHttpReadbackUnavailable
-          ? "uncertain"
-          : "malformed",
+        reason: /not_found|outcome_unknown/.test(message) ? "absent" : "malformed",
       });
     }
     // Persist only a fully parsed, byte-checked, and criteria-checked
@@ -688,7 +707,10 @@ export class CalculixHttpRuntimeQualificationService {
   async #readCompletedEvidence(
     candidate: CalculixHttpRuntimeQualificationCandidate,
     requestId: string,
-    recordedDispatch?: unknown,
+    recordedDispatch?: {
+      readonly raw: unknown;
+      readonly parsed: ReturnType<typeof parseRecordedCalculixCompletedDispatch>;
+    },
   ): Promise<{
     readonly receiptFingerprint: ContentFingerprint;
     readonly criteriaError: boolean;
@@ -696,50 +718,83 @@ export class CalculixHttpRuntimeQualificationService {
     let readback: unknown;
     try {
       readback = await this.options.provider.getRun(requestId);
-    } catch (error) {
-      throw new CalculixHttpReadbackUnavailable(
-        error instanceof Error ? error.message : "CalculiX readback unavailable",
+    } catch {
+      throw new CalculixHttpReadbackQuarantine(
+        "uncertain",
+        "provider-readback",
       );
     }
-    const dispatch = recordedDispatch === undefined
-      ? undefined
-      : parseRecordedCalculixCompletedDispatch(recordedDispatch);
-    const parsed = parseRecordedCalculixCompletedReadback(readback, {
-      requestId,
-      stepSha256: candidate.fixture.step.sha256,
-      stepBytes: candidate.fixture.step.byteCount,
-      dispatch,
-    });
-    if (parsed.artifacts.length !== CALCULIX_RECORDED_RESOURCE_ORDER.length) {
-      throw new TypeError("CalculiX qualification ledger length drifted.");
+    const dispatch = recordedDispatch?.parsed;
+    const readbackStatus = calculixIncompleteReadbackStatus(readback);
+    if (readbackStatus !== undefined) {
+      throw new CalculixHttpReadbackQuarantine(
+        readbackStatus === "dispatched" ? "uncertain" : "absent",
+        "provider-readback",
+      );
+    }
+    let parsed: ReturnType<typeof parseRecordedCalculixCompletedReadback>;
+    try {
+      parsed = parseRecordedCalculixCompletedReadback(readback, {
+        requestId,
+        stepSha256: candidate.fixture.step.sha256,
+        stepBytes: candidate.fixture.step.byteCount,
+        dispatch,
+      });
+      if (parsed.artifacts.length !== CALCULIX_RECORDED_RESOURCE_ORDER.length) {
+        throw new TypeError("CalculiX qualification ledger length drifted.");
+      }
+    } catch {
+      throw new CalculixHttpReadbackQuarantine(
+        "malformed",
+        "provider-readback",
+      );
     }
     let listed: unknown;
     try {
       listed = await this.options.provider.listResources();
-    } catch (error) {
-      throw new CalculixHttpReadbackUnavailable(
-        error instanceof Error ? error.message : "CalculiX resources/list unavailable",
+    } catch {
+      throw new CalculixHttpReadbackQuarantine(
+        "uncertain",
+        "provider-resource-list",
       );
     }
-    assertRecordedCalculixResourceListBijection(listed, {
-      phase: "base",
-      stepSha256: candidate.fixture.step.sha256,
-      stepBytes: candidate.fixture.step.byteCount,
-      requestId: parsed.requestId,
-      runId: parsed.runId,
-      requestSha256: parsed.requestSha256,
-      resources: parsed.artifacts,
-      canonicalText: "",
-      fingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
-    });
+    try {
+      assertRecordedCalculixResourceListBijection(listed, {
+        phase: "base",
+        stepSha256: candidate.fixture.step.sha256,
+        stepBytes: candidate.fixture.step.byteCount,
+        requestId: parsed.requestId,
+        runId: parsed.runId,
+        requestSha256: parsed.requestSha256,
+        resources: parsed.artifacts,
+        canonicalText: "",
+        fingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
+      });
+    } catch {
+      throw new CalculixHttpReadbackQuarantine(
+        "malformed",
+        "provider-resource-list",
+      );
+    }
     const bytes = new Map<string, Uint8Array>();
     for (const resource of parsed.artifacts) {
-      const resourceBytes = await this.options.readResource(resource);
+      let resourceBytes: Uint8Array;
+      try {
+        resourceBytes = await this.options.readResource(resource);
+      } catch {
+        throw new CalculixHttpReadbackQuarantine(
+          "malformed",
+          "provider-resource-content",
+        );
+      }
       if (
         resourceBytes.byteLength !== resource.byteCount ||
         await fingerprintResourceBytes(resourceBytes) !== resource.sha256
       ) {
-        throw new TypeError(`CalculiX qualification ${resource.role} bytes drifted.`);
+        throw new CalculixHttpReadbackQuarantine(
+          "malformed",
+          "provider-resource-content",
+        );
       }
       bytes.set(resource.role, resourceBytes);
     }
@@ -753,7 +808,7 @@ export class CalculixHttpRuntimeQualificationService {
     try {
       await assertCalculixHttpQualificationEvidence(candidate, {
         requestId,
-        recordedDispatch,
+        recordedDispatch: recordedDispatch?.raw,
         recordedReadback: readback,
         requestJsonBytes: bytes.get("request.json")!,
         resultJsonBytes: bytes.get("result.json")!,
@@ -977,6 +1032,20 @@ export class CalculixHttpRuntimeQualificationService {
       qualificationSpecFingerprint: this.#spec(candidate).fingerprint,
     };
   }
+}
+
+function calculixIncompleteReadbackStatus(
+  value: unknown,
+): "dispatched" | "not_found" | "outcome_unknown" | undefined {
+  if (
+    typeof value !== "object" || value === null || Array.isArray(value) ||
+    (value as Record<string, unknown>).schemaVersion !== "1.0"
+  ) return undefined;
+  const status = (value as Record<string, unknown>).status;
+  return status === "dispatched" || status === "not_found" ||
+      status === "outcome_unknown"
+    ? status
+    : undefined;
 }
 
 function startAuthority(

@@ -237,7 +237,30 @@ Deno.test("qualification WAL promotes a quarantined request on later factual rea
     const identity = await fixtureIdentity();
     const store = new FileCapabilityRuntimeQualificationAttemptStore(directory);
     await prepareThroughDispatch(store, identity);
-    await store.markQuarantined(identity, { reason: "absent" });
+    const quarantined = await store.markQuarantined(identity, {
+      reason: "absent",
+      stage: "provider-readback",
+    });
+    if (quarantined.phase !== "quarantined") {
+      throw new Error("quarantine event absent");
+    }
+    assertEquals(quarantined.quarantineStage, "provider-readback");
+    assertEquals(
+      await store.markQuarantined(identity, {
+        reason: "absent",
+        stage: "provider-readback",
+      }),
+      quarantined,
+    );
+    await assertRejects(
+      () =>
+        store.markQuarantined(identity, {
+          reason: "absent",
+          stage: "provider-resource-list",
+        }),
+      CapabilityRuntimeQualificationAttemptIntegrityError,
+      "diagnosis cannot be rewritten",
+    );
 
     const recovered = new FileCapabilityRuntimeQualificationAttemptStore(directory);
     assertEquals(
