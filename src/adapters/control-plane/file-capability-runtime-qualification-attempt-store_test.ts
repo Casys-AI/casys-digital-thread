@@ -261,6 +261,17 @@ Deno.test("qualification WAL promotes a quarantined request on later factual rea
       CapabilityRuntimeQualificationAttemptIntegrityError,
       "diagnosis cannot be rewritten",
     );
+    await assertRejects(
+      () =>
+        store.markQuarantined(identity, {
+          reason: "absent",
+          stage: "provider-readback",
+          resourceRole: "input.step",
+          resourceFailure: "read-error",
+        }),
+      CapabilityRuntimeQualificationAttemptIntegrityError,
+      "resource diagnosis requires the content stage",
+    );
 
     const recovered = new FileCapabilityRuntimeQualificationAttemptStore(directory);
     assertEquals(

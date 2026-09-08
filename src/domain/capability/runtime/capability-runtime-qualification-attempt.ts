@@ -48,6 +48,21 @@ export type CapabilityRuntimeQualificationQuarantineStage =
   | "provider-resource-list"
   | "provider-resource-content";
 
+export type CapabilityRuntimeQualificationQuarantineResourceRole =
+  | "input.step"
+  | "request.json"
+  | "mesh.geo"
+  | "mesh.inp"
+  | "gmsh.log"
+  | "job.inp"
+  | "ccx.log"
+  | "job.dat"
+  | "result.json";
+
+export type CapabilityRuntimeQualificationQuarantineResourceFailure =
+  | "read-error"
+  | "byte-or-digest-mismatch";
+
 const IDENTITY_FIELDS = [
   "candidate",
   "observedHost",
@@ -127,6 +142,11 @@ export type CapabilityRuntimeQualificationAttempt =
     readonly quarantineReason: CapabilityRuntimeQualificationQuarantineReason;
     /** Closed diagnostic only; historical WAL events legitimately omit it. */
     readonly quarantineStage?: CapabilityRuntimeQualificationQuarantineStage;
+    /** Closed resource diagnostic only; protocol 1.2 WAL legitimately omits it. */
+    readonly quarantineResourceRole?:
+      CapabilityRuntimeQualificationQuarantineResourceRole;
+    readonly quarantineResourceFailure?:
+      CapabilityRuntimeQualificationQuarantineResourceFailure;
     readonly claimedAt: string;
     readonly deadlineAt: string;
   })
@@ -335,6 +355,13 @@ export async function validateCapabilityRuntimeQualificationAttempt(
     const stage = Object.hasOwn(root, "quarantineStage")
       ? quarantineStage(root.quarantineStage)
       : undefined;
+    const resourceRole = Object.hasOwn(root, "quarantineResourceRole")
+      ? quarantineResourceRole(root.quarantineResourceRole)
+      : undefined;
+    const resourceFailure = Object.hasOwn(root, "quarantineResourceFailure")
+      ? quarantineResourceFailure(root.quarantineResourceFailure)
+      : undefined;
+    assertQuarantineResourceDiagnosis(stage, resourceRole, resourceFailure);
     return freeze({
       ...base(identity, preparedAt),
       phase,
@@ -342,6 +369,10 @@ export async function validateCapabilityRuntimeQualificationAttempt(
       ...submitted,
       quarantineReason: quarantineReason(root.quarantineReason),
       ...(stage === undefined ? {} : { quarantineStage: stage }),
+      ...(resourceRole === undefined ? {} : { quarantineResourceRole: resourceRole }),
+      ...(resourceFailure === undefined
+        ? {}
+        : { quarantineResourceFailure: resourceFailure }),
       claimedAt: timestamp(root.claimedAt, `${path}.claimedAt`),
       deadlineAt: timestamp(root.deadlineAt, `${path}.deadlineAt`),
     });
@@ -596,15 +627,26 @@ export function quarantineQualificationAttempt(
   input: {
     readonly reason: CapabilityRuntimeQualificationQuarantineReason;
     readonly stage?: CapabilityRuntimeQualificationQuarantineStage;
+    readonly resourceRole?: CapabilityRuntimeQualificationQuarantineResourceRole;
+    readonly resourceFailure?: CapabilityRuntimeQualificationQuarantineResourceFailure;
   },
 ): CapabilityRuntimeQualificationAttempt {
   if (current.phase === "recorded") return current;
   const reason = quarantineReason(input.reason);
   const stage = input.stage === undefined ? undefined : quarantineStage(input.stage);
+  const resourceRole = input.resourceRole === undefined
+    ? undefined
+    : quarantineResourceRole(input.resourceRole);
+  const resourceFailure = input.resourceFailure === undefined
+    ? undefined
+    : quarantineResourceFailure(input.resourceFailure);
+  assertQuarantineResourceDiagnosis(stage, resourceRole, resourceFailure);
   if (current.phase === "quarantined") {
     if (
       current.quarantineReason !== reason ||
-      current.quarantineStage !== stage
+      current.quarantineStage !== stage ||
+      current.quarantineResourceRole !== resourceRole ||
+      current.quarantineResourceFailure !== resourceFailure
     ) {
       throw integrity("Qualification quarantine diagnosis cannot be rewritten.");
     }
@@ -620,6 +662,10 @@ export function quarantineQualificationAttempt(
     ...submittedOf(current),
     quarantineReason: reason,
     ...(stage === undefined ? {} : { quarantineStage: stage }),
+    ...(resourceRole === undefined ? {} : { quarantineResourceRole: resourceRole }),
+    ...(resourceFailure === undefined
+      ? {}
+      : { quarantineResourceFailure: resourceFailure }),
     claimedAt: current.claimedAt,
     deadlineAt: current.deadlineAt,
   });
@@ -969,10 +1015,19 @@ function fieldsFor(phase: unknown, value: unknown): readonly string[] {
       "claimedAt",
       "deadlineAt",
     ];
-    return typeof value === "object" && value !== null && !Array.isArray(value) &&
-        Object.hasOwn(value, "quarantineStage")
-      ? [...fields, "quarantineStage"]
-      : fields;
+    if (typeof value !== "object" || value === null || Array.isArray(value)) {
+      return fields;
+    }
+    return [
+      ...fields,
+      ...(Object.hasOwn(value, "quarantineStage") ? ["quarantineStage"] : []),
+      ...(Object.hasOwn(value, "quarantineResourceRole")
+        ? ["quarantineResourceRole"]
+        : []),
+      ...(Object.hasOwn(value, "quarantineResourceFailure")
+        ? ["quarantineResourceFailure"]
+        : []),
+    ];
   }
   if (phase === "outcome") {
     return [...base, "runtimeStartFingerprint", "caseSha256", "caseUri", "outcome"];
@@ -1387,6 +1442,42 @@ function quarantineStage(
     value === "provider-resource-content"
   ) return value;
   throw integrity("Qualification quarantine stage is unsupported.");
+}
+
+function quarantineResourceRole(
+  value: unknown,
+): CapabilityRuntimeQualificationQuarantineResourceRole {
+  if (
+    value === "input.step" || value === "request.json" ||
+    value === "mesh.geo" || value === "mesh.inp" || value === "gmsh.log" ||
+    value === "job.inp" || value === "ccx.log" || value === "job.dat" ||
+    value === "result.json"
+  ) return value;
+  throw integrity("Qualification quarantine resource role is unsupported.");
+}
+
+function quarantineResourceFailure(
+  value: unknown,
+): CapabilityRuntimeQualificationQuarantineResourceFailure {
+  if (value === "read-error" || value === "byte-or-digest-mismatch") return value;
+  throw integrity("Qualification quarantine resource failure is unsupported.");
+}
+
+function assertQuarantineResourceDiagnosis(
+  stage: CapabilityRuntimeQualificationQuarantineStage | undefined,
+  role: CapabilityRuntimeQualificationQuarantineResourceRole | undefined,
+  failure: CapabilityRuntimeQualificationQuarantineResourceFailure | undefined,
+): void {
+  if ((role === undefined) !== (failure === undefined)) {
+    throw integrity(
+      "Qualification quarantine resource role and failure must appear together.",
+    );
+  }
+  if (role !== undefined && stage !== "provider-resource-content") {
+    throw integrity(
+      "Qualification quarantine resource diagnosis requires the content stage.",
+    );
+  }
 }
 function freeze<T>(value: T): T {
   return deepFreeze(value);

@@ -15,6 +15,8 @@ import {
   type CapabilityRuntimeQualificationAttemptIdentity,
   type CapabilityRuntimeQualificationAttemptOutcome,
   type CapabilityRuntimeQualificationQuarantineReason,
+  type CapabilityRuntimeQualificationQuarantineResourceFailure,
+  type CapabilityRuntimeQualificationQuarantineResourceRole,
   type CapabilityRuntimeQualificationQuarantineStage,
   createCapabilityRuntimeQualificationAttemptOutcome,
   fingerprintCapabilityRuntimeQualificationAttempt,
@@ -78,6 +80,10 @@ class CalculixHttpReadbackQuarantine extends Error {
   constructor(
     readonly reason: CapabilityRuntimeQualificationQuarantineReason,
     readonly stage: CapabilityRuntimeQualificationQuarantineStage,
+    readonly resource?: {
+      readonly role: CapabilityRuntimeQualificationQuarantineResourceRole;
+      readonly failure: CapabilityRuntimeQualificationQuarantineResourceFailure;
+    },
   ) {
     super("CalculiX qualification readback requires quarantine.");
   }
@@ -633,6 +639,10 @@ export class CalculixHttpRuntimeQualificationService {
         return await this.options.attempts.markQuarantined(identity, {
           reason: error.reason,
           stage: error.stage,
+          ...(error.resource === undefined ? {} : {
+            resourceRole: error.resource.role,
+            resourceFailure: error.resource.failure,
+          }),
         });
       }
       const message = error instanceof Error ? error.message : String(error);
@@ -778,6 +788,7 @@ export class CalculixHttpRuntimeQualificationService {
     }
     const bytes = new Map<string, Uint8Array>();
     for (const resource of parsed.artifacts) {
+      const resourceRole = qualificationResourceRole(resource.role);
       let resourceBytes: Uint8Array;
       try {
         resourceBytes = await this.options.readResource(resource);
@@ -785,6 +796,7 @@ export class CalculixHttpRuntimeQualificationService {
         throw new CalculixHttpReadbackQuarantine(
           "malformed",
           "provider-resource-content",
+          { role: resourceRole, failure: "read-error" },
         );
       }
       if (
@@ -794,6 +806,7 @@ export class CalculixHttpRuntimeQualificationService {
         throw new CalculixHttpReadbackQuarantine(
           "malformed",
           "provider-resource-content",
+          { role: resourceRole, failure: "byte-or-digest-mismatch" },
         );
       }
       bytes.set(resource.role, resourceBytes);
@@ -1046,6 +1059,17 @@ function calculixIncompleteReadbackStatus(
       status === "outcome_unknown"
     ? status
     : undefined;
+}
+
+function qualificationResourceRole(
+  value: string,
+): CapabilityRuntimeQualificationQuarantineResourceRole {
+  if (
+    CALCULIX_RECORDED_RESOURCE_ORDER.includes(
+      value as (typeof CALCULIX_RECORDED_RESOURCE_ORDER)[number],
+    )
+  ) return value as CapabilityRuntimeQualificationQuarantineResourceRole;
+  throw new TypeError("CalculiX qualification resource role drifted.");
 }
 
 function startAuthority(

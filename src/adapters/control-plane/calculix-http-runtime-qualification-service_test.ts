@@ -348,6 +348,26 @@ Deno.test("CalculiX records a closed resource-content stage without provider det
     assertEquals(runtime.quarantines, [{
       reason: "malformed",
       stage: "provider-resource-content",
+      resourceRole: "input.step",
+      resourceFailure: "read-error",
+    }]);
+    assertEquals((await runtime.attestations.list()).length, 0);
+  } finally {
+    await runtime.close();
+  }
+});
+
+Deno.test("CalculiX records a closed post-read integrity diagnosis", async () => {
+  const runtime = await fixture({ resourceRead: "drift" });
+  try {
+    const review = await runtime.service.review(runtime.candidate.id);
+    const result = await runtime.service.apply(review);
+    assertEquals(result.phase, "stopped");
+    assertEquals(runtime.quarantines, [{
+      reason: "malformed",
+      stage: "provider-resource-content",
+      resourceRole: "input.step",
+      resourceFailure: "byte-or-digest-mismatch",
     }]);
     assertEquals((await runtime.attestations.list()).length, 0);
   } finally {
@@ -446,7 +466,7 @@ async function fixture(options: {
     | "outcome_unknown"
   )[];
   readonly displacementMm?: number;
-  readonly resourceRead?: "exact" | "throw";
+  readonly resourceRead?: "exact" | "throw" | "drift";
   readonly crashBeforeMarkActive?: number;
   readonly crashAfterMarkActive?: number;
   readonly crashAfterMarkRecorded?: number;
@@ -602,6 +622,7 @@ async function fixture(options: {
       if (options.resourceRead === "throw") {
         throw new Error("provider detail must not enter qualification WAL");
       }
+      if (options.resourceRead === "drift") return new Uint8Array();
       return provider.resource(resource.sha256);
     },
     now,

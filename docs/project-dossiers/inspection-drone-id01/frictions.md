@@ -936,11 +936,15 @@ A second physical successor attempt, under protocol 1.1, crossed the acknowledge
 recovery and again produced a completed nine-artifact provider run. It nevertheless
 terminalized `unavailable/malformed` during the downstream evidence read, before an
 attestation could be issued. That second solve also remains outside qualification and
-Thread authority. Protocol 1.2 adds only the closed diagnostic staging described by F37;
-its new fingerprint ensures neither failed attempt can be reused as a new attestation.
-Focused recovery, structured incomplete-readback, resource-list, resource-content and
-criteria tests pass; closure still requires a fresh live qualification reaching a
-stopped qualified WAL and an exact host attestation.
+Thread authority. A third physical attempt under protocol 1.2 produced run
+`r-0cd06abb-3895-4b21-91d6-8af8dbb37074`; it proved that readback and `resources/list`
+passed, then terminalized at the closed `provider-resource-content` stage. Its nine
+files exactly match their ledger, but the HTTP resource read still did not reach
+qualification authority. Protocol 1.3 adds only the bounded resource diagnosis described
+by F38; each new fingerprint ensures no failed attempt can be reused as a new
+attestation. Focused recovery, structured incomplete-readback, resource-list,
+resource-content and criteria tests pass; closure still requires a fresh live
+qualification reaching a stopped qualified WAL and an exact host attestation.
 
 ## F36 — the sealed sensitivity case can be mistaken for a sensitivity result
 
@@ -958,7 +962,7 @@ and read back the exact SysML relations.
 
 ## F37 — qualification WAL flattened distinct contract failures to `malformed`
 
-(mitigated, live confirmation pending, quick win)
+(closed, quick win)
 
 The protocol 1.1 WAL did not retain a bounded stage code for run-get parsing,
 resource-list bijection, individual resource reads or byte-hash validation. It therefore
@@ -974,8 +978,30 @@ does not add a second dispatch path. Structured schema-1.0 `not_found`/`outcome_
 responses are classified before the completed-run parser; malformed acknowledgements
 remain readback-only facts and are not misrepresented as a terminal dispatch stage.
 Thirty-eight focused tests, whole-repository type checking and an independent read-only
-review pass. Live protocol-1.2 qualification must still show that the stage is useful or
-that the full evidence path succeeds before F37 closes.
+review pass. The live protocol-1.2 attempt subsequently crossed run readback and
+resource listing before recording `provider-resource-content`. That is the exact bounded
+distinction this change was intended to retain, so F37 is closed without claiming the
+underlying resource read or qualification is repaired.
+
+## F38 — one resource-content stage hid which of nine artifacts failed
+
+(mitigated, live confirmation pending, quick win)
+
+Protocol 1.2 narrowed the live failure to `provider-resource-content`, but the reader
+loop still discarded both the artifact role and whether failure occurred inside the MCP
+reader or in the service's post-read byte/hash check. The container stopped 331 ms after
+registering the run resources. Read-only extraction of the retained run recomputed all
+nine byte counts and SHA-256 digests successfully; the published provider and local
+reader also expose compatible static blob/text envelopes. This rules out a corrupt
+CalculiX ledger but does not observe the rejected live HTTP response.
+
+Protocol 1.3 therefore adds only a paired closed diagnosis for content-stage failures:
+one of the nine declared resource roles, plus `read-error` or `byte-or-digest-mismatch`.
+The pair is immutable, forbidden on other stages and absent from all historical WAL.
+URI, run id, provider message and payload remain unpersisted; the one-dispatch rule is
+unchanged. Thirty-nine focused tests and whole-repository type checking pass. The next
+live qualification must identify the exact boundary or complete the evidence path before
+F38 closes.
 
 ## Expected states, not defects
 

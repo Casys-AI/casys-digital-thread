@@ -9,6 +9,8 @@ import type {
   CapabilityRuntimeQualificationAttemptOutcome,
   CapabilityRuntimeQualificationDispatchingAttempt,
   CapabilityRuntimeQualificationQuarantineReason,
+  CapabilityRuntimeQualificationQuarantineResourceFailure,
+  CapabilityRuntimeQualificationQuarantineResourceRole,
   CapabilityRuntimeQualificationQuarantineStage,
 } from "../../../../domain/capability/runtime/capability-runtime-qualification-attempt.ts";
 import type { CapabilityRuntimeQualificationFailedStartCleanupProof } from "../../../../domain/capability/runtime/capability-runtime-qualification-failed-start-cleanup-proof.ts";
@@ -64,6 +66,9 @@ export interface CapabilityRuntimeQualificationAttemptStore {
     input: {
       readonly reason: CapabilityRuntimeQualificationQuarantineReason;
       readonly stage?: CapabilityRuntimeQualificationQuarantineStage;
+      readonly resourceRole?: CapabilityRuntimeQualificationQuarantineResourceRole;
+      readonly resourceFailure?:
+        CapabilityRuntimeQualificationQuarantineResourceFailure;
     },
   ): Promise<CapabilityRuntimeQualificationAttempt>;
   markOutcome(
