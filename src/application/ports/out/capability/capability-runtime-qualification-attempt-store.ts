@@ -9,6 +9,7 @@ import type {
   CapabilityRuntimeQualificationAttemptOutcome,
   CapabilityRuntimeQualificationDispatchingAttempt,
 } from "../../../../domain/capability/runtime/capability-runtime-qualification-attempt.ts";
+import type { CapabilityRuntimeQualificationFailedStartCleanupProof } from "../../../../domain/capability/runtime/capability-runtime-qualification-failed-start-cleanup-proof.ts";
 
 /** The only persisted-private state API exposed to a future qualification service. */
 export interface CapabilityRuntimeQualificationAttemptStore {
@@ -22,6 +23,12 @@ export interface CapabilityRuntimeQualificationAttemptStore {
   markActive(
     identity: CapabilityRuntimeQualificationAttemptIdentity,
     input: { readonly runtimeStartFingerprint: ContentFingerprint },
+  ): Promise<CapabilityRuntimeQualificationAttempt>;
+  markStartFailedCleaned(
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+    input: {
+      readonly cleanupProof: CapabilityRuntimeQualificationFailedStartCleanupProof;
+    },
   ): Promise<CapabilityRuntimeQualificationAttempt>;
   markCaseSubmitted(
     identity: CapabilityRuntimeQualificationAttemptIdentity,

@@ -1077,6 +1077,149 @@ Deno.test("qualification start pending/uncertain/failed all-active is read-only;
   assertEquals(partial.host.calls, []);
 });
 
+Deno.test("terminal failed qualification start cleanup stops once, releases its exact lease, and yields a durable non-start proof", async () => {
+  const first = await group(
+    "casys-qualification-failed-start-cleanup",
+    "qualification-failed-start-cleanup",
+  );
+  const fixture = supervisor([first]);
+  for (const member of first.materials) {
+    fixture.states.set(member.material, {
+      material: "installed",
+      runtime: "degraded",
+    });
+  }
+  await fixture.leases.claim(qualificationLease([first]));
+  await appendQualificationStart(
+    fixture,
+    first,
+    "qual-start-terminal-failed",
+    AT,
+    inactive(first),
+    "failed",
+  );
+  const input = {
+    group: capabilityRuntimeLaunchGroupReference(first),
+    expectedMaterials: exactMaterials(first),
+    qualificationStartAuthority: qualificationAuthority(),
+    lease: qualificationLease([first]),
+    at: AT,
+  };
+
+  const proof = await fixture.supervisor.releaseFailedQualificationStart(input);
+  if (!proof) throw new Error("failed-start cleanup proof absent");
+  assertEquals(proof.startOutcome.status, "failed");
+  assertEquals(proof.cleanupOutcome?.status, "succeeded");
+  assertEquals(proof.cleanupOutcome?.observations[0]?.state?.runtime, "inactive");
+  assertEquals(proof.convergence, "host-outcome-succeeded");
+  assertEquals(await fixture.leases.listActive(AT), []);
+  assertEquals(
+    fixture.host.calls.filter((call) => call.action === "runtime-stop").length,
+    1,
+  );
+  const verified = await fixture.supervisor.verifyFailedQualificationStartCleanupProof({
+    group: input.group,
+    expectedMaterials: input.expectedMaterials,
+    qualificationStartAuthority: input.qualificationStartAuthority,
+    proof,
+  });
+  assertEquals(verified.fingerprint, proof.fingerprint);
+
+  const again = await fixture.supervisor.releaseFailedQualificationStart(input);
+  assertEquals(again?.fingerprint, proof.fingerprint);
+  assertEquals(
+    fixture.host.calls.filter((call) => call.action === "runtime-stop").length,
+    1,
+  );
+});
+
+Deno.test("failed qualification-start cleanup crash reconverges inactive without a second stop", async () => {
+  const first = await group(
+    "casys-qualification-failed-start-cleanup-crash",
+    "qualification-failed-start-cleanup-crash",
+  );
+  const fixture = supervisor([first], undefined, "unavailable", {
+    crashAppendOutcomeFor: "runtime-stop",
+  });
+  for (const member of first.materials) {
+    fixture.states.set(member.material, {
+      material: "installed",
+      runtime: "degraded",
+    });
+  }
+  await fixture.leases.claim(qualificationLease([first]));
+  await appendQualificationStart(
+    fixture,
+    first,
+    "qual-start-terminal-failed-crash",
+    AT,
+    inactive(first),
+    "failed",
+  );
+  const input = {
+    group: capabilityRuntimeLaunchGroupReference(first),
+    expectedMaterials: exactMaterials(first),
+    qualificationStartAuthority: qualificationAuthority(),
+    lease: qualificationLease([first]),
+    at: AT,
+  };
+
+  await assertRejects(
+    () => fixture.supervisor.releaseFailedQualificationStart(input),
+    Error,
+    "crash-before-append-outcome",
+  );
+  assertEquals(
+    fixture.host.calls.filter((call) => call.action === "runtime-stop").length,
+    1,
+  );
+  assertEquals((await fixture.leases.listActive(AT)).length, 1);
+  assertEquals(
+    (await fixture.states.observe(exactMaterials(first))).get(
+      capabilityRuntimeMaterialKey(first.materials[0]!.material),
+    )?.runtime,
+    "inactive",
+  );
+  const stop = (await fixture.journal.list()).find((entry) =>
+    entry.action === "runtime-stop"
+  );
+  if (!stop) throw new Error("failed-start cleanup stop intent absent");
+  assertEquals(
+    (await fixture.journal.listOutcomes()).some((outcome) =>
+      outcome.journalEntryId === stop.id
+    ),
+    false,
+  );
+
+  const recovered = await fixture.supervisor.releaseFailedQualificationStart(input);
+  if (!recovered) throw new Error("failed-start recovery proof absent");
+  assertEquals(recovered.cleanupOutcome, null);
+  assertEquals(
+    recovered.convergence,
+    "observed-all-inactive-after-exact-intent",
+  );
+  assertEquals(recovered.observations[0]?.state?.runtime, "inactive");
+  assertEquals(await fixture.leases.listActive(AT), []);
+  assertEquals(
+    fixture.host.calls.filter((call) => call.action === "runtime-stop").length,
+    1,
+  );
+  const verified = await fixture.supervisor.verifyFailedQualificationStartCleanupProof({
+    group: input.group,
+    expectedMaterials: input.expectedMaterials,
+    qualificationStartAuthority: input.qualificationStartAuthority,
+    proof: recovered,
+  });
+  assertEquals(verified.fingerprint, recovered.fingerprint);
+
+  const again = await fixture.supervisor.releaseFailedQualificationStart(input);
+  assertEquals(again?.fingerprint, recovered.fingerprint);
+  assertEquals(
+    fixture.host.calls.filter((call) => call.action === "runtime-stop").length,
+    1,
+  );
+});
+
 Deno.test("qualification stop crash after host mutation reconverges all-inactive without a second stop", async () => {
   const first = await group("casys-qualification-crash-stop", "qualification-stop");
   const fixture = supervisor([first], undefined, "unavailable", {

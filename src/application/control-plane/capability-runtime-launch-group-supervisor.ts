@@ -58,6 +58,11 @@ import {
   createCapabilityRuntimeQualificationHostStopProof,
   validateCapabilityRuntimeQualificationHostStopProof,
 } from "../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
+import {
+  type CapabilityRuntimeQualificationFailedStartCleanupProof,
+  createCapabilityRuntimeQualificationFailedStartCleanupProof,
+  validateCapabilityRuntimeQualificationFailedStartCleanupProof,
+} from "../../domain/capability/runtime/capability-runtime-qualification-failed-start-cleanup-proof.ts";
 
 export class CapabilityRuntimeLaunchGroupSafetyError extends Error {
   constructor(message: string) {
@@ -697,6 +702,179 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
   }
 
   /**
+   * Stops a group left behind by one exact terminal failed qualification
+   * start. This recovery is deliberately narrower than a normal
+   * qualification stop: it cannot manufacture an active start proof, resume
+   * provider work, or accept a pending/uncertain/succeeded start outcome.
+   * The retained reserved lease and the failed start at the current group tip
+   * are the only mutation authority.
+   */
+  async releaseFailedQualificationStart(input: {
+    readonly group: CapabilityRuntimeLaunchGroupReference;
+    readonly expectedMaterials: readonly CapabilityRuntimeMaterialIdentity[];
+    readonly qualificationStartAuthority: CapabilityRuntimeQualificationStartAuthority;
+    readonly lease: CapabilityRuntimeLease;
+    readonly at: string;
+  }): Promise<CapabilityRuntimeQualificationFailedStartCleanupProof | undefined> {
+    return await this.options.lock.withLock(async () => {
+      const group = await this.#requireReviewedGroup(input.group);
+      this.#assertExpectedMaterials(group, input.expectedMaterials);
+      const authority = validateCapabilityRuntimeQualificationStartAuthority(
+        input.qualificationStartAuthority,
+      );
+      const expectedLease = validateCapabilityRuntimeLease(input.lease);
+      this.#assertQualificationLeaseScope(group, expectedLease);
+      const start = await this.#uniqueQualificationStartEntry(group, authority);
+      if (!start) return undefined;
+      const startOutcome = await this.#outcomeOf(start.id);
+      if (startOutcome?.status !== "failed") return undefined;
+      const stopId = await failedQualificationStartStopIntentId(group, start);
+      const tip = await this.#groupTip(group);
+      if (!tip || (tip.id !== start.id && tip.id !== stopId)) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime failed qualification-start cleanup is blocked by a later group tip.",
+        );
+      }
+      const existing = (await this.options.journal.list()).find((entry) =>
+        entry.id === stopId
+      );
+      const existingOutcome = existing ? await this.#outcomeOf(existing.id) : null;
+      const observed = await this.#observe(group);
+      if (existing) {
+        this.#assertFailedQualificationStartStopFacts(group, start, existing);
+        if (
+          existingOutcome?.status === "succeeded" &&
+          outcomeProvesExactRuntime(group, existingOutcome, "inactive")
+        ) {
+          await this.#releaseFailedQualificationStartLease(expectedLease);
+          return await this.#makeFailedQualificationStartCleanupProof(
+            group,
+            start,
+            startOutcome,
+            existing,
+            existingOutcome,
+            observationMap(existingOutcome),
+            existingOutcome.recordedAt,
+          );
+        }
+        if (allInactive(group, observed)) {
+          await this.#releaseFailedQualificationStartLease(expectedLease);
+          return await this.#makeFailedQualificationStartCleanupProof(
+            group,
+            start,
+            startOutcome,
+            existing,
+            existingOutcome,
+            observed,
+            input.at,
+          );
+        }
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          `Capability runtime failed qualification-start cleanup is ${
+            existingOutcome?.status ?? "pending"
+          }; a second host stop is blocked.`,
+        );
+      }
+      await this.#requireMatchingQualificationLease(expectedLease);
+      if (allActive(group, observed)) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime failed qualification-start cleanup refuses an exact active group; recover its start proof instead.",
+        );
+      }
+      const mutation = await this.#mutate(
+        group,
+        "runtime-stop",
+        CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+        input.at,
+        observed,
+        {
+          intentId: stopId,
+          plannedAt: start.plannedAt,
+        },
+      );
+      if (
+        mutation.status !== "succeeded" ||
+        !outcomeProvesExactRuntime(group, mutation, "inactive")
+      ) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          `Capability runtime failed qualification-start cleanup is ${mutation.status}; lease is retained for recovery.`,
+        );
+      }
+      await this.#releaseFailedQualificationStartLease(expectedLease);
+      const cleanup = (await this.options.journal.list()).find((entry) =>
+        entry.id === stopId
+      );
+      if (!cleanup) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime failed qualification-start cleanup intent was not readable.",
+        );
+      }
+      return await this.#makeFailedQualificationStartCleanupProof(
+        group,
+        start,
+        startOutcome,
+        cleanup,
+        mutation,
+        observationMap(mutation),
+        mutation.recordedAt,
+      );
+    });
+  }
+
+  async verifyFailedQualificationStartCleanupProof(input: {
+    readonly group: CapabilityRuntimeLaunchGroupReference;
+    readonly expectedMaterials: readonly CapabilityRuntimeMaterialIdentity[];
+    readonly qualificationStartAuthority: CapabilityRuntimeQualificationStartAuthority;
+    readonly proof: CapabilityRuntimeQualificationFailedStartCleanupProof;
+  }): Promise<CapabilityRuntimeQualificationFailedStartCleanupProof> {
+    return await this.options.lock.withLock(async () => {
+      const group = await this.#requireReviewedGroup(input.group);
+      this.#assertExpectedMaterials(group, input.expectedMaterials);
+      const authority = validateCapabilityRuntimeQualificationStartAuthority(
+        input.qualificationStartAuthority,
+      );
+      const proof = await validateCapabilityRuntimeQualificationFailedStartCleanupProof(
+        input.proof,
+      );
+      if (
+        deterministicJson(proof.startJournalEntry.qualificationStartAuthority) !==
+          deterministicJson(authority)
+      ) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime failed qualification-start cleanup proof has foreign authority.",
+        );
+      }
+      this.#assertFailedQualificationStartStopFacts(
+        group,
+        proof.startJournalEntry,
+        proof.cleanupJournalEntry,
+      );
+      const start = (await this.options.journal.list()).find((entry) =>
+        entry.id === proof.startJournalEntry.id
+      );
+      const cleanup = (await this.options.journal.list()).find((entry) =>
+        entry.id === proof.cleanupJournalEntry.id
+      );
+      const startOutcome = await this.#outcomeOf(proof.startJournalEntry.id);
+      const cleanupOutcome = await this.#outcomeOf(proof.cleanupJournalEntry.id);
+      if (
+        !start || !cleanup ||
+        deterministicJson(start) !== deterministicJson(proof.startJournalEntry) ||
+        deterministicJson(cleanup) !==
+          deterministicJson(proof.cleanupJournalEntry) ||
+        deterministicJson(startOutcome) !== deterministicJson(proof.startOutcome) ||
+        deterministicJson(cleanupOutcome) !==
+          deterministicJson(proof.cleanupOutcome)
+      ) {
+        throw new CapabilityRuntimeLaunchGroupSafetyError(
+          "Capability runtime failed qualification-start cleanup proof does not match the durable journal.",
+        );
+      }
+      return proof;
+    });
+  }
+
+  /**
    * Stops the qualification group from an exact start proof. Cleanup does not
    * require the current start policy, review, or bearer.
    */
@@ -1030,6 +1208,67 @@ export class CapabilityRuntimeLaunchGroupSupervisor {
         "Capability runtime qualification stop proof convergence contradicts its journal outcome.",
       );
     }
+  }
+
+  #assertFailedQualificationStartStopFacts(
+    group: CapabilityRuntimeLaunchGroup,
+    start: CapabilityRuntimeJournalEntry,
+    stop: CapabilityRuntimeJournalEntry,
+  ): void {
+    const reference = capabilityRuntimeLaunchGroupReference(group);
+    if (
+      stop.action !== "runtime-stop" ||
+      stop.projectId !== CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID ||
+      !sameCapabilityRuntimeLaunchGroupReference(stop.launchGroup, reference) ||
+      !sameGroupMaterials(group, stop.materials) ||
+      stop.plannedAt !== start.plannedAt ||
+      stop.effectiveRuntimeProjection !== null ||
+      stop.qualificationStartAuthority !== null ||
+      stop.administrativeRemovalPlanFingerprint !== null
+    ) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime failed qualification-start cleanup intent facts drifted.",
+      );
+    }
+  }
+
+  #makeFailedQualificationStartCleanupProof(
+    group: CapabilityRuntimeLaunchGroup,
+    startJournalEntry: CapabilityRuntimeJournalEntry,
+    startOutcome: CapabilityRuntimeJournalOutcome,
+    cleanupJournalEntry: CapabilityRuntimeJournalEntry,
+    cleanupOutcome: CapabilityRuntimeJournalOutcome | null,
+    observed: ReadonlyMap<string, CapabilityRuntimeObservedState>,
+    observedAt: string,
+  ): Promise<CapabilityRuntimeQualificationFailedStartCleanupProof> {
+    const exact = outcomeProvesExactRuntime(group, cleanupOutcome, "inactive");
+    return createCapabilityRuntimeQualificationFailedStartCleanupProof({
+      schemaVersion: "capability-runtime-qualification-failed-start-cleanup-proof/1.0",
+      startJournalEntry,
+      startOutcome,
+      cleanupJournalEntry,
+      cleanupOutcome,
+      convergence: exact
+        ? "host-outcome-succeeded"
+        : "observed-all-inactive-after-exact-intent",
+      observations: observationVector(
+        group,
+        exact ? observationMap(cleanupOutcome!) : observed,
+      ),
+      observedAt,
+    });
+  }
+
+  async #releaseFailedQualificationStartLease(
+    expectedLease: CapabilityRuntimeLease,
+  ): Promise<void> {
+    const held = await this.options.leases.read(expectedLease.id);
+    if (held && !sameLeaseScope(held, expectedLease)) {
+      throw new CapabilityRuntimeLaunchGroupSafetyError(
+        "Capability runtime failed qualification-start cleanup lease is foreign to this attempt.",
+      );
+    }
+    if (held) await this.options.leases.release(expectedLease.id);
   }
 
   #assertExpectedMaterials(
@@ -1830,6 +2069,19 @@ export async function qualificationStopIntentId(
     ),
   );
   return `capability-group-runtime-stop-${digest}`;
+}
+
+export async function failedQualificationStartStopIntentId(
+  group: CapabilityRuntimeLaunchGroup,
+  startJournalEntry: CapabilityRuntimeJournalEntry,
+): Promise<string> {
+  const start = await sha256Fingerprint(startJournalEntry);
+  const digest = await sha256Hex(
+    new TextEncoder().encode(
+      `${group.id}\u0000${group.version}\u0000${group.fingerprint.digest}\u0000runtime-stop-failed-qualification-start\u0000${CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID}\u0000${start.digest}`,
+    ),
+  );
+  return `capability-group-runtime-stop-failed-qualification-start-${digest}`;
 }
 
 async function shortId(

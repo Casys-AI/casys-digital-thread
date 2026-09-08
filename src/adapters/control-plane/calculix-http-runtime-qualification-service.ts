@@ -363,6 +363,15 @@ export class CalculixHttpRuntimeQualificationService {
       await this.#assertStoredAttestation(candidate, attempt);
       return attempt;
     }
+    if (attempt?.phase === "start-failed-cleaned") {
+      await this.options.groups.verifyFailedQualificationStartCleanupProof({
+        group: candidate.launchGroup,
+        expectedMaterials: [candidate.material],
+        qualificationStartAuthority: startAuthority(identity),
+        proof: attempt.cleanupProof,
+      });
+      return attempt;
+    }
     if (attempt?.phase === "stopped") {
       await this.#verifyStopped(candidate, identity, attempt);
     }
@@ -403,6 +412,25 @@ export class CalculixHttpRuntimeQualificationService {
         qualificationStartAuthority: startAuthority(identity),
       });
       if (!recovered) {
+        const cleanupAt = this.#now();
+        const cleanupProof = await this.options.groups.releaseFailedQualificationStart({
+          group: candidate.launchGroup,
+          expectedMaterials: [candidate.material],
+          qualificationStartAuthority: startAuthority(identity),
+          lease: lease(candidate, cleanupAt),
+          at: cleanupAt,
+        });
+        if (cleanupProof) {
+          await this.options.groups.verifyFailedQualificationStartCleanupProof({
+            group: candidate.launchGroup,
+            expectedMaterials: [candidate.material],
+            qualificationStartAuthority: startAuthority(identity),
+            proof: cleanupProof,
+          });
+          return await this.options.attempts.markStartFailedCleaned(identity, {
+            cleanupProof,
+          });
+        }
         if (revoked) throw unavailable("CalculiX qualification is revoked.");
         return attempt;
       }

@@ -1503,6 +1503,13 @@ class ProxyAttemptStore implements CapabilityRuntimeQualificationAttemptStore {
     this.hooks.afterMarkActive?.();
     return attempt;
   }
+  markStartFailedCleaned(
+    ...args: Parameters<
+      CapabilityRuntimeQualificationAttemptStore["markStartFailedCleaned"]
+    >
+  ) {
+    return this.inner.markStartFailedCleaned(...args);
+  }
   markCaseSubmitted(
     ...args: Parameters<
       CapabilityRuntimeQualificationAttemptStore["markCaseSubmitted"]

@@ -703,6 +703,8 @@ Deno.test("geometry-module qualification seals an exact rejected publication wit
       read: (key) => attempts.read(key),
       prepare: (identity, clock) => attempts.prepare(identity, clock),
       markActive: (identity, input) => attempts.markActive(identity, input),
+      markStartFailedCleaned: (identity, input) =>
+        attempts.markStartFailedCleaned(identity, input),
       markCaseSubmitted: (identity, input) =>
         attempts.markCaseSubmitted(identity, input),
       claimDispatching: (identity, clock) => attempts.claimDispatching(identity, clock),
@@ -787,6 +789,8 @@ Deno.test("geometry-module qualification quarantines a durable receipt with a mi
       read: (key) => attempts.read(key),
       prepare: (identity, clock) => attempts.prepare(identity, clock),
       markActive: (identity, input) => attempts.markActive(identity, input),
+      markStartFailedCleaned: (identity, input) =>
+        attempts.markStartFailedCleaned(identity, input),
       markCaseSubmitted: (identity, input) =>
         attempts.markCaseSubmitted(identity, input),
       claimDispatching: (identity, clock) => attempts.claimDispatching(identity, clock),
@@ -1406,6 +1410,8 @@ function crashAfterUnavailableOutcome(
     read: (key) => base.read(key),
     prepare: (identity, clock) => base.prepare(identity, clock),
     markActive: (identity, input) => base.markActive(identity, input),
+    markStartFailedCleaned: (identity, input) =>
+      base.markStartFailedCleaned(identity, input),
     markCaseSubmitted: (identity, input) => base.markCaseSubmitted(identity, input),
     claimDispatching: (identity, clock) => base.claimDispatching(identity, clock),
     markRecorded: (identity, input) => base.markRecorded(identity, input),

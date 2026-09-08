@@ -169,6 +169,33 @@ Deno.test("CalculiX prepared WAL uses its durable start proof on recovery withou
   }
 });
 
+Deno.test("CalculiX terminalizes a prepared WAL after cleaning one exact failed host start", async () => {
+  const runtime = await fixture({ failQualificationStart: true });
+  try {
+    const review = await runtime.service.review(runtime.candidate.id);
+    await assertRejects(
+      () => runtime.service.apply(review),
+      Error,
+      "without an exact active group observation",
+    );
+    const cleaned = await runtime.service.recover(runtime.candidate.id);
+    assertEquals(cleaned.phase, "start-failed-cleaned");
+    assertEquals(runtime.provider.dispatches, 0);
+    assertEquals(
+      runtime.host.calls.filter((call) => call.action === "runtime-stop").length,
+      1,
+    );
+    const again = await runtime.service.recover(runtime.candidate.id);
+    assertEquals(again.phase, "start-failed-cleaned");
+    assertEquals(
+      runtime.host.calls.filter((call) => call.action === "runtime-stop").length,
+      1,
+    );
+  } finally {
+    await runtime.close();
+  }
+});
+
 Deno.test("CalculiX records a failed bounded-criteria outcome, stops the host, and does not attest", async () => {
   const runtime = await fixture({ displacementMm: 50.1 });
   try {
@@ -303,6 +330,7 @@ async function fixture(options: {
   readonly displacementMm?: number;
   readonly crashBeforeMarkActive?: number;
   readonly crashAfterMarkActive?: number;
+  readonly failQualificationStart?: boolean;
 } = {}) {
   const directory = await Deno.makeTempDir({ prefix: "calculix-qualification-test-" });
   const [candidate] =
@@ -315,7 +343,7 @@ async function fixture(options: {
   states.set(candidate.material, { material: "installed", runtime: "inactive" });
   const leases = new InMemoryCapabilityRuntimeLeaseStore();
   const journal = new InMemoryCapabilityRuntimeJournal();
-  const host = new QualificationHost(states);
+  const host = new QualificationHost(states, options.failQualificationStart === true);
   let nowMs = Date.parse("2026-09-08T00:00:00.000Z");
   const now = () => new Date(nowMs).toISOString();
   const groups = new CapabilityRuntimeLaunchGroupSupervisor({
@@ -515,6 +543,13 @@ class HookedAttemptStore implements CapabilityRuntimeQualificationAttemptStore {
     this.hooks.afterMarkActive?.();
     return value;
   }
+  markStartFailedCleaned(
+    ...args: Parameters<
+      CapabilityRuntimeQualificationAttemptStore["markStartFailedCleaned"]
+    >
+  ) {
+    return this.inner.markStartFailedCleaned(...args);
+  }
   markCaseSubmitted(
     ...args: Parameters<CapabilityRuntimeQualificationAttemptStore["markCaseSubmitted"]>
   ) {
@@ -561,12 +596,29 @@ class HookedAttemptStore implements CapabilityRuntimeQualificationAttemptStore {
 
 class QualificationHost implements CapabilityRuntimeHostMutator {
   readonly calls: { readonly action: CapabilityRuntimeJournalEntry["action"] }[] = [];
-  constructor(private readonly states: InMemoryCapabilityRuntimeStateObserver) {}
+  constructor(
+    private readonly states: InMemoryCapabilityRuntimeStateObserver,
+    private readonly failQualificationStart = false,
+  ) {}
   async mutate(
     input: { readonly authorization: AuthorizedCapabilityRuntimeHostMutation },
   ): Promise<CapabilityRuntimeJournalOutcome> {
     const entry = input.authorization.entry;
     this.calls.push({ action: entry.action });
+    if (
+      this.failQualificationStart && entry.action === "runtime-qualification-start"
+    ) {
+      const state = { material: "installed", runtime: "degraded" } as const;
+      for (const material of entry.materials) this.states.set(material, state);
+      return {
+        schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
+        journalEntryId: entry.id,
+        recordedAt: entry.plannedAt,
+        status: "failed",
+        observations: entry.materials.map((material) => ({ material, state })),
+        detail: "fixture terminal failed start",
+      };
+    }
     const state = transitionState(entry.action);
     for (const material of entry.materials) this.states.set(material, state);
     return {

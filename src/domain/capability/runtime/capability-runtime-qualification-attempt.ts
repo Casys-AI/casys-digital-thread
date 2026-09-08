@@ -14,6 +14,10 @@ import {
   validateCapabilityRuntimeQualificationStopProof,
 } from "./capability-runtime-qualification-stop-proof.ts";
 import {
+  type CapabilityRuntimeQualificationFailedStartCleanupProof,
+  validateCapabilityRuntimeQualificationFailedStartCleanupProof,
+} from "./capability-runtime-qualification-failed-start-cleanup-proof.ts";
+import {
   deepFreeze,
   exactRecord,
   literalValue,
@@ -92,6 +96,10 @@ export type CapabilityRuntimeQualificationAttemptOutcomeInput = Omit<
 
 export type CapabilityRuntimeQualificationAttempt =
   | (Base & { readonly phase: "prepared" })
+  | (Base & {
+    readonly phase: "start-failed-cleaned";
+    readonly cleanupProof: CapabilityRuntimeQualificationFailedStartCleanupProof;
+  })
   | (Base & Active & { readonly phase: "active" })
   | (Base & Active & Submitted & { readonly phase: "case-submitted" })
   | (Base & Active & Submitted & {
@@ -260,6 +268,16 @@ export async function validateCapabilityRuntimeQualificationAttempt(
   const preparedAt = timestamp(root.preparedAt, `${path}.preparedAt`);
   if (phase === "prepared") {
     return freeze({ ...base(identity, preparedAt), phase });
+  }
+  if (phase === "start-failed-cleaned") {
+    return freeze({
+      ...base(identity, preparedAt),
+      phase,
+      cleanupProof: await validateCapabilityRuntimeQualificationFailedStartCleanupProof(
+        root.cleanupProof,
+        `${path}.cleanupProof`,
+      ),
+    });
   }
   const active = {
     runtimeStartFingerprint: fingerprint(
@@ -431,8 +449,50 @@ export function activateQualificationAttempt(
       ...active,
     });
   }
+  if (current.phase === "start-failed-cleaned") {
+    throw integrity("A cleaned failed qualification start cannot be activated.");
+  }
   assertActive(current, active);
   return current;
+}
+
+export async function cleanFailedQualificationStartAttempt(
+  current: CapabilityRuntimeQualificationAttempt,
+  input: {
+    readonly cleanupProof: CapabilityRuntimeQualificationFailedStartCleanupProof;
+  },
+): Promise<CapabilityRuntimeQualificationAttempt> {
+  const cleanupProof =
+    await validateCapabilityRuntimeQualificationFailedStartCleanupProof(
+      input.cleanupProof,
+    );
+  if (current.phase === "start-failed-cleaned") {
+    if (deterministicJson(current.cleanupProof) !== deterministicJson(cleanupProof)) {
+      throw integrity("Failed qualification-start cleanup proof cannot be rewritten.");
+    }
+    return current;
+  }
+  if (current.phase !== "prepared") {
+    throw integrity("Failed qualification-start cleanup requires a prepared WAL.");
+  }
+  const authority = cleanupProof.startJournalEntry.qualificationStartAuthority;
+  if (
+    !authority || authority.candidate.id !== current.candidate.id ||
+    !fingerprintsEqual(
+      authority.candidate.fingerprint,
+      current.candidate.fingerprint,
+    ) ||
+    !fingerprintsEqual(authority.reviewFingerprint, current.reviewFingerprint)
+  ) {
+    throw integrity(
+      "Failed qualification-start cleanup proof has foreign WAL authority.",
+    );
+  }
+  return freeze({
+    ...base(current, current.preparedAt),
+    phase: "start-failed-cleaned",
+    cleanupProof,
+  });
 }
 
 export function submitQualificationAttemptCase(
@@ -443,6 +503,9 @@ export function submitQualificationAttemptCase(
     throw integrity(
       "Qualification case submission cannot precede a durable runtime start.",
     );
+  }
+  if (current.phase === "start-failed-cleaned") {
+    throw integrity("A cleaned failed qualification start cannot submit a case.");
   }
   const submitted = submission(input, current.caseFingerprint, "$submittedCase");
   if (current.phase === "active") {
@@ -546,6 +609,9 @@ export async function outcomeQualificationAttempt(
     value,
     "$qualificationOutcome",
   );
+  if (current.phase === "start-failed-cleaned") {
+    throw integrity("A cleaned failed qualification start cannot record an outcome.");
+  }
   if (
     current.phase === "outcome" || current.phase === "stopped" ||
     current.phase === "attested"
@@ -698,6 +764,12 @@ export async function resolveQualificationAttempts(
   for (const attempt of [...events, ...claims]) {
     assertQualificationAttemptIdentity(attempt, prepared);
   }
+  const startFailedCleaned = byPhase.get("start-failed-cleaned") as
+    | Extract<
+      CapabilityRuntimeQualificationAttempt,
+      { readonly phase: "start-failed-cleaned" }
+    >
+    | undefined;
   const active = byPhase.get("active") as
     | Extract<CapabilityRuntimeQualificationAttempt, { readonly phase: "active" }>
     | undefined;
@@ -728,6 +800,31 @@ export async function resolveQualificationAttempts(
   const attested = byPhase.get("attested") as
     | Extract<CapabilityRuntimeQualificationAttempt, { readonly phase: "attested" }>
     | undefined;
+  if (
+    startFailedCleaned &&
+    (active || submitted || dispatching || recorded || quarantined || outcome ||
+      stopped || attested)
+  ) {
+    throw integrity(
+      "A cleaned failed qualification start cannot coexist with activation or provider work.",
+    );
+  }
+  if (startFailedCleaned) {
+    const authority = startFailedCleaned.cleanupProof.startJournalEntry
+      .qualificationStartAuthority;
+    if (
+      !authority || authority.candidate.id !== prepared.candidate.id ||
+      !fingerprintsEqual(
+        authority.candidate.fingerprint,
+        prepared.candidate.fingerprint,
+      ) ||
+      !fingerprintsEqual(authority.reviewFingerprint, prepared.reviewFingerprint)
+    ) {
+      throw integrity(
+        "Cleaned failed qualification-start proof has foreign WAL authority.",
+      );
+    }
+  }
   if (
     !active &&
     (submitted || dispatching || recorded || quarantined || outcome || stopped ||
@@ -806,13 +903,14 @@ export async function resolveQualificationAttempts(
     attested &&
     (attested.outcome.status !== "qualified" || attested.outcome.basis !== "recorded")
   ) throw integrity("Qualification WAL attests unqualified outcome.");
-  return attested ?? stopped ?? outcome ?? recorded ?? quarantined ?? dispatching ??
-    submitted ?? active ?? prepared;
+  return startFailedCleaned ?? attested ?? stopped ?? outcome ?? recorded ??
+    quarantined ?? dispatching ?? submitted ?? active ?? prepared;
 }
 
 function fieldsFor(phase: unknown): readonly string[] {
   const base = [...IDENTITY_FIELDS, "preparedAt", "schemaVersion", "phase"];
   if (phase === "prepared") return base;
+  if (phase === "start-failed-cleaned") return [...base, "cleanupProof"];
   if (phase === "active") return [...base, "runtimeStartFingerprint"];
   if (phase === "case-submitted") {
     return [...base, "runtimeStartFingerprint", "caseSha256", "caseUri"];
@@ -1036,7 +1134,7 @@ function base(
 function activeOf(
   attempt: Exclude<
     CapabilityRuntimeQualificationAttempt,
-    { readonly phase: "prepared" }
+    { readonly phase: "prepared" | "start-failed-cleaned" }
   >,
 ): Active {
   return { runtimeStartFingerprint: attempt.runtimeStartFingerprint };
@@ -1044,7 +1142,7 @@ function activeOf(
 function submittedOf(
   attempt: Exclude<
     CapabilityRuntimeQualificationAttempt,
-    { readonly phase: "prepared" | "active" }
+    { readonly phase: "prepared" | "start-failed-cleaned" | "active" }
   >,
 ): Submitted {
   return { caseSha256: attempt.caseSha256, caseUri: attempt.caseUri };
@@ -1076,7 +1174,7 @@ export function assertQualificationAttemptIdentity(
 function assertActive(
   attempt: Exclude<
     CapabilityRuntimeQualificationAttempt,
-    { readonly phase: "prepared" }
+    { readonly phase: "prepared" | "start-failed-cleaned" }
   >,
   value: Active,
 ): void {
@@ -1089,7 +1187,7 @@ function assertActive(
 function assertSubmitted(
   attempt: Exclude<
     CapabilityRuntimeQualificationAttempt,
-    { readonly phase: "prepared" | "active" }
+    { readonly phase: "prepared" | "start-failed-cleaned" | "active" }
   >,
   value: Submitted,
 ): void {
@@ -1100,11 +1198,11 @@ function assertSubmitted(
 function assertSubmittedContinuation(
   attempt: Exclude<
     CapabilityRuntimeQualificationAttempt,
-    { readonly phase: "prepared" | "active" }
+    { readonly phase: "prepared" | "start-failed-cleaned" | "active" }
   >,
   prior: Exclude<
     CapabilityRuntimeQualificationAttempt,
-    { readonly phase: "prepared" | "active" }
+    { readonly phase: "prepared" | "start-failed-cleaned" | "active" }
   >,
 ): void {
   assertActive(attempt, activeOf(prior));

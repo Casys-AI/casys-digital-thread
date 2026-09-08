@@ -344,6 +344,125 @@ Deno.test("Compose host refuses named-volume topology drift before treating Calc
   }
 });
 
+Deno.test("only the exact qualification-system stop can clean the retired CalculiX anonymous exports mount", async () => {
+  const group = await calculixGroup();
+  assertEquals(
+    group.fingerprint.digest,
+    "2d2385c2183f613406b6119c1d9ce0de8a75ddf3041a1731446532ae96064a9a",
+  );
+  const legacyMounts = [
+    ...descriptorMounts(group, "mcp-calculix"),
+    {
+      Type: "volume",
+      Name: "a".repeat(64),
+      Destination: "/exports",
+      RW: true,
+    },
+  ];
+  const runner = new FakeGroupRunner(group, {
+    images: true,
+    state: "running",
+    mountsByService: { "mcp-calculix": legacyMounts },
+  });
+  const fixture = host(group, runner);
+
+  const observed = await fixture.host.observe([group.materials[0]!.material]);
+  assertEquals(
+    observed.get(materialKey(group.materials[0]!.material))?.runtime,
+    "degraded",
+  );
+  const stopped = await mutate(
+    fixture,
+    group,
+    "runtime-stop",
+    undefined,
+    CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+  );
+  assertEquals(stopped.status, "succeeded");
+  assertEquals(stopped.observations[0]?.state?.runtime, "inactive");
+  assertEquals(
+    runner.calls.filter((call) => call[1] === "container" && call[2] === "stop")
+      .length,
+    1,
+  );
+  const pendingReadback = await fixture.host.observe([
+    group.materials[0]!.material,
+  ]);
+  assertEquals(
+    pendingReadback.get(materialKey(group.materials[0]!.material))?.runtime,
+    "inactive",
+  );
+  assertEquals(
+    runner.calls.filter((call) => call[1] === "container" && call[2] === "stop")
+      .length,
+    1,
+  );
+  await fixture.journal.appendOutcome(stopped);
+  const terminalObservation = await fixture.host.observe([
+    group.materials[0]!.material,
+  ]);
+  assertEquals(
+    terminalObservation.get(materialKey(group.materials[0]!.material))?.runtime,
+    "degraded",
+  );
+
+  const pausedRunner = new FakeGroupRunner(group, {
+    images: true,
+    state: "paused",
+    mountsByService: { "mcp-calculix": legacyMounts },
+  });
+  const paused = host(group, pausedRunner);
+  await paused.journal.appendBeforeMutation({
+    id: "group-runtime-stop-paused-readback",
+    action: "runtime-stop",
+    materials: group.materials.map((member) => member.material),
+    launchGroup: capabilityRuntimeLaunchGroupReference(group),
+    projectId: CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+    plannedAt: "2026-08-29T00:00:00.000Z",
+    previousObservations: group.materials.map((member) => ({
+      material: member.material,
+      state: { material: "installed", runtime: "degraded" },
+    })),
+    effectiveRuntimeProjection: null,
+    qualificationStartAuthority: null,
+    administrativeRemovalPlanFingerprint: null,
+  });
+  const pausedReadback = await paused.host.observe([
+    group.materials[0]!.material,
+  ]);
+  assertEquals(
+    pausedReadback.get(materialKey(group.materials[0]!.material))?.runtime,
+    "degraded",
+  );
+  assertEquals(
+    pausedRunner.calls.some((call) => call[1] === "container" && call[2] === "stop"),
+    false,
+  );
+
+  const invalidRunner = new FakeGroupRunner(group, {
+    images: true,
+    state: "running",
+    mountsByService: {
+      "mcp-calculix": legacyMounts.map((mount) =>
+        mount.Destination === "/exports" ? { ...mount, Name: "not-anonymous" } : mount
+      ),
+    },
+  });
+  const invalid = host(group, invalidRunner);
+  const refused = await mutate(
+    invalid,
+    group,
+    "runtime-stop",
+    undefined,
+    CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
+  );
+  assertEquals(refused.status, "failed");
+  assertEquals(
+    invalidRunner.calls.some((call) => call[1] === "container" && call[2] === "stop"),
+    false,
+  );
+});
+
 Deno.test("sealed SysON group has the one approved loopback publication and no historical 8180 exposure", async () => {
   const group = await sysonGroup();
   const descriptor = JSON.parse(group.compose.content) as {
@@ -857,15 +976,17 @@ async function mutate(
   group: CapabilityRuntimeLaunchGroup,
   action: CapabilityRuntimeJournalEntry["action"],
   secretSnapshot?: CapabilityRuntimeSecretSnapshot,
+  projectId?: string,
 ) {
   const entry: CapabilityRuntimeJournalEntry = {
     id: `group-${action}`,
     action,
     materials: group.materials.map((member) => member.material),
     launchGroup: capabilityRuntimeLaunchGroupReference(group),
-    projectId: action === "runtime-qualification-start"
-      ? CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID
-      : "project-test",
+    projectId: projectId ??
+      (action === "runtime-qualification-start"
+        ? CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID
+        : "project-test"),
     plannedAt: "2026-08-29T00:00:00.000Z",
     previousObservations: group.materials.map((member) => ({
       material: member.material,
@@ -910,13 +1031,13 @@ class FakeGroupRunner implements CommandRunner {
   readonly calls: string[][] = [];
   readonly stdin: string[] = [];
   #images: boolean;
-  #states: Map<string, "running" | "exited">;
+  #states: Map<string, "running" | "exited" | "paused">;
 
   constructor(
     private readonly group: CapabilityRuntimeLaunchGroup,
     options: {
       readonly images: boolean;
-      readonly state: "absent" | "running";
+      readonly state: "absent" | "running" | "exited" | "paused";
       readonly foreignService?: string;
       readonly mountsByService?: Readonly<
         Record<string, readonly Record<string, unknown>[]>
@@ -927,11 +1048,14 @@ class FakeGroupRunner implements CommandRunner {
     },
   ) {
     this.#images = options.images;
-    this.#states = new Map(
-      options.state === "absent"
-        ? []
-        : group.materials.map((member) => [member.serviceName, "running"] as const),
-    );
+    if (options.state === "absent") {
+      this.#states = new Map();
+    } else {
+      const state = options.state;
+      this.#states = new Map(
+        group.materials.map((member) => [member.serviceName, state] as const),
+      );
+    }
     this.foreignService = options.foreignService;
     this.mountsByService = options.mountsByService ?? {};
     this.repoDigestsByService = options.repoDigestsByService ?? {};

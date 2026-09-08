@@ -18,6 +18,7 @@ import {
   canonicalCapabilityRuntimeQualificationAttemptText,
   CapabilityRuntimeQualificationAttemptIntegrityError,
   capabilityRuntimeQualificationAttemptStorageKey,
+  cleanFailedQualificationStartAttempt,
   createCapabilityRuntimeQualificationAttemptOutcome,
   dispatchingQualificationAttempt,
   fingerprintCapabilityRuntimeQualificationAttempt,
@@ -36,6 +37,7 @@ import {
   validateCapabilityRuntimeQualificationAttemptIdentity,
   validateCapabilityRuntimeQualificationAttemptKey,
 } from "../../domain/capability/runtime/capability-runtime-qualification-attempt.ts";
+import type { CapabilityRuntimeQualificationFailedStartCleanupProof } from "../../domain/capability/runtime/capability-runtime-qualification-failed-start-cleanup-proof.ts";
 import type { CapabilityRuntimeQualificationStopProof } from "../../domain/capability/runtime/capability-runtime-qualification-stop-proof.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import {
@@ -156,6 +158,18 @@ export class FileCapabilityRuntimeQualificationAttemptStore
     return this.#transition(
       identityValue,
       (current) => activateQualificationAttempt(current, input),
+    );
+  }
+
+  markStartFailedCleaned(
+    identityValue: CapabilityRuntimeQualificationAttemptIdentity,
+    input: {
+      readonly cleanupProof: CapabilityRuntimeQualificationFailedStartCleanupProof;
+    },
+  ): Promise<CapabilityRuntimeQualificationAttempt> {
+    return this.#transition(
+      identityValue,
+      (current) => cleanFailedQualificationStartAttempt(current, input),
     );
   }
 
