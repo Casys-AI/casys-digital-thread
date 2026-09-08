@@ -206,8 +206,6 @@ import { CapabilityRuntimeLaunchGroupSupervisor } from "./src/application/contro
 import { CapabilityRuntimePreloadScheduler } from "./src/application/control-plane/capability-runtime-preload-scheduler.ts";
 import { createLocalCapabilityRuntimeCachePreparationComposition } from "./src/adapters/control-plane/local-capability-runtime-cache-preparation-composition.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "./src/adapters/control-plane/local-capability-runtime-read-composition.ts";
-import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
-import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./src/adapters/control-plane/first-party-capability-runtime-qualification-specifications.ts";
 import { LocalChronoRuntimeSecretResolver } from "./src/adapters/control-plane/local-chrono-runtime-secret-resolver.ts";
 import { createLocalFixedCapabilityRuntimeConnection } from "./src/adapters/control-plane/local-fixed-capability-runtime-connection.ts";
 import {
@@ -996,10 +994,8 @@ async function createProjectControl(
     routes: briefCapabilityIntentRouteTable,
     recordedPlans: recordedPlans.recordedRunPlans,
     catalog: capabilityRead.catalog,
-    qualificationSpecs:
-      await createFirstPartyCapabilityRuntimeQualificationSpecifications(),
-    qualificationCandidates:
-      await createFirstPartyCapabilityRuntimeQualificationCandidates(),
+    qualificationSpecs: capabilityRead.qualificationSpecs,
+    qualificationCandidates: capabilityRead.qualificationCandidates,
     policy: capabilityRead.policy,
     host: capabilityRead.host,
     qualifications: capabilityRead.qualifications,

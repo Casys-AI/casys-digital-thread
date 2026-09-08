@@ -917,7 +917,7 @@ binding.
 
 ## F35 — a malformed dispatch acknowledgement bypassed exact recorded readback
 
-(mitigated, live successor requalification pending)
+(closed)
 
 The first successor qualification did execute the fixed native Gmsh/CalculiX case and
 durably publish one completed run with nine ordered artifacts. The qualification WAL,
@@ -945,6 +945,14 @@ by F38; each new fingerprint ensures no failed attempt can be reused as a new
 attestation. Focused recovery, structured incomplete-readback, resource-list,
 resource-content and criteria tests pass; closure still requires a fresh live
 qualification reaching a stopped qualified WAL and an exact host attestation.
+
+The protocol-1.5 successor qualification closed that criterion. Request
+`calculix-qual-9331266065e916c9ec6086d3c69d687295b1e9ff6c891b7eaed35981951f8477` reached
+the literal stopped `qualified` outcome after exact recorded readback and all nine
+resource validations. It persisted qualification attestation
+`47d7ce9ee8e4caea6e28d922bf4982486671106544e18bfced826a94b07e20ec` for the pinned native
+ARM64 binding. This qualifies that exact host/runtime identity; it is not product FEA
+evidence.
 
 ## F36 — the sealed sensitivity case can be mistaken for a sensitivity result
 
@@ -1011,24 +1019,25 @@ read path.
 
 ## F39 — the resource reader erased the closed MCP failure layer
 
-(mitigated, live protocol-1.4 confirmation pending, quick win)
+(closed, quick win)
 
 Protocol 1.3 proved that the exact `input.step` read failed inside the MCP reader, but
 that adapter collapsed transport, HTTP/RPC rejection, result-envelope, content-envelope,
 base64 and content-integrity failures to one exception type without a machine-readable
-kind. Static comparison of the pinned client and published provider found no deterministic
-contract mismatch: the URI is header-safe, the provider returns `model/step` plus a
-canonical blob, and its locked server stamps the complete cache envelope expected by the
-client. The remaining cause is therefore runtime-only until another bounded observation
-separates those layers.
+kind. Static comparison of the pinned client and published provider found no
+deterministic contract mismatch: the URI is header-safe, the provider returns
+`model/step` plus a canonical blob, and its locked server stamps the complete cache
+envelope expected by the client. The remaining cause is therefore runtime-only until
+another bounded observation separates those layers.
 
 Protocol 1.4 preserves one closed reader category for a content-stage `read-error`: the
-four existing transport kinds, four reader validation layers, or `unexpected`. Historical
-WAL without the optional field remains valid, the category is immutable, and it is
-forbidden on post-read byte/hash mismatch. HTTP status, URI, provider message and payload
-are not retained. Reader, qualification-service and WAL tests pass, as does whole-repo
-type checking. A fresh H1-owned physical qualification is still required before choosing
-any wire or provider fix; no header change is justified by static evidence alone.
+four existing transport kinds, four reader validation layers, or `unexpected`.
+Historical WAL without the optional field remains valid, the category is immutable, and
+it is forbidden on post-read byte/hash mismatch. HTTP status, URI, provider message and
+payload are not retained. Reader, qualification-service and WAL tests pass, as does
+whole-repo type checking. A fresh H1-owned physical qualification is still required
+before choosing any wire or provider fix; no header change is justified by static
+evidence alone.
 
 That protocol-1.4 run retained `input.step` / `read-error` / `unexpected`. The closed
 classification exposed a local pre-network contract fault: the qualification service
@@ -1036,9 +1045,33 @@ passed the strict reader the five-field ledger artifact, including service-local
 while `ExpectedProviderResource` deliberately accepts exactly `uri`, `mediaType`,
 `byteCount` and `sha256`. TypeScript structural compatibility hid the runtime surplus
 field, and the reader rejected it before HTTP dispatch. Protocol 1.5 projects the exact
-four-field tuple at the service boundary and adds a regression assertion over the runtime
-keys. This is a code-backed root cause, but closure still requires the fresh H1-owned
-qualification to read all nine artifacts and record an exact attestation.
+four-field tuple at the service boundary and adds a regression assertion over the
+runtime keys. This is a code-backed root cause, but closure still requires the fresh
+H1-owned qualification to read all nine artifacts and record an exact attestation.
+
+The protocol-1.5 qualification named in F35 subsequently read and rehashed all nine
+artifacts before recording the exact attestation. The diagnosis and four-field
+projection are therefore confirmed on the real host path; no wire or provider contract
+was widened.
+
+## F40 — project capability authorization dropped the CalculiX qualification overlay
+
+(closed, quick win)
+
+After the exact CalculiX attestation existed, the project capability context correctly
+reconstructed the combined Chrono and CalculiX qualification inputs, but the MCP's
+`ProjectCapabilityAuthorizationService` independently rebuilt only the Chrono lists. The
+sensitivity binding consequently remained effectively `unqualified` during the project
+amendment review even though the same process could observe its exact WAL and
+attestation. The literal catalogue was correct and remains `unqualified`; this was a
+composition split, not permission to rewrite it.
+
+The server now gives authorization the same combined qualification specifications and
+candidates owned by the read composition. The private capability-admin path also reuses
+those lists and the durable attestation/WAL stores, preventing its authorization view
+from diverging. Focused composition and qualification evaluation tests pass 56/56. The
+fix changes only effective qualification reconstruction; it does not auto-authorize the
+project, queue a run or create engineering evidence.
 
 ## Expected states, not defects
 

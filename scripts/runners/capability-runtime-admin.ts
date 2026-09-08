@@ -15,8 +15,6 @@ import { LocalNonpersistentMaterialRemovalHost } from "../../src/adapters/contro
 import { createFirstPartyNonpersistentMicrosandboxExpectations } from "../../src/adapters/control-plane/first-party-capability-runtime-nonpersistent-materials.ts";
 import { createCapabilityRuntimeHostAdapter } from "../../src/adapters/control-plane/compose-capability-runtime-host.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "../../src/adapters/control-plane/local-capability-runtime-read-composition.ts";
-import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "../../src/adapters/control-plane/first-party-capability-runtime-qualification-candidates.ts";
-import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "../../src/adapters/control-plane/first-party-capability-runtime-qualification-specifications.ts";
 import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
 import { createLocalMicrosandboxSdk } from "../../src/adapters/shared/execution/microsandbox-ephemeral-execution-backend.ts";
 import {
@@ -154,12 +152,12 @@ async function main(request: CapabilityRuntimeAdminCliRequest): Promise<void> {
         ),
     },
     catalog,
-    qualificationSpecs:
-      await createFirstPartyCapabilityRuntimeQualificationSpecifications(),
-    qualificationCandidates:
-      await createFirstPartyCapabilityRuntimeQualificationCandidates(),
+    qualificationSpecs: capability.qualificationSpecs,
+    qualificationCandidates: capability.qualificationCandidates,
     policy: await capability.policy.read(),
     host: capability.host,
+    qualifications: capability.qualifications,
+    qualificationAttempts: capability.qualificationAttempts,
     lock,
     lockWriter: lock,
     hostMutationLock,

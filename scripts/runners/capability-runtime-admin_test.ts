@@ -152,3 +152,29 @@ Deno.test("admin CLI refuses retired rollover commands and --transition-id", asy
   assertEquals(text.includes("rollover-apply"), false);
   assertEquals(text.includes("--transition-id"), false);
 });
+
+Deno.test("admin authorization reuses the complete qualification reconstruction inputs", async () => {
+  const text = await Deno.readTextFile(
+    new URL("./capability-runtime-admin.ts", import.meta.url),
+  );
+  assertEquals(
+    text.includes("qualificationSpecs: capability.qualificationSpecs,"),
+    true,
+  );
+  assertEquals(
+    text.includes("qualificationCandidates: capability.qualificationCandidates,"),
+    true,
+  );
+  assertEquals(
+    text.includes("qualifications: capability.qualifications,"),
+    true,
+  );
+  assertEquals(
+    text.includes("qualificationAttempts: capability.qualificationAttempts,"),
+    true,
+  );
+  assertEquals(
+    text.includes("createFirstPartyCapabilityRuntimeQualification"),
+    false,
+  );
+});

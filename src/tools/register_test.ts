@@ -240,6 +240,33 @@ Deno.test("server injects the resolved Build123d execution profile into the exac
   assertStringIncludes(cad, "capabilityRuntimeSession,");
 });
 
+Deno.test("server capability authorization reuses every qualification reconstruction input from the read composition", async () => {
+  const source = await Deno.readTextFile("server.ts");
+  const serviceStart = source.indexOf(
+    "const capabilityAuthorization = new ProjectCapabilityAuthorizationService({",
+  );
+  const serviceEnd = source.indexOf(
+    "// A restart does not re-authorize anything.",
+    serviceStart,
+  );
+  assert(serviceStart >= 0);
+  assert(serviceEnd > serviceStart);
+  const block = source.slice(serviceStart, serviceEnd);
+
+  assertStringIncludes(
+    block,
+    "qualificationSpecs: capabilityRead.qualificationSpecs,",
+  );
+  assertStringIncludes(
+    block,
+    "qualificationCandidates: capabilityRead.qualificationCandidates,",
+  );
+  assertEquals(
+    block.includes("createFirstPartyCapabilityRuntimeQualification"),
+    false,
+  );
+});
+
 Deno.test("server prepares the closed first-party Microsandbox cache recipes from the catalogue", async () => {
   const source = await Deno.readTextFile("server.ts");
   const runtimeLock = source.indexOf(
