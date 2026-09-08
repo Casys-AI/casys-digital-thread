@@ -8,10 +8,18 @@ decisions. Re-read the control plane before continuing.
 
 ## Current project truth
 
-Latest resumption: project r650 / Thread r90. The
-[RadialArm bench ledger](radial-arm-bench-result-20260908.md) records the current
-single-part compliance branch: native requirement r87, proof seal r88, isolated
-CalculiX/SysON `pass` r89 and bounded L5 accept r90. The earlier
+Latest resumption: project r671 / Thread r93. The fresh Airframe
+`RadialArm` ↔ `CentralDeck` assembly-integrity chain published L3 observation
+`assembly-integrity-observation-958ef913155ff5f8a6ab115003b00ff996f382b95becb408833fe68ce9a78704`
+at r91, L4 `pass` evaluation
+`assembly-integrity-evaluation-83f3d7926589703b5a34856240821c5906176f13ec69d02a8244057f66b86b8e`
+at r92, and accepted L5 closeout
+`assembly-integrity-evaluation-closeout-b703164a1fb910798cfedc98179d709539f9b135b96f5f42ae504adab8fb4866`
+at r93. It records only the five registered static geometric criteria for that exact
+Airframe basis; it establishes no physical joint, fastening, strength, load, flight or
+certification claim. The [RadialArm bench ledger](radial-arm-bench-result-20260908.md)
+records the preceding single-part compliance branch: native requirement r87, proof seal
+r88, isolated CalculiX/SysON `pass` r89 and bounded L5 accept r90. The earlier
 [revision 3 bench revalidation ledger](bench-revalidation-r3-20260907.md) supersedes the
 historical F10 status below. The new proof sealed at r84; the exact FEA branch and L4
 `pass` published at r85 after a bounded repeated-artifact identity correction; the
@@ -19,8 +27,9 @@ bounded human-origin L5 acceptance published at r86. Both runs are `completed`. 
 collision at project r603 remains documented as F11 rather than erased.
 
 - Project: `inspection-drone-id01`.
-- Observed project revision: r650. The current Thread is r90,
-  `project:inspection-drone-id01:r90:decide-accept-evaluation-closeout-run:queue-id01-radial-arm-bench-r2-closeout-r646`.
+- Observed project revision: r671,
+  `inspection-drone-id01:project:r671:1a6c4813cd196fa6`. The current Thread is r93,
+  `project:inspection-drone-id01:r93:decide-accept-assembly-integrity-evaluation-run:queue-assembly-integrity-accept-83f3d7926589703b-r92-r667`.
 - The first provider-free requirements-to-brief claim at project r591 / Thread r83
   remains historical evidence; it did not execute an FEA solver or a native requirements
   writer. The subsequent bench branch preserved that documentary basis.
@@ -198,25 +207,28 @@ is canonical, with explicit Airframe/root rebuilds and fresh L3/L4/L5. The requi
 linked bench r3 branch is now also sealed, executed, evaluated and accepted within its
 camera-weight-only limits; F10 and F11 are closed. The RadialArm r2 branch is likewise
 sealed, executed, evaluated and accepted within its ideal 5 N compliance limits. It does
-not prove either adjacent joint. The next useful executable boundary is the existing
-nominal `RadialArm` ↔ `CentralDeck` interface: represent a reversible, explicitly
-provisional joint geometry, then rebuild Airframe and InspectionDrone and repeat the
-existing geometric L3/L4/L5 checks. That would establish only representation, placement
-and static geometric integrity, not joint strength. The motor-to-`RadialArm` interface
-must remain later: its exact four-hole topology is not proven by the current primary
-evidence. A question proposed too precisely at project r613 was immediately answered
-`unknown` at r614; it records no human choice and authorizes no motor geometry. A
-manufacturer-confirmed mechanical drawing or supplier clarification is required before
-framing that consequential datum decision. The
+not prove either adjacent joint. The nominal `RadialArm` ↔ `CentralDeck` arrangement has
+now received its own fresh Airframe L3/L4/L5 chain. That chain establishes only import,
+occurrence coverage, placement recross, BRep validity and zero pairwise intersection
+volume for the exact static Airframe basis. It does not define or verify bolts, preload,
+anti-rotation, tolerances, clearance, strength, loads, motion or flight. Any root-level
+refresh or physical-joint/fastener branch therefore remains a separately scoped future
+decision. The motor-to-`RadialArm` interface must remain later: its exact four-hole
+topology is not proven by the current primary evidence. A question proposed too
+precisely at project r613 was immediately answered `unknown` at r614; it records no
+human choice and authorizes no motor geometry. A manufacturer-confirmed mechanical
+drawing or supplier clarification is required before framing that consequential datum
+decision. The
 [remaining-boundary record](remaining-integration-boundaries.md) stays a preserved r70
 capture. Its F08 blocker is closed and the deck holes are canonical, but its unmodeled
 physical interfaces remain unresolved. Electrical, aerodynamic and flight-safety
 evidence remains outside these proof meanings; the pilot is not declared complete.
 
-The freshly restarted read-only BFF now serves project r650 / Thread r90, aligned
-`90/90`. Its engineering-case catalog is `observed`, and the RadialArm r2 case and
-project activity join are present without the stale pre-`nm` `capture-invalid` symptom.
-This is current projection adoption, not a new visual UX audit. The latest
+The freshly restarted read-only BFF now serves project r671 / Thread r93, aligned
+`93/93`. The accepted assembly-integrity closeout is projected as a fresh artifact, and
+the RadialArm r2 case and project activity join remain present without the stale pre-`nm`
+`capture-invalid` symptom. This is current projection adoption, not a new visual UX
+audit. The latest
 separate-profile browser interaction audit remains project r591 / Thread r83; no later
 visual audit is claimed here. The earlier project r583 / Thread r82 presentation
 established seven exact whole-App bindings for the six modules and updated root while
