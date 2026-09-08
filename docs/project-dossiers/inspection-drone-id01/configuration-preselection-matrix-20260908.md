@@ -19,9 +19,9 @@ only cross-option arithmetic and ordering.
 ## Current verdict
 
 There is no closed ID01 vehicle configuration. The useful result is a **documentary
-pre-selection HOLD**: two propulsion leads, several battery/tray consequences and two
-power-module branches can be compared, but no current column closes identity, mass,
-current, usable energy, packaging and interfaces together.
+pre-selection HOLD**: two propulsion leads, three ESC/control leads, several
+battery/tray consequences and two power-module branches can be compared, but no current
+column closes identity, mass, current, usable energy, packaging and interfaces together.
 
 Options below are grouped by exclusive slot. They must not be multiplied into apparent
 vehicle configurations. A card may become eligible only when its named blockers are
@@ -33,6 +33,9 @@ closed; `candidate`, `screen-pass` and `fits nominally` never mean `selected`.
 | ------------------------ | ---------------- | ------------------------------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
 | Motor–propeller          | `P-F1404`        | F1404 KV4600 facts, candidate 4×M2/Ø9 base drawing and exact rows labelled `GF3016`; four motors conditionally `37.36 g` | exact propeller maker/SKU/revision and mating interface; internal 1.5-versus-2 mm shaft conflict; comparable installed map                          | preserves the current motor-envelope basis; does not preserve an unproven propeller identity                                          |
 | Motor–propeller          | `P-F1507`        | F1507 KV3800 facts and exact-name T3140 rows; T3140 `3.1 × 4.0 in`, three blades, polymer, `2 g` and nominal M5 chain    | bench-to-product revision; fit/tolerance, inertia and rotation pairing; supplier limit conflict at 100%; ESC pairing                                | needs motor and propeller-envelope successors; motor-only mass adds `22.64 g`, and four T3140 catalogue items add a conditional `8 g` |
+| ESC                      | `C-F35A-4`       | related-product lead; four individual 3–6S, 35 A continuous / 45 A for 10 s, no-BEC units total a conditional `17.2 g`   | not an F1507 matching-guide or bench identity; AM32/BLHeli_32 conflict; cooling, wiring, efficiency and installation                                | preserves four separate ESC occurrences; requires four positions and a complete distribution/harness branch                           |
+| ESC                      | `C-F45A-4IN1`    | explicit F1507 matching-guide lead; 3–6S, 45 A catalogue current, 55 A peak with no duration, no BEC, `9.2 g`            | no bench identity; AM32/BLHeli_32 conflict; exact SKU/revision, board envelope, shared-input and thermal limits, settings                           | replaces the four-individual-ESC mass/placement card with one shared four-channel board                                               |
+| ESC + flight controller  | `C-F7-35-AIO`    | explicit F1507 matching-guide lead; catalogue gives 35/40 A, 3–6S and 25.5 × 25.5 mounting                               | peak duration, exact SKU/revision, full mass/envelope, bench identity/settings and compatibility with the separate Pixhawk architecture             | overlaps ESC and flight-controller roles; cannot be added beside both Pixhawk and another ESC card without an architecture decision   |
 | Battery / current tray   | `B-Gens200`      | nominal and published-maximum geometry fit in at least one orientation                                                   | `6.00 A` label-current screen is below the `20.92 A` first retained F1404 four-motor row; usable energy and installed envelope                      | keep-in may remain geometrically, but this card does not pass the retained current-label screen                                       |
 | Battery / tray successor | `B-GNB300-Y`     | nominal `53 × 24 × 17 mm`, `36 ± 2 g`, `4.56 Wh` nameplate arithmetic and `24.00 A` label-current screen                 | maximum dimensions, leads/restraint/service envelope, delivered-current curve, usable energy and mission point                                      | orienting 53 mm on Y requires `Δreserve,Y = 19 mm`; symmetric preserved-gap growth leaves only `1.5 mm` to the named camera footprint |
 | Battery / tray successor | `B-Tattu450-75C` | nominal `63 × 16 × 25 mm`, `6.66 Wh` and `33.75 A` label arithmetic                                                      | same page reports both 52 and 58 g; installed envelope, usable energy and mission point                                                             | least nominal horizontal growth is `+25 mm` on X or `+29 mm` on Y, exceeding the named skid or camera gap respectively                |
@@ -67,21 +70,24 @@ assign separate limits to contacts, wire and termination.
 
 One card per exclusive slot may enter this conditional expression:
 
-`m_recorded,conditional = m_motor-card + 17.2 g_ESC + 42.4 g_Pixhawk + 4 g_camera + [12 g_Pi] + m_power-card + m_battery-card`.
+`m_recorded,conditional = m_motor-card + m_ESC/control-card + m_independent-autopilot-if-required + 4 g_camera + [12 g_Pi] + m_power-card + m_battery-card`.
 
 The square-bracket Pi term is lower-assurance editorial evidence and omits its storage,
-headers, cooling and enclosure. `m_power-card` is either 20 g for PM02 or 24 g for PM06,
-never both. `m_battery-card` is at most one exact battery mass. The expression still
-excludes structural mass, propellers and attachment hardware, battery restraint,
-separate PDB when PM02 is used, companion regulator, GPS/radio/antennas, remaining
+headers, cooling and enclosure. The F7 AIO card already overlaps the flight-controller
+role, so `m_independent-autopilot-if-required` cannot be filled mechanically. The
+`m_power-card` term is either 20 g for PM02 or 24 g for PM06, never both;
+`m_battery-card` is at most one exact battery mass. The expression still excludes
+structural mass, propellers and attachment hardware, battery restraint, separate PDB
+when PM02 is used, companion regulator, GPS/radio/antennas, remaining
 harness/connectors/protection, fasteners, guards and skid pads.
 
-The already recorded F1404 partial subtotals are `100.96 g` without Pi and `112.96 g`
-with its 12 g datum. Replacing only the four-motor mass term by the F1507 datum gives
-conditional partial arithmetic of `123.60 g` and `135.60 g`. That substitution does not
-prove F35A compatibility or form a vehicle configuration. None of these numbers is an
-all-up mass or a lower bound, and none can produce CG while installed mass centres
-remain missing.
+The already recorded `100.96 g` without Pi and `112.96 g` with its 12 g datum belong
+specifically to `P-F1404 + C-F35A-4 + Pixhawk + camera`. Replacing only the four-motor
+mass term by the F1507 datum gives conditional partial arithmetic of `123.60 g` and
+`135.60 g` on that same F35A/Pixhawk path. It does not evaluate either F1507
+matching-guide controller, prove F35A compatibility or form a vehicle configuration.
+None of these numbers is an all-up mass or a lower bound, and none can produce CG while
+installed mass centres remain missing.
 
 The T3140 catalogue adds a separate conditional `4 × 2 = 8 g` propeller datum to the
 F1507 lead. It is not inserted into the partial vehicle subtotal because the exact bench
@@ -113,4 +119,6 @@ audited F1404, T3140, `GF3016`, and F1507/T3140 and all four completed. Codex
 independently inspected the official drawings and T3140 specification, recomputed the
 geometry, current and mass arithmetic, and retained the unresolved supplier states. No
 Astra or Terra escalation, component selection, CAD edit, Project/Thread mutation,
-provider run or broad test campaign occurred in that source-control pass.
+provider run or broad test campaign occurred in that source-control pass. One later
+bounded Grok audit checked the ESC-guide boundary; Codex independently reopened the
+official pages before adding the three exclusive ESC/control cards.

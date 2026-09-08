@@ -97,7 +97,7 @@ of the 1.5-versus-2 mm shaft datum. If the 76.49 mm Gemfan diameter were later p
 be the tested part, the same nominal layout would give 64.931356 mm between adjacent
 discs and 11.755 mm radially to the deck planform.
 
-### Candidate ESC screen — F35A
+### Related-product ESC screen — F35A
 
 The [F35A manufacturer page](https://www.ligpower.com/product/f35a-fpv-esc.html) is
 linked from the motor page as a related product. Its official specification image gives
@@ -114,6 +114,36 @@ product images and the linked user manual label the unit BLHeli_32. That literal
 firmware contradiction remains unresolved. `BEC: No` also means the F35A does not close
 the separate regulated supply required by the autopilot, companion computer, camera and
 other auxiliaries. A related-product link is not an ID01 component selection.
+
+### F1507 matching-guide leads are not bench identity
+
+The
+[F1507 manufacturer page](https://www.ligpower.com/product/f1507-kv3800-fpv-motor.html)
+names a Mini F45A 6S 4-in-1 ESC and an F7 35A AIO in its `Matching Guide`. That is
+stronger than the F35A `Relevant Products` card, but the page never states that either
+guide item produced the T3140 table. The table gives no ESC identity, voltage-source
+identity, firmware, protocol, PWM, timing or plateau duration below its separate
+one-minute 100% temperature note.
+
+The
+[Mini F45A product page](https://www.ligpower.com/product/mini-f45a-4in1-fpv-esc.html)
+names AM32 and DShot150/300/600, ProShot1000, Oneshot and PWM. LIGPOWER's
+[official FPV ESC catalogue](https://www.ligpower.com/categorys/fpv-esc) instead lists
+the same named card as 45 A, 3–6S, 9.2 g and BLHeli_32; its broader
+[ESC catalogue](https://www.ligpower.com/categorys/drone-esc) adds 55 A peak without a
+duration and `BEC: No`. The firmware conflict and missing peak duration remain literal.
+
+The [F7 35A AIO page](https://www.ligpower.com/product/f7-35a-aio-stack.html) is a
+combined flight-controller/four-channel-ESC lead. The
+[official FPV parts catalogue](https://www.ligpower.com/categorys/fpv-drone-parts) lists
+35/40 A, 3–6S and 25.5 × 25.5 mounting, but no peak duration. It cannot be silently
+added to the separate Pixhawk-plus-ESC architecture.
+
+At the 25.87 A T3140 endpoint, the per-channel catalogue margins are `9.13 A` for a 35 A
+label and `19.13 A` for a 45 A label. Every exact row is below both labels. This is only
+a nameplate screen: it proves neither shared-board input capacity, cooling and switching
+loss nor the missing bench pairing, and it does not cure the motor's own 23 A / 372 W
+60-second conflict.
 
 ## Calculated exact-row four-motor envelope
 
@@ -365,6 +395,8 @@ from CAD volume.
 | [Four LIGPOWER F1404 **KV4600** motors](https://www.ligpower.com/product/f1404-kv4600-fpv-motor.html)                                  |                 `4 × 9.34 = 37.36 g` | Manufacturer mass includes each 150 mm motor cable; parts bags, fasteners, propellers and ESCs excluded                                                                          |
 | [Four LIGPOWER F1507 **KV3800** motors](https://www.ligpower.com/product/f1507-kv3800-fpv-motor.html)                                  |                   `4 × 15 = 60.00 g` | Separate alternative; each mass includes a 100 mm cable; current motor envelope is too small; propellers, attachment and ESCs excluded                                           |
 | [Four LIGPOWER F35A ESCs](https://www.ligpower.com/product/f35a-fpv-esc.html)                                                          |                   `4 × 4.3 = 17.2 g` | Official specification-image mass; candidate related product only; motor wiring, power distribution, connector adaptation, cooling and regulated auxiliary supply excluded       |
+| [One LIGPOWER Mini F45A 4-in-1 ESC](https://www.ligpower.com/product/mini-f45a-4in1-fpv-esc.html)                                      |                              `9.2 g` | Official catalogue mass; F1507 matching-guide lead only; board envelope, exact bench pairing, firmware conflict, shared input path and thermal installation remain unresolved    |
+| [One LIGPOWER F7 35A AIO](https://www.ligpower.com/product/f7-35a-aio-stack.html)                                                      |                                    — | F1507 matching-guide lead combining flight-controller and four-channel ESC roles; no controlled mass accepted here and no compatibility decision with the separate Pixhawk path  |
 | [Holybro Pixhawk 6C Mini **Model A Current**](https://docs.holybro.com/autopilot/pixhawk-6c-mini/technical-specification)              |                               42.4 g | Manufacturer technical specification for this exact variant; cables, GPS and power module inclusion is not established and they remain excluded                                  |
 | [Raspberry Pi Camera Module 3 **standard**](https://www.raspberrypi.com/documentation/accessories/camera.html#hardware-specifications) |                                  4 g | Official hardware table; camera cable, mount and fasteners excluded                                                                                                              |
 | [Raspberry Pi Zero 2 W](https://www.raspberrypi.com/news/what-can-you-build-with-raspberry-pi-zero/)                                   | 12 g, lower-assurance external datum | Raspberry Pi's official 2025 editorial comparison reports 12 g, but the current product page and product brief omit mass; microSD, header, cable, cooling and enclosure excluded |
@@ -376,10 +408,11 @@ from CAD volume.
 | [GNB 300 mAh 4S LiHV](https://www.gaoneng.shop/products/gaoneng-gnb-lihv-4s-15.2v-300mah-80c-xt30-lipo-battery)                        |                             36 ± 2 g | Official candidate datum; excluded from a viable configuration because the 53 mm pack fails the present reserve screen                                                           |
 | [Tattu 450 mAh 4S LiHV 95C long](https://genstattu.com/tattu-450mah-4s-95c-15-2v-hv-lipo-battery-pack-with-xt30-plug-long-size/)       |              49 g, page states ±20 g | Official candidate datum; excluded from a viable configuration because its stated dimensions fail the present reserve screen                                                     |
 
-The strict technical-specification subtotal for four motors, four candidate F35A ESCs,
-camera and autopilot is `37.36 + 17.2 + 4 + 42.4 = 100.96 g`. Adding the lower-assurance
-official editorial value for the companion board gives `112.96 g`. Conditional
-arithmetic with each screened battery is:
+The strict technical-specification subtotal for the specific F1404 + four-F35A +
+Pixhawk + camera path is `37.36 + 17.2 + 42.4 + 4 = 100.96 g`. Adding the
+lower-assurance official editorial value for the companion board gives `112.96 g`.
+Neither ESC guide lead is substituted into those values. Conditional arithmetic with
+each screened battery is:
 
 | Conditional documentary subtotal         | Calculation           |                                                   Result |
 | ---------------------------------------- | --------------------- | -------------------------------------------------------: |
@@ -396,9 +429,9 @@ first, second, third, fifth and sixth packs fail reserve containment, while the 
 fails the first electrical row. The sums omit structural mass, four exact propellers,
 fasteners, retention, power distribution, power module, companion regulator, non-motor
 wiring and connectors, GPS, radio, antennas, storage and any guards or protection. The
-F1507, PM02 and PM06 rows are alternative component leads and are deliberately not added
-to these F1404-based subtotals. Installed positions and centre of gravity also remain
-unresolved. The separate
+F1507, Mini F45A, F7 AIO, PM02 and PM06 rows are alternative component or architecture
+leads and are deliberately not added to these F1404/F35A-based subtotals. Installed
+positions and centre of gravity also remain unresolved. The separate
 [mass-and-position closure worksheet](mass-and-position-closure-worksheet-20260908.md)
 keeps those absent terms and positions visible without silently entering them into a
 vehicle sum.
@@ -533,7 +566,7 @@ law.
 
 ## Review boundary
 
-Twenty completed native Grok consultations ran across nine bounded review passes. The
+Twenty-two completed native Grok consultations ran across ten bounded review passes. The
 first pair used a clean, repository-free sandbox for method cross-checks; after the
 human explicitly requested continued Grok-native work on this project, the later reviews
 read only the relevant dossier files. They independently checked motor arithmetic,
@@ -549,7 +582,9 @@ exact-row table but rejected a same-throttle candidate ranking because the sourc
 conditions differ and the manufacturer explicitly discourages inter-type comparison. A
 parallel battery search was cancelled after the recurring permission-classifier timeout
 and contributed no accepted verdict, as were an earlier STEP audit and supplier-identity
-run.
+run. The latest pair audited the exact installed-item census and the F1507 ESC-guide
+boundary. Codex accepted the 22-leaf geometry split and the guide-versus-bench
+distinction after independently checking the controlled placements and official pages.
 
 Codex inspected the source pages and repository facts, recalculated the values, rehashed
 the selected source and STEP bytes, derived the simple constructive-solid volumes and

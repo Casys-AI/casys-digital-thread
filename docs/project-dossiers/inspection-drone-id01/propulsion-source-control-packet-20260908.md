@@ -19,14 +19,17 @@ two useful advances:
   mounting-hole diameter and hub thickness. Together with the F1507 drawing and packing
   list, it exposes a coherent **nominal** M5 propeller-retention chain. Exact bench
   revision, tolerances, inertia, rotation-hand pairing and the conflicting 100%
-  operating limit remain unresolved.
+  operating limit remain unresolved; and
+- the F1507 matching guide names Mini F45A 4-in-1 and F7 35A AIO controller leads, but
+  the eleven-row bench table identifies neither as its tested ESC. These are controlled
+  catalogue leads, not a reconstructed bench configuration.
 
 The resulting disposition is:
 
-| Candidate               | Documentary state                           | What is now usable                                                                                                              | What still prevents selection                                                                                                     |
-| ----------------------- | ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- |
-| F1404 KV4600 + `GF3016` | **HOLD — external source closure**          | motor envelope; cable-inclusive catalogue mass; exact bench rows; candidate base drawing                                        | `GF3016` maker/SKU/revision and mounting variant; contradictory shaft diameter; comparable installed map                          |
-| F1507 KV3800 + T3140    | **HOLD — narrower external source closure** | motor and propeller catalogue geometry; motor and propeller catalogue masses; exact-name bench rows; nominal M5 retention chain | controlled bench-to-product revision; fit/tolerance and rotation pairing; inertia; 100% row versus 60-second ratings; ESC pairing |
+| Candidate               | Documentary state                           | What is now usable                                                                                                            | What still prevents selection                                                                                                                         |
+| ----------------------- | ------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F1404 KV4600 + `GF3016` | **HOLD — external source closure**          | motor envelope; cable-inclusive catalogue mass; exact bench rows; candidate base drawing                                      | `GF3016` maker/SKU/revision and mounting variant; contradictory shaft diameter; comparable installed map                                              |
+| F1507 KV3800 + T3140    | **HOLD — narrower external source closure** | motor and propeller catalogue geometry/masses; exact-name bench rows; nominal M5 retention chain; two named ESC/control leads | controlled bench-to-product revision; fit/tolerance and rotation pairing; inertia; 100% row versus 60-second ratings; exact bench ESC/settings/supply |
 
 `P-F1507` is therefore the better documented supplier-follow-up lead. That ordering is
 not a hardware recommendation or selection.
@@ -49,6 +52,10 @@ pages will remain unchanged. No supplier image is copied into the repository.
 | T3140 specification image            | [official image](https://www.ligpower.com/images/202506/T3140_en_4.jpg)               | SHA-256 `7cafd46e578e5d0dad20b553afffca0f9c072225b5f9b1d2807103f5015bf75e`                 |
 | T3140 catalogue row                  | [LIGPOWER propeller catalogue](https://www.ligpower.com/categorys/drone-propellers)   | `3.1 in`, `4 in`, polymer, three blades and `2 g` in the Racing Series table               |
 | T3140 official-store cross-check     | [T-Hobby T3140](https://www.t-hobby.com/products/t3140)                               | tri-blade, `5 mm center hub`, four-piece pack naming and colour variants                   |
+| F1507 Mini F45A guide lead           | [LIGPOWER Mini F45A](https://www.ligpower.com/product/mini-f45a-4in1-fpv-esc.html)    | matching-guide identity; product text says AM32 and named control protocols                |
+| Mini F45A official catalogue         | [LIGPOWER FPV ESC catalogue](https://www.ligpower.com/categorys/fpv-esc)              | 45 A, 3–6S, `9.2 g` and BLHeli_32; firmware conflicts with its product-page text           |
+| F1507 F7 35A AIO guide lead          | [LIGPOWER F7 35A AIO](https://www.ligpower.com/product/f7-35a-aio-stack.html)         | matching-guide identity; combined flight-controller/four-channel-ESC architecture lead     |
+| F7 35A AIO official catalogue        | [LIGPOWER FPV parts catalogue](https://www.ligpower.com/categorys/fpv-drone-parts)    | 35/40 A, 3–6S and 25.5 × 25.5 mounting; burst duration is not stated                       |
 
 ## F1404 KV4600 interface state
 
@@ -114,6 +121,32 @@ fit/tolerance stack, seating-face definition, tightening torque, usable thread
 engagement, balance requirement, inertia, CW/CCW allocation or controlled statement that
 the current product revision is the exact bench specimen.
 
+### ESC guide and bench-identity boundary
+
+The F1507 product page separates three different kinds of information:
+
+- its `Relevant Products` card links the individual F35A;
+- its `Matching Guide` names the Mini F45A 6S 4-in-1 ESC and F7 35A AIO, together with
+  an M12199 propeller; and
+- its KV3800 bench table separately names T3140 but provides no ESC, firmware, control
+  protocol, PWM frequency, timing, voltage-source identity or duration for the 50–95%
+  rows. The one-minute note applies only to the 100% temperature observation.
+
+The guide therefore provides two new candidate identities, not the missing join to the
+bench setup:
+
+| ESC/control lead    | Official catalogue facts usable now                                                                                                                             | Boundary that remains                                                                                                                            |
+| ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
+| F35A individual ×4  | related product only; 35 A continuous, 45 A peak for 10 s, 3–6S, no BEC, `4.3 g` each                                                                           | not a matching-guide or bench identity; product text and official media disagree on AM32 versus BLHeli_32                                        |
+| Mini F45A 4-in-1 ×1 | matching-guide lead; 45 A catalogue current, 55 A peak with no published duration, 3–6S, no BEC, `9.2 g`; product text names AM32 and DShot/ProShot/Oneshot/PWM | catalogue says BLHeli_32; board envelope, exact SKU/revision, combined-board current/thermal limits and bench settings remain unresolved         |
+| F7 35A AIO ×1       | matching-guide lead; catalogue gives 35/40 A, 3–6S and 25.5 × 25.5 mounting                                                                                     | peak duration, exact SKU/revision, full envelope/mass, bench settings and compatibility with the separate Pixhawk architecture remain unresolved |
+
+All eleven T3140 row currents are below the 35 A and 45 A per-channel catalogue labels.
+At the reported 100% row, the arithmetic margins are `35 − 25.87 = 9.13 A` and
+`45 − 25.87 = 19.13 A`. Those margins do not establish four-channel board input-current
+capacity, switching loss, cooling, firmware compatibility or a permitted motor point;
+the same row still conflicts with the motor's own 23 A / 372 W 60-second labels.
+
 ### Existing CAD consequences
 
 The current `MotorEnvelope` is `17.9 × 16.6 mm`; it cannot contain the F1507's
@@ -165,8 +198,9 @@ The smallest useful request is:
    ratings; state the permitted continuous and transient current, power, winding and
    surface-temperature limits and their test conditions.
 5. Provide T3140 revision, per-prop mass tolerance, inertia, balance grade, CW/CCW
-   allocation and any installation restrictions, plus the exact tested ESC and timing
-   configuration.
+   allocation and any installation restrictions, plus the exact tested ESC SKU/revision,
+   firmware/protocol, PWM and timing configuration, voltage-source identity and duration
+   of every bench plateau.
 
 No recipient, email, ticket or supplier message has been created. External contact
 requires a separate human decision and exact-message review.
@@ -196,4 +230,6 @@ dimensional and electrical arithmetic, and accepted only the bounded statements 
 Two later Grok read-only audits checked the full F1507 table and its comparison
 boundary; Codex accepted the exact-row expansion but not an inter-type ranking. No Terra
 or Astra escalation, provider execution, CAD edit, Project/Thread mutation or broad test
-campaign occurred.
+campaign occurred. A later bounded Grok audit separated the F1507 matching-guide cards
+from the unnamed bench ESC; Codex independently reopened the official motor, ESC and
+catalogue pages before accepting that distinction.

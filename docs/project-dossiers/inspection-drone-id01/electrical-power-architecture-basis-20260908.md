@@ -18,8 +18,10 @@ current parts can be connected safely.
 Neither of the two Holybro power-module leads closes the design as sold. PM02 V3 lacks
 power distribution; PM06 V2 provides four ESC pads but has conflicting published height
 and output-power fields; both ship with an XT60/12 AWG path whose published current
-ratings are below the current F1404 four-motor 100% bench sum. The vehicle operating
-point, battery, protection, wiring, auxiliary loads and cooling remain unresolved.
+ratings are below both retained candidates' four-motor 100% bench sums. Neither 100% row
+is an accepted vehicle operating point; the F1507/T3140 endpoint also conflicts with its
+motor page's own 60-second ratings. The vehicle operating point, battery, protection,
+wiring, auxiliary loads and cooling remain unresolved.
 
 ## Proposed block boundary
 
@@ -30,7 +32,8 @@ selected 4S battery
             ├─ regulated flight-controller output
             │    └─ Pixhawk 6C Mini POWER1 [candidate, analog]
             ├─ four protected/distributed high-current branches
-            │    └─ ESC ×4 ── motor ×4 [candidate identities unresolved]
+            │    └─ four individual ESCs or one four-channel ESC ── motor ×4
+            │         [exclusive candidate identities unresolved]
             └─ separately regulated 5 V companion/payload branch [proposal]
                  └─ Pi Zero 2 W + camera/storage/radio loads [duty unresolved]
 ```
@@ -41,6 +44,11 @@ integrated ESC power pads. They are not used together in this proposal. Whether 
 companion branch lies inside the measured plane is itself unresolved. Return/reference
 routing, switching, fusing, transient suppression, EMI control, cable strain relief and
 failure isolation are deliberately not invented by this diagram.
+
+The F1507 page's Mini F45A 4-in-1 matching-guide lead can occupy the shared four-channel
+ESC slot only after its exact identity and limits are closed. Its F7 35A AIO lead also
+contains a flight controller and therefore represents a different control architecture;
+it is not inserted into this Pixhawk diagram or added beside a separate ESC card.
 
 The Pixhawk 6C Mini has one POWER1 port and no POWER2 port. Holybro's analog-module
 comparison lists both PM02 V3 and PM06 V2 as applicable to Pixhawk 6C/6C Mini. This
@@ -84,6 +92,20 @@ A first row and 17.46 A above the 17.54 A 100% row. This is only a per-channel c
 comparison. It does not validate pairing, switching losses, firmware, cooling, four-way
 distribution, harness or motor operation.
 
+The F1507 `Matching Guide` separately names Mini F45A 4-in-1 and F7 35A AIO leads, but
+its T3140 bench table does not identify the tested ESC. Their smallest per-channel
+nameplate screen is:
+
+| F1507 guide lead | Catalogue continuous label | Margin at 6.16 A (50%) | Margin at 25.87 A (100%) | Still unresolved                                                                               |
+| ---------------- | -------------------------: | ---------------------: | -----------------------: | ---------------------------------------------------------------------------------------------- |
+| F7 35A AIO       |                       35 A |                28.84 A |                   9.13 A | peak duration, exact variant, board input/thermal limit, bench identity and settings           |
+| Mini F45A 4-in-1 |                       45 A |                38.84 A |                  19.13 A | peak duration, AM32/BLHeli_32 conflict, board input/thermal limit, bench identity and settings |
+
+Every exact T3140 row is below those per-channel labels. That does not qualify a
+four-channel board, and the 100% motor row remains in conflict with its own 23 A / 372 W
+60-second labels. The controlled source split is in the
+[propulsion source packet](propulsion-source-control-packet-20260908.md#esc-guide-and-bench-identity-boundary).
+
 ## Regulated-load boundary
 
 | Load or rail                | Sourced fact                                                                                                     | What may be calculated                                  | What remains unknown                                                                                 |
@@ -104,16 +126,18 @@ evidence.
 
 ## Closure packet before calculation or CAD
 
-1. Select one exact battery and one alternative main-path topology: PM02 plus separate
-   PDB, PM06 integrated distribution, or a different sourced design.
+1. Select one exact battery, one ESC/control card and one alternative main-path
+   topology: PM02 plus separate PDB, PM06 integrated distribution, or a different
+   sourced design.
 2. Draw the exact net/connector topology, including battery isolation, protection,
    current-sense plane, four ESC branches, returns and the companion rail.
 3. Source continuous/burst ratings at named durations and temperatures for every series
    element; size wire and connectors from a reviewed vehicle operating envelope.
 4. Measure Pixhawk, Pi, camera, storage, GNSS/radio and regulator input power under the
    representative simultaneous mission states.
-5. Add mass, envelope and installed position for module, distribution, regulator,
-   harness, connectors and protection to the mass/CG worksheet.
+5. Add mass, envelope and installed position for the selected ESC/control card, power
+   module, distribution, regulator, harness, connectors and protection to the mass/CG
+   worksheet.
 6. Only then use circuit or time-domain simulation for an exact question it can answer,
    such as voltage drop or energy-state sensitivity. SPICE does not supply a battery
    curve; Modelica does not supply propeller aerodynamics; Chrono and CalculiX do not
@@ -129,4 +153,7 @@ Codex then inspected the official Holybro pages, retained the PM06 height confli
 its 15.6-versus-18 W output conflict, and rejected the absolute claim that a Pi can
 never be powered through Pixhawk. No component selection, schematic authority,
 Project/Thread mutation, provider run, broad test campaign or Astra consultation was
-introduced.
+introduced. A later bounded native Grok review separated the two F1507 matching-guide
+cards from the unnamed bench ESC; Codex independently reopened the official F1507, Mini
+F45A, F7 AIO and catalogue pages before accepting the source distinction and arithmetic
+screens.

@@ -417,6 +417,11 @@ exact-row arithmetic was accepted only after Codex independently recalculated it
 proposed inter-type comparison was deliberately not promoted because the supplier warns
 against that interpretation.
 
+Two later ESC-guide and installed-census audits also completed despite the same startup
+noise. Their engineering conclusions were accepted only after Codex reopened the
+official ESC pages and recounted the controlled placement sources. F14 remains open; the
+global plugin configuration is still outside this repository's authority.
+
 This is a real agent-workflow friction, but not a safe repo-local quick win. Repairing
 it would change the user's global Grok/plugin configuration outside the ID01 scope and
 could affect other work. Leave that configuration untouched here. For now, keep each
@@ -517,14 +522,23 @@ accepted 60-second operating point, and it cannot size the battery, ESC, connect
 thermal design without clarification.
 
 The smallest closure packet is a manufacturer-controlled revision of the KV3800 + T3140
-map, explicit allowable-current/power duration and temperature limits, and the exact
-propeller revision/interface. A later official-source pass did close part of that
-documentary gap: the T3140 card now gives 3.1-inch diameter, 4.0-inch pitch, three
-polymer blades, 2 g catalogue mass, a 5 mm mounting hole and 6 mm hub thickness. The
-F1507 drawing separately shows a front M5 × 0.8 / Ø5 adapter, and its packing list names
-an M5 self-locking nut. This is a coherent nominal chain, not controlled proof of the
-bench revision, fit, tolerance, seating, engagement, tightening, inertia or CW/CCW
-allocation.
+map, explicit allowable-current/power duration and temperature limits, the exact
+propeller revision/interface, and the bench ESC SKU/revision, firmware/protocol, PWM,
+timing, voltage source and per-plateau durations. A later official-source pass did close
+part of that documentary gap: the T3140 card now gives 3.1-inch diameter, 4.0-inch
+pitch, three polymer blades, 2 g catalogue mass, a 5 mm mounting hole and 6 mm hub
+thickness. The F1507 drawing separately shows a front M5 × 0.8 / Ø5 adapter, and its
+packing list names an M5 self-locking nut. This is a coherent nominal chain, not
+controlled proof of the bench revision, fit, tolerance, seating, engagement, tightening,
+inertia or CW/CCW allocation.
+
+The same F1507 page yields another bounded clarification, not closure. Its matching
+guide names Mini F45A 4-in-1 and F7 35A AIO controller leads, while the T3140 bench
+table names no ESC, firmware, protocol, PWM, timing or voltage-source identity, and no
+duration for the 50–95% rows. F35A appears only as a related product. Per-channel
+catalogue headroom therefore cannot reconstruct the bench or establish the shared
+four-channel input and thermal limits. The Mini F45A sources also conflict on AM32
+versus BLHeli_32.
 
 Until those remaining fields and the 100% limit conflict are closed, the candidate
 remains unselected. No solver, CAD edit, provider operation or Project mutation can

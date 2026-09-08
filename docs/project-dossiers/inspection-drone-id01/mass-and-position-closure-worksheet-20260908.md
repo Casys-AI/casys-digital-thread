@@ -20,6 +20,30 @@ The source basis and candidate arithmetic remain in the
 All coordinates use the persisted root convention: millimetres, right-handed frame,
 front `-Y`, right `+X`.
 
+## Canonical geometry census boundary
+
+The current canonical root contains six child modules and 22 leaf occurrences. Ten are
+structural solids; the other twelve are packaging envelopes or static proxies. This is
+an exact geometry census, not an installed-item census and not a mass statement.
+
+| Child module     | Leaf occurrences | Structural solids | Envelopes / proxies |
+| ---------------- | ---------------: | ----------------: | ------------------: |
+| Airframe         |                5 |                 5 |                   0 |
+| ElectricalPower  |                2 |                 1 |                   1 |
+| Avionics         |                3 |                 1 |                   2 |
+| CameraPayload    |                2 |                 1 |                   1 |
+| LandingGear      |                2 |                 2 |                   0 |
+| PropulsionSystem |                8 |                 0 |                   8 |
+| **Current root** |           **22** |            **10** |              **12** |
+
+The twelve non-physical occurrences are `MotorEnvelope ×4`,
+`StaticPropellerEnvelope ×4`, `BatteryReservedVolume ×1`, `AutopilotEnvelope ×1`,
+`CompanionComputerEnvelope ×1` and `CameraBoardEnvelope ×1`. Their placement evidence
+can seed a later packaging or position review, but none may enter `Σm` as an installed
+item. The module counts are recorded in the
+[geometry closeout](geometry-and-integrity-20260907.md); the exact immediate placements
+remain in the controlled JSON sources under [`sources/`](sources/).
+
 ## Structural occurrence sheet
 
 Each row is a physical structural occurrence. `r_geo,root` is a source-derived geometric
@@ -54,36 +78,42 @@ inappropriate. Weighing the finished occurrences is the stronger closure route.
 
 The table separates a sourced candidate mass from a selected installed occurrence. A CAD
 envelope or reserved volume may supply a packaging reference, but it is not the item,
-its physical mass, or its mass centre.
+its physical mass, or its mass centre. Every `no` in the final column means “not
+admitted to the arithmetic because include/exclude is not frozen”; it is not a decision
+that the physical item will be absent.
 
-| Item/category                                         |            Current mass datum | Current position datum                               | Evidence class                                                      | In vehicle sum |
-| ----------------------------------------------------- | ----------------------------: | ---------------------------------------------------- | ------------------------------------------------------------------- | -------------- |
-| F1404 KV4600 motor ×4                                 | `9.34 g` each, cable included | four `MotorEnvelope` axes only; physical CoM absent  | official candidate catalogue; exact propeller pairing unresolved    | no             |
-| F1507 KV3800 motor ×4                                 |   `15 g` each, cable included | no fitting CAD envelope; physical CoM absent         | separate official candidate; nominal T3140/M5 chain, fit unresolved | no             |
-| F35A ESC ×4                                           |                  `4.3 g` each | no CAD occurrence or installation position           | official related-product image; pairing and installation unresolved | no             |
-| Pixhawk 6C Mini Model A Current ×1                    |                      `42.4 g` | `AutopilotEnvelope` pose only; physical CoM absent   | official technical specification, candidate                         | no             |
-| Camera Module 3 standard ×1                           |                         `4 g` | `CameraBoardEnvelope` pose only; physical CoM absent | official hardware table, candidate                                  | no             |
-| Raspberry Pi Zero 2 W ×1                              |                        `12 g` | provisional `CompanionComputerEnvelope` pose only    | lower-assurance official editorial mass; installed assembly absent  | no             |
-| Exact `GF3016` propeller ×4 plus attachment hardware  |                             — | static proxy axes only                               | bench label has no controlled maker/SKU/revision or interface       | no             |
-| T3140 candidate propeller ×4                          |         `2 g` each, catalogue | static proxy axes only; physical CoM absent          | exact-name bench lead; revision, inertia and installed mass absent  | no             |
-| Propeller retention hardware ×4                       |                             — | —                                                    | F1507 drawing and packing show a nominal M5 chain only              | no             |
-| Selected battery plus restraint                       |                             — | reserved-volume keep-in only                         | no candidate passes both current bounded screens                    | no             |
-| Holybro PM02 V3 candidate ×1                          |                          20 g | —                                                    | official candidate; no built-in PDB; not selected                   | no             |
-| Holybro PM06 V2 14S candidate ×1                      |                          24 g | —                                                    | alternative with four PDB pads; height conflict; not selected       | no             |
-| Companion regulator/BEC and remaining protection      |                             — | —                                                    | absent; F35A has no BEC                                             | no             |
-| GPS, radio/telemetry and antennas                     |                             — | —                                                    | absent                                                              | no             |
-| Motor, camera, carrier, tray, skid and deck fasteners |                             — | —                                                    | holes and contact observations are not hardware                     | no             |
-| Signal/power wiring, connectors and cable retention   |                             — | —                                                    | absent beyond cable explicitly included with each motor             | no             |
-| Pi storage, headers, cooling and enclosure            |                             — | —                                                    | excluded from the 12 g editorial datum                              | no             |
-| Camera CSI cable and mounting spacer                  |                             — | —                                                    | absent; current camera/bracket geometry retains a nominal gap       | no             |
-| Guards, skid pads and other protection                |                             — | —                                                    | absent                                                              | no             |
+| Item/category                                         |            Current mass datum | Current position datum                               | Evidence class                                                                 | In vehicle sum |
+| ----------------------------------------------------- | ----------------------------: | ---------------------------------------------------- | ------------------------------------------------------------------------------ | -------------- |
+| F1404 KV4600 motor ×4                                 | `9.34 g` each, cable included | four `MotorEnvelope` axes only; physical CoM absent  | official candidate catalogue; exact propeller pairing unresolved               | no             |
+| F1507 KV3800 motor ×4                                 |   `15 g` each, cable included | no fitting CAD envelope; physical CoM absent         | separate official candidate; nominal T3140/M5 chain, fit unresolved            | no             |
+| F35A ESC ×4                                           |                  `4.3 g` each | no CAD occurrence or installation position           | official related-product image; pairing and installation unresolved            | no             |
+| Mini F45A 6S 4-in-1 ESC ×1                            |                       `9.2 g` | no CAD occurrence or installation position           | official F1507 matching-guide lead; no bench identity; firmware conflict       | no             |
+| F7 35A AIO flight-controller/ESC ×1                   |                             — | no CAD occurrence or installation position           | official F1507 matching-guide lead; combined role and exact variant unresolved | no             |
+| Pixhawk 6C Mini Model A Current ×1                    |                      `42.4 g` | `AutopilotEnvelope` pose only; physical CoM absent   | official technical specification, candidate                                    | no             |
+| Camera Module 3 standard ×1                           |                         `4 g` | `CameraBoardEnvelope` pose only; physical CoM absent | official hardware table, candidate                                             | no             |
+| Raspberry Pi Zero 2 W ×1                              |                        `12 g` | provisional `CompanionComputerEnvelope` pose only    | lower-assurance official editorial mass; installed assembly absent             | no             |
+| Exact `GF3016` propeller ×4 plus attachment hardware  |                             — | static proxy axes only                               | bench label has no controlled maker/SKU/revision or interface                  | no             |
+| T3140 candidate propeller ×4                          |         `2 g` each, catalogue | static proxy axes only; physical CoM absent          | exact-name bench lead; revision, inertia and installed mass absent             | no             |
+| Propeller retention hardware ×4                       |                             — | —                                                    | F1507 drawing and packing show a nominal M5 chain only                         | no             |
+| Selected battery plus restraint                       |                             — | reserved-volume keep-in only                         | no candidate passes both current bounded screens                               | no             |
+| Holybro PM02 V3 candidate ×1                          |                          20 g | —                                                    | official candidate; no built-in PDB; not selected                              | no             |
+| Holybro PM06 V2 14S candidate ×1                      |                          24 g | —                                                    | alternative with four PDB pads; height conflict; not selected                  | no             |
+| Companion regulator/BEC and remaining protection      |                             — | —                                                    | absent; F35A has no BEC                                                        | no             |
+| GPS, radio/telemetry and antennas                     |                             — | —                                                    | absent                                                                         | no             |
+| Motor, camera, carrier, tray, skid and deck fasteners |                             — | —                                                    | holes and contact observations are not hardware                                | no             |
+| Signal/power wiring, connectors and cable retention   |                             — | —                                                    | absent beyond cable explicitly included with each motor                        | no             |
+| Pi storage, headers, cooling and enclosure            |                             — | —                                                    | excluded from the 12 g editorial datum                                         | no             |
+| Camera CSI cable and mounting spacer                  |                             — | —                                                    | absent; current camera/bracket geometry retains a nominal gap                  | no             |
+| Guards, skid pads and other protection                |                             — | —                                                    | absent                                                                         | no             |
 
 The separate `100.96 g` strict candidate-COTS subtotal and `112.96 g` subtotal including
 the lower-assurance Pi datum remain useful arithmetic checks. They are neither an all-up
 mass nor a lower bound: every included item still depends on an eventual configuration
-choice, while many physical categories above remain absent. The F1507, PM02 and PM06
-rows are mutually alternative or topology-dependent leads; none is silently added to the
-original F1404-based subtotal. See the
+choice, while many physical categories above remain absent. The F1507, F35A, Mini F45A,
+F7 AIO, PM02 and PM06 rows are mutually alternative or topology-dependent leads; none is
+silently added to the original F1404-based subtotal. In particular, the F7 AIO overlaps
+flight-controller and four-channel ESC roles and must not be added beside both Pixhawk
+and another ESC card without a deliberate architecture decision. See the
 [electrical architecture basis](electrical-power-architecture-basis-20260908.md) and
 [battery packaging sensitivity](battery-packaging-sensitivity-20260908.md) before
 forming a configuration subtotal.
@@ -125,8 +155,9 @@ registered operation can actually answer.
 
 ## Review boundary
 
-One bounded native Grok review independently audited the current source, placement and
-mass ledgers and returned `SHIP` for opening this worksheet without a solver. Codex
-checked the placements, recalculated the transformed structural centroids and retained
-only the documentary census and equations. No material density, component selection,
-vehicle sum, CG, provider run, broad test campaign or Astra consultation was introduced.
+Two bounded native Grok reviews independently audited the current source, placement and
+mass ledgers. The later review returned `HOLD` on G0.2 closure and identified the
+22-leaf geometry split. Codex checked the controlled placement counts, recalculated the
+transformed structural centroids and retained only the documentary census and equations.
+No material density, component selection, vehicle sum, CG, provider run, broad test
+campaign or Astra consultation was introduced.

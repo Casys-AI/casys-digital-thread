@@ -234,14 +234,16 @@ exact-row arithmetic screen but unresolved propeller identity and an internal
 table-versus-drawing shaft conflict. The
 [propulsion source-control packet](propulsion-source-control-packet-20260908.md) now
 fingerprints the official drawings and T3140 specification. F1507 KV3800 + T3140 has a
-stronger exact-name bench link, a full eleven-row discrete table, sourced 3.1-inch
+stronger exact-name bench link, a full eleven-row exact-source table, sourced 3.1-inch
 geometry, 2 g catalogue mass and a coherent nominal M5 retention chain, but its
 revision/tolerances remain open, its 100% bench endpoint exceeds the same page's
 60-second motor ratings, and both motor and propeller exceed the current CAD proxies.
-Neither is selected. Six official 4S battery candidates remain screened: five fail
-orthogonal containment in the current 38 × 34 × 25 mm reserve; the sixth fits
-geometrically but fails even the first retained F1404 label-current row. This bounded
-search found no candidate that passes both screens, not proof that no 4S pack can do so.
+Its matching guide names Mini F45A and F7 35A AIO leads, but neither is identified as
+the ESC used for the T3140 table. Neither propulsion lead is selected. Six official 4S
+battery candidates remain screened: five fail orthogonal containment in the current 38 ×
+34 × 25 mm reserve; the sixth fits geometrically but fails even the first retained F1404
+label-current row. This bounded search found no candidate that passes both screens, not
+proof that no 4S pack can do so.
 
 The [mission sizing decision sheet](mission-sizing-decision-sheet-20260908.md) now keeps
 three reversible workflow shapes separate from human decisions and deliberately leaves
@@ -254,16 +256,17 @@ compares PM02 V3 and PM06 V2 leads, exposes the as-sold main-path current limit 
 leaves distribution, protection, harness and companion regulation unresolved. A partial
 source-backed COTS mass ledger and separate
 [mass/position closure worksheet](mass-and-position-closure-worksheet-20260908.md) now
-make the absent installed items, structural masses and positions explicit; total vehicle
-mass and CG remain unresolved. The documents preserve the calculation contract and
-still-missing input packets. They are documentary drafts against pending brief r5, not a
-component selection or a new proof.
+separates the exact 22-leaf canonical geometry census into ten structural solids and
+twelve envelopes/proxies, then keeps the absent installed items, structural masses and
+positions explicit. Total vehicle mass and CG remain unresolved. The documents preserve
+the calculation contract and still-missing input packets. They are documentary drafts
+against pending brief r5, not a component selection or a new proof.
 
 The [configuration pre-selection matrix](configuration-preselection-matrix-20260908.md)
-now groups propulsion, battery/tray and power-module cards by mutually exclusive slot.
-It exposes the current-path and minimum tray-growth consequences without multiplying
-them into false vehicle configurations. Its verdict remains `HOLD`: no column closes
-identity, mass, usable energy, packaging and interfaces together.
+now groups propulsion, ESC/control, battery/tray and power-module cards by mutually
+exclusive slot. It exposes the current-path and minimum tray-growth consequences without
+multiplying them into false vehicle configurations. Its verdict remains `HOLD`: no
+column closes identity, mass, usable energy, packaging and interfaces together.
 
 The [proportionate verification and test plan](verification-and-test-plan-20260908.md)
 now answers the wider engineering boundary explicitly. It keeps the two accepted
