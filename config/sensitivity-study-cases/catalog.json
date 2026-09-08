@@ -6,6 +6,10 @@
       "id": "dl05-arm-thickness-sensitivity",
       "file": "dl05-arm-thickness-sensitivity.json"
     },
-    { "id": "dl05-arm-thickness-isolated", "file": "dl05-arm-thickness-isolated.json" }
+    { "id": "dl05-arm-thickness-isolated", "file": "dl05-arm-thickness-isolated.json" },
+    {
+      "id": "id01-radial-arm-height-isolated",
+      "file": "id01-radial-arm-height-isolated.json"
+    }
   ]
 }

@@ -45,8 +45,7 @@ import {
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import { buildSensitivityAnalysisGraph } from "../../../domain/sensitivity/live-fea/sensitivity-analysis-graph.ts";
 import {
-  liveSolverObservationForMetric,
-  SENSITIVITY_LIVE_METRIC_UNITS,
+  liveSolverObservationForResponseUnit,
 } from "../../../domain/sensitivity/study/sensitivity-live-method.ts";
 import { ANALYZE_RUN_FEA_SENSITIVITY_OPERATION } from "../../../domain/sensitivity/study/sensitivity-study-proposal.ts";
 import { MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY } from "../../../domain/capability/engineering-capability.ts";
@@ -2104,19 +2103,18 @@ function measurementsFromSolve(
 ): Map<string, SensitivityMetricMeasurement> {
   const map = new Map<string, SensitivityMetricMeasurement>();
   for (const metric of studyCase.metrics) {
-    const expectedUnit = SENSITIVITY_LIVE_METRIC_UNITS.get(metric.id);
-    if (expectedUnit === undefined) {
+    const field = liveSolverObservationForResponseUnit(metric.unit);
+    if (field === undefined) {
       throw invalidTransition(
-        `Unknown metric id ${metric.id} is rejected fail-closed.`,
+        `Unknown metric unit ${
+          JSON.stringify(metric.unit)
+        } for ${metric.id} is rejected fail-closed.`,
       );
     }
-    const field = liveSolverObservationForMetric(metric.id);
     const observed = field === "maximumDisplacement"
       ? result.observations.maximumDisplacement.magnitude
-      : field === "maximumVonMisesStress"
-      ? result.observations.maximumVonMisesStress.magnitude
-      : undefined;
-    if (!observed || observed.unit !== expectedUnit || observed.unit !== metric.unit) {
+      : result.observations.maximumVonMisesStress.magnitude;
+    if (observed.unit !== metric.unit) {
       throw invalidTransition(
         `Solver measurement for ${metric.id} is missing or mistyped.`,
       );

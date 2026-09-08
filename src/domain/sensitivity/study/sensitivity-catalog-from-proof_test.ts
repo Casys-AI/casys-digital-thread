@@ -174,3 +174,62 @@ Deno.test("ready catalog offer validator refuses a compiled step value", () => {
     "unsupported field value",
   );
 });
+
+Deno.test(
+  "catalog offer keeps an exact generic Thread feature and maps unit from the physical proof metric",
+  () => {
+    const proof = {
+      ...DL06_PROOF,
+      requirements: [{
+        ...DL06_PROOF.requirements[0]!,
+        feature: "generic_bench_max_displacement",
+      }],
+    };
+    const offer = compileSensitivityCatalogOffer(proof, [ARM_THICKNESS], AUTHORITY);
+    assertEquals(offer.status, "ready-for-opt-in");
+    if (offer.status !== "ready-for-opt-in") return;
+    assertEquals(offer.metrics, [
+      { id: "generic_bench_max_displacement", unit: "mm" },
+    ]);
+    assertEquals(
+      validateReadySensitivityCatalogOffer(offer).metrics,
+      [{ id: "generic_bench_max_displacement", unit: "mm" }],
+    );
+  },
+);
+
+Deno.test("catalog offer is metric-incompatible for unsupported proof physics", () => {
+  const proof = {
+    ...DL06_PROOF,
+    requirements: [{
+      ...DL06_PROOF.requirements[0]!,
+      metric: "unsupported-physics",
+    }],
+  } as unknown as typeof DL06_PROOF;
+  const offer = compileSensitivityCatalogOffer(proof, [ARM_THICKNESS], AUTHORITY);
+  assertEquals(offer.status, "metric-incompatible");
+  if (offer.status !== "metric-incompatible") return;
+  assertEquals(
+    offer.message,
+    "Proof metric unsupported-physics (feature maxDisplacement) has no exact unit in the live sensitivity method.",
+  );
+});
+
+Deno.test("ready catalog offer validator refuses an unknown response unit", () => {
+  const offer = compileSensitivityCatalogOffer(
+    DL06_PROOF,
+    [ARM_THICKNESS],
+    AUTHORITY,
+  );
+  assertEquals(offer.status, "ready-for-opt-in");
+  if (offer.status !== "ready-for-opt-in") return;
+  assertThrows(
+    () =>
+      validateReadySensitivityCatalogOffer({
+        ...offer,
+        metrics: [{ id: "maxDisplacement", unit: "kg" }],
+      }),
+    TypeError,
+    "live sensitivity response unit",
+  );
+});

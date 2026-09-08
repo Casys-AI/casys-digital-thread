@@ -3,7 +3,8 @@
  *
  * The offer copies already catalogued proof fields. It does not invent mesh,
  * loads, a step, or a complete sensitivity-study-case-template/3.0. Metric
- * units come from the code-owned live-method contract, not requirement limits.
+ * units come from STATIC_PROOF_METRIC_UNITS for the physical proof metric;
+ * metrics[].id retains the exact Thread feature.
  */
 
 import {
@@ -20,8 +21,12 @@ import {
   type GeometryAffectingNamedNumericLever,
   listGeometryAffectingNamedNumericLevers,
 } from "../../compile/source/named-cad-levers.ts";
+import {
+  STATIC_PROOF_METRIC_UNITS,
+  type StaticProofMetric,
+} from "../../fea/isolated-v3/static-proof-oracle-input.ts";
 import type { MechanicalProofCase } from "../../fea/seal-case/mechanical-proof-case.ts";
-import { SENSITIVITY_LIVE_METRIC_UNITS } from "./sensitivity-live-method.ts";
+import { liveSolverObservationForResponseUnit } from "./sensitivity-live-method.ts";
 import type { TechnicalCompilationDocument } from "../../compile/admission/technical-compilation.ts";
 
 const SHA256 = /^[a-f0-9]{64}$/;
@@ -129,26 +134,24 @@ export function compileSensitivityCatalogOffer(
   const requirements = proofCase.requirements.filter((requirement) =>
     !HISTORICAL_ASSEMBLY_METRIC.test(requirement.feature)
   );
-  const incompatibleMetric = requirements.find((requirement) =>
-    !SENSITIVITY_LIVE_METRIC_UNITS.has(requirement.feature)
-  );
-  if (incompatibleMetric) {
-    return deepFreeze({
-      status: "metric-incompatible" as const,
-      message:
-        `Proof metric ${incompatibleMetric.feature} has no exact unit in the live sensitivity method.`,
-    });
+  const metrics: { readonly id: string; readonly unit: string }[] = [];
+  for (const requirement of requirements) {
+    const unit = staticProofResponseUnit(requirement.metric);
+    if (unit === undefined) {
+      return deepFreeze({
+        status: "metric-incompatible" as const,
+        message:
+          `Proof metric ${requirement.metric} (feature ${requirement.feature}) has no exact unit in the live sensitivity method.`,
+      });
+    }
+    metrics.push({ id: requirement.feature, unit });
   }
   return deepFreeze({
     schemaVersion: SENSITIVITY_CATALOG_OFFER_SCHEMA,
     status: "ready-for-opt-in" as const,
     optInDefault: false,
     lever: { semanticKey: lever.semanticKey, value: lever.value },
-    metrics: requirements
-      .map((requirement) => ({
-        id: requirement.feature,
-        unit: SENSITIVITY_LIVE_METRIC_UNITS.get(requirement.feature)!,
-      })),
+    metrics,
     method: {
       mesh: proofCase.analysis.mesh,
       material: proofCase.analysis.material,
@@ -315,14 +318,21 @@ function parseOfferMetric(
   const record = exactRecord(value, ["id", "unit"], path);
   const id = safeId(record.id, `${path}.id`);
   const unit = nonEmptyText(record.unit, `${path}.unit`);
-  const expected = SENSITIVITY_LIVE_METRIC_UNITS.get(id);
-  if (expected === undefined) {
-    throw new TypeError(`${path}.id is not a live sensitivity metric.`);
-  }
-  if (unit !== expected) {
-    throw new TypeError(`${path}.unit must equal ${expected}.`);
+  if (liveSolverObservationForResponseUnit(unit) === undefined) {
+    throw new TypeError(
+      `${path}.unit ${JSON.stringify(unit)} is not a live sensitivity response unit.`,
+    );
   }
   return { id, unit };
+}
+
+function staticProofResponseUnit(metric: string): string | undefined {
+  if (
+    metric !== "maximum-displacement" && metric !== "maximum-von-mises-stress"
+  ) {
+    return undefined;
+  }
+  return STATIC_PROOF_METRIC_UNITS[metric satisfies StaticProofMetric];
 }
 
 function parseOfferMethod(

@@ -1,7 +1,7 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
   assertSensitivityLiveMethod,
-  liveSolverObservationForMetric,
+  liveSolverObservationForResponseUnit,
 } from "./sensitivity-live-method.ts";
 import { validateSensitivityStudyCaseV3 } from "./sensitivity-study-v3.ts";
 
@@ -76,32 +76,39 @@ Deno.test(
   },
 );
 
-Deno.test("an unknown metric id is rejected fail-closed", () => {
+Deno.test("an unknown response unit is rejected fail-closed", () => {
   const studyCase = validCase({
-    metrics: [{ id: "invented_metric", unit: "mm" }],
+    metrics: [{ id: "invented_metric", unit: "kg" }],
   });
   assertThrows(
     () => assertSensitivityLiveMethod(studyCase),
     TypeError,
-    "invented_metric",
+    "kg",
   );
 });
 
-Deno.test("Thread requirement metric ids are admitted by the live method", () => {
+Deno.test("an arbitrary safe feature id is admitted when its unit is a live response unit", () => {
+  const studyCase = validCase({
+    metrics: [{ id: "generic_bench_max_displacement", unit: "mm" }],
+  });
+  assertSensitivityLiveMethod(studyCase);
+  assertEquals(
+    liveSolverObservationForResponseUnit("mm"),
+    "maximumDisplacement",
+  );
+});
+
+Deno.test("historical Thread feature ids remain admitted by the live method", () => {
   const studyCase = validCase({
     metrics: [
       { id: "maxDisplacement", unit: "mm" },
       { id: "maxVonMises", unit: "MPa" },
+      { id: "assembly_max_displacement", unit: "mm" },
+      { id: "assembly_max_von_mises", unit: "MPa" },
     ],
   });
   assertSensitivityLiveMethod(studyCase);
-  assertEquals(
-    liveSolverObservationForMetric("maxDisplacement"),
-    "maximumDisplacement",
-  );
-  assertEquals(liveSolverObservationForMetric("maxVonMises"), "maximumVonMisesStress");
-  assertEquals(
-    liveSolverObservationForMetric("assembly_max_displacement"),
-    "maximumDisplacement",
-  );
+  assertEquals(liveSolverObservationForResponseUnit("mm"), "maximumDisplacement");
+  assertEquals(liveSolverObservationForResponseUnit("MPa"), "maximumVonMisesStress");
+  assertEquals(liveSolverObservationForResponseUnit("Pa"), undefined);
 });

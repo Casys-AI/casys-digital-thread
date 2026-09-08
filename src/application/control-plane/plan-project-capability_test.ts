@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import {
+  GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
   MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
@@ -65,6 +66,42 @@ Deno.test("project capability planner selects exact trusted bindings and dedupli
   assertEquals(plan.effects.bindMounts, []);
   assertEquals(plan.effects.devices, []);
 });
+
+Deno.test(
+  "project capability planner selects admitted-source preparation without replacing execution",
+  async () => {
+    const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+    const plan = await planProjectCapability(
+      await input(catalog, [
+        requirement(GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY, "preparation"),
+        requirement(GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY),
+      ]),
+    );
+
+    assertEquals(plan.status, "ready");
+    assertEquals(plan.activation, "allowed");
+    assertEquals(
+      plan.bindings.map((binding) => ({
+        use: binding.requirement.use,
+        id: binding.binding?.id,
+      })),
+      [
+        { use: "execution", id: "build123d-execute-admitted-source" },
+        { use: "preparation", id: "build123d-execute-admitted-source-preparation" },
+      ],
+    );
+    assertEquals(
+      plan.bindings[0]?.candidate?.adapter,
+      plan.bindings[1]?.candidate?.adapter,
+    );
+    assertEquals(
+      plan.bindings[0]?.candidate?.profile,
+      plan.bindings[1]?.candidate?.profile,
+    );
+    assertEquals(plan.bindings[0]?.unitIds, ["casys.build123d-isolated-worker"]);
+    assertEquals(plan.bindings[1]?.unitIds, ["casys.build123d-isolated-worker"]);
+  },
+);
 
 Deno.test("project capability planner makes policy, revocation, ambiguity and availability literal", async () => {
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();

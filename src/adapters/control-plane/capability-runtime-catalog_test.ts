@@ -74,6 +74,34 @@ Deno.test("first-party catalogue binds admitted geometry export to its admission
   );
 });
 
+Deno.test(
+  "first-party catalogue keeps a distinct qualified admitted-source preparation binding",
+  async () => {
+    const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+    const execution = catalog.bindings.find((binding) =>
+      binding.id === "build123d-execute-admitted-source"
+    );
+    const preparation = catalog.bindings.find((binding) =>
+      binding.id === "build123d-execute-admitted-source-preparation"
+    );
+    assertEquals(execution?.use, "execution");
+    assertEquals(execution?.qualification, "qualified");
+    assertEquals(preparation?.use, "preparation");
+    assertEquals(preparation?.qualification, "qualified");
+    assertEquals(preparation?.capability, execution?.capability);
+    assertEquals(preparation?.adapter, execution?.adapter);
+    assertEquals(preparation?.profile, execution?.profile);
+    assertEquals(preparation?.unitIds, execution?.unitIds);
+    assertEquals(preparation?.limitations, [
+      "This binding stages exact admitted-source execution only.",
+      "Isolated output remains documentary and does not qualify a downstream solver or product verdict.",
+    ]);
+    assertEquals(execution?.limitations, [
+      "Isolated output is documentary until a separate canonical or proof path admits it.",
+    ]);
+  },
+);
+
 Deno.test("atomic first-party runtime catalogue exposes only runtime materials and keeps acquisition internal", async () => {
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();
   assertEquals(catalog.productionEligible, false);

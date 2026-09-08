@@ -296,6 +296,21 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         ],
       ),
       binding(
+        "build123d-execute-admitted-source-preparation",
+        GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY,
+        "preparation",
+        "qualified",
+        "build123d-isolated-execution-adapter",
+        "1.0.0",
+        BUILD123D_EXECUTION_PROFILE,
+        ["casys.build123d-isolated-worker"],
+        "src/adapters/cad/isolated/fixed-build123d-execution-profile-catalog.ts",
+        [
+          "This binding stages exact admitted-source execution only.",
+          "Isolated output remains documentary and does not qualify a downstream solver or product verdict.",
+        ],
+      ),
+      binding(
         "build123d-observe-assembly-integrity",
         GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
         "execution",

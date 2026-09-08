@@ -57,6 +57,30 @@ Deno.test("two local projects reuse one exact healthy sensitivity result", async
   }
 });
 
+Deno.test(
+  "private reuse maps an arbitrary safe metric id by its live response unit",
+  async () => {
+    const metrics = [{ id: "generic_bench_max_displacement", unit: "mm" }];
+    const harness = await createHarness();
+    try {
+      const source = await harness.addSource("source-project", 0, metrics);
+      const target = await harness.target("target-project", metrics);
+      const lookup = await harness.coordinator.review({
+        projectId: "target-project",
+        basis: harness.targetBasis,
+        basisSnapshot: harness.targetSnapshot,
+        target,
+        reviewedAt: AT,
+      });
+      assertEquals(lookup.review.outcome, "exact");
+      assertEquals(lookup.review.freshExecutionRequired, false);
+      assertEquals(lookup.selected?.record, source.record);
+    } finally {
+      await harness.dispose();
+    }
+  },
+);
+
 Deno.test("scientific and method misses remain fresh-execution misses", async () => {
   const harness = await createHarness();
   try {
@@ -311,14 +335,21 @@ async function createHarness() {
     snapshots,
     projects,
     studyCaptures,
-    target: async (projectId: string) =>
+    target: async (
+      projectId: string,
+      metrics?: SensitivityStudyCaseV3["metrics"],
+    ) =>
       await coordinator.compileTarget({
-        studyCase: await makeStudyCase(projectId),
+        studyCase: await makeStudyCase(projectId, metrics),
         admission,
         build123dProfile: buildProfile(),
       }),
-    addSource: async (projectId: string, resultOffset: number) => {
-      const studyCase = await makeStudyCase(projectId);
+    addSource: async (
+      projectId: string,
+      resultOffset: number,
+      metrics?: SensitivityStudyCaseV3["metrics"],
+    ) => {
+      const studyCase = await makeStudyCase(projectId, metrics);
       const target = await coordinator.compileTarget({
         studyCase,
         admission,
@@ -400,12 +431,8 @@ async function createHarness() {
       const recorded = async (phase: "base" | "stepped") => {
         const cad = capture.cad[phase];
         const measurements = capture.measurements[phase];
-        const displacement = measurements.find((item) =>
-          item.metric === "assembly_max_displacement"
-        )!;
-        const vonMises = measurements.find((item) =>
-          item.metric === "assembly_max_von_mises"
-        )!;
+        const displacement = measurements.find((item) => item.unit === "mm");
+        const vonMises = measurements.find((item) => item.unit === "MPa");
         const requestId = `${phase}-request-${"1".repeat(48)}`;
         const readback = {
           schemaVersion: "mcp-calculix-sensitivity-readback/1.0",
@@ -424,11 +451,20 @@ async function createHarness() {
           result: {
             observations: {
               maximumDisplacement: {
-                magnitude: { value: displacement.value, unit: displacement.unit },
-                vector: { value: [0, 0, -displacement.value], unit: "mm" },
+                magnitude: {
+                  value: displacement?.value ?? 0,
+                  unit: "mm" as const,
+                },
+                vector: {
+                  value: [0, 0, -(displacement?.value ?? 0)],
+                  unit: "mm" as const,
+                },
               },
               maximumVonMisesStress: {
-                magnitude: { value: vonMises.value, unit: vonMises.unit },
+                magnitude: {
+                  value: vonMises?.value ?? 0,
+                  unit: "MPa" as const,
+                },
               },
             },
           },
@@ -501,7 +537,10 @@ async function createHarness() {
   };
 }
 
-async function makeStudyCase(projectId: string): Promise<SensitivityStudyCaseV3> {
+async function makeStudyCase(
+  projectId: string,
+  metrics?: SensitivityStudyCaseV3["metrics"],
+): Promise<SensitivityStudyCaseV3> {
   const template = validateSensitivityStudyCaseTemplate(
     JSON.parse(
       await Deno.readTextFile(
@@ -513,6 +552,7 @@ async function makeStudyCase(projectId: string): Promise<SensitivityStudyCaseV3>
     ...template,
     id: `case-${projectId}`,
     project: { id: projectId, subjectId: `subject-${projectId}` },
+    ...(metrics === undefined ? {} : { metrics }),
   }, {
     artifactUri: `thread-artifact://${projectId}/admission-${projectId}`,
     sha256: ADMISSION_DIGEST,
@@ -627,14 +667,16 @@ async function makeStudyCapture(
   projectId: string,
   offset: number,
 ) {
-  const base = [
-    { metric: "assembly_max_displacement", value: 2 + offset, unit: "mm" },
-    { metric: "assembly_max_von_mises", value: 10 + offset, unit: "MPa" },
-  ];
-  const stepped = [
-    { metric: "assembly_max_displacement", value: 3 + offset, unit: "mm" },
-    { metric: "assembly_max_von_mises", value: 12 + offset, unit: "MPa" },
-  ];
+  const base = studyCase.metrics.map((metric, index) => ({
+    metric: metric.id,
+    value: (index === 0 ? 2 : 10) + offset,
+    unit: metric.unit,
+  }));
+  const stepped = studyCase.metrics.map((metric, index) => ({
+    metric: metric.id,
+    value: (index === 0 ? 3 : 12) + offset,
+    unit: metric.unit,
+  }));
   return {
     schemaVersion: "sensitivity-study-capture/1.0" as const,
     operation: { id: "analyze.run-fea-sensitivity" as const, version: "1" as const },

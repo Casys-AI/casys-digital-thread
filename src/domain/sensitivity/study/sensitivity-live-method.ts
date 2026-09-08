@@ -2,38 +2,36 @@
  * Code-owned live-method constraints for the first FEA sensitivity vertical.
  *
  * The case schema allows a wider scientific declaration. The live CalculiX
- * path remeshes each STEP independently and only knows two response metrics.
- * Seal and run refuse a case that would publish a false method claim.
+ * path remeshes each STEP independently and only knows two response observations.
+ * Metric `id` is the exact Thread feature; mapping uses the validated unit, not
+ * an alias of that id. Seal and run refuse a case that would publish a false
+ * method claim.
  */
 
 import type { SensitivityStudyCaseV3 } from "./sensitivity-study-v3.ts";
 
-export const SENSITIVITY_LIVE_METRIC_UNITS: ReadonlyMap<string, string> = new Map([
-  ["assembly_max_displacement", "mm"],
-  ["assembly_max_von_mises", "MPa"],
-  ["maxDisplacement", "mm"],
-  ["maxVonMises", "MPa"],
-]);
+export const SENSITIVITY_LIVE_RESPONSE_UNITS = Object.freeze(
+  {
+    mm: "maximumDisplacement",
+    MPa: "maximumVonMisesStress",
+  } as const,
+);
+
+export type SensitivityLiveResponseUnit = keyof typeof SENSITIVITY_LIVE_RESPONSE_UNITS;
 
 export type SensitivityLiveSolverObservation =
-  | "maximumDisplacement"
-  | "maximumVonMisesStress";
+  typeof SENSITIVITY_LIVE_RESPONSE_UNITS[SensitivityLiveResponseUnit];
 
 /**
- * Which CalculiX result field fills a declared study metric. The study case
- * names the metric; this is not a join-time alias of Thread requirements.
+ * Which CalculiX result field fills a declared study metric. The live V3 case
+ * carries only id+unit; the unit selects the observation. Historical feature
+ * ids remain valid when they already declare one of these units.
  */
-export function liveSolverObservationForMetric(
-  metricId: string,
+export function liveSolverObservationForResponseUnit(
+  unit: string,
 ): SensitivityLiveSolverObservation | undefined {
-  if (
-    metricId === "assembly_max_displacement" || metricId === "maxDisplacement"
-  ) {
-    return "maximumDisplacement";
-  }
-  if (metricId === "assembly_max_von_mises" || metricId === "maxVonMises") {
-    return "maximumVonMisesStress";
-  }
+  if (unit === "mm") return SENSITIVITY_LIVE_RESPONSE_UNITS.mm;
+  if (unit === "MPa") return SENSITIVITY_LIVE_RESPONSE_UNITS.MPa;
   return undefined;
 }
 
@@ -51,16 +49,10 @@ export function assertSensitivityLiveMethod(
     );
   }
   for (const metric of studyCase.metrics) {
-    const expectedUnit = SENSITIVITY_LIVE_METRIC_UNITS.get(metric.id);
-    if (expectedUnit === undefined) {
+    if (liveSolverObservationForResponseUnit(metric.unit) === undefined) {
       throw new TypeError(
-        `$case.metrics ${JSON.stringify(metric.id)} is not in the live metric map.`,
-      );
-    }
-    if (metric.unit !== expectedUnit) {
-      throw new TypeError(
-        `$case.metrics ${JSON.stringify(metric.id)} must declare unit ` +
-          `${JSON.stringify(expectedUnit)} (got ${JSON.stringify(metric.unit)}).`,
+        `$case.metrics ${JSON.stringify(metric.id)} unit ` +
+          `${JSON.stringify(metric.unit)} is not a live sensitivity response unit.`,
       );
     }
   }

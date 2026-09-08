@@ -53,6 +53,35 @@ const MATCHING_ADMISSIONS = {
   read: () => Promise.resolve(matchingAdmission()),
 };
 
+function matchingMultiLeverAdmission(
+  sourceText: string,
+): ReopenedTechnicalCompilationAdmission {
+  const symbols = sourceText.split("\n").flatMap((line, index) => {
+    const match = /^([A-Za-z_][A-Za-z0-9_]*)\s*=/.exec(line);
+    if (!match) return [];
+    const name = match[1]!;
+    return [{
+      id: `sym:${name}`,
+      kind: "parameter" as const,
+      name,
+      span: {
+        start: { line: index + 1, column: 0 },
+        end: { line: index + 1, column: name.length },
+      },
+    }];
+  });
+  return {
+    document: {
+      inputManifest: {
+        sources: [{
+          sourceText,
+          analysis: { symbols },
+        }],
+      },
+    },
+  } as unknown as ReopenedTechnicalCompilationAdmission;
+}
+
 Deno.test("sensitivity-study seal review refuses latest as an unresolved basis-latest", async () => {
   const fixture = await signedCatalogOfferFixture();
   const review = new PrepareProjectSensitivityStudySealReview({
@@ -409,6 +438,64 @@ Deno.test(
     assertEquals(result.status, "resolved");
     if (result.status !== "resolved") return;
     assertEquals(result.selected.authority, "signed-offer");
+  },
+);
+
+Deno.test(
+  "sensitivity-study seal review resolves the named ID01 catalog case against a unique multi-lever admission",
+  async () => {
+    const projectId = "inspection-drone-id01";
+    const subjectId = "project:inspection-drone-id01";
+    const caseId = "id01-radial-arm-height-isolated";
+    const snapshot = basisSnapshot({ projectId, subjectId });
+    const sourceText = [
+      "arm_length = 100",
+      "arm_width = 16",
+      "arm_height = 5",
+      "arm_mount_pitch = 20",
+      "arm_mount_hole_radius = 1.6",
+      "result = Box(arm_length, arm_width, arm_height)",
+    ].join("\n") + "\n";
+    const review = new PrepareProjectSensitivityStudySealReview({
+      snapshots: new MemorySnapshots(snapshot),
+      projects: new MemoryProjects(snapshot, projectId),
+      catalogReader: REAL_CATALOG,
+      admissions: {
+        read: () => Promise.resolve(matchingMultiLeverAdmission(sourceText)),
+      },
+    });
+    const result = await review.execute({
+      projectId,
+      caseId,
+      basis: {
+        kind: "thread-snapshot",
+        snapshotId: snapshot.id,
+        revision: snapshot.revision,
+        subjectId,
+      },
+    });
+    assertEquals(result.status, "resolved");
+    if (result.status !== "resolved") return;
+    assertEquals(result.caseId, caseId);
+    assertEquals(result.selected.authority, "catalog");
+    const parsed = parseSensitivityStudyDecisionParameters(
+      result.decisionParameters,
+    );
+    assertEquals(parsed.target.semanticKey, "arm_height");
+    assertEquals(parsed.metrics, [{
+      id: "radial_arm_bench_max_displacement_mm",
+      unit: "mm",
+    }]);
+    assertEquals(parsed.method.supports[0]?.selection.box, {
+      min: [-50.1, -8.1, -0.1],
+      max: [-49.9, 8.1, 6.1],
+      unit: "mm",
+    });
+    assertEquals(parsed.method.loads[0]?.selection.box, {
+      min: [49.9, -8.1, -0.1],
+      max: [50.1, 8.1, 6.1],
+      unit: "mm",
+    });
   },
 );
 

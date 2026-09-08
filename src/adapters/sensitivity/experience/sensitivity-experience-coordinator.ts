@@ -33,7 +33,7 @@ import {
 } from "../../../domain/sensitivity/experience/sensitivity-experience.ts";
 import type { SensitivityStudyCapture } from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
 import { validateSensitivityStudyCapture } from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
-import { liveSolverObservationForMetric } from "../../../domain/sensitivity/study/sensitivity-live-method.ts";
+import { liveSolverObservationForResponseUnit } from "../../../domain/sensitivity/study/sensitivity-live-method.ts";
 import type { SensitivityStudyCaseV3 } from "../../../domain/sensitivity/study/sensitivity-study-v3.ts";
 import { SENSITIVITY_CAD_SOURCE_ADMISSION_TOOL } from "../../../domain/sensitivity/study/sensitivity-study-seal-bindings.ts";
 import {
@@ -586,7 +586,7 @@ function recordedSolveMatchesMeasurements(
     : undefined;
   if (!observations) return false;
   for (const measurement of measurements) {
-    const field = liveSolverObservationForMetric(measurement.metric);
+    const field = liveSolverObservationForResponseUnit(measurement.unit);
     const observation = field === undefined ? undefined : observations[field];
     const magnitude = isPlainRecord(observation) && isPlainRecord(observation.magnitude)
       ? observation.magnitude

@@ -655,6 +655,125 @@ affect every engineering project. Defer it as a product-capability extension; un
 exists, keep the worksheets documentary and let the next whiteboard node come only from
 a semantically valid registered operation over real evidence.
 
+## F22 — a later brief cannot widen an existing capability ceiling (open, product bug)
+
+At project r677, pending brief r6 proposes the explicit
+`static-structural-fea-sensitivity@1.0` verification authority needed for the next ID01
+study. `project_brief_confirm` refused the exact fresh review fingerprints with
+`Project already has an operational capability ledger with a different or revoked
+ceiling; use a delta amendment instead of replacing its initial authority.`
+The refusal is correct in protecting the already authorized ceiling, but the registered
+brief confirmation path invokes the initial-ledger preparation path even for a later
+brief.
+
+The advertised amendment route is not presently equivalent: capability-change review
+derives requested capabilities from the already published plan and current canonical
+brief, not from the pending later brief. ID01's published plan predates sensitivity, so
+that review cannot authorize r6's new authority. Do not force the old plan, replace the
+ledger, or confirm stale brief fingerprints. The smallest repair must preserve the
+pending brief's exact reviewed capability proposal and apply a separately reviewed delta
+to the existing ledger before that later brief becomes canonical.
+
+## F23 — the live sensitivity metric map confuses physics with Thread identity (open,
+
+quick win in progress)
+
+The accepted RadialArm proof uses physical metric `maximum-displacement`, exact Thread
+feature `radial_arm_bench_max_displacement_mm`, and result unit `mm`. The static-proof
+oracle already keeps those roles separate. The sensitivity live method instead admits
+only four hard-coded feature ids, so it rejects the exact ID01 feature even though the
+underlying qualified response is one of its two supported physical observations.
+
+Do not repair this by renaming the requirement to historical `assembly_max_displacement`
+or by adding an ID01-only alias: either would break exact Thread joining or turn product
+identity into domain code. The bounded generic repair is to derive proof-offer units
+from the already closed static-proof metric contract, retain the exact requirement
+feature as the study metric id, and map the current live response by its validated
+unit/physical observation. Unknown response units must remain refused.
+
+## F24 — sensitivity requests a qualified preparation use that the catalogue omits
+
+(open, quick win in progress)
+
+`analyze.run-fea-sensitivity@1` demands `geometry.execute-admitted-source@1` with
+`use: preparation`. The first-party catalogue contains the already qualified isolated
+Build123d execution composition only under `use: execution`, so exact runtime resolution
+reports the preparation demand as unavailable. Changing that existing binding would
+regress `design.execute-build123d@1`.
+
+The bounded repair is a distinct preparation binding over the same pinned adapter,
+profile and worker unit. It authorizes only preparation of exact admitted CAD for this
+workflow; it does not make isolated output canonical and does not qualify the later
+CalculiX sensitivity solver.
+
+## F25 — CalculiX HTTP sensitivity lacks a real host-local qualification case (open,
+
+hard friction)
+
+The `calculix-http-static-sensitivity` binding and exact pinned multi-architecture image
+exist, but the catalogue deliberately marks the binding `unqualified`. The current
+`probe:calculix-contract` checks discovery and `tools/list` only. Those checks cannot
+attest the product contract used by sensitivity: a real recorded static solve, exact
+readback and the expected evidence resources on the host's native `linux/arm64` image.
+
+The existing Chrono host-qualification spine can own WAL, host lifecycle, attestation
+storage and fail-closed overlay evaluation, but its case/probe is Chrono- and emulated
+AMD64-specific. A CalculiX qualification must be a separate code-owned candidate and
+native probe; it must not mutate the catalogue to `qualified`, accept caller-selected
+provider arguments, reuse a discovery-only probe, or promote provider health into an
+engineering verdict. This is the remaining hard runtime gate after the metric,
+preparation and catalogue quick wins.
+
+## F26 — no ID01 sensitivity template exists and proof selections are not perturbation
+
+safe (open, quick win in progress)
+
+The RadialArm admission exposes five named numeric CAD levers, so the signed
+proof-derived offer correctly remains `lever-ambiguous`; the server must not choose one.
+The repository catalogue has no ID01 case. In addition, the proof's face-selection AABBs
+were authored for the base geometry only and cannot simply be copied when the selected
+dimension changes: a stepped thickness extends the Z face beyond the current box.
+
+The intended CAS-54 demonstration selects the source's `arm_height` as the literal
+rectangular-arm thickness lever, keeps the exact `radial_arm_bench_max_displacement_mm`
+Thread feature, and needs a reviewed finite step, mesh and union-of-base-and-stepped
+selection boxes. The template must state remeshing, coarse-mesh/AABB and isolated-bench
+limitations literally. A catalogue case can resolve the ambiguity; it is not a solver
+run, qualification, convergence proof, airframe proof or flight verdict.
+
+## F27 — sensitivity reuse is implemented below production composition but not yet a
+
+measured demo claim (open, deferred until first live study)
+
+Private reuse validation and receipt logic exist, but the live production composition
+does not currently inject the experience coordinator/store. The present receipt counts
+avoided work; it does not by itself measure elapsed-time gain against a comparable cold
+reference run. Therefore no current ID01 evidence may claim automatic reuse, saved
+solver time or a CAS-54 timing result.
+
+First close and qualify the non-reuse study path. Then wire the existing coordinator
+through a bounded production composition, prove exact-domain reuse and stale/out-of-
+domain refusal, and measure warm versus reference execution separately from first-study
+cost. Do not synthesize timings from operation counts.
+
+## F28 — parallel native agents cannot attribute sibling edits in one checkout (open,
+
+workflow friction)
+
+Two bounded Grok implementations used disjoint declared ownership but shared the same
+working tree. The metric/binding task correctly noticed additional sensitivity files had
+become dirty while it ran, but could not distinguish the sibling template task's edits
+from unrelated pre-existing work and began checking whether to restore them. Codex
+stopped that session after its focused tests passed and before any cleanup could erase
+the sibling change. No project source was lost.
+
+For this checkout, continue to allocate exact file sets, let Codex review the combined
+diff, and stop an agent before ambiguous cleanup. A future delegation wrapper could
+record each task's baseline and allowed path set or use isolated worktrees before
+controlled integration. That orchestration change is outside the ID01 engineering
+capability lot; do not solve it by broad resets or by treating all dirty files as agent-
+owned.
+
 ## Expected states, not defects
 
 - The old preview was explicitly pinned to TPS03. It correctly ignored the new durable
