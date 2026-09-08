@@ -384,6 +384,15 @@ verdict; one targeted Terra search supplied only near-miss candidates, and Codex
 the official pages and arithmetic. The project result is therefore not made dependent on
 the stalled Grok session.
 
+Three later read-only V&V reviews completed and returned usable final answers, but again
+loaded the unrelated plugin set and reproduced the collision, unsupported-permission,
+`caveman-shrink` and unauthenticated `magic` warnings. After one valid `end_turn` and
+wrapper exit 0, the runtime also logged
+`Resident session actor exited unexpectedly;
+reaping as DeadFailed`. Codex inspected the
+returned matrices and repository contracts; the warning is not treated as an engineering
+verdict or as proof of healthy Grok session cleanup.
+
 This is a real agent-workflow friction, but not a safe repo-local quick win. Repairing
 it would change the user's global Grok/plugin configuration outside the ID01 scope and
 could affect other work. Leave that configuration untouched here. For now, keep each

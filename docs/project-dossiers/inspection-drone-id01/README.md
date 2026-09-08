@@ -255,6 +255,16 @@ mass and CG remain unresolved. The documents preserve the calculation contract a
 still-missing input packets. They are documentary drafts against pending brief r5, not a
 component selection or a new proof.
 
+The [proportionate verification and test plan](verification-and-test-plan-20260908.md)
+now answers the wider engineering boundary explicitly. It keeps the two accepted
+single-part CalculiX cases and the geometric assembly closeout disjoint, then gates
+propulsion benches, physical interfaces, electrical/thermal work, an external calibrated
+6-DoF plant, SIL/HIL, vibration/EMI checks and progressively authorized physical tests.
+Current admitted Modelica may later carry only a sourced scalar question that fits its
+closed grammar; current prescribed Chrono may later carry an explicit revolute
+mechanism, not rotor or flight dynamics. The plan queues none of those activities and
+invents no criterion.
+
 The freshly restarted read-only BFF now projects project r674 / Thread r93 under
 `engineering-workbench/0.6` and `engineering-cases/1.1`. The accepted assembly-integrity
 closeout is projected as a fresh artifact, and the RadialArm r2 case and project
