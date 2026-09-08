@@ -20,6 +20,24 @@ export interface ProjectAssemblyIntegrityEvaluationReviewDiagnostic {
   readonly message: string;
 }
 
+/**
+ * Paste-ready `project_decision_propose` envelope. `issuedAt` is omitted so
+ * `deno task mcp:call` can fill it; a direct client must add it.
+ */
+export interface ProjectAssemblyIntegrityEvaluationReviewProposal {
+  readonly tool: "project_decision_propose";
+  readonly arguments: {
+    readonly commandId: string;
+    readonly projectId: string;
+    readonly expectedRevision: number;
+    readonly decisionId: string;
+    readonly proposal: {
+      readonly summary: string;
+      readonly parameters: readonly EngineeringDecisionProposalParameter[];
+    };
+  };
+}
+
 export type ProjectAssemblyIntegrityEvaluationReviewResult =
   | {
     readonly status: "resolved";
@@ -40,16 +58,7 @@ export type ProjectAssemblyIntegrityEvaluationReviewResult =
     readonly admission: AssemblyIntegrityEvaluationAdmission;
     readonly decisionParameters: readonly EngineeringDecisionProposalParameter[];
     readonly next: {
-      readonly propose: {
-        readonly tool: "project_decision_propose";
-        readonly arguments: {
-          readonly decisionId: string;
-          readonly proposal: {
-            readonly summary: string;
-            readonly parameters: readonly EngineeringDecisionProposalParameter[];
-          };
-        };
-      };
+      readonly propose: ProjectAssemblyIntegrityEvaluationReviewProposal;
     };
     readonly diagnostics: readonly [];
     readonly grants: "none";

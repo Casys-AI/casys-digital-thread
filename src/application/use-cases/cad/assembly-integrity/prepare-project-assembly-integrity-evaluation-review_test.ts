@@ -1,10 +1,12 @@
 import { assertEquals } from "@std/assert";
 import {
+  projectAssemblyIntegrityEvaluationReviewProposal,
   selectUniquePendingL4Work,
 } from "./prepare-project-assembly-integrity-evaluation-review.ts";
 import {
   VERIFY_EVALUATE_ASSEMBLY_INTEGRITY_OPERATION,
 } from "../../../../domain/cad/assembly-integrity/assembly-integrity-evaluation-proposal.ts";
+import type { AssemblyIntegrityEvaluationAdmission } from "../../../../domain/cad/assembly-integrity/assembly-integrity-evaluation-admission.ts";
 import type {
   EngineeringApprovedBriefBasis,
   EngineeringProjectSnapshot,
@@ -54,6 +56,60 @@ Deno.test("L4 review ignores historical evaluation activity and selects only the
   if (result.status !== "resolved") return;
   assertEquals(result.work.id, current.id);
 });
+
+Deno.test("L4 review next.propose is complete except issuedAt and binds its project target revision", () => {
+  const first = projectAssemblyIntegrityEvaluationReviewProposal({
+    projectId: "project-assembly",
+    expectedRevision: 24,
+    decisionId: "decision-assembly-l4",
+    admission: admission(),
+    decisionParameters: [],
+  });
+  const retry = projectAssemblyIntegrityEvaluationReviewProposal({
+    projectId: "project-assembly",
+    expectedRevision: 24,
+    decisionId: "decision-assembly-l4",
+    admission: admission(),
+    decisionParameters: [],
+  });
+  const later = projectAssemblyIntegrityEvaluationReviewProposal({
+    projectId: "project-assembly",
+    expectedRevision: 30,
+    decisionId: "decision-assembly-l4",
+    admission: admission(),
+    decisionParameters: [],
+  });
+
+  assertEquals(Object.keys(first.arguments).sort(), [
+    "commandId",
+    "decisionId",
+    "expectedRevision",
+    "projectId",
+    "proposal",
+  ]);
+  assertEquals(first.arguments.projectId, "project-assembly");
+  assertEquals(first.arguments.expectedRevision, 24);
+  assertEquals(
+    first.arguments.commandId,
+    "propose-assembly-integrity-aaaaaaaaaaaaaaaa-r9-r24",
+  );
+  assertEquals(first.arguments.commandId.length <= 160, true);
+  assertEquals("issuedAt" in first.arguments, false);
+  assertEquals(retry.arguments.commandId, first.arguments.commandId);
+  assertEquals(later.arguments.expectedRevision, 30);
+  assertEquals(
+    later.arguments.commandId,
+    "propose-assembly-integrity-aaaaaaaaaaaaaaaa-r9-r30",
+  );
+  assertEquals(later.arguments.commandId === first.arguments.commandId, false);
+});
+
+function admission(): AssemblyIntegrityEvaluationAdmission {
+  return {
+    basis: { revision: 9 },
+    observation: { fingerprint: { digest: "a".repeat(64) } },
+  } as AssemblyIntegrityEvaluationAdmission;
+}
 
 function work(
   id: string,

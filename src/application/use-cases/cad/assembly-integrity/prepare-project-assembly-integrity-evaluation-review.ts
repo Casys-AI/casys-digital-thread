@@ -8,6 +8,7 @@
  */
 
 import type {
+  ProjectAssemblyIntegrityEvaluationReviewProposal,
   ProjectAssemblyIntegrityEvaluationReviewRequest,
   ProjectAssemblyIntegrityEvaluationReviewResult,
   ProjectAssemblyIntegrityEvaluationReviewUseCase,
@@ -33,6 +34,7 @@ import {
 import { deterministicJson } from "../../../../domain/kernel/deterministic-json.ts";
 import type {
   EngineeringApprovedBriefBasis,
+  EngineeringDecisionProposalParameter,
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotBasis,
   EngineeringWorkItem,
@@ -258,22 +260,48 @@ export class PrepareProjectAssemblyIntegrityEvaluationReview
       admission,
       decisionParameters,
       next: {
-        propose: {
-          tool: "project_decision_propose" as const,
-          arguments: {
-            decisionId: selectedDecision.decision.id,
-            proposal: {
-              summary:
-                "Prepare the provider-free assembly-integrity evaluation from the exact fresh L3 observation evidence.",
-              parameters: decisionParameters,
-            },
-          },
-        },
+        propose: projectAssemblyIntegrityEvaluationReviewProposal({
+          projectId: request.projectId,
+          expectedRevision: project.revision,
+          decisionId: selectedDecision.decision.id,
+          admission,
+          decisionParameters,
+        }),
       },
       diagnostics: [] as const,
       grants: "none" as const,
     });
   }
+}
+
+/**
+ * Compile the existing generic decision command from only reviewed identity.
+ * The project revision is the proposal target: no append occurs in L4 review.
+ */
+export function projectAssemblyIntegrityEvaluationReviewProposal(input: {
+  readonly projectId: string;
+  readonly expectedRevision: number;
+  readonly decisionId: string;
+  readonly admission: AssemblyIntegrityEvaluationAdmission;
+  readonly decisionParameters: readonly EngineeringDecisionProposalParameter[];
+}): ProjectAssemblyIntegrityEvaluationReviewProposal {
+  const observationDigestPrefix = input.admission.observation.fingerprint.digest
+    .slice(0, 16);
+  return deepFreeze({
+    tool: "project_decision_propose" as const,
+    arguments: {
+      commandId:
+        `propose-assembly-integrity-${observationDigestPrefix}-r${input.admission.basis.revision}-r${input.expectedRevision}`,
+      projectId: input.projectId,
+      expectedRevision: input.expectedRevision,
+      decisionId: input.decisionId,
+      proposal: {
+        summary:
+          "Prepare the provider-free assembly-integrity evaluation from the exact fresh L3 observation evidence.",
+        parameters: input.decisionParameters,
+      },
+    },
+  });
 }
 
 function parseRequest(

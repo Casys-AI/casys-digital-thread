@@ -22,7 +22,7 @@ export function registerProjectAssemblyIntegrityEvaluationReviewTools(
   app.registerTool(projectAssemblyIntegrityEvaluationReviewTool, async (args) => {
     const result = await review.execute(args);
     const content = result.status === "resolved"
-      ? "Resolved one pending current-tip L4 assembly-integrity work item and its exact fresh L3 evidence. Paste next.propose.arguments to prepare the human MRTR decision. This review is read-only: it did not call a provider, evaluate a caller-selected outcome, write a project or Thread record, or satisfy a gate."
+      ? "Resolved one pending current-tip L4 assembly-integrity work item and its exact fresh L3 evidence. Paste next.propose.arguments to prepare the human MRTR decision; the envelope is complete except issuedAt. This review is read-only: it did not call a provider, evaluate a caller-selected outcome, write a project or Thread record, or satisfy a gate."
       : result.status === "unavailable"
       ? "Unavailable: the unique current L4 work, approved Brief basis, or exact L3 evidence could not be reopened. No admission, proposal, capture, verdict, or gate satisfaction was produced."
       : "Unresolved: the exact L3 evidence, canonical module, STEP, input bundle, or normalized observation did not recross. No admission, proposal, capture, verdict, or gate satisfaction was produced.";
