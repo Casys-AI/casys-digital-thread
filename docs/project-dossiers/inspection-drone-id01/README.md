@@ -243,7 +243,12 @@ the ESC used for the T3140 table. Neither propulsion lead is selected. Six offic
 battery candidates remain screened: five fail orthogonal containment in the current 38 ×
 34 × 25 mm reserve; the sixth fits geometrically but fails even the first retained F1404
 label-current row. This bounded search found no candidate that passes both screens, not
-proof that no 4S pack can do so.
+proof that no 4S pack can do so. A later official-catalogue extension added no passing
+card: the shortest exact products found that clear the current arithmetic are still
+`49 mm` long, `11 mm` beyond the reserve maximum. A parallel exact-pair search also
+added no 3-inch propulsion card; its closest better-joined iFlight chain is 2.5-inch and
+therefore remains an out-of-class search boundary. Neither result changes CAD or selects
+hardware.
 
 The [mission sizing decision sheet](mission-sizing-decision-sheet-20260908.md) now keeps
 three reversible workflow shapes separate from human decisions and deliberately leaves

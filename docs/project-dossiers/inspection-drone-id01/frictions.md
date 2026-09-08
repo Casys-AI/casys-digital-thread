@@ -507,6 +507,14 @@ The separately documented F1507 KV3800 + T3140 table is an alternative candidate
 not a repair of F17. It does not establish that `GF3016` was a T3140, nor does it
 resolve the F1404 shaft or motor–propeller interface.
 
+A later bounded official-catalogue search also failed to find a replacement that keeps
+the current motor and approximately 3-inch propeller envelopes while joining exact
+motor/propeller identity to a published electrical/thrust map. The closest better-joined
+iFlight Defender 25 chain is explicitly 2.5-inch and retains its own shaft/interface and
+test-condition gaps. This does not turn the search into a market-wide impossibility; it
+does show that widening local documentation is no longer the cheap repair. F17 remains
+an external supplier-closure friction, not a reason to mutate the current geometry.
+
 ## F18 — F1507 ratings and its T3140 bench endpoint disagree (open, external evidence)
 
 The official LIGPOWER F1507 page reports 23 A peak current for 60 seconds and 372 W

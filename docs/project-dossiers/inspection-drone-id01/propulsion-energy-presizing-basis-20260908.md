@@ -332,6 +332,25 @@ be premature. The mission duration, closed mass ledger and a reviewable
 battery/propulsion candidate packet must first determine whether to enlarge or relocate
 the reserve, source a different pack, or reconsider the propulsion combination.
 
+### Later official-catalogue boundary — no new passing pack
+
+A later bounded search across official Gens ace/Tattu, GAONENG/GNB, BETAFPV, Spektrum
+and iFlight pages found no additional 4S LiPo/LiHV product that both fits the current
+reserve and passes the `20.92 A` label-current screen. This is a documented search
+boundary, not a market-wide absence claim. Two independently reopened GNB rows show the
+shortest useful near-miss found:
+
+| Exact official product                                                                                   |         Published body / mass |           Label arithmetic |                                                    Orthogonal reserve result | Bounded consequence                                                                 |
+| -------------------------------------------------------------------------------------------------------- | ----------------------------: | -------------------------: | ---------------------------------------------------------------------------: | ----------------------------------------------------------------------------------- |
+| [GNB `GNB3504S60A`](https://www.gaoneng.shop/products/gaoneng-gnb-4s-14.8v-350mah-60c-xt30-lipo-battery) | `49 × 23 × 20 mm`; `39 ± 2 g` | `0.350 Ah × 60C = 21.00 A` |                      `0/6`; longest side is `11 mm` over the reserve maximum | clears `20.92 A` by only `0.08 A`, misses `24.64 A` by `3.64 A`                     |
+| [GNB `GNB5504S70A`](https://www.gaoneng.shop/products/gaoneng-gnb-4s-14.8v-550mah-70c-xt30-lipo-battery) | `49 × 28 × 25 mm`; `57 ± 2 g` | `0.550 Ah × 70C = 38.50 A` | `0/6`; longest side is `11 mm` over and shortest side exactly equals `25 mm` | passes both row-current arithmetic screens, but has no body-fit or clearance margin |
+
+The pages publish mass tolerance but no dimensional tolerance. The `49 mm` observation
+does not authorize an 11 mm CAD growth: cable and connector bend, swelling, restraint,
+cooling, tolerance and service clearance are still outside the body dimensions, while
+the mission operating point and usable-energy requirement remain unknown. No new battery
+card is promoted into the configuration matrix.
+
 ## Mission-energy worksheet without an invented mission
 
 The approved brief r4 supplies a mission **kind**, not a quantified mission: exterior

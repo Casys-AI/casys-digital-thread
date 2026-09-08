@@ -181,6 +181,32 @@ now retains all eleven exact 50–100% T3140 rows as an exact source lookup. It 
 interpolate or compare same-percentage F1404/F1507 points as equivalent operating
 conditions.
 
+## Bounded alternative-pair search — no new 3-inch card
+
+A later read-only search covered official LIGPOWER/T-Hobby, iFlight, BETAFPV, GEPRC,
+HGLRC, Flywoo, EMAX, HQProp and Gemfan pages. No additional pairing satisfied all four
+conditions together: motor body within `17.9 × 16.6 mm`, approximately 3-inch propeller
+within the current `76.2 mm` proxy, an exact joined motor/propeller identity, and an
+official thrust/current/power map at a named voltage. This is a bounded search result,
+not proof that no such product exists.
+
+The closest better-joined source was iFlight's product family: the official
+[Defender 25 assembly page](https://shop.iflight.com/Defender25-4S-HD-RTF-Pro1928) names
+its Defender25 1404 motor and Defender25 2525 propeller together. The separate
+[Defender 25 1404 4150KV motor](https://shop.iflight.com/Defender-25-Motor-4PCS-Pro1930)
+page supplies an official test-report image; the separate
+[Defender 2525-3 propeller](https://shop.iflight.com/Defender-25-Prop-Set-Pro1934) page
+controls the named propeller's product dimensions. The published `17.7 × 14.3 mm` motor
+body fits the current motor envelope nominally, but the exact propeller is
+`2.5 in = 63.5 mm`, not the approximately 3-inch class being screened. The motor page
+also states a `1.8 mm` shaft while the propeller page lists `1.9/1.5 mm`; the bench ESC
+and test duration remain unstated. It is therefore recorded only as an out-of-class
+search boundary, not a candidate card or an instruction to shrink the propeller proxy.
+
+The result strengthens the current ordering rather than adding an option: seek the small
+F17 supplier packet for the envelope-compatible F1404 lead, or deliberately reopen the
+propeller-class requirement later. Neither choice is made here.
+
 ## Prepared supplier clarification packet — not sent
 
 The smallest useful request is:
@@ -232,4 +258,6 @@ boundary; Codex accepted the exact-row expansion but not an inter-type ranking. 
 or Astra escalation, provider execution, CAD edit, Project/Thread mutation or broad test
 campaign occurred. A later bounded Grok audit separated the F1507 matching-guide cards
 from the unnamed bench ESC; Codex independently reopened the official motor, ESC and
-catalogue pages before accepting that distinction.
+catalogue pages before accepting that distinction. One final bounded Grok search tested
+alternative exact 3-inch pairings; Codex reopened the closest iFlight product pages and
+retained only the negative search boundary above.
