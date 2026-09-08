@@ -10,7 +10,7 @@ import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 
 export const CALCULIX_HTTP_QUALIFICATION_PROTOCOL = deepFreeze({
-  schemaVersion: "calculix-http-qualification-protocol/1.4",
+  schemaVersion: "calculix-http-qualification-protocol/1.5",
   dispatchTool: MCP_CALCULIX_RECORDED_STATIC_TOOL,
   readbackTool: MCP_CALCULIX_RUN_GET_TOOL,
   acceptedRunState: "completed",
@@ -36,6 +36,8 @@ export const CALCULIX_HTTP_QUALIFICATION_PROTOCOL = deepFreeze({
   ],
   quarantineResourceRule:
     "Role and failure appear together only for provider-resource-content; protocol 1.4 read errors also carry one closed error kind. Historical WAL may omit it. No URI, status, provider message or payload is retained.",
+  resourceReadProjection:
+    "Each listed artifact is projected to the exact uri, mediaType, byteCount and sha256 tuple before the strict MCP reader; provider role remains service-local.",
   resources: CALCULIX_RECORDED_RESOURCE_ORDER,
   evidenceBoundary:
     "Recorded solve and readback only; no product, Thread, requirement, safety, or engineering verdict.",

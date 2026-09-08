@@ -797,7 +797,12 @@ export class CalculixHttpRuntimeQualificationService {
       const resourceRole = qualificationResourceRole(resource.role);
       let resourceBytes: Uint8Array;
       try {
-        resourceBytes = await this.options.readResource(resource);
+        resourceBytes = await this.options.readResource({
+          uri: resource.uri,
+          mediaType: resource.mediaType,
+          byteCount: resource.byteCount,
+          sha256: resource.sha256,
+        });
       } catch (error) {
         throw new CalculixHttpReadbackQuarantine(
           "malformed",

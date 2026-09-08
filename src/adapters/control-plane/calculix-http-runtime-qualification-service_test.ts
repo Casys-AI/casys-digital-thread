@@ -647,6 +647,12 @@ async function fixture(options: {
     provider,
     readResource: async (resource) => {
       resourceReads++;
+      assertEquals(Object.keys(resource).sort(), [
+        "byteCount",
+        "mediaType",
+        "sha256",
+        "uri",
+      ]);
       if (options.resourceRead === "throw") {
         throw new Error("provider detail must not enter qualification WAL");
       }

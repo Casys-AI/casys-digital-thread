@@ -1030,6 +1030,16 @@ are not retained. Reader, qualification-service and WAL tests pass, as does whol
 type checking. A fresh H1-owned physical qualification is still required before choosing
 any wire or provider fix; no header change is justified by static evidence alone.
 
+That protocol-1.4 run retained `input.step` / `read-error` / `unexpected`. The closed
+classification exposed a local pre-network contract fault: the qualification service
+passed the strict reader the five-field ledger artifact, including service-local `role`,
+while `ExpectedProviderResource` deliberately accepts exactly `uri`, `mediaType`,
+`byteCount` and `sha256`. TypeScript structural compatibility hid the runtime surplus
+field, and the reader rejected it before HTTP dispatch. Protocol 1.5 projects the exact
+four-field tuple at the service boundary and adds a regression assertion over the runtime
+keys. This is a code-backed root cause, but closure still requires the fresh H1-owned
+qualification to read all nine artifacts and record an exact attestation.
+
 ## Expected states, not defects
 
 - The old preview was explicitly pinned to TPS03. It correctly ignored the new durable
