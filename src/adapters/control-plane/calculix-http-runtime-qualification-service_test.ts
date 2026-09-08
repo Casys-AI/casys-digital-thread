@@ -147,6 +147,23 @@ Deno.test("CalculiX dispatch acknowledgement loss is recovered by readback only,
   }
 });
 
+Deno.test("CalculiX replays a durable recorded WAL after a post-record crash without redispatch", async () => {
+  const runtime = await fixture({ crashAfterMarkRecorded: 1 });
+  try {
+    const review = await runtime.service.review(runtime.candidate.id);
+    await assertRejects(
+      () => runtime.service.apply(review),
+      Error,
+      "crash-after-mark-recorded",
+    );
+    const recovered = await runtime.service.recover(runtime.candidate.id);
+    assertEquals(recovered.phase, "attested");
+    assertEquals(runtime.provider.dispatches, 1);
+  } finally {
+    await runtime.close();
+  }
+});
+
 Deno.test("CalculiX prepared WAL uses its durable start proof on recovery without a second host start", async () => {
   const runtime = await fixture({ crashBeforeMarkActive: 1 });
   try {
@@ -323,6 +340,28 @@ Deno.test("CalculiX attested WAL rejects absent or divergent stored attestations
   }
 });
 
+Deno.test("CalculiX will not attest if the group reactivates after its attestation append", async () => {
+  const runtime = await fixture({ reactivateAfterAttestationAppend: 1 });
+  try {
+    const review = await runtime.service.review(runtime.candidate.id);
+    await assertRejects(
+      () => runtime.service.apply(review),
+      CalculixHttpRuntimeQualificationError,
+      "still active after stop",
+    );
+    assertEquals(runtime.markAttestedCalls, 0);
+    runtime.states.set(runtime.candidate.material, {
+      material: "installed",
+      runtime: "inactive",
+    });
+    const recovered = await runtime.service.recover(runtime.candidate.id);
+    assertEquals(recovered.phase, "attested");
+    assertEquals(runtime.markAttestedCalls, 1);
+  } finally {
+    await runtime.close();
+  }
+});
+
 async function fixture(options: {
   readonly dispatch?: "complete" | "throw" | "malformed";
   readonly resourceList?: "exact" | "empty";
@@ -330,6 +369,8 @@ async function fixture(options: {
   readonly displacementMm?: number;
   readonly crashBeforeMarkActive?: number;
   readonly crashAfterMarkActive?: number;
+  readonly crashAfterMarkRecorded?: number;
+  readonly reactivateAfterAttestationAppend?: number;
   readonly failQualificationStart?: boolean;
 } = {}) {
   const directory = await Deno.makeTempDir({ prefix: "calculix-qualification-test-" });
@@ -368,6 +409,8 @@ async function fixture(options: {
   );
   let remainingBeforeActive = options.crashBeforeMarkActive ?? 0;
   let remainingAfterActive = options.crashAfterMarkActive ?? 0;
+  let remainingAfterRecorded = options.crashAfterMarkRecorded ?? 0;
+  let markAttestedCalls = 0;
   const attempts = new HookedAttemptStore(innerAttempts, {
     beforeMarkActive: () => {
       if (remainingBeforeActive-- > 0) throw new Error("crash-before-mark-active");
@@ -375,18 +418,33 @@ async function fixture(options: {
     afterMarkActive: () => {
       if (remainingAfterActive-- > 0) throw new Error("crash-after-mark-active");
     },
+    afterMarkRecorded: () => {
+      if (remainingAfterRecorded-- > 0) {
+        throw new Error("crash-after-mark-recorded");
+      }
+    },
+    beforeMarkAttested: () => {
+      markAttestedCalls++;
+    },
   });
   const innerAttestations = new FileCapabilityRuntimeQualificationAttestationStore(
     `${directory}/attestations`,
   );
   let attestationReadMode: "normal" | "absent" | "divergent" = "normal";
+  let remainingReactivations = options.reactivateAfterAttestationAppend ?? 0;
   const attestations = {
     list: () => innerAttestations.list(),
     append: (value: Parameters<typeof innerAttestations.append>[0]) =>
       innerAttestations.append(value),
-    appendQualifiedUnlessRevoked: (
+    appendQualifiedUnlessRevoked: async (
       value: Parameters<typeof innerAttestations.appendQualifiedUnlessRevoked>[0],
-    ) => innerAttestations.appendQualifiedUnlessRevoked(value),
+    ) => {
+      const appended = await innerAttestations.appendQualifiedUnlessRevoked(value);
+      if (remainingReactivations-- > 0) {
+        states.set(candidate.material, { material: "installed", runtime: "active" });
+      }
+      return appended;
+    },
     read: async (fingerprint: Parameters<typeof innerAttestations.read>[0]) => {
       const stored = await innerAttestations.read(fingerprint);
       if (attestationReadMode === "absent") return undefined;
@@ -479,6 +537,9 @@ async function fixture(options: {
     set attestationReadMode(value: "normal" | "absent" | "divergent") {
       attestationReadMode = value;
     },
+    get markAttestedCalls() {
+      return markAttestedCalls;
+    },
     attestations,
     advance: (milliseconds: number) => {
       nowMs += milliseconds;
@@ -527,6 +588,8 @@ class HookedAttemptStore implements CapabilityRuntimeQualificationAttemptStore {
     private readonly hooks: {
       readonly beforeMarkActive?: () => void;
       readonly afterMarkActive?: () => void;
+      readonly afterMarkRecorded?: () => void;
+      readonly beforeMarkAttested?: () => void;
     },
   ) {}
   read(...args: Parameters<CapabilityRuntimeQualificationAttemptStore["read"]>) {
@@ -560,10 +623,12 @@ class HookedAttemptStore implements CapabilityRuntimeQualificationAttemptStore {
   ) {
     return this.inner.claimDispatching(...args);
   }
-  markRecorded(
+  async markRecorded(
     ...args: Parameters<CapabilityRuntimeQualificationAttemptStore["markRecorded"]>
   ) {
-    return this.inner.markRecorded(...args);
+    const value = await this.inner.markRecorded(...args);
+    this.hooks.afterMarkRecorded?.();
+    return value;
   }
   sealDispatchDeadline(
     ...args: Parameters<
@@ -590,6 +655,7 @@ class HookedAttemptStore implements CapabilityRuntimeQualificationAttemptStore {
   markAttested(
     ...args: Parameters<CapabilityRuntimeQualificationAttemptStore["markAttested"]>
   ) {
+    this.hooks.beforeMarkAttested?.();
     return this.inner.markAttested(...args);
   }
 }

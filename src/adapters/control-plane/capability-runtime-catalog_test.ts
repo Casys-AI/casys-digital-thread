@@ -193,7 +193,7 @@ Deno.test("atomic first-party runtime catalogue exposes only runtime materials a
   );
   assertEquals(calculix?.materials[0]?.platforms, ["linux/amd64", "linux/arm64"]);
   assertEquals(calculix?.materials[0]?.launchGroup?.id, "casys-mcp-calculix");
-  assertEquals(calculix?.materials[0]?.launchGroup?.version, "0.8.2");
+  assertEquals(calculix?.materials[0]?.launchGroup?.version, "1.0.0");
   assertEquals(
     calculix?.materials[0]?.launchGroup?.fingerprint.algorithm,
     "sha256",
@@ -210,6 +210,7 @@ Deno.test("atomic first-party runtime catalogue exposes only runtime materials a
     volumes: [
       { id: "calculix-inputs", access: "read-write", preservation: "preserve" },
       { id: "calculix-runs", access: "read-write", preservation: "preserve" },
+      { id: "calculix-exports", access: "read-write", preservation: "preserve" },
     ],
     network: "loopback-only",
     loopbackPorts: [3015],

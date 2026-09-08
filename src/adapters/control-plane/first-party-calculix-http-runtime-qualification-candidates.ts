@@ -60,7 +60,7 @@ export interface CalculixHttpRuntimeQualificationCandidate {
   };
   readonly launchGroup: {
     readonly id: "casys-mcp-calculix";
-    readonly version: "0.8.2";
+    readonly version: "1.0.0";
     readonly fingerprint: ContentFingerprint;
   };
   readonly observedHostPlatform: "linux/arm64";
@@ -106,7 +106,7 @@ export async function createFirstPartyCalculixHttpRuntimeQualificationCandidates
     binding.unitIds.length !== 1 || binding.unitIds[0] !== unit.id ||
     unit.version !== "0.8.2" || material.id !== "mcp-calculix-image" ||
     material.imageReference !== MCP_CALCULIX_082_IMAGE_REFERENCE ||
-    launchGroup.id !== "casys-mcp-calculix" || launchGroup.version !== "0.8.2"
+    launchGroup.id !== "casys-mcp-calculix" || launchGroup.version !== "1.0.0"
   ) {
     throw new TypeError(
       "The first-party CalculiX HTTP qualification candidate drifted.",

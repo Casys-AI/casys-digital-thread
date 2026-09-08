@@ -7,7 +7,7 @@ engineering method, or interpret an engineering result. The first-party launch-g
 registry enrolls five persistent topologies: `casys-syson@1.0.1` (Postgres, SysON and
 `mcp-syson`, with only `127.0.0.1:3009` published), `casys-build123d-sandbox@1.0.0`,
 `casys-build123d-observation@1.0.0`, `casys-chrono@1.0.0`, and
-`casys-mcp-calculix@0.8.2`. Enrollment is candidacy. It does not start a service. The
+`casys-mcp-calculix@1.0.0`. Enrollment is candidacy. It does not start a service. The
 historical SysON UI port 8180 is not part of `casys-syson`.
 
 `casys-chrono@1.0.0` is a one-service topology. The topology itself does not carry a
@@ -18,6 +18,13 @@ overlay is the private [local runtime qualification](local-runtime-qualification
 CLI, not an MCP operation, Workbench command, or engineering run. The HTTP
 `casys.mcp-calculix@0.8.2` catalogue baseline likewise remains `unqualified`; only its
 own exact host-local attestation can make the matching native binding effective.
+
+The CalculiX successor group is `casys-mcp-calculix@1.0.0`, with Compose project
+`casys-mcp-calculix-v1`. It retains exactly `calculix-inputs:/inputs`,
+`calculix-runs:/var/lib/mcp-calculix-runs`, and `calculix-exports:/exports`. The image
+requires `/exports`, but that volume is private and retained: it is never proof/evidence
+or a CAD exchange. This group declares no Docker healthcheck. Its sealed operational
+readiness is MCP `tools/list`: 15 s total, 1 s per attempt, with 250 ms between retries.
 
 ## Durable local read model
 
@@ -150,14 +157,18 @@ covers every member. Runtime start performs journalled image acquisition, then e
 docker compose … up --detach --wait --wait-timeout 300 --pull never --no-build
 ```
 
+For a group without a Docker healthcheck, `--wait` establishes process startup only. The
+CalculiX group becomes active only after its separate sealed MCP `tools/list` readiness
+succeeds.
+
 There is no `--no-deps`, implicit pull, `down`, `down -v`, image removal, volume removal
 or orphan removal in ordinary preload/JIT lifecycle. The separate private administrative
 removal review may remove one complete inactive group only after its exact plan,
 inactive lock, lease/JIT/ledger/journal checks and ownership reread. It never removes
 retained volumes, runs prune, accepts a tag/alias, or touches a foreign container. The
-adapter fresh-inspects image digests, exact Compose ownership and health after every
-action. Stop revalidates the exact owned container IDs and stops them in reverse group
-order; a same-name foreign or ambiguous container is never touched.
+adapter fresh-inspects image digests, exact Compose ownership and declared Docker health
+after every action. Stop revalidates the exact owned container IDs and stops them in
+reverse group order; a same-name foreign or ambiguous container is never touched.
 
 Terminal release evaluates remaining JIT demand per group, stops eligible groups in
 reverse canonical order while retaining the shared lease, and removes the lease only

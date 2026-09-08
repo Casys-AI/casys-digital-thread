@@ -87,9 +87,13 @@ shared named network or invented healthcheck, and retain their volumes.
 Catalogue/project data cannot carry Compose commands, provider endpoints, tools,
 arguments or secret values. `casys.mcp-chrono@0.3.2` names the separate single-service
 `casys-chrono@1.0.0` group. `casys.mcp-calculix@0.8.2` names the separate single-service
-`casys-mcp-calculix@0.8.2` group. Its immutable Compose body remains in the server-only
-H1 registry, has no invented healthcheck, and retains its private inputs and run-ledger
-volumes. Every current microVM material, and any future cache-only material, keeps
+`casys-mcp-calculix@1.0.0` group in Compose project `casys-mcp-calculix-v1`. Its
+immutable Compose body remains in the server-only H1 registry, has no Docker
+healthcheck, and retains exactly `calculix-inputs:/inputs`,
+`calculix-runs:/var/lib/mcp-calculix-runs`, and `calculix-exports:/exports`. The image
+requires `/exports`; that private retained volume is never proof/evidence or a CAD
+exchange. Its sealed MCP `tools/list` readiness is 15 s total, 1 s per attempt, and 250
+ms retry. Every current microVM material, and any future cache-only material, keeps
 `launchGroup: null`: an image alone never enrolls a topology. Registry enrollment is
 candidacy; it does not start a service.
 
@@ -111,15 +115,18 @@ does not rewrite this catalogue or the Microsandbox runtime digest. See
 The semantic capability `mechanics.observe-static-structural-sensitivity@1` names only
 two static-structural sensitivity observations, never a verdict. Its concrete
 `calculix-http-static-sensitivity@1` binding points to `casys.mcp-calculix@0.8.2` and
-its sealed `casys-mcp-calculix@0.8.2` group, but its repository baseline remains
+its sealed `casys-mcp-calculix@1.0.0` group, but its repository baseline remains
 deliberately `unqualified`. The group declares only the published `http` command,
-loopback 3015 and retained private `calculix-inputs`/`calculix-runs` volumes; its image
-supports reviewed `linux/arm64` and `linux/amd64` platforms, with no forced platform or
-invented health endpoint. Without a matching exact host-local attestation the planner
-reports the binding as `unavailable` and cannot pull, start or call the HTTP service.
-The recorded solve/readback implementation, image presence, discovery and health are not
-that attestation. `mechanics.solve-static-structural@1` remains separately bound to
-`casys.calculix-worker` for isolated product static proof.
+loopback 3015 and its three retained private volumes: `calculix-inputs:/inputs`,
+`calculix-runs:/var/lib/mcp-calculix-runs`, and `calculix-exports:/exports`. `/exports`
+is required by the image but is neither proof/evidence nor a CAD exchange. The group has
+no Docker healthcheck; it uses only sealed MCP `tools/list` readiness (15 s total, 1 s
+per attempt, 250 ms retry). Its image supports reviewed `linux/arm64` and `linux/amd64`
+platforms, with no forced platform. Without a matching exact host-local attestation the
+planner reports the binding as `unavailable` and cannot pull, start or call the HTTP
+service. The recorded solve/readback implementation, image presence, discovery and
+readiness are not that attestation. `mechanics.solve-static-structural@1` remains
+separately bound to `casys.calculix-worker` for isolated product static proof.
 
 ## Closed planning states
 

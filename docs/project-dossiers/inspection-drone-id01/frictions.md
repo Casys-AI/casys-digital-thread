@@ -846,6 +846,60 @@ revocation, malformed-ACK, resource-list, repeat-apply and overlay tests pass; a
 Deno check and diff check pass. This closes an implementation defect only. F25 remains
 open until a real host run reaches a stopped qualified WAL and exact attestation.
 
+## F31 — the live CalculiX image exposed an undeclared anonymous `/exports` volume
+
+mitigated, live successor qualification pending
+
+The first native ARM64 qualification started the real published CalculiX image, but H1
+correctly refused the launch group before any provider solve. The image declares
+`VOLUME /exports`; the sealed `0.8.2` Compose descriptor named only `/inputs` and
+`/var/lib/mcp-calculix-runs`. Docker therefore created a third anonymous volume and the
+exact mount-topology observation became `degraded`. No provider dispatch or engineering
+evidence was published.
+
+H1 terminalized that exact failed start through one durable cleanup-stop intent and
+proof `059fa095c755c4b2c7a023718a3eccf2bbe8de45d946431190f10d87845cd041`; the legacy
+container is stopped and the reserved lease is absent. The code-owned successor
+`casys-mcp-calculix@1.0.0` uses the distinct `casys-mcp-calculix-v1` Compose project,
+seals `calculix-exports:/exports`, and declares bounded read-only MCP readiness. The
+friction closes only after this successor completes a real host qualification; neither
+the stopped legacy container nor endpoint reachability is qualification.
+
+## F32 — Workbench and capability-admin omitted the CalculiX fixture read grant
+
+closed, quick win
+
+Adding the code-owned CalculiX qualification candidate made both the read-only Workbench
+composition and `capability:admin status` read `examples/bracket/bracket.step`. Their
+Deno launch grants did not include that anchored fixture: the Workbench BFF exited and
+Vite returned `Engineering Workbench HTTP 502`, while the admin status command failed
+with `NotCapable`.
+
+The launch grants now include only `examples/bracket`. The focused preview suite passes
+11/11, `capability:admin status` completes successfully, and the Vite page, BFF health
+endpoint and proxied Workbench endpoint each return HTTP 200. This permission fix adds
+no project artifact and makes no engineering claim.
+
+## F33 — the first failed-start cleanup draft stranded a crash after physical stop
+
+closed, quick win
+
+Independent review found that the initial recovery path handled a recorded successful
+stop but blocked forever if Docker stopped the container and the process crashed before
+the stop outcome was appended. On retry it saw a pending intent, retained the lease and
+refused a second stop, but had no read-only convergence path.
+
+The cleanup proof now distinguishes a real host outcome from
+`observed-all-inactive-after-exact-intent`; it never synthesizes a successful outcome.
+Checkpoint `e80276d1` admitted the retired mount shape only for the exact one-time
+qualification-system cleanup and its already-stopped crash readback. That cleanup
+completed and wrote proof
+`059fa095c755c4b2c7a023718a3eccf2bbe8de45d946431190f10d87845cd041`. The temporary
+topology exception has since been removed: generic failed-start recovery remains, while
+the retired anonymous-mount container is again strictly `degraded` and cannot be treated
+as owned for a new mutation. The dedicated recovery tests and the strict Compose host
+suite pass.
+
 ## Expected states, not defects
 
 - The old preview was explicitly pinned to TPS03. It correctly ignored the new durable

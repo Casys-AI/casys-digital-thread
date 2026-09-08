@@ -36,7 +36,7 @@ Deno.test("the first-party CalculiX HTTP qualification candidate is exact, nativ
     "ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
   );
   assertEquals(candidate.launchGroup.id, "casys-mcp-calculix");
-  assertEquals(candidate.launchGroup.version, "0.8.2");
+  assertEquals(candidate.launchGroup.version, "1.0.0");
   assertEquals(candidate.observedHostPlatform, "linux/arm64");
   assertEquals(candidate.targetPlatform, "linux/arm64");
   assertEquals(candidate.mode, "native");

@@ -194,6 +194,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         [
           volume("calculix-inputs", "read-write", "preserve"),
           volume("calculix-runs", "read-write", "preserve"),
+          volume("calculix-exports", "read-write", "preserve"),
         ],
         "reviewed",
         calculixLaunchGroup,

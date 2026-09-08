@@ -43,13 +43,14 @@ Sensitivity adapters by authority: `study/`, `edges/`, `base-evaluation/`,
 
 #### [`src/adapters/sensitivity/server-composition.ts`](../../../src/adapters/sensitivity/server-composition.ts)
 
-Sensitivity composition binds the fixed recorded CalculiX adapter and exact-group input
-stager behind server-owned ports. The HTTP CalculiX sensitivity binding is deliberately
-unqualified and non-activable until a separate live qualification; its sealed launch
-group and recorded protocol do not alter that state. Product static proof remains
-separate on the isolated CalculiX worker; base evaluation and edges require SysON. Vector
-correction is not authorized by a proof-run evaluation. Corrections return through
-`AgentResource` plus a successor workspace file revision, not an admission seal.
+Sensitivity composition binds the fixed recorded CalculiX adapter and the H1-owned exact
+`casys-mcp-calculix@1.0.0` group input stager behind server-owned ports. The HTTP
+CalculiX sensitivity binding is deliberately unqualified and non-activable until a
+separate live qualification; its sealed launch group and recorded protocol do not alter
+that state. Product static proof remains separate on the isolated CalculiX worker; base
+evaluation and edges require SysON. Vector correction is not authorized by a proof-run
+evaluation. Corrections return through `AgentResource` plus a successor workspace file
+revision, not an admission seal.
 
 #### [`src/domain/sensitivity/study/sensitivity-study.ts`](../../../src/domain/sensitivity/study/sensitivity-study.ts)
 
@@ -214,7 +215,8 @@ mesh/loads/metrics and sets `step` to the sealed proof mesh target size
 
 #### Retired direct provider smoke
 
-The former root-Compose synchronous CalculiX parser and smoke gates were retired with
-the shared `/exports` topology. Recorded sensitivity owns the fixed
+The former root-Compose synchronous CalculiX parser and smoke gates were retired. The
+successor's required `calculix-exports:/exports` mount is private and retained; it is
+never proof/evidence or a CAD exchange. Recorded sensitivity owns the fixed
 `calculix_solve_static_recorded` + readback protocol in
 `mcp-calculix-sensitivity-solver.ts`; it is never a result verdict.

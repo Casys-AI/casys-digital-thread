@@ -70,6 +70,7 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
   assertEquals(calculix?.network?.sharedVolumes, [
     "calculix-inputs:/inputs",
     "calculix-runs:/var/lib/mcp-calculix-runs",
+    "calculix-exports:/exports",
   ]);
   assertEquals(calculix?.network?.composeNetwork, undefined);
   assertEquals(calculix?.healthUrl, undefined);
@@ -205,8 +206,17 @@ Deno.test("CalculiX sensitivity is absent from root Compose and has one sealed p
   assertEquals(calculix.volumes, [
     "calculix-inputs:/inputs",
     "calculix-runs:/var/lib/mcp-calculix-runs",
+    "calculix-exports:/exports",
   ]);
   assertEquals(calculix.ports, ["127.0.0.1:3015:3015"]);
+  assertEquals(group.version, "1.0.0");
+  assertEquals(group.acquisition.projectName, "casys-mcp-calculix-v1");
+  assertEquals(group.readiness, {
+    kind: "mcp-tools-list",
+    timeoutMs: 15_000,
+    attemptTimeoutMs: 1_000,
+    retryIntervalMs: 250,
+  });
   assertEquals(group.security, "reviewed");
   assertEquals(/DockerVolumeAssetStager/.test(sensitivityCompositionSource), false);
 });

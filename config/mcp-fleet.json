@@ -222,7 +222,8 @@
         "exposure": "loopback-only",
         "sharedVolumes": [
           "calculix-inputs:/inputs",
-          "calculix-runs:/var/lib/mcp-calculix-runs"
+          "calculix-runs:/var/lib/mcp-calculix-runs",
+          "calculix-exports:/exports"
         ],
         "upstreams": []
       },

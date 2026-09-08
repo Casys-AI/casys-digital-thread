@@ -567,28 +567,7 @@ export class CalculixHttpRuntimeQualificationService {
       attempt = await this.#stop(candidate, identity, attempt);
     }
     if (attempt.phase === "stopped" && attempt.outcome.status === "qualified") {
-      await this.#verifyStopped(candidate, identity, attempt);
-      if (await this.#hasExactRevocation(candidate, identity)) {
-        throw unavailable("CalculiX qualification is revoked.");
-      }
-      const attestation = await createCapabilityRuntimeQualificationAttestation({
-        attempt,
-        candidate,
-        spec: this.#spec(candidate),
-      });
-      const appended = await this.options.attestations.appendQualifiedUnlessRevoked(
-        attestation,
-      );
-      if (appended.status === "revoked") {
-        throw unavailable("CalculiX qualification is revoked.");
-      }
-      const stored = await this.options.attestations.read(attestation.fingerprint);
-      if (!stored || !fingerprintsEqual(stored.fingerprint, attestation.fingerprint)) {
-        throw unavailable("CalculiX qualification attestation was not readable.");
-      }
-      attempt = await this.options.attempts.markAttested(identity, {
-        attestationFingerprint: stored.fingerprint,
-      });
+      attempt = await this.#attest(candidate, identity, attempt);
     }
     return attempt;
   }
@@ -620,21 +599,16 @@ export class CalculixHttpRuntimeQualificationService {
     >,
     recordedDispatch?: unknown,
   ): Promise<CapabilityRuntimeQualificationAttempt> {
+    let evidence: {
+      readonly receiptFingerprint: ContentFingerprint;
+      readonly criteriaError: boolean;
+    };
     try {
-      const evidence = await this.#readCompletedEvidence(
+      evidence = await this.#readCompletedEvidence(
         candidate,
         identity.requestId,
         recordedDispatch,
       );
-      // A recorded receipt is only written after the fixed ledger and every
-      // resource byte have been parsed and re-hashed.  Metric failure is an
-      // evidence-backed outcome below, never a malformed-host verdict.
-      const recorded = await this.options.attempts.markRecorded(identity, {
-        receiptSha256: evidence.receiptFingerprint.digest,
-        receiptFingerprint: evidence.receiptFingerprint,
-      });
-      if (recorded.phase !== "recorded") return recorded;
-      return await this.#outcomeFromEvidence(identity, recorded, evidence);
     } catch (error) {
       if (attempt.phase === "quarantined") return attempt;
       const message = error instanceof Error ? error.message : String(error);
@@ -646,6 +620,16 @@ export class CalculixHttpRuntimeQualificationService {
           : "malformed",
       });
     }
+    // Persist only a fully parsed, byte-checked, and criteria-checked
+    // readback. Storage failures must escape: swallowing one here could turn a
+    // crash after a durable `recorded` transition into a contradictory
+    // quarantine attempt instead of allowing recorded-WAL recovery.
+    const recorded = await this.options.attempts.markRecorded(identity, {
+      receiptSha256: evidence.receiptFingerprint.digest,
+      receiptFingerprint: evidence.receiptFingerprint,
+    });
+    if (recorded.phase !== "recorded") return recorded;
+    return await this.#outcomeFromEvidence(identity, recorded, evidence);
   }
 
   async #outcomeRecorded(
@@ -857,6 +841,47 @@ export class CalculixHttpRuntimeQualificationService {
       throw unavailable("CalculiX qualification host is still active after stop.");
     }
     return attempt;
+  }
+
+  async #attest(
+    candidate: CalculixHttpRuntimeQualificationCandidate,
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+    attempt: Extract<
+      CapabilityRuntimeQualificationAttempt,
+      { readonly phase: "stopped" }
+    >,
+  ): Promise<CapabilityRuntimeQualificationAttempt> {
+    await this.#verifyStopped(candidate, identity, attempt);
+    await this.#assertHostMatchesIdentity(identity);
+    if (await this.#hasExactRevocation(candidate, identity)) {
+      throw unavailable("CalculiX qualification is revoked.");
+    }
+    const attestation = await createCapabilityRuntimeQualificationAttestation({
+      attempt,
+      candidate,
+      spec: this.#spec(candidate),
+    });
+    const appended = await this.options.attestations.appendQualifiedUnlessRevoked(
+      attestation,
+    );
+    if (appended.status === "revoked") {
+      throw unavailable("CalculiX qualification is revoked.");
+    }
+    const stored = await this.options.attestations.read(attestation.fingerprint);
+    if (!stored || !fingerprintsEqual(stored.fingerprint, attestation.fingerprint)) {
+      throw unavailable("CalculiX qualification attestation was not readable.");
+    }
+    // The append is not the terminal WAL transition. Re-establish both of its
+    // environmental predicates immediately before marking the WAL attested so
+    // a concurrent revocation or runtime reactivation cannot be hidden by an
+    // otherwise valid stored event.
+    if (await this.#hasExactRevocation(candidate, identity)) {
+      throw unavailable("CalculiX qualification is revoked.");
+    }
+    await this.#verifyStopped(candidate, identity, attempt);
+    return await this.options.attempts.markAttested(identity, {
+      attestationFingerprint: stored.fingerprint,
+    });
   }
 
   async #hasExactRevocation(

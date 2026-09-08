@@ -74,7 +74,7 @@ Deno.test("CalculiX sensitivity staging copies once through the exact owned laun
       "ls",
       "--all",
       "--filter",
-      "label=com.docker.compose.project=casys-mcp-calculix",
+      "label=com.docker.compose.project=casys-mcp-calculix-v1",
       "--filter",
       "label=com.docker.compose.service=mcp-calculix",
       "--format",
@@ -139,14 +139,14 @@ Deno.test("CalculiX sensitivity staging rejects bind, mismatched, or ambiguous l
       name: "bind",
       mounts: [
         { ...expected[0]!, Type: "bind", Name: "", Source: "/tmp/inputs" },
-        expected[1]!,
+        ...expected.slice(1),
       ],
     },
     {
       name: "wrong-volume",
       mounts: [
         { ...expected[0]!, Name: "casys-mcp-calculix_other-inputs" },
-        expected[1]!,
+        ...expected.slice(1),
       ],
     },
     {
@@ -305,6 +305,12 @@ function ownedMounts(
       Type: "volume",
       Name: `${prefix}_calculix-runs`,
       Destination: "/var/lib/mcp-calculix-runs",
+      RW: true,
+    },
+    {
+      Type: "volume",
+      Name: `${prefix}_calculix-exports`,
+      Destination: "/exports",
       RW: true,
     },
   ];

@@ -12,7 +12,6 @@ import type {
   CapabilityRuntimePlatform,
 } from "../../domain/capability/runtime/capability-runtime-material.ts";
 import {
-  CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
   validateCapabilityRuntimeAdministrativeRemovalPlan,
 } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
 import {
@@ -159,12 +158,7 @@ class ComposeCapabilityRuntimeHost
         materials.some((material) => sameMaterial(material, candidate.material))
       );
       if (!requested) continue;
-      const inspection = await this.#inspect(group, undefined, {
-        legacyFailedQualificationStartStop:
-          await this.#allowsQualificationSystemStopInactiveReadback(group)
-            ? "inactive-readback"
-            : undefined,
-      });
+      const inspection = await this.#inspect(group);
       for (const member of group.materials) {
         if (materials.some((material) => sameMaterial(material, member.material))) {
           result.set(
@@ -279,13 +273,8 @@ class ComposeCapabilityRuntimeHost
       );
     }
     const launch = await this.#launch(group);
-    const legacyFailedQualificationStartStop = entry.action === "runtime-stop" &&
-        entry.projectId === CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID
-      ? "stop-mutation" as const
-      : undefined;
     const before = await this.#inspect(group, launch, {
       ignorePendingReadiness: true,
-      legacyFailedQualificationStartStop,
     });
     if (before.ownership === "mismatch") {
       return this.#outcome(
@@ -323,7 +312,6 @@ class ComposeCapabilityRuntimeHost
       (execution.success && await this.#awaitReadiness(launch));
     const after = await this.#inspect(group, launch, {
       ignorePendingReadiness: true,
-      legacyFailedQualificationStartStop,
     });
     const satisfied = readinessReady && satisfies(entry.action, after);
     const readinessTimedOut = isRuntimeStartAction(entry.action) &&
@@ -702,9 +690,6 @@ class ComposeCapabilityRuntimeHost
     supplied?: Launch,
     options: {
       readonly ignorePendingReadiness?: boolean;
-      readonly legacyFailedQualificationStartStop?:
-        | "stop-mutation"
-        | "inactive-readback";
     } = {},
   ): Promise<GroupInspection> {
     const launch = supplied ?? await this.#launch(group);
@@ -762,16 +747,7 @@ class ComposeCapabilityRuntimeHost
           !hasExactNamedVolumeMounts(
             actual.mounts,
             launch.expectedMounts.get(member.serviceName)!,
-          ) &&
-          !(options.legacyFailedQualificationStartStop !== undefined &&
-            (options.legacyFailedQualificationStartStop === "stop-mutation" ||
-              actual.status === "exited") &&
-            hasExactLegacyCalculixFailedStartStopMounts(
-              group,
-              member,
-              actual.mounts,
-              launch.expectedMounts.get(member.serviceName)!,
-            ))
+          )
         ) {
           ownership = "mismatch";
           state = { ...state, runtime: "degraded" };
@@ -823,33 +799,6 @@ class ComposeCapabilityRuntimeHost
       values.push({ material: member.material, state });
     }
     return { ownership, states, values, owned };
-  }
-
-  /**
-   * A crash after an exact qualification-system stop may leave the physical
-   * container stopped while its outcome is absent. Only that durable pending
-   * or non-succeeded stop tip may use the retired CalculiX mount shape for an
-   * inactive readback; a running container remains degraded outside the host
-   * mutation itself.
-   */
-  async #allowsQualificationSystemStopInactiveReadback(
-    group: CapabilityRuntimeLaunchGroup,
-  ): Promise<boolean> {
-    const reference = capabilityRuntimeLaunchGroupReference(group);
-    const latest = (await this.options.journal.list()).filter((entry) =>
-      sameCapabilityRuntimeLaunchGroupReference(entry.launchGroup, reference)
-    ).toSorted((left, right) =>
-      left.plannedAt.localeCompare(right.plannedAt) || left.id.localeCompare(right.id)
-    ).at(-1);
-    if (
-      !latest || latest.action !== "runtime-stop" ||
-      latest.projectId !== CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID ||
-      !sameGroupMaterials(group, latest.materials)
-    ) return false;
-    const outcome = (await this.options.journal.listOutcomes()).find((candidate) =>
-      candidate.journalEntryId === latest.id
-    );
-    return outcome?.status !== "succeeded";
   }
 
   /**
@@ -1451,43 +1400,6 @@ function hasExactNamedVolumeMounts(
     seen.add(mount.destination);
   }
   return seen.size === expectedByDestination.size;
-}
-
-/**
- * One retired CalculiX topology was started by H1 before the image-declared
- * `/exports` volume was represented in the sealed Compose descriptor. The
- * exception is intentionally usable only by the qualification-system
- * runtime-stop path and its exact stopped readback after an unrecorded or
- * non-succeeded outcome. Normal running observation and every start keep
- * treating this topology as mismatched, so it can never become operational
- * evidence.
- */
-function hasExactLegacyCalculixFailedStartStopMounts(
-  group: CapabilityRuntimeLaunchGroup,
-  member: CapabilityRuntimeLaunchGroup["materials"][number],
-  actual: readonly InspectedContainerMount[],
-  expected: readonly ExpectedNamedVolumeMount[],
-): boolean {
-  if (
-    group.id !== "casys-mcp-calculix" || group.version !== "0.8.2" ||
-    group.fingerprint.algorithm !== "sha256" ||
-    group.fingerprint.digest !==
-      "2d2385c2183f613406b6119c1d9ce0de8a75ddf3041a1731446532ae96064a9a" ||
-    group.acquisition.projectName !== "casys-mcp-calculix" ||
-    group.materials.length !== 1 || member.serviceName !== "mcp-calculix" ||
-    member.material.imageDigest !==
-      "ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8" ||
-    actual.length !== expected.length + 1
-  ) return false;
-  const legacy = actual.filter((mount) => mount.destination === "/exports");
-  if (
-    legacy.length !== 1 || legacy[0]!.type !== "volume" ||
-    legacy[0]!.readWrite !== true || !/^[a-f0-9]{64}$/.test(legacy[0]!.name)
-  ) return false;
-  return hasExactNamedVolumeMounts(
-    actual.filter((mount) => mount.destination !== "/exports"),
-    expected,
-  );
 }
 
 function plainRecord(value: unknown): Record<string, unknown> | undefined {

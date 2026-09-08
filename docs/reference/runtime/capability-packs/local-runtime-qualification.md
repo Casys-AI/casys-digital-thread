@@ -20,13 +20,21 @@ bytes, protocol and criteria (including pose/residual tolerances). An older atte
 cannot make the binding effective after that spec changes.
 
 `calculix-http-arm64-native-v1` binds `calculix-http-static-sensitivity@1.0.0` to
-`casys.mcp-calculix@0.8.2` / `casys-mcp-calculix@0.8.2` on an observed and targeted
+`casys.mcp-calculix@0.8.2` / `casys-mcp-calculix@1.0.0` on an observed and targeted
 `linux/arm64` Docker daemon in `native` mode. Its fixed bracket fixture closes the STEP
 bytes, mesh, material, support, load, recorded request, factual displacement/stress
 bounds, nine-resource ledger and the `resources/list` bijection. The matching
 `calculix-http-arm64-native-v1-spec` fingerprints candidate, source, lowering, template
 case, protocol and criteria. No caller can substitute a provider, image, endpoint,
 method argument or product source.
+
+The successor retains the provider/unit `casys.mcp-calculix@0.8.2` and its pinned image
+digest. Its sealed Compose project is `casys-mcp-calculix-v1`, with exactly
+`calculix-inputs:/inputs`, `calculix-runs:/var/lib/mcp-calculix-runs`, and
+`calculix-exports:/exports`. `/exports` is required by the image but is private and
+retained, never proof/evidence or a CAD exchange. There is no Docker healthcheck;
+readiness is only the sealed MCP `tools/list` probe (15 s total, 1 s per attempt, 250 ms
+retry).
 
 ## Chrono review, apply, recover
 
@@ -121,11 +129,11 @@ the qualification WAL or call CalculiX.
 
 `apply` recomputes the review and refuses a stale fingerprint or missing `--confirm`.
 Under H1 it prepares the WAL before mutation, acquires the reserved qualification lease,
-starts only the exact inactive `casys-mcp-calculix` group, stages the fixed STEP through
-that lease, and durably claims one dispatch. The recorded solve uses the attempt-derived
-request id, never the reusable fixture-template id. A returned dispatch acknowledgement
-must parse and bind that request; transport loss after the claim permits only
-same-request readback, never redispatch.
+starts only the exact inactive `casys-mcp-calculix@1.0.0` group, stages the fixed STEP
+through that lease, and durably claims one dispatch. The recorded solve uses the
+attempt-derived request id, never the reusable fixture-template id. A returned dispatch
+acknowledgement must parse and bind that request; transport loss after the claim permits
+only same-request readback, never redispatch.
 
 A qualifying readback must be `completed`, name the exact request and STEP, expose the
 ordered nine-resource ledger, and have an exact `resources/list` bijection using the

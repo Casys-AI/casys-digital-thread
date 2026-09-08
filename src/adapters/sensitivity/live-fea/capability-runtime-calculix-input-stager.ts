@@ -40,8 +40,10 @@ const CALCULIX_GROUP_ID = "casys-mcp-calculix";
 const CALCULIX_SERVICE_NAME = "mcp-calculix";
 const INPUT_DIRECTORY = "/inputs";
 const RUNS_DIRECTORY = "/var/lib/mcp-calculix-runs";
+const EXPORTS_DIRECTORY = "/exports";
 const INPUT_VOLUME = "calculix-inputs";
 const RUNS_VOLUME = "calculix-runs";
+const EXPORTS_VOLUME = "calculix-exports";
 const CONTAINER_ID = /^[a-f0-9]{12,64}$/;
 const STAGED_STEP_FILE = /^fea-([a-f0-9]{64})\.step$/;
 
@@ -238,7 +240,7 @@ class OwnedLaunchGroupContainerAssetStager implements ContainerAssetStager {
       throw new ContainerAssetStagingError(
         "post_read_failed",
         { service: this.options.member.serviceName, containerId: id },
-        "Exact CalculiX launch-group container is not a running owned digest-pinned service with its two sealed volume mounts.",
+        "Exact CalculiX launch-group container is not a running owned digest-pinned service with its three sealed volume mounts.",
       );
     }
     const image = await this.options.run("docker", ["image", "inspect", actual.image]);
@@ -312,17 +314,18 @@ function parseOwnedContainer(
 /**
  * Docker ownership is not established by labels alone: a same-name service
  * could otherwise stage input into a bind or unrelated volume. The sealed
- * single-service group has exactly these retained named volumes and nothing
+ * single-service group has exactly these three retained named volumes and nothing
  * else; reject before any `docker cp` mutation when inspection differs.
  */
 function hasExactCalculixVolumeMounts(
   value: unknown,
   group: CapabilityRuntimeLaunchGroup,
 ): boolean {
-  if (!Array.isArray(value) || value.length !== 2) return false;
+  if (!Array.isArray(value) || value.length !== 3) return false;
   const expected = new Map([
     [INPUT_DIRECTORY, `${group.acquisition.projectName}_${INPUT_VOLUME}`],
     [RUNS_DIRECTORY, `${group.acquisition.projectName}_${RUNS_VOLUME}`],
+    [EXPORTS_DIRECTORY, `${group.acquisition.projectName}_${EXPORTS_VOLUME}`],
   ]);
   const seen = new Set<string>();
   for (const mount of value) {

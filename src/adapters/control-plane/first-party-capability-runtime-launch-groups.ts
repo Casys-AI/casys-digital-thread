@@ -62,8 +62,9 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
       "mcp-calculix": {
         image: MCP_CALCULIX_082_IMAGE_REFERENCE,
         // mcp-calculix 0.8.2 owns HTTP startup through its published `http`
-        // mode. It exposes no /health endpoint, so the sealed group makes no
-        // invented readiness claim; process state remains operational only.
+        // mode. H1 proves lifecycle readiness through the sealed read-only MCP
+        // tools/list handshake below; provider health never becomes a
+        // qualification or engineering verdict.
         command: ["http"],
         environment: {
           CALCULIX_MAX_RECORDED_RUNS: "24",
@@ -73,12 +74,14 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
         volumes: [
           "calculix-inputs:/inputs",
           "calculix-runs:/var/lib/mcp-calculix-runs",
+          "calculix-exports:/exports",
         ],
       },
     },
     volumes: {
       "calculix-inputs": {},
       "calculix-runs": {},
+      "calculix-exports": {},
     },
   });
   const calculixCompose = {
@@ -91,16 +94,19 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
   const calculixBody = {
     schemaVersion: "capability-runtime-launch-group/2.0" as const,
     id: "casys-mcp-calculix",
-    version: "0.8.2",
+    version: "1.0.0",
     activationPolicy: "persistent" as const,
-    acquisition: { kind: "compose" as const, projectName: "casys-mcp-calculix" },
+    acquisition: {
+      kind: "compose" as const,
+      projectName: "casys-mcp-calculix-v1",
+    },
     materials: [
       material(
         "casys.mcp-calculix",
         "mcp-calculix-image",
         MCP_CALCULIX_082_IMAGE_REFERENCE,
         "mcp-calculix",
-        "casys-mcp-calculix",
+        "casys-mcp-calculix-v1",
       ),
     ],
     compose: calculixCompose,
@@ -110,6 +116,12 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
       volumes: "preserve" as const,
     },
     secretSlots: [],
+    readiness: {
+      kind: "mcp-tools-list" as const,
+      timeoutMs: 15_000,
+      attemptTimeoutMs: 1_000,
+      retryIntervalMs: 250,
+    },
     security: "reviewed" as const,
   };
   const calculix = {

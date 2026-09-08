@@ -21,10 +21,15 @@ deno task capability:qualify review --candidate=calculix-http-arm64-native-v1
 ```
 
 The candidate requires an observed and targeted Docker daemon `linux/arm64`, mode
-`native`, launch group `casys-mcp-calculix@0.8.2`, and the pinned
-`casys.mcp-calculix@0.8.2` material. Review recrosses the current catalogue, admin
-policy/lock, launch group, host identity, code-owned fixture and qualification
-specification. It neither starts the group nor calls the provider.
+`native`, launch group `casys-mcp-calculix@1.0.0` in Compose project
+`casys-mcp-calculix-v1`, and the pinned `casys.mcp-calculix@0.8.2` material with its
+unchanged image digest. The group retains exactly `calculix-inputs:/inputs`,
+`calculix-runs:/var/lib/mcp-calculix-runs`, and `calculix-exports:/exports`. `/exports`
+is required by the image but remains private and retained: it is never proof/evidence or
+a CAD exchange. The group has no Docker healthcheck; its sealed readiness is MCP
+`tools/list` (15 s total, 1 s per attempt, 250 ms retry). Review recrosses the current
+catalogue, admin policy/lock, launch group, host identity, code-owned fixture and
+qualification specification. It neither starts the group nor calls the provider.
 
 Read the returned `reviewFingerprint`. It is time-sensitive and is recomputed under the
 host mutation lock before apply. Do not supply a provider, image, digest, platform, URL,
