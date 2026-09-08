@@ -13,14 +13,14 @@ local container images as stated below.
 Registered MCP operations remain the canonical writers. This directory holds operator
 recovery that must not appear on the agent MCP path.
 
-| Script                                        | Task or registration             | Effect | Scope                                                                                                                                      |
-| --------------------------------------------- | -------------------------------- | ------ | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `runners/capability-runtime-admin.ts`         | `capability:admin`               | write  | Private local operator lock/revoke/remove, including exact non-persistent cache images. No provider, image, backend, force or prune flags. |
-| `runners/capability-runtime-qualification.ts` | `capability:qualify`             | write  | Private Chrono `chrono-arm64-emulation-v1` review/apply/recover. No provider, image, platform, URL, tool, token, project or MRTR.          |
-| `runners/materialize-thread-viewer-apps.ts`   | `thread:viewer-apps:materialize` | write  | Materialize the local catalog of registered Thread viewer Apps.                                                                            |
-| `runners/build-project-records-app.ts`        | Direct invocation                | write  | Build the first-party Project Records App single-file HTML at an explicit output path. Does not install, register, or launch the App.      |
-| `runners/register-thread-viewer-apps.ts`      | Direct invocation                | write  | Reconcile registered viewer sessions from persisted evidence and installed packages; optional watch. Writes only derived viewer state.     |
-| `runners/reconcile-work-item-successor.ts`    | `recover:work-item-successor`    | write  | Close a leftover ready work item behind a completed successor. Inspect by default; `--apply` writes.                                       |
+| Script                                        | Task or registration             | Effect | Scope                                                                                                                                              |
+| --------------------------------------------- | -------------------------------- | ------ | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `runners/capability-runtime-admin.ts`         | `capability:admin`               | write  | Private local operator lock/revoke/remove, including exact non-persistent cache images. No provider, image, backend, force or prune flags.         |
+| `runners/capability-runtime-qualification.ts` | `capability:qualify`             | write  | Private code-owned Chrono and CalculiX HTTP review/apply/recover. No caller-selected provider, image, platform, URL, tool, token, project or MRTR. |
+| `runners/materialize-thread-viewer-apps.ts`   | `thread:viewer-apps:materialize` | write  | Materialize the local catalog of registered Thread viewer Apps.                                                                                    |
+| `runners/build-project-records-app.ts`        | Direct invocation                | write  | Build the first-party Project Records App single-file HTML at an explicit output path. Does not install, register, or launch the App.              |
+| `runners/register-thread-viewer-apps.ts`      | Direct invocation                | write  | Reconcile registered viewer sessions from persisted evidence and installed packages; optional watch. Writes only derived viewer state.             |
+| `runners/reconcile-work-item-successor.ts`    | `recover:work-item-successor`    | write  | Close a leftover ready work item behind a completed successor. Inspect by default; `--apply` writes.                                               |
 
 ## gates/ — verification and qualification entry points
 

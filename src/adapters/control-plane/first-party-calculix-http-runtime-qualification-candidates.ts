@@ -1,4 +1,4 @@
-/** Code-owned CalculiX HTTP qualification candidate. Not yet a host workflow. */
+/** Code-owned CalculiX HTTP host-qualification candidate. */
 
 import { fingerprintResourceBytes } from "../../domain/compile/source/provider-resource-reader.ts";
 import { deepFreeze } from "../../domain/kernel/case-validation.ts";

@@ -15,8 +15,9 @@ qualification claim. The immutable catalogue baseline for `casys.mcp-chrono@0.3.
 remains `unqualified`; effective host qualification is the matching attestation overlay
 on [local runtime and ports](../local-runtime-and-ports.md). The probe that appends that
 overlay is the private [local runtime qualification](local-runtime-qualification.md)
-CLI, not an MCP operation, Workbench command, or engineering run. HTTP
-`casys.mcp-calculix@0.8.2` remains catalogue-`unqualified` and non-activable.
+CLI, not an MCP operation, Workbench command, or engineering run. The HTTP
+`casys.mcp-calculix@0.8.2` catalogue baseline likewise remains `unqualified`; only its
+own exact host-local attestation can make the matching native binding effective.
 
 ## Durable local read model
 
@@ -40,8 +41,8 @@ it never creates coverage or selects an image. A composite observer never invoke
 slice that has no assigned requested material. Planning and intent review observe only
 the catalogue materials that can satisfy the known demand or brief intent; they do not
 inspect the rest of the catalogue. Full-catalogue observation remains an explicit
-`read()` with no material scope, used by administrative and qualification paths that need
-the complete host picture. A duplicate coverage declaration, unexpected material
+`read()` with no material scope, used by administrative and qualification paths that
+need the complete host picture. A duplicate coverage declaration, unexpected material
 response, or missing response for an owned requested material is rejected. A material
 which was not observed, or which no local observer owns, remains literally `unavailable`
 in the Workbench rather than being guessed present or absent.
@@ -169,13 +170,13 @@ The capability proposal is derived at brief review and becomes durable only with
 brief confirmation or a later bounded amendment. Only then may the preload scheduler
 prepare exact approved material in the background, including a microVM target. Preload
 never starts Compose, grants a lease, reads a secret, or turns an internal Docker source
-into a project/JIT material. On control-plane startup, the server reconverges the durable
-lock and re-schedules the same guarded preloads for authorized envelopes. Activation
-happens immediately before the covered run, after a fresh operational-plan recheck and
-projection derivation. It requires the exact server-minted start authority and any
-declared secret snapshot, and leaves the run/WAL unchanged if it cannot prove the group
-active. Stop remains available for an already owned group after a later revocation,
-topology-policy degradation or secret loss.
+into a project/JIT material. On control-plane startup, the server reconverges the
+durable lock and re-schedules the same guarded preloads for authorized envelopes.
+Activation happens immediately before the covered run, after a fresh operational-plan
+recheck and projection derivation. It requires the exact server-minted start authority
+and any declared secret snapshot, and leaves the run/WAL unchanged if it cannot prove
+the group active. Stop remains available for an already owned group after a later
+revocation, topology-policy degradation or secret loss.
 
 Terminal release rereads the exact current `EngineeringProject` demand before stopping a
 group. A missing project, unreadable runtime context, unresolved JIT demand or stale

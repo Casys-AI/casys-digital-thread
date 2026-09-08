@@ -100,13 +100,16 @@ later material removal. Pending or uncertain host mutations still block it, and 
 this with `down`, volume removal, prune, force, tag/alias removal, a root-Compose
 action, or a Microsandbox uninstall.
 
-## 6. Keep Chrono host qualification separate
+## 6. Keep host qualification separate
 
-Chrono's `chrono-arm64-emulation-v1` probe is a separate private local qualification
-workflow. It records an exact host attestation; it is not a project command, generic
-runtime qualification, engineering MRTR, or product result. Follow
-[Qualify Chrono on an ARM64 host](qualify-chrono-on-arm64.md) for the closed review,
-apply and recovery procedure. The exact state contract remains
+The `chrono-arm64-emulation-v1` and `calculix-http-arm64-native-v1` probes are separate
+private host-local qualification workflows. They record exact host attestations; they do
+not write the repository catalogue, expose MCP/Workbench commands, replace an
+engineering decision, or create a product result. Follow
+[Qualify Chrono on an ARM64 host](qualify-chrono-on-arm64.md) or
+[Qualify CalculiX HTTP on an ARM64 host](qualify-calculix-http-on-arm64.md) for the
+corresponding closed review, apply and recovery procedure. The exact state contract
+remains
 [local runtime qualification](../../reference/runtime/capability-packs/local-runtime-qualification.md).
 
 For the automatic lifecycle and lease/journal boundary behind this guide, see

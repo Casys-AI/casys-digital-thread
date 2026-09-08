@@ -4,7 +4,7 @@ Audience: maintainer · Diátaxis: reference · Kind: contract
 
 This is a local host-administration surface. It is not a project command, MCP tool,
 Workbench mutation, Docker shortcut, provider selector, or engineering verdict. Chrono
-emulation qualification is the separate
+emulation and CalculiX HTTP host qualification use the separate
 [local runtime qualification](local-runtime-qualification.md) CLI.
 
 ## Desired-state history
@@ -46,8 +46,8 @@ preload is scheduled.
 At local control-plane startup, the server repeats that lock reconciliation, enumerates
 only durable authorized effective envelopes, and re-schedules the same guarded,
 best-effort preloads. This is recovery of server-owned host intent, not a new approval,
-project mutation, caller command, or JIT acquisition path. A missing or in-progress exact
-microVM preload remains literally unavailable before a run can claim its WAL.
+project mutation, caller command, or JIT acquisition path. A missing or in-progress
+exact microVM preload remains literally unavailable before a run can claim its WAL.
 
 No Thread/CAS/WAL/project/retained volume is removed by this boundary.
 

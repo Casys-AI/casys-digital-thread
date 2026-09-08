@@ -17,7 +17,7 @@ do not add an agent-facing provider selector or give the Workbench runtime autho
 | [Host runtime supervision](host-runtime-supervision.md)                 | Immutable launch groups, local leases, journaling and closed Compose host control                                                        |
 | [Capability runtime connection](capability-runtime-connection.md)       | Current fixed loopback seam; progressive lease-bound connection handle                                                                   |
 | [Local runtime administration](local-runtime-administration.md)         | Append-only lock/revocation and bounded exact private Compose or cache-image removal                                                     |
-| [Local runtime qualification](local-runtime-qualification.md)           | Private Chrono `chrono-arm64-emulation-v1` review/apply/recover probe                                                                    |
+| [Local runtime qualification](local-runtime-qualification.md)           | Private code-owned Chrono emulation and native CalculiX HTTP review/apply/recover probes                                                 |
 
 `Behave Foundation` remains a derived recipe name only: it is neither an installable
 pack nor a separate capability authority. Names such as `canonical`, `static` and
@@ -53,6 +53,8 @@ Loopback publications and the three start paths live on
 - [Administer the local capability runtime](../../../how-to/maintainers/administer-local-capability-runtime.md)
   is the maintainer procedure for automatic lifecycle observation and bounded local
   administration.
+- [Qualify CalculiX HTTP on an ARM64 host](../../../how-to/maintainers/qualify-calculix-http-on-arm64.md)
+  is the closed native host-probe procedure; it is not a product FEA run.
 - [Publish first-party microVM images](../../../how-to/maintainers/publish-first-party-microvm-images.md)
   is the maintainer procedure for opt-in candidate GHCR publication of the five physical
   Microsandbox worker images.

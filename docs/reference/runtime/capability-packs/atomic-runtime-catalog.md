@@ -111,14 +111,14 @@ does not rewrite this catalogue or the Microsandbox runtime digest. See
 The semantic capability `mechanics.observe-static-structural-sensitivity@1` names only
 two static-structural sensitivity observations, never a verdict. Its concrete
 `calculix-http-static-sensitivity@1` binding points to `casys.mcp-calculix@0.8.2` and
-its sealed `casys-mcp-calculix@0.8.2` group, but remains deliberately `unqualified` and
-non-activable. The group declares only the published `http` command, loopback 3015 and
-retained private `calculix-inputs`/`calculix-runs` volumes; its image supports reviewed
-`linux/arm64` and `linux/amd64` platforms, with no forced platform or invented health
-endpoint. The catalogue and planner therefore report the binding as `unavailable`: they
-cannot pull, start or call the HTTP service until a separate live qualification is
-recorded. The recorded solve/readback implementation is observation-only and is not that
-qualification. `mechanics.solve-static-structural@1` remains separately bound to
+its sealed `casys-mcp-calculix@0.8.2` group, but its repository baseline remains
+deliberately `unqualified`. The group declares only the published `http` command,
+loopback 3015 and retained private `calculix-inputs`/`calculix-runs` volumes; its image
+supports reviewed `linux/arm64` and `linux/amd64` platforms, with no forced platform or
+invented health endpoint. Without a matching exact host-local attestation the planner
+reports the binding as `unavailable` and cannot pull, start or call the HTTP service.
+The recorded solve/readback implementation, image presence, discovery and health are not
+that attestation. `mechanics.solve-static-structural@1` remains separately bound to
 `casys.calculix-worker` for isolated product static proof.
 
 ## Closed planning states
@@ -137,11 +137,12 @@ The append-only attestation schema is
 `capability-runtime-binding-qualification-attestation/1.1`. Its only terminal facts are
 `qualified` and `revoked`; it contains fixture/specification/outcome references and
 closed identities, never a probe payload, request headers, credential or provider
-response. The Chrono emulation probe that appends a matching record is the private
-[local runtime qualification](local-runtime-qualification.md) CLI. An exact revocation
-is monotone: it makes that material unavailable rather than being sorted away by
-timestamps or hashes. A Chrono Linux/amd64 emulation attestation therefore does not
-qualify any other AMD64 image, binding, profile or host.
+response. The Chrono emulation and native CalculiX HTTP probes that append matching
+records are the private [local runtime qualification](local-runtime-qualification.md)
+CLI. An exact revocation is monotone: it makes that material unavailable rather than
+being sorted away by timestamps or hashes. A Chrono Linux/amd64 emulation or CalculiX
+Linux/arm64 native attestation therefore does not qualify any other image, binding,
+profile or host.
 
 The local attestation ledger is append-only. A concurrent reader ignores only the
 private UUID `.tmp` basename emitted by the durable write primitive before its atomic

@@ -49,9 +49,11 @@ qualify the exact candidate separately. The prior qualified emulated `linux/amd6
 attestation for the historical 0.3.1 digest remains host evidence only; it cannot
 qualify this 0.3.2 material or rewrite the catalogue. HTTP `casys.mcp-calculix@0.8.2`
 and the admitted Modelica binding `openmodelica-admitted-modelica` remain
-catalogue-`unqualified` and therefore non-activable until their own matching live
-qualifications exist. The shared `casys.modelica-worker` image is reviewed host/security
-material; that does not qualify the admitted method.
+catalogue-`unqualified`. CalculiX resolution is available only through its own exact
+host-local qualification attestation; image presence, an observed container, discovery
+or health is not that attestation. Modelica remains non-activable until its own matching
+live qualification exists. The shared `casys.modelica-worker` image is reviewed
+host/security material; that does not qualify the admitted method.
 
 The loopback automation task controls only the separate local-YOLO approval opt-in:
 

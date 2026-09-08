@@ -825,6 +825,27 @@ into a contract lot, a separate review and a later integration lot; Codex keeps
 responsibility for the combined diff, live qualification and engineering claim. This
 usage limit is not a CalculiX or ID01 physics failure.
 
+## F30 — the first CalculiX qualification integration failed H1 identity and evidence
+
+parity checks (closed, quick win)
+
+The first integrated service projected the full review candidate, including `version`,
+into H1's narrower `{id, fingerprint}` start authority. The exact validator therefore
+rejected every apply before provider or host mutation with
+`$qualificationStart.candidate has unsupported field version`. Independent review also
+found that the draft reused the fixture request id for live dispatch, ignored a returned
+dispatch acknowledgement, omitted the product path's `resources/list` bijection, and did
+not recross the candidate's declared observed-host platform.
+
+Closed in `e79b2c78`. The service now projects the exact H1 identity, derives the live
+provider request id from the reviewed attempt, parses and binds any returned ACK,
+permits lost-ACK recovery only through same-request readback, and reuses the product
+adapter's nine-resource list/ledger validator. The generic attestation and overlay paths
+also require the candidate's observed-host platform. Focused crash, deadline,
+revocation, malformed-ACK, resource-list, repeat-apply and overlay tests pass; a full
+Deno check and diff check pass. This closes an implementation defect only. F25 remains
+open until a real host run reaches a stopped qualified WAL and exact attestation.
+
 ## Expected states, not defects
 
 - The old preview was explicitly pinned to TPS03. It correctly ignored the new durable

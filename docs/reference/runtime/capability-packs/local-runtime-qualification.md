@@ -2,13 +2,13 @@
 
 Audience: maintainer · Diátaxis: reference · Kind: contract
 
-This is a private host-local Chrono emulation probe. It is not an MCP operation,
-Workbench command, project authority, MRTR, L3 product run, generic qualification
-engine, revoke surface, or CalculiX path. The agent never selects provider, image,
-digest, platform, mode, URL, tool or arguments. Material acquisition for the sealed
-Chrono group is allowed; provider selection stays code-owned.
+This surface contains two private code-owned host-local probes: Chrono emulation and
+native CalculiX HTTP. Neither is an MCP operation, Workbench command, project authority,
+MRTR, L3 product run, generic qualification engine, or revoke surface. The agent never
+selects provider, image, digest, platform, mode, URL, tool or arguments. Material
+acquisition for each sealed group is allowed; provider selection stays code-owned.
 
-## Candidate
+## Candidates
 
 The only code-owned candidate is `chrono-arm64-emulation-v1`. It binds
 `chrono-prescribed-kinematics@1` to `casys.mcp-chrono@0.3.2` / `casys-chrono@1.0.0` on
@@ -19,7 +19,16 @@ samples) owned by server code. The matching specification
 bytes, protocol and criteria (including pose/residual tolerances). An older attestation
 cannot make the binding effective after that spec changes.
 
-## Review, apply, recover
+`calculix-http-arm64-native-v1` binds `calculix-http-static-sensitivity@1.0.0` to
+`casys.mcp-calculix@0.8.2` / `casys-mcp-calculix@0.8.2` on an observed and targeted
+`linux/arm64` Docker daemon in `native` mode. Its fixed bracket fixture closes the STEP
+bytes, mesh, material, support, load, recorded request, factual displacement/stress
+bounds, nine-resource ledger and the `resources/list` bijection. The matching
+`calculix-http-arm64-native-v1-spec` fingerprints candidate, source, lowering, template
+case, protocol and criteria. No caller can substitute a provider, image, endpoint,
+method argument or product source.
+
+## Chrono review, apply, recover
 
 `review` fingerprints a timestamp-free closed body: candidate, catalog binding
 selector/contract/unit manifest/material digest/launch group, observed daemon identity
@@ -101,6 +110,40 @@ state without consuming a dispatch claim. After a claim it uses only `readRun` /
 `readReceipt`. Rapid recoveries do not advance any logical poll clock. Stop and lease
 release do not depend on the current start policy, review admissibility, or bearer.
 
+## CalculiX review, apply, recover
+
+CalculiX `review` recomposes the exact catalogue binding, selector, contract, unit
+manifest, image digest, launch group, reviewed effects, current admin policy/lock,
+opaque host identity, native platform, fixture and specification. It derives a
+`calculix-qual-<sha256>` request id from that timestamp-free closed review. Review may
+materialize the opaque host-identity file on first read; it does not start Docker, write
+the qualification WAL or call CalculiX.
+
+`apply` recomputes the review and refuses a stale fingerprint or missing `--confirm`.
+Under H1 it prepares the WAL before mutation, acquires the reserved qualification lease,
+starts only the exact inactive `casys-mcp-calculix` group, stages the fixed STEP through
+that lease, and durably claims one dispatch. The recorded solve uses the attempt-derived
+request id, never the reusable fixture-template id. A returned dispatch acknowledgement
+must parse and bind that request; transport loss after the claim permits only
+same-request readback, never redispatch.
+
+A qualifying readback must be `completed`, name the exact request and STEP, expose the
+ordered nine-resource ledger, and have an exact `resources/list` bijection using the
+same adapter validator as a product capture. Every resource is reread and rehashed; the
+request is independently lowered from the closed method, and the result must preserve
+the support/load contract, `mm` / `MPa` units and closed factual bounds. Malformed
+acknowledgement, ledger or resource-list evidence cannot qualify. The service then
+records the immutable outcome, stops the exact group from its H1 start proof, observes
+it inactive, and only then appends and rereads the matching host attestation. A repeated
+review/apply reuses the exact terminal WAL and cannot dispatch or attest twice.
+
+CalculiX `recover` continues only an existing WAL. It can recover the durable H1 start
+proof after a crash, but never creates a second host start. After the dispatch claim it
+uses only the attempt request id for readback and never calls the solve again. It also
+finishes stop/lease cleanup independently of current start admissibility. The retained
+provider volumes are evidence storage, not authority to accept a run from another
+request.
+
 ## WAL identity, lock and deadline
 
 Attempt **identity/basis** is candidate + observed host + review + request +
@@ -108,8 +151,8 @@ source/lowering/case/runRequest + spec. The WAL **key** is candidate + host + sp
 fingerprint: a later spec (S2) opens a new directory without deleting S1. `preparedAt`
 is an event fact supplied to `prepare(..., { preparedAt })` and written once under lock.
 It is not part of identity. Concurrent prepares on the same basis reuse the first
-`Prepared`. There is no legacy `CHRONO_RUNTIME_QUALIFICATION_PREPARED_AT` constant and
-no poll sidecar.
+`Prepared`. There is no caller-authored timestamp or poll sidecar. The Chrono path also
+has no legacy `CHRONO_RUNTIME_QUALIFICATION_PREPARED_AT` constant.
 
 File-store transitions are linearizable across processes via exclusive
 `Deno.File.lock(true)` on `{attemptDir}/attempt.lock`. That lock is distinct from the H1
@@ -132,10 +175,17 @@ Recoveries before the deadline never terminalize. At or after the deadline, one 
 factual readback runs, then the store seals a single `unavailable` under lock with its
 real `now()`. A late receipt before that seal still promotes to `recorded`.
 
-The path fails closed on a stale review, missing Chrono bearer at start, unknown or
-unreviewed **security** host effects (privileged, docker socket, devices), host drift,
-receipt mismatch, or incomplete pagination. Unknown size or licence stay literal and do
-not block this probe. Literal `unavailable` states stay `unavailable`.
+CalculiX likewise persists a five-minute dispatch deadline. Absent or uncertain
+same-request readback remains recoverable before that deadline; malformed ACK, ledger or
+resource-list evidence is terminally `unavailable` and still follows the exact stop
+path. A completed exact readback may promote an earlier absent/uncertain quarantine to
+`recorded` without a second dispatch.
+
+Both paths fail closed on a stale review, unknown or unreviewed **security** host
+effects (privileged, docker socket, devices), host drift, receipt/resource mismatch, or
+incomplete evidence. Chrono additionally requires its bearer at start and complete
+receipt pagination. Unknown size or licence stay literal and do not block these probes.
+Literal `unavailable` states stay `unavailable`.
 
 ## Private operator CLI
 
@@ -143,6 +193,10 @@ not block this probe. Literal `unavailable` states stay `unavailable`.
 deno task capability:qualify review --candidate=chrono-arm64-emulation-v1
 deno task capability:qualify apply --candidate=chrono-arm64-emulation-v1 --review-fingerprint=<sha256> --confirm
 deno task capability:qualify recover --candidate=chrono-arm64-emulation-v1
+
+deno task capability:qualify review --candidate=calculix-http-arm64-native-v1
+deno task capability:qualify apply --candidate=calculix-http-arm64-native-v1 --review-fingerprint=<sha256> --confirm
+deno task capability:qualify recover --candidate=calculix-http-arm64-native-v1
 ```
 
 Durable WAL and attestations stay under `state/local/capability-runtime-host/`. They are
