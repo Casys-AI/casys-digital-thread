@@ -2,13 +2,16 @@
 
 Audience: both · Diátaxis: none · Kind: dated project tracking note
 
-Observation **2026-09-07**, primary atelier, **local**. This page is documentary and
+Observation **2026-09-08**, primary atelier, **local**. This page is documentary and
 non-authoritative: it does not replace project state, Thread evidence, or signed human
 decisions. Re-read the control plane before continuing.
 
 ## Current project truth
 
-Latest resumption: project r612 / Thread r86. The
+Latest resumption: project r650 / Thread r90. The
+[RadialArm bench ledger](radial-arm-bench-result-20260908.md) records the current
+single-part compliance branch: native requirement r87, proof seal r88, isolated
+CalculiX/SysON `pass` r89 and bounded L5 accept r90. The earlier
 [revision 3 bench revalidation ledger](bench-revalidation-r3-20260907.md) supersedes the
 historical F10 status below. The new proof sealed at r84; the exact FEA branch and L4
 `pass` published at r85 after a bounded repeated-artifact identity correction; the
@@ -16,8 +19,8 @@ bounded human-origin L5 acceptance published at r86. Both runs are `completed`. 
 collision at project r603 remains documented as F11 rather than erased.
 
 - Project: `inspection-drone-id01`.
-- Observed project revision: r612. The current Thread is r86,
-  `project:inspection-drone-id01:r86:decide-accept-evaluation-closeout-run:id01-queue-bench-r3-closeout-20260907`.
+- Observed project revision: r650. The current Thread is r90,
+  `project:inspection-drone-id01:r90:decide-accept-evaluation-closeout-run:queue-id01-radial-arm-bench-r2-closeout-r646`.
 - The first provider-free requirements-to-brief claim at project r591 / Thread r83
   remains historical evidence; it did not execute an FEA solver or a native requirements
   writer. The subsequent bench branch preserved that documentary basis.
@@ -87,6 +90,14 @@ collision at project r603 remains documented as F11 rather than erased.
   Stress was 0.00763815636944611 MPa against the sourced 260 MPa reference. This is
   camera-weight-only screening on an ideal face-clamped bracket, not the drone's
   mounting, flight load or material certificate. No global gate claim was added.
+- A separate [RadialArm compliance screen](radial-arm-bench-result-20260908.md) now
+  closes one theoretical 5 N single-part branch. Brief r4's declared `0.2 mm` limit was
+  written as a native SysON RequirementUsage and canonically represented as exactly
+  `200000 nm`. The real isolated result was `0.12925469439628479 mm`, converted by SysON
+  to `129254.69439628477 nm`, with a `70745.30560371523 nm` margin and literal L4
+  `pass`. The bounded L5 accept preserves the ideal clamp, catalogue material, one-mesh
+  and non-flight limits and adds no gate claim. Draft proof r1 was abandoned before
+  proposal or execution; only corrected proof r2 belongs to the Thread.
 - Workspace r94 has eight modules, twenty-six active files and forty-two active
   attachments, including the exact proof source and result ledger on CameraMountBracket.
 - Workspace r98 had eight modules, twenty-eight active files and forty-four active
@@ -181,46 +192,55 @@ publication/runtime-adoption evidence.
 
 ## Next engineering boundary
 
-The larger goal remains ID01, not the initial bracket. The six subsystems and updated
-nested root have exact executed static checks. The camera/deck source successor is
-canonical, with explicit Airframe/root rebuilds and fresh L3/L4/L5. The requirement-
+The larger goal remains ID01, not either isolated bench case. The six subsystems and
+updated nested root have exact executed static checks. The camera/deck source successor
+is canonical, with explicit Airframe/root rebuilds and fresh L3/L4/L5. The requirement-
 linked bench r3 branch is now also sealed, executed, evaluated and accepted within its
-camera-weight-only limits; F10 and F11 are closed. The next useful engineering boundary
-is an actual physical interface outside that bracket-only proof. The motor-to-
-`RadialArm` interface remains a bounded candidate, but its exact four-hole topology is
-not proven by the current primary evidence. A question proposed too precisely at project
-r613 was immediately answered `unknown` at r614; it records no human choice and
-authorizes no geometry. A manufacturer-confirmed mechanical drawing or supplier
-clarification is required before framing the consequential datum decision. The
+camera-weight-only limits; F10 and F11 are closed. The RadialArm r2 branch is likewise
+sealed, executed, evaluated and accepted within its ideal 5 N compliance limits. It does
+not prove either adjacent joint. The next useful executable boundary is the existing
+nominal `RadialArm` ↔ `CentralDeck` interface: represent a reversible, explicitly
+provisional joint geometry, then rebuild Airframe and InspectionDrone and repeat the
+existing geometric L3/L4/L5 checks. That would establish only representation, placement
+and static geometric integrity, not joint strength. The motor-to-`RadialArm` interface
+must remain later: its exact four-hole topology is not proven by the current primary
+evidence. A question proposed too precisely at project r613 was immediately answered
+`unknown` at r614; it records no human choice and authorizes no motor geometry. A
+manufacturer-confirmed mechanical drawing or supplier clarification is required before
+framing that consequential datum decision. The
 [remaining-boundary record](remaining-integration-boundaries.md) stays a preserved r70
 capture. Its F08 blocker is closed and the deck holes are canonical, but its unmodeled
 physical interfaces remain unresolved. Electrical, aerodynamic and flight-safety
 evidence remains outside these proof meanings; the pilot is not declared complete.
 
-The read-only BFF now serves project r614 / Thread r86. The latest separate-profile
-browser interaction audit remains project r591 / Thread r83; no later visual audit is
-claimed here. The earlier project r583 / Thread r82 presentation established seven exact
-whole-App bindings for the six modules and updated root while preserving all twenty-five
-prior bindings; the registry contains thirty-two entries. Fresh root and Airframe App
-checks verified their exact GLB digests, rendered canvases and passed Fit/zoom and
-read-only network checks. Both canvases were visually inspected. The scripts,
-screenshots, hashes and presentation-only limits are in the current rebuild ledger.
-Chromium's existing unsupported `webrtc` CSP-directive warning remains. The Product tab
-remains removed as requested; 3D stays on Project. The older r69 presentation ledger
-remains historical. Source attachments may be `different-basis`; preserved captures and
-historical admissions are not silently rewritten. Recross only through a registered
-surface when a current authoring capture or closure requires it. The BFF now declares
-the available v1 requirements-to-brief claim while retaining the original `TRACE GAP`
-separately. A fresh separate-profile headless browser audit of project r591 / Thread r83
-selected the native camera-bracket requirement with no page errors and no non-GET API
-requests. It found the exact brief-r3 `camera-bracket-bench-stress` source node in the
-Brief hull, its one direct cable to the sole requirement, and no stand-alone
-retrospective-document wrapper node on that hero surface. Requirement-to-source and
-source-to-requirement navigation both worked; the source note stayed readable above
-restored viewers, and a planned-only detached `PENDING` legend was absent without hiding
-the actual planned activity. This is presentation QA only: it does not prove claim
-semantics, native-writer qualification, requirement satisfaction, FEA, or provider
-runtime. The older literal `TRACE GAP` remains separate historical provenance.
+The freshly restarted read-only BFF now serves project r650 / Thread r90, aligned
+`90/90`. Its engineering-case catalog is `observed`, and the RadialArm r2 case and
+project activity join are present without the stale pre-`nm` `capture-invalid` symptom.
+This is current projection adoption, not a new visual UX audit. The latest
+separate-profile browser interaction audit remains project r591 / Thread r83; no later
+visual audit is claimed here. The earlier project r583 / Thread r82 presentation
+established seven exact whole-App bindings for the six modules and updated root while
+preserving all twenty-five prior bindings; the registry contains thirty-two entries.
+Fresh root and Airframe App checks verified their exact GLB digests, rendered canvases
+and passed Fit/zoom and read-only network checks. Both canvases were visually inspected.
+The scripts, screenshots, hashes and presentation-only limits are in the current rebuild
+ledger. Chromium's existing unsupported `webrtc` CSP-directive warning remains. The
+Product tab remains removed as requested; 3D stays on Project. The older r69
+presentation ledger remains historical. Source attachments may be `different-basis`;
+preserved captures and historical admissions are not silently rewritten. Recross only
+through a registered surface when a current authoring capture or closure requires it.
+The BFF now declares the available v1 requirements-to-brief claim while retaining the
+original `TRACE GAP` separately. A fresh separate-profile headless browser audit of
+project r591 / Thread r83 selected the native camera-bracket requirement with no page
+errors and no non-GET API requests. It found the exact brief-r3
+`camera-bracket-bench-stress` source node in the Brief hull, its one direct cable to the
+sole requirement, and no stand-alone retrospective-document wrapper node on that hero
+surface. Requirement-to-source and source-to-requirement navigation both worked; the
+source note stayed readable above restored viewers, and a planned-only detached
+`PENDING` legend was absent without hiding the actual planned activity. This is
+presentation QA only: it does not prove claim semantics, native-writer qualification,
+requirement satisfaction, FEA, or provider runtime. The older literal `TRACE GAP`
+remains separate historical provenance.
 
 Working split: Astra directly operates Digital Thread and authors the engineering
 proposals/sources; native Grok investigates or implements bounded platform changes under
