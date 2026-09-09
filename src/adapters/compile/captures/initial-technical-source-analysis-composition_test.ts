@@ -103,6 +103,14 @@ Deno.test("initial source-analysis registration exactly matches compilation qual
     () => registry.requireForCapture("modelica-unqualified"),
     TechnicalSourceAnalysisProfileNotRegisteredError,
   );
+  assertThrows(
+    () =>
+      registry.requireExact({
+        id: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+        version: "3.0.0",
+      }),
+    TechnicalSourceAnalysisProfileNotRegisteredError,
+  );
 });
 
 function requiredCompilationProfile(id: string) {
@@ -148,6 +156,42 @@ Deno.test("initial capture service persists and replays the exact qualified fron
       status: "passed",
     });
     assertEquals(reopened.analysis.unresolvedConstructs, []);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("initial capture keeps standalone provenance-comment bytes while qualifying their source", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "initial-technical-source-analysis-comments-",
+  });
+  const sourceText = [
+    "# provenance: requirement.width",
+    "from build123d import Box",
+    "  # provenance: retained exact bytes",
+    "length = 20",
+    "width = 10",
+    "height = 2",
+    "result = Box(length, width, height)",
+    "",
+  ].join("\n");
+  try {
+    const service = createInitialTechnicalSourceAnalysisCaptureService(
+      technicalSourceAnalysisCaptureStores(directory),
+    );
+    const persisted = await service.persist(technicalSourceCaptureInput({
+      profileId: QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+      sourceId: "source.comments",
+      sourceText,
+    }));
+    const reopened = await service.reopenLocator(persisted.locator);
+
+    assertEquals(reopened.sourceText, sourceText);
+    assertEquals(reopened.analysis.unresolvedConstructs, []);
+    assertEquals(
+      reopened.analysis.source.fingerprint.digest,
+      persisted.document.source.sha256,
+    );
   } finally {
     await Deno.remove(directory, { recursive: true });
   }

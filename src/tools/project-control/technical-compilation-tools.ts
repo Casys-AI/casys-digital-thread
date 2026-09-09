@@ -4,6 +4,10 @@ import type {
   ProjectAdmittedGeometryExportUseCase,
 } from "../../application/ports/in/cad/canonical/project-admitted-geometry-export.ts";
 import type {
+  ProjectAdmittedGeometryExportPreflightCommand,
+  ProjectAdmittedGeometryExportPreflightUseCase,
+} from "../../application/ports/in/cad/canonical/project-admitted-geometry-export-preflight.ts";
+import type {
   ProjectBuild123dExecutionReviewCommand,
   ProjectBuild123dExecutionReviewUseCase,
 } from "../../application/ports/in/cad/isolated/project-build123d-execution-review.ts";
@@ -13,14 +17,20 @@ import type {
 } from "../../application/ports/in/cad/sealed-isolated/project-isolated-geometry-seal-review.ts";
 import type {
   ProjectTechnicalCompilationPreviewCommand,
-  ProjectTechnicalCompilationPreviewUseCase,
 } from "../../application/ports/in/compile/admission/project-technical-compilation-preview.ts";
+import {
+  type BoundedTechnicalCompilationPreview,
+  type BoundedTechnicalCompilationPreviewResult,
+  type ReadTechnicalCompilationPreviewEvidence,
+  TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_ITEMS,
+  TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_SAMPLES,
+} from "../../application/use-cases/compile/admission/bounded-technical-compilation-preview.ts";
+import type { TechnicalCompilationPreviewEvidenceReference } from "../../application/ports/out/compile/admission/technical-compilation-preview-evidence-store.ts";
 import type {
   ProjectTechnicalSourceCaptureCommand,
   ProjectTechnicalSourceCaptureUseCase,
 } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
 import { ProjectTechnicalSourceCaptureError } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
-import { compilationPreviewContent } from "../../domain/compile/admission/technical-compilation-preview-review.ts";
 import {
   captureReviewContent,
   TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA,
@@ -36,19 +46,27 @@ import {
 import {
   FINGERPRINT_SCHEMA,
   OBJECT_OUTPUT_SCHEMA,
+  OPERATION_REF_SCHEMA,
   READ_ONLY_ANNOTATIONS,
 } from "./mcp-tool-schemas.ts";
 
 export interface ProjectTechnicalCompilationToolDependencies {
   /** Provider-free CAS capture of exact agent-authored technical source text. */
   technicalSourceCapture?: ProjectTechnicalSourceCaptureUseCase;
-  /** Provider-free compilation of captured sources against an exact basis. */
-  technicalCompilationPreview?: ProjectTechnicalCompilationPreviewUseCase;
+  /** Provider-free bounded compilation review against an exact basis. */
+  technicalCompilationPreview?: Pick<BoundedTechnicalCompilationPreview, "execute">;
+  /** Read-only, immutable evidence pages for one bounded compilation review. */
+  technicalCompilationPreviewEvidence?: Pick<
+    ReadTechnicalCompilationPreviewEvidence,
+    "execute"
+  >;
   /**
    * Private-sandbox export of exact admitted Build123d bytes as a geometry
    * DRAFT. Absent when the sandbox provider is not composed.
    */
   admittedGeometryExport?: ProjectAdmittedGeometryExportUseCase;
+  /** Provider-free route selection for one sealed geometry admission. */
+  admittedGeometryExportPreflight?: ProjectAdmittedGeometryExportPreflightUseCase;
   /** Provider-free preparation of one qualified Build123d execution review. */
   build123dExecutionReview?: ProjectBuild123dExecutionReviewUseCase;
   /** Provider-free preparation of one isolated geometry seal review. */
@@ -90,19 +108,23 @@ export function registerProjectTechnicalCompilationTools(
     app.registerTool(projectTechnicalCompilationPreviewTool, async (args) => {
       const command = technicalCompilationPreviewCommand(args);
       const result = await preview.execute(command);
-      const content = compilationPreviewContent({
-        status: result.status,
-        ...(result.status === "ready-for-review"
-          ? { draftId: result.draft.draftId, operation: result.operation }
-          : {}),
-        gaps: result.gaps,
-      });
       return {
-        content,
-        // Preserve every use-case-owned review field verbatim, including
-        // decisionParameters when the ready result provides them. The MCP
-        // surface must never derive or repair MRTR parameters itself.
+        content: boundedCompilationPreviewContent(result),
         structuredContent: result as unknown as Record<string, unknown>,
+      };
+    });
+  }
+  if (dependencies.technicalCompilationPreviewEvidence) {
+    const evidence = dependencies.technicalCompilationPreviewEvidence;
+    app.registerTool(projectTechnicalCompilationPreviewDetailTool, async (args) => {
+      const result = await evidence.execute(
+        technicalCompilationPreviewDetailCommand(args),
+      );
+      return {
+        content: result.section === "full-evidence"
+          ? "Explicit full technical-compilation evidence. Full review remains required for MRTR."
+          : `Technical-compilation evidence section ${result.section}; inspect nextCursor when present.`,
+        structuredContent: result as Record<string, unknown>,
       };
     });
   }
@@ -115,6 +137,22 @@ export function registerProjectTechnicalCompilationTools(
       return {
         content:
           `Admitted geometry export for sealed admission ${command.artifactId} completed as a geometry draft ${result.draftDigest}. Exact admitted bytes were reopened from compile.seal-admission@3 and sent to the private sandbox; callers supplied no source text, provider, tool, path or image. The result is not Thread state. Construct a later design.write-geometry@1 proposal only from the returned decisionParameters.`,
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
+    });
+  }
+  if (dependencies.admittedGeometryExportPreflight) {
+    const preflight = dependencies.admittedGeometryExportPreflight;
+    app.registerTool(projectAdmittedGeometryExportPreflightTool, async (args) => {
+      const result = await preflight.execute(
+        admittedGeometryExportPreflightCommand(args),
+      );
+      return {
+        content: result.status === "singular-export-ready"
+          ? "The sealed admission is compatible with the singular canonical geometry export."
+          : result.status === "child-root-admission-required"
+          ? "Canonical export remains singular. The server derived independently admitted child-root identities; reread and recross current heads before each later admission."
+          : "Canonical child-root guidance is unresolved; inspect the sealed attachments and current workspace heads.",
         structuredContent: result as unknown as Record<string, unknown>,
       };
     });
@@ -281,7 +319,7 @@ const projectTechnicalSourceCaptureTool: MCPTool = {
 const projectTechnicalCompilationPreviewTool: MCPTool = {
   name: "project_technical_compilation_preview",
   description:
-    "Compile captured technical sources against the unique current Thread tip using only server-owned analysis, catalog profiles, and unique SysML joins. Name projectId and sourceRefs from project_technical_source_capture result.reference locators; never pass the capture review envelope, capture document, bindings, or profileRequests. Omitted basis is the unique current Thread tip, not latest. A reachable CAD lever is reopened from the source; the server does not invent one. A ready result contains the exact review draft, compilation document, MRTR decisionParameters, and the exact compile.seal-admission@3 operation. Reuse that operation verbatim in the later project_change_append; never reconstruct its sysmlModel binding from a historical snapshot. The preview writes no EngineeringProject or Thread state and grants no MRTR or execution authority.",
+    "Compile captured technical sources against the unique current Thread tip using only server-owned analysis, catalog profiles, and unique SysML joins. Name projectId and sourceRefs from project_technical_source_capture result.reference locators; never pass the capture review envelope, capture document, bindings, or profileRequests. Omitted basis is the unique current Thread tip, not latest. The result is a bounded canonical summary plus opaque immutable evidenceRef. Read diagnostics, gaps, source manifest, source text, projections, or explicit full-evidence through project_technical_compilation_preview_detail. A ready result still requires full evidence review for MRTR; decisionParameters and the exact compile.seal-admission@3 operation are available only through explicit detail sections. Reuse that operation verbatim in the later project_change_append; never reconstruct its sysmlModel binding. This preview writes no EngineeringProject or Thread state and grants no MRTR, provider, runtime, or execution authority.",
   inputSchema: {
     type: "object",
     properties: {
@@ -300,8 +338,359 @@ const projectTechnicalCompilationPreviewTool: MCPTool = {
     required: ["projectId", "sourceRefs"],
     additionalProperties: false,
   },
-  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  outputSchema: {
+    type: "object",
+    properties: {
+      schemaVersion: { const: "technical-compilation-preview-summary/1.0" },
+      status: { enum: ["unresolved", "rejected", "ready-for-review"] },
+      evidenceRef: {
+        type: "object",
+        properties: {
+          schemaVersion: {
+            const: "technical-compilation-preview-evidence-reference/1.0",
+          },
+          projectId: TECHNICAL_ID_SCHEMA,
+          fingerprint: FINGERPRINT_SCHEMA,
+          byteCount: { type: "integer", minimum: 1 },
+        },
+        required: ["schemaVersion", "projectId", "fingerprint", "byteCount"],
+        additionalProperties: false,
+      },
+      evidenceBytes: { type: "integer", minimum: 1 },
+      counts: {
+        type: "object",
+        properties: {
+          sources: { type: "integer", minimum: 0 },
+          projections: { type: "integer", minimum: 0 },
+          diagnostics: { type: "integer", minimum: 0 },
+          gaps: { type: "integer", minimum: 0 },
+          diagnosticsByCode: {
+            type: "object",
+            additionalProperties: { type: "integer", minimum: 1 },
+            maxProperties: 9,
+          },
+          gapsByCode: {
+            type: "object",
+            additionalProperties: { type: "integer", minimum: 1 },
+            maxProperties: 8,
+          },
+        },
+        required: [
+          "sources",
+          "projections",
+          "diagnostics",
+          "gaps",
+          "diagnosticsByCode",
+          "gapsByCode",
+        ],
+        additionalProperties: false,
+      },
+      samples: {
+        type: "object",
+        properties: {
+          diagnostics: {
+            type: "array",
+            maxItems: TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_SAMPLES,
+            items: { $ref: "#/$defs/sample" },
+          },
+          gaps: {
+            type: "array",
+            maxItems: TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_SAMPLES,
+            items: { $ref: "#/$defs/sample" },
+          },
+          omittedDiagnostics: { type: "integer", minimum: 0 },
+          omittedGaps: { type: "integer", minimum: 0 },
+        },
+        required: ["diagnostics", "gaps", "omittedDiagnostics", "omittedGaps"],
+        additionalProperties: false,
+      },
+      requiresFullEvidenceForMrtr: { type: "boolean" },
+    },
+    required: [
+      "schemaVersion",
+      "status",
+      "evidenceRef",
+      "evidenceBytes",
+      "counts",
+      "samples",
+      "requiresFullEvidenceForMrtr",
+    ],
+    additionalProperties: false,
+    $defs: {
+      excerpt: {
+        type: "object",
+        properties: {
+          excerpt: { type: "string", maxLength: 256 },
+          originalByteCount: { type: "integer", minimum: 0 },
+          sha256: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          truncatedBytes: { type: "integer", minimum: 0 },
+        },
+        required: ["excerpt", "originalByteCount", "sha256", "truncatedBytes"],
+        additionalProperties: false,
+      },
+      sample: {
+        anyOf: [
+          { type: "null" },
+          { type: "boolean" },
+          { type: "number" },
+          { $ref: "#/$defs/excerpt" },
+          {
+            type: "array",
+            maxItems: TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_SAMPLES,
+            items: { $ref: "#/$defs/sample" },
+          },
+          {
+            type: "object",
+            properties: {
+              code: { $ref: "#/$defs/sample" },
+              profileRef: { $ref: "#/$defs/sample" },
+              subjectRef: { $ref: "#/$defs/sample" },
+              sourceId: { $ref: "#/$defs/sample" },
+              relation: { $ref: "#/$defs/sample" },
+              symbolName: { $ref: "#/$defs/sample" },
+              symbolKind: { $ref: "#/$defs/sample" },
+              reason: { $ref: "#/$defs/sample" },
+              candidateCount: { $ref: "#/$defs/sample" },
+              closureKind: { $ref: "#/$defs/sample" },
+              modelSymbolId: { $ref: "#/$defs/sample" },
+              attributeUsageId: { $ref: "#/$defs/sample" },
+              role: { $ref: "#/$defs/sample" },
+              requirementElementId: { $ref: "#/$defs/sample" },
+              recovery: { $ref: "#/$defs/sample" },
+            },
+            additionalProperties: false,
+          },
+        ],
+      },
+    },
+  },
   annotations: DRAFT_CAS_WRITE_ANNOTATIONS,
+};
+
+const TECHNICAL_COMPILATION_PREVIEW_EVIDENCE_REF_SCHEMA = {
+  type: "object",
+  properties: {
+    schemaVersion: { const: "technical-compilation-preview-evidence-reference/1.0" },
+    projectId: TECHNICAL_ID_SCHEMA,
+    fingerprint: FINGERPRINT_SCHEMA,
+    byteCount: { type: "integer", minimum: 1 },
+  },
+  required: ["schemaVersion", "projectId", "fingerprint", "byteCount"],
+  additionalProperties: false,
+} as const;
+
+const TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS = [
+  "diagnostics",
+  "gaps",
+  "source-manifest",
+  "source-text",
+  "projections",
+  "decision-parameters",
+  "operation",
+  "full-evidence",
+] as const;
+
+const PREVIEW_CURSOR_SCHEMA = {
+  type: ["string", "null"],
+  minLength: 64,
+  maxLength: 64,
+  pattern: "^[a-f0-9]{64}$",
+} as const;
+
+function detailPageSchema(
+  section: typeof TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS[number],
+  items: Record<string, unknown>,
+  maxItems = TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_ITEMS,
+) {
+  return {
+    type: "object",
+    properties: {
+      section: { const: section },
+      items: { type: "array", maxItems, items },
+      nextCursor: PREVIEW_CURSOR_SCHEMA,
+    },
+    required: ["section", "items", "nextCursor"],
+    additionalProperties: false,
+  } as const;
+}
+
+/** The detail reader's fixed section names are a discriminant, never a filter. */
+function technicalCompilationPreviewDetailOutputSchema() {
+  const gap = {
+    type: "object",
+    properties: {
+      code: { type: "string" },
+      sourceId: TECHNICAL_ID_SCHEMA,
+      relation: { type: "string" },
+      symbolName: { type: "string" },
+      symbolKind: { type: "string" },
+      reason: { type: "string" },
+      candidateCount: { type: "integer", minimum: 0 },
+      closureKind: { type: "string" },
+      modelSymbolId: TECHNICAL_ID_SCHEMA,
+      attributeUsageId: TECHNICAL_ID_SCHEMA,
+      role: { type: "string" },
+      requirementElementId: TECHNICAL_ID_SCHEMA,
+      recovery: {
+        type: "object",
+        properties: {
+          excerpt: { type: "string", maxLength: 256 },
+          originalByteCount: { type: "integer", minimum: 0 },
+          sha256: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          truncatedBytes: { type: "integer", minimum: 0 },
+        },
+        required: ["excerpt", "originalByteCount", "sha256", "truncatedBytes"],
+        additionalProperties: false,
+      },
+    },
+    required: ["code", "recovery"],
+    additionalProperties: false,
+  } as const;
+  const manifest = {
+    type: "object",
+    properties: {
+      sourceId: TECHNICAL_ID_SCHEMA,
+      role: { type: "string" },
+      language: { type: "string" },
+      sourceFingerprint: { type: "string", pattern: "^[a-f0-9]{64}$" },
+      analysisFingerprint: { type: "string", pattern: "^[a-f0-9]{64}$" },
+      effectiveUnit: {
+        type: "object",
+        properties: {
+          kind: { type: "string" },
+          closureKind: { type: "string" },
+          unitId: TECHNICAL_ID_SCHEMA,
+          closureFingerprint: { type: "string", pattern: "^[a-f0-9]{64}$" },
+        },
+        required: ["kind", "closureKind", "unitId", "closureFingerprint"],
+        additionalProperties: false,
+      },
+      counts: {
+        type: "object",
+        properties: {
+          symbols: { type: "integer", minimum: 0 },
+          dependencies: { type: "integer", minimum: 0 },
+          unresolvedConstructs: { type: "integer", minimum: 0 },
+          bindings: { type: "integer", minimum: 0 },
+        },
+        required: ["symbols", "dependencies", "unresolvedConstructs", "bindings"],
+        additionalProperties: false,
+      },
+    },
+    required: [
+      "sourceId",
+      "role",
+      "language",
+      "sourceFingerprint",
+      "analysisFingerprint",
+      "effectiveUnit",
+      "counts",
+    ],
+    additionalProperties: false,
+  } as const;
+  const projection = {
+    type: "object",
+    properties: {
+      target: { type: "string" },
+      profile: {
+        type: "object",
+        properties: { id: TECHNICAL_ID_SCHEMA, version: { type: "string" } },
+        required: ["id", "version"],
+        additionalProperties: false,
+      },
+      status: { type: "string" },
+      profileFingerprint: { type: "string", pattern: "^[a-f0-9]{64}$" },
+      counts: {
+        type: "object",
+        properties: {
+          sources: { type: "integer", minimum: 0 },
+          bindings: { type: "integer", minimum: 0 },
+          diagnostics: { type: "integer", minimum: 0 },
+        },
+        required: ["sources", "bindings", "diagnostics"],
+        additionalProperties: false,
+      },
+    },
+    required: ["target", "profile", "status", "profileFingerprint", "counts"],
+    additionalProperties: false,
+  } as const;
+  return {
+    oneOf: [
+      detailPageSchema("diagnostics", {
+        type: "object",
+        properties: {
+          code: { type: "string", maxLength: 128 },
+          profileRef: { type: "string", maxLength: 256 },
+          subjectRef: { type: "string", maxLength: 256 },
+        },
+        required: ["code", "profileRef", "subjectRef"],
+        additionalProperties: false,
+      }),
+      detailPageSchema("gaps", gap),
+      detailPageSchema("source-manifest", manifest),
+      detailPageSchema("source-text", {
+        type: "object",
+        properties: {
+          sourceId: TECHNICAL_ID_SCHEMA,
+          offset: { type: "integer", minimum: 0 },
+          text: { type: "string", maxLength: 1000 },
+        },
+        required: ["sourceId", "offset", "text"],
+        additionalProperties: false,
+      }),
+      detailPageSchema("projections", projection),
+      detailPageSchema("decision-parameters", {
+        type: "object",
+        properties: {
+          key: { type: "string", minLength: 1, maxLength: 256 },
+          label: { type: "string", minLength: 1, maxLength: 256 },
+          value: { type: ["string", "number", "boolean"] },
+          unit: { type: "string", minLength: 1, maxLength: 64 },
+        },
+        required: ["key", "label", "value"],
+        additionalProperties: false,
+      }),
+      detailPageSchema("operation", OPERATION_REF_SCHEMA),
+      detailPageSchema("full-evidence", {
+        type: "object",
+        properties: {
+          status: { enum: ["unresolved", "rejected", "ready-for-review"] },
+          document: { type: "object" },
+          fingerprint: FINGERPRINT_SCHEMA,
+          gaps: { type: "array" },
+          draft: { type: "object" },
+          decisionParameters: { type: "array" },
+          operation: OPERATION_REF_SCHEMA,
+        },
+        required: ["status", "document", "fingerprint", "gaps"],
+        additionalProperties: false,
+      }, 1),
+    ],
+  } as const;
+}
+
+const projectTechnicalCompilationPreviewDetailTool: MCPTool = {
+  name: "project_technical_compilation_preview_detail",
+  description:
+    "Read one immutable technical-compilation preview evidence section. Name only projectId, the opaque evidenceRef returned by project_technical_compilation_preview, section, and an optional opaque cursor. Pages are bounded except full-evidence, which is deliberately complete only when explicitly requested. decision-parameters and operation stay in their explicit sections. A ready summary never substitutes for the full MRTR review. This read grants no MRTR, provider, runtime, dispatch, or mutation authority.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: TECHNICAL_ID_SCHEMA,
+      evidenceRef: TECHNICAL_COMPILATION_PREVIEW_EVIDENCE_REF_SCHEMA,
+      section: { type: "string", enum: TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS },
+      cursor: {
+        type: "string",
+        minLength: 64,
+        maxLength: 64,
+        pattern: "^[a-f0-9]{64}$",
+      },
+    },
+    required: ["projectId", "evidenceRef", "section"],
+    additionalProperties: false,
+  },
+  outputSchema: technicalCompilationPreviewDetailOutputSchema(),
+  annotations: READ_ONLY_ANNOTATIONS,
 };
 
 const projectAdmittedGeometryExportTool: MCPTool = {
@@ -321,6 +710,25 @@ const projectAdmittedGeometryExportTool: MCPTool = {
   },
   outputSchema: OBJECT_OUTPUT_SCHEMA,
   annotations: DRAFT_CAS_WRITE_ANNOTATIONS,
+};
+
+const projectAdmittedGeometryExportPreflightTool: MCPTool = {
+  name: "project_admitted_geometry_export_preflight",
+  description:
+    "Read one exact sealed compile.seal-admission@3 Build123d admission and state whether it is ready for the existing singular canonical export, or whether exact independently admitted child roots can be guided. The caller names only projectId, exact Thread basis, admission artifact id and fingerprint. It never starts a runtime, calls a provider, returns source text, or selects a source, profile, provider or runtime. Guidance is documentary: each later admission advances the Thread, so current attachment heads must be reread and recrossed when required.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: TECHNICAL_ID_SCHEMA,
+      basis: TECHNICAL_THREAD_BASIS_SCHEMA,
+      artifactId: TECHNICAL_ID_SCHEMA,
+      artifactFingerprint: FINGERPRINT_SCHEMA,
+    },
+    required: ["projectId", "basis", "artifactId", "artifactFingerprint"],
+    additionalProperties: false,
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: READ_ONLY_ANNOTATIONS,
 };
 
 const projectBuild123dExecutionReviewTool: MCPTool = {
@@ -410,6 +818,72 @@ function technicalCompilationPreviewCommand(
   };
 }
 
+function technicalCompilationPreviewDetailCommand(
+  value: Record<string, unknown>,
+): {
+  readonly projectId: string;
+  readonly evidenceRef: TechnicalCompilationPreviewEvidenceReference;
+  readonly section: typeof TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS[number];
+  readonly cursor?: string;
+} {
+  exactKeys(
+    value,
+    ["projectId", "evidenceRef", "section"],
+    ["cursor"],
+    "technicalCompilationPreviewDetail",
+  );
+  const section = exactNonEmptyText(value.section, "section");
+  if (
+    !TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS.includes(
+      section as typeof TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS[number],
+    )
+  ) throw new TypeError("section is not a technical-compilation evidence section");
+  const evidence = exactRecord(value.evidenceRef, "evidenceRef");
+  exactKeys(
+    evidence,
+    ["schemaVersion", "projectId", "fingerprint", "byteCount"],
+    [],
+    "evidenceRef",
+  );
+  if (
+    evidence.schemaVersion !== "technical-compilation-preview-evidence-reference/1.0"
+  ) {
+    throw new TypeError("evidenceRef.schemaVersion is invalid");
+  }
+  const projectId = technicalId(value.projectId, "projectId");
+  const evidenceProjectId = technicalId(evidence.projectId, "evidenceRef.projectId");
+  if (evidenceProjectId !== projectId) {
+    throw new TypeError("evidenceRef.projectId must equal projectId");
+  }
+  const cursor = value.cursor === undefined
+    ? undefined
+    : exactNonEmptyText(value.cursor, "cursor");
+  if (cursor !== undefined && !/^[a-f0-9]{64}$/.test(cursor)) {
+    throw new TypeError("cursor must be 64 lowercase hex characters");
+  }
+  return {
+    projectId,
+    evidenceRef: {
+      schemaVersion: "technical-compilation-preview-evidence-reference/1.0",
+      projectId,
+      fingerprint: fingerprintInput(evidence.fingerprint, "evidenceRef.fingerprint"),
+      byteCount: positiveInteger(evidence.byteCount, "evidenceRef.byteCount"),
+    },
+    section: section as typeof TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS[number],
+    ...(cursor === undefined ? {} : { cursor }),
+  };
+}
+
+function boundedCompilationPreviewContent(
+  result: BoundedTechnicalCompilationPreviewResult,
+): string {
+  const counts = result.counts;
+  const review = result.requiresFullEvidenceForMrtr
+    ? " Full evidence review is required before MRTR."
+    : "";
+  return `Technical compilation preview is ${result.status}: ${counts.diagnostics} diagnostics and ${counts.gaps} gaps across ${counts.sources} sources. Read immutable evidence sections with project_technical_compilation_preview_detail using evidenceRef.${review}`;
+}
+
 function admittedGeometryExportCommand(
   value: Record<string, unknown>,
 ): ProjectAdmittedGeometryExportCommand {
@@ -418,6 +892,26 @@ function admittedGeometryExportCommand(
     ["projectId", "basis", "artifactId", "artifactFingerprint"],
     [],
     "admittedGeometryExport",
+  );
+  return {
+    projectId: technicalId(value.projectId, "projectId"),
+    basis: technicalThreadBasis(value.basis, "basis"),
+    artifactId: technicalId(value.artifactId, "artifactId"),
+    artifactFingerprint: fingerprintInput(
+      value.artifactFingerprint,
+      "artifactFingerprint",
+    ),
+  };
+}
+
+function admittedGeometryExportPreflightCommand(
+  value: Record<string, unknown>,
+): ProjectAdmittedGeometryExportPreflightCommand {
+  exactKeys(
+    value,
+    ["projectId", "basis", "artifactId", "artifactFingerprint"],
+    [],
+    "admittedGeometryExportPreflight",
   );
   return {
     projectId: technicalId(value.projectId, "projectId"),

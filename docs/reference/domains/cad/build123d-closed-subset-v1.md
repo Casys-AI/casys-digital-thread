@@ -3,8 +3,8 @@
 Audience: both · Diátaxis: reference · Kind: contract
 
 The current CAD language is not Python or build123d in general. It is the server-owned
-profile `build123d-closed-subset-v1`, compiled as profile `3.0.0` by analyzer
-`build123d-qualified-lezer` `1.6.0`.
+profile `build123d-closed-subset-v1`, compiled as profile `3.1.0` by analyzer
+`build123d-qualified-lezer` `1.7.0`.
 
 Code authorities:
 
@@ -36,7 +36,7 @@ most 8000 tokenizer entries and rejects the 8001st. The outer source-capture cei
 262,144 bytes does not widen D4. D4 is a reachability guard, not semantic qualification
 and not the sandbox boundary. Inventory: [CAD boundedness](boundedness.md).
 
-### Analyzer 1.6.0: what is understood today
+### Analyzer 1.7.0: what is understood today
 
 Only these forms can finish with no `unresolvedConstructs`:
 
@@ -70,13 +70,16 @@ comprehensions, functions, classes, lambdas, general method or selector chains, 
 otherwise known calls. A sketch as `result` is unresolved. D4 rejects `&` and `|` before
 semantic analysis.
 
-The pinned inventory contains 473 public build123d 0.11.1 names. The 1.6.0 analyzer is a
+The pinned inventory contains 473 public build123d 0.11.1 names. The 1.7.0 analyzer is a
 bootstrap hand table, not complete coverage of that finite language. The accepted
 direction is documented in
 [closed-language compilation](../../../explanations/product/closed-language-compilation.md);
 future coverage does not change the current contract.
 
-## Compilation admission 3.0.0
+Physical standalone-module comments are accepted only as non-semantic provenance
+annotations. They never establish a geometry, admission, named lever, binding or run.
+
+## Compilation admission 3.1.0
 
 Parser success is not admission. A new Build123d compilation is reviewable only when:
 

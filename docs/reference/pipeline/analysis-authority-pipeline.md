@@ -8,8 +8,8 @@ Digital Thread MCP server. Provider MCP servers remain private backend dependenc
 they are never a second, bypassable tool surface.
 
 The prescribed-kinematics L3 path has a bounded provider-specific WAL and recovery
-contract: [observation recovery](prescribed-kinematics-observation-recovery.md). It
-does not make the private host qualification WAL into project or Thread evidence.
+contract: [observation recovery](prescribed-kinematics-observation-recovery.md). It does
+not make the private host qualification WAL into project or Thread evidence.
 
 | Open                                                                        | Owns                                                                     |
 | --------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
@@ -154,12 +154,18 @@ lowerings are adapters. The agent-facing project-control tools validate MCP inpu
 call inward-facing use cases; they do not own provider clients or CAS stores. Capture
 returns `technical-source-capture-review/4.0` (`parser`, `levers`, opaque
 `technical-source-analysis-capture-locator/4.0` `reference`). Compilation preview
-accepts only `result.reference` and produces `technical-compilation/2.0`; unresolved
-previews hoist join `gaps` beside that closed document. Exact operation dispatch lives
-under `src/application/use-cases/` and depends only on the generic `ProjectRunExecutor`
-contract in `src/application/ports/in/project-run-executor.ts`. Canonical CAD drafts
-come from `project_admitted_geometry_export`. Concrete registered executors remain the
-only components allowed to call private provider MCP clients for admitted project runs.
+accepts only `result.reference`, writes the closed `technical-compilation/2.0` as
+immutable evidence, and returns a bounded server-owned summary with an opaque
+`evidenceRef`. `project_technical_compilation_preview_detail` reads named bounded
+sections and pages from that reference; `full-evidence` is explicit and is required for
+MRTR review, including the ready decision parameters and exact next operation. This is a
+breaking migration from the historical full `structuredContent`; the CLI summary flag is
+removed because the server-owned summary is now the normal result. Exact operation
+dispatch lives under `src/application/use-cases/` and depends only on the generic
+`ProjectRunExecutor` contract in `src/application/ports/in/project-run-executor.ts`.
+Canonical CAD drafts come from `project_admitted_geometry_export`. Concrete registered
+executors remain the only components allowed to call private provider MCP clients for
+admitted project runs.
 
 ## Implemented generic CAD preview and promotion vertical
 
@@ -308,15 +314,21 @@ so older links still land. The sealed compilation is reviewed engineering input,
 transport envelope. Build123d, Modelica and CalculiX keep distinct method and evidence
 contracts even when they consume projections from the same compilation.
 
-The active Build123d 3.0 profile is the one exception to otherwise non-executable
+The active Build123d 3.1 profile is the one exception to otherwise non-executable
 multi-file technical closures: it lowers the narrow direct scalar-leaf shape defined in
 [workspace-closure lowering v1](../domains/cad/build123d-workspace-closure-lowering-v1.md).
-Its V4 capture persists the full manifest and separates `technical-unit:<closure sha256>`
-from workspace file identity. Every subsequent reopen recrosses the closure, reopens all
-bytes, re-lowers, compares the full manifest and effective script, then reanalyses.
-Modelica and circuit-only SPICE multi-file closures remain literally
-`source.dependency-lowering-unavailable`. This compiler contract gives no caller a
-provider, tool, path or lowerer choice, and is not itself runtime proof.
+Its V4 capture persists the full manifest and separates
+`technical-unit:<closure sha256>` from workspace file identity. Every subsequent reopen
+recrosses the closure, reopens all bytes, re-lowers, compares the full manifest and
+effective script, then reanalyses. Modelica and circuit-only SPICE multi-file closures
+remain literally `source.dependency-lowering-unavailable`. This compiler contract gives
+no caller a provider, tool, path or lowerer choice, and is not itself runtime proof.
+
+`project_technical_compilation_preview` writes the immutable full dossier to evidence
+CAS but returns only a server-owned summary at most 8 KiB and its `evidenceRef`.
+`project_technical_compilation_preview_detail` reads fixed named sections as bounded
+pages with opaque cursors; `full-evidence` is deliberately large only when explicit. The
+summary is a breaking response migration, and full evidence remains required for MRTR.
 
 Admitted CAD/Modelica file → microVM:
 [admitted source isolated execution](admitted-source-isolated-execution.md).

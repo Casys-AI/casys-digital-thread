@@ -164,7 +164,7 @@ Deno.test("technical source capture is conditional, exact, and has no project au
   assertEquals(calls.length, 1);
 });
 
-Deno.test("technical compilation preview forwards exact closed facts and passes through the ready review result", async () => {
+Deno.test("technical compilation preview exposes only the bounded server summary", async () => {
   const withoutPreview = new CapturingApp();
   registerProjectControlTools(
     withoutPreview as unknown as McpApp,
@@ -179,26 +179,25 @@ Deno.test("technical compilation preview forwards exact closed facts and passes 
   const calls: unknown[] = [];
   let projectReads = 0;
   const readyResult = {
+    schemaVersion: "technical-compilation-preview-summary/1.0",
     status: "ready-for-review",
-    document: {
-      schemaVersion: "technical-compilation/2.0",
-      status: "ready-for-review",
-      projections: [],
-    },
-    fingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
-    gaps: [],
-    draft: {
-      schemaVersion: "technical-compilation-draft-reference/1.0",
-      draftId: `technical-compilation:project.drip-tray:${"4".repeat(64)}`,
+    evidenceRef: {
+      schemaVersion: "technical-compilation-preview-evidence-reference/1.0",
       projectId: "project.drip-tray",
-      documentFingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
-      envelopeFingerprint: { algorithm: "sha256", digest: "5".repeat(64) },
+      fingerprint: { algorithm: "sha256", digest: "4".repeat(64) },
+      byteCount: 1200,
     },
-    decisionParameters: [{
-      key: "technicalCompilation.draftId",
-      label: "Technical compilation draft",
-      value: `technical-compilation:project.drip-tray:${"4".repeat(64)}`,
-    }],
+    evidenceBytes: 1200,
+    counts: {
+      sources: 1,
+      projections: 1,
+      diagnostics: 0,
+      gaps: 0,
+      diagnosticsByCode: {},
+      gapsByCode: {},
+    },
+    samples: { diagnostics: [], gaps: [], omittedDiagnostics: 0, omittedGaps: 0 },
+    requiresFullEvidenceForMrtr: true,
   } as const;
   registerProjectControlTools(
     app as unknown as McpApp,
@@ -229,9 +228,12 @@ Deno.test("technical compilation preview forwards exact closed facts and passes 
   assert(result.structuredContent === readyResult);
   assertEquals(calls, [TECHNICAL_COMPILATION_ARGS]);
   assertEquals(projectReads, 0);
-  assertStringIncludes(result.content as string, "ready for review");
-  assertStringIncludes(result.content as string, "only from decisionParameters");
-  assertStringIncludes(result.content as string, "do not invent them");
+  assertStringIncludes(result.content as string, "ready-for-review");
+  assertStringIncludes(result.content as string, "Full evidence review is required");
+  const structured = result.structuredContent as Record<string, unknown>;
+  assertEquals(structured.document, undefined);
+  assertEquals(structured.decisionParameters, undefined);
+  assertEquals(structured.operation, undefined);
 
   const tool = app.tool("project_technical_compilation_preview");
   assertEquals(tool.annotations, {

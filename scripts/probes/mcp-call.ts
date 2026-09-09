@@ -61,7 +61,10 @@ export function applyIssuedAt(
   return { ...args, issuedAt: utcIssuedAt(now) };
 }
 
-export function printableResult(result: unknown, receipt = false): unknown {
+export function printableResult(
+  result: unknown,
+  receipt = false,
+): unknown {
   if (!isRecord(result)) {
     return result;
   }
@@ -175,7 +178,10 @@ export async function callMcpTool(
   const result = envelope.result;
   const failed = isRecord(result) && result.isError === true;
   return {
-    payload: printableResult(result, request.receipt === true),
+    payload: printableResult(
+      result,
+      request.receipt === true,
+    ),
     exitCode: failed ? 1 : 0,
   };
 }

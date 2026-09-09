@@ -12,7 +12,7 @@ Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stay
 
 #### [`src/adapters/cad/source/qualified-build123d-source-analyzer.ts`](../../../src/adapters/cad/source/qualified-build123d-source-analyzer.ts)
 
-Qualified executable-source frontend `build123d-qualified-lezer` 1.6.0: D4 guard plus
+Qualified executable-source frontend `build123d-qualified-lezer` 1.7.0: D4 guard plus
 Lezer-proved
 `Box`/`Cylinder`/`Cone`/`Sphere`/`Torus`/`Ellipsoid`/`Wedge`/`Rectangle`/`Circle`/`Ellipse`/`RegularPolygon`/`Pos`/`Rot`/`Compound`,
 same-kind `+`/`-`, named `Pos`/`Rot` bindings and left-associative

@@ -25,6 +25,7 @@ import type { EngineeringProjectRunLease } from "../shared/stores/file-engineeri
 import { CaptureBackedTechnicalCompilationAdmissionReader } from "./admission/capture-backed-technical-compilation-admission-reader.ts";
 import { CaptureBackedTechnicalCompilationSourceReader } from "./admission/capture-backed-technical-compilation-source-reader.ts";
 import { FileTechnicalCompilationDraftStore } from "./admission/file-technical-compilation-draft-store.ts";
+import { FileTechnicalCompilationPreviewEvidenceStore } from "./admission/file-technical-compilation-preview-evidence-store.ts";
 import { FixedTechnicalCompilationProfileCatalogProvider } from "./admission/fixed-technical-compilation-profile-catalog-provider.ts";
 import { CaptureBackedTechnicalCompilationBasisResolver } from "./captures/technical-compilation-basis-resolver.ts";
 import { createInitialTechnicalSourceAnalysisCaptureService } from "./captures/initial-technical-source-analysis-composition.ts";
@@ -56,6 +57,8 @@ export interface TechnicalCompilationFoundation {
   readonly technicalCompilationSources: CaptureBackedTechnicalCompilationSourceReader;
   readonly technicalSourceCapture: ProjectTechnicalSourceCaptureUseCase;
   readonly technicalCompilationDrafts: FileTechnicalCompilationDraftStore;
+  readonly technicalCompilationPreviewEvidence:
+    FileTechnicalCompilationPreviewEvidenceStore;
   readonly technicalCompilationProfiles:
     FixedTechnicalCompilationProfileCatalogProvider;
   /** Exact bytes sealed by compile.seal-admission@3 for closed ROP reopening. */
@@ -155,6 +158,15 @@ export function createTechnicalCompilationFoundation(
       label: "Technical compilation review draft",
     }),
   );
+  const technicalCompilationPreviewEvidence =
+    new FileTechnicalCompilationPreviewEvidenceStore(
+      new FileByteStore({
+        kind: "technical-compilation-preview-evidence",
+        directory: `${technicalCompilationDirectory}/preview-evidence`,
+        uriNamespace: "technical-compilation-preview-evidence",
+        label: "Technical compilation preview evidence",
+      }),
+    );
   const technicalCompilationSealBytes = new FileByteStore({
     kind: "technical-compilation-admission-capture",
     directory: `${technicalCompilationDirectory}/seals`,
@@ -176,6 +188,7 @@ export function createTechnicalCompilationFoundation(
     technicalCompilationSources,
     technicalSourceCapture,
     technicalCompilationDrafts,
+    technicalCompilationPreviewEvidence,
     technicalCompilationProfiles,
     technicalCompilationSealBytes,
     technicalCompilationSeals,

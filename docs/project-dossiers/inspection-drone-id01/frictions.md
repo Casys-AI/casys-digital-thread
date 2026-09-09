@@ -3,44 +3,6 @@
 2026-09-06 UTC. Documentary observations by Astra while directly driving the registered
 project tools. Not a second authority or a blanket defect list.
 
-## F01 — standalone provenance comments block CAD qualification
-
-- Exact source r1 SHA-256:
-  `7ba29fdfb752d7e00d7322efcc87fdee04669b3c1e4c6162d762a1fa8370f075`.
-- Technical capture: `ae3341e0ff598b75988e4c4c50f2f548959a6aa9c3121375ae1eb43fbc84e6f6`.
-  `parser.status=passed`, eleven numeric levers returned.
-- Compilation: `a8122b403df1eef4a5f380947aaa99f0fade7892088b0c6d89646b5aca24ed24`,
-  `status=unresolved`, `gaps=[]`, no decision parameters or operation. Six
-  `python-comment` unresolved constructs explain the refusal in the full analysis:
-  `Top-level Comment is not qualified in v1.`
-- All eleven `parameterizes` joins and the `represents` join were present. This was
-  neither a missing SysML attribute nor absence of a numeric lever.
-- Explicit authoring response: retain r1, put a successor r2 with only those comments
-  removed, retain the explanations in a separately captured provenance document and the
-  approved living brief. No analyzer/contract bypass.
-- The revised source was `ready-for-review`, admitted and executed canonically. This
-  comparison establishes the comment refusal on this exact source. It does not establish
-  support for arbitrary Python or comments in all positions.
-- Grok completed a separate read-only diagnosis of the AST handling, capture-status
-  wording and missing compact explanation. It located the top-level fallback in
-  `qualified-build123d-source-analyzer.ts` and the selective gap projection in
-  `technical-compilation-preview-review.ts`. These are correction candidates, not a
-  deployed fix. Astra has not accepted a silent widening of analyzer 1.6.0 or a claim
-  that static tests alone establish the extension runbook's runtime completion.
-
-## F02 — large transport output hides the actionable preview
-
-The CLI defaults to the complete structured response. Here, the non-ready preview was
-about 35,000 output tokens and the ready review carried 156 flat decision parameters. A
-bounded terminal result can truncate before the actionable diagnostics. The server
-response itself was not shown to be corrupt or incomplete.
-
-The existing CLI plus `jq` can project status, diagnostic constructs and operation; the
-full returned decision parameters must still be preserved verbatim. This is observed
-agent ergonomics, not evidence of an MCP protocol or admission defect. Using the direct
-existing CLI entry point avoids Deno task echoing a large payload; the CLI also supports
-`--args=-` and `--receipt` for their documented purposes.
-
 ## F03 — current session lacks first-class Digital Thread tools
 
 The current Codex tool catalogue did not expose the Casys project commands. Astra used
@@ -111,20 +73,6 @@ UTC: project r61 / Thread r8, part structure
 `part-definitions-d31e3f952060643eaecd7ad74825325eba5ad51a92af570a2aef7b0e0788402b`.
 This establishes real runtime adoption for this inspection path, in addition to the
 tests. It does not establish unrelated provider operations.
-
-## F06 — multi-source admission is broader than canonical CAD export
-
-The eleven-source preview was `ready-for-review`; its 946 returned decision parameters
-were preserved and the admission sealed successfully at Thread r9. Inspection of the
-canonical exporter then confirmed its deliberate singular-source gate: one projection,
-one source and one profile request. No failed provider call was needed to establish that
-boundary.
-
-The completed response was separate current-basis admissions at Thread r10-r20 and
-canonical exports at r21-r31 for the eleven roots, preserving the multi-source admission
-as history. This is a workflow granularity mismatch, not a corrupt admission, a provider
-failure, or authorization to add a caller-selected source selector. The source-workspace
-how-to already requires independent child-root admission for immediate CAD modules.
 
 ## F07 — L5 automatically proposes a gate absent from the L4 scope
 
