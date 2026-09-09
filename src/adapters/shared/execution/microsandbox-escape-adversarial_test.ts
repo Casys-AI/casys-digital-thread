@@ -38,7 +38,7 @@ const LIVE = Deno.env.get("MSB_LIVE_ADVERSARIAL") === "1";
 const IMAGE_DIGEST = "1".repeat(64);
 const IMAGE_REFERENCE = `casys/test-worker@sha256:${IMAGE_DIGEST}`;
 const LIVE_IMAGE_DIGEST =
-  "0e19aee61aaab326ec29e50753a0ef56432d255fb44fd21c40988e90ff7601f8";
+  "6484a43b3632972de349ba5aa55f3da7316fb5bd7ad957b7c22aaf7888fad159";
 const LIVE_IMAGE_REFERENCE =
   `casys/build123d-microsandbox-worker@sha256:${LIVE_IMAGE_DIGEST}`;
 const PROFILE = Object.freeze({ id: "test-python-v1", version: "1.0.0" });

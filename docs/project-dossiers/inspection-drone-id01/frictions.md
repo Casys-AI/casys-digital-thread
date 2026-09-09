@@ -1092,9 +1092,9 @@ still-queued ID01 run crossed this exact profile-attestation layer and reached t
 separate cache prerequisite. That closes the omitted-attestation defect without claiming
 CAD execution, provider dispatch or a sensitivity result.
 
-## F42 — the exact Build123d microVM distribution for the active pin is unavailable
+## F42 — the exact Build123d microVM distribution for the active pin was unavailable
 
-(open, deferred hard friction)
+(closed, bounded pilot recovery; loss trigger remains unproven)
 
 The live replay stopped before claim, CAD, provider dispatch or execution WAL because
 the exact Microsandbox cache prerequisite for
@@ -1125,11 +1125,24 @@ precise trigger remains unproven. The durable product defect is that the active 
 introduced with a preload assumption but without a versioned immutable source able to
 restore its exact bytes after such a loss.
 
-Close this only through a reviewed immutable distribution — or the full
-candidate-to-qualification-to-catalog-promotion path — followed by successful exact
-cache acquisition and the queued run crossing the prerequisite. Do not manually inject,
-load or retag a merely plausible image, and do not replace the required base/stepped FEA
-receipts plus typed sensitivity edge with a whiteboard node.
+The bounded pilot recovery completed on 2026-09-09 without manually injecting, loading
+or retagging a plausible image. A retained publication receipt was rebound through F43,
+then its exact public ARM64 OCI manifest
+`sha256:57bd9f9002cb258f99413b5f314c22b3e75a4b2485058c0780253f4285834609`
+was imported and physically qualified as Microsandbox digest
+`sha256:6484a43b3632972de349ba5aa55f3da7316fb5bd7ad957b7c22aaf7888fad159`.
+The qualification executed the closed `build123d-closed-subset-v1@1.0.0` profile,
+reread a validated STEP from publication-gated CAS and proved destruction. A reviewed
+code-owned local-developer baseline then replaced the unavailable pin while preserving
+the semantic profile version and changing both policy and complete profile fingerprints.
+Exact governed cache acquisition returned `imported`, and the active-pin vertical passed
+microVM execution, STEP validation, CAS reread and proven destruction.
+
+This closes distribution availability for the pilot only. It is not generic catalogue
+promotion, redistribution clearance, a project capability approval, a product FEA or a
+sensitivity result. F44 remains open, the precise cache-loss trigger remains unproven,
+and the project still requires a fresh capability review plus human MRTR before the
+base/stepped FEA receipts and typed sensitivity edge may be produced.
 
 ## F43 — one unrelated matrix change invalidated an exact Build123d candidate receipt
 
@@ -1170,11 +1183,13 @@ bound to the preceding profile.
 That platform extension is disproportionate to the ID01 pilot and stays deferred. The
 bounded pilot path follows the existing CalculiX local-developer precedent instead:
 qualify the exact public ARM64 candidate, review a source-and-target pin change in code,
-mark unresolved aggregate-image licence literally, bump the Build123d execution profile,
-restart at a controlled boundary, and obtain a fresh project capability review plus
-human MRTR before any run uses the successor runtime. This is not production promotion
-or redistribution clearance. Close F44 only when a maintained generic activation and
-forward-only rollback route exists.
+mark unresolved aggregate-image licence literally, recompute the policy and complete
+profile fingerprints while retaining the unchanged `1.0.0` contract version, restart at
+a controlled boundary, and obtain a fresh project capability review plus human MRTR
+before any run uses the successor runtime. The runtime digest and fingerprints prevent
+an old approval from matching even though the semantic profile version stays readable.
+This is not production promotion or redistribution clearance. Close F44 only when a
+maintained generic activation and forward-only rollback route exists.
 
 ## F45 — the Build123d candidate gate omitted its shared fixture read grant
 
@@ -1193,6 +1208,24 @@ import record then passed on the native `linux/arm64` host: the real candidate e
 its STEP was reread from publication-gated CAS and validated as `occt-step-ap214@1.0.0`,
 and destruction was proven. The retained qualification keeps
 `eligibleForPromotion=false` and `L3/L4/L5=false`; it is runtime evidence only.
+
+## F46 — the active Build123d cache descriptor had no bounded maintainer entry point
+
+(closed, quick win)
+
+After the reviewed baseline change, the server-owned cache registry could acquire the
+new Build123d descriptor during a product session, but maintainers had no dedicated
+bounded command to restore and inspect that exact active target before asking for a new
+project authorization. The available Build123d gate qualified a non-catalog candidate;
+the existing cache operators covered only geometry-module assembly and ngspice. Using an
+ad hoc script or waiting for a product run would have weakened the recovery trail.
+
+`prepare:build123d:microsandbox` now mirrors the existing private cache operators. It
+accepts no caller arguments, selects the unique code-owned Build123d recipe, observes
+the exact target and on a miss imports only its immutable OCI-digest source. It performs
+no qualification or project run. The bootstrap task census, script index and active-pin
+vertical cover the new entry point; the first live invocation returned `imported` for
+the exact `6484…` target.
 
 ## Expected states, not defects
 

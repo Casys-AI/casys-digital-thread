@@ -63,6 +63,8 @@ export const FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID = "cache.ngspice" as const;
 const REPO_ROOT = resolveRepoRoot();
 const MODELICA_PHYSICAL_IMAGE_ID = "modelica-microsandbox-worker" as const;
 const PHYSICAL_IMAGE_ID = /^[a-z0-9]+(?:[._-][a-z0-9]+)*$/;
+const BUILD123D_PUBLIC_ARM64_OCI_SOURCE =
+  "ghcr.io/casys-ai/casys-digital-thread-build123d-isolated-worker@sha256:57bd9f9002cb258f99413b5f314c22b3e75a4b2485058c0780253f4285834609" as const;
 const CALCULIX_PUBLIC_ARM64_OCI_SOURCE =
   "ghcr.io/casys-ai/casys-digital-thread-calculix-worker@sha256:0c96ae7f16c05aaa1b082740e1272ae6b4e35ac58866a4537f9d6e74cb236462" as const;
 
@@ -94,10 +96,10 @@ export interface FirstPartyTrustedDockerfileSource {
 
 /**
  * Preferred immutable distribution source when an exact published digest
- * exists. CalculiX currently acquires this way; other descriptors still
- * rebuild from trusted Dockerfiles. The recipe remains the way to publish a
- * later candidate; this source never replaces `buildRecipe`. Acquisition
- * never builds when this source is selected.
+ * exists. Build123d isolated execution and CalculiX currently acquire this
+ * way; other descriptors still rebuild from trusted Dockerfiles. The recipe
+ * remains the way to publish a later candidate; this source never replaces
+ * `buildRecipe`. Acquisition never builds when this source is selected.
  */
 export interface FirstPartyOciDigestSource {
   readonly kind: "oci-digest";
@@ -229,9 +231,8 @@ function closedFirstPartyBootstrapDescriptors(): readonly Omit<
         user: BUILD123D_MICROSANDBOX_WORKER_CONTRACT.expectedImageUser,
         entrypoint: imageEntrypoint(BUILD123D_MICROSANDBOX_WORKER_CONTRACT),
       }),
-      source: trustedDockerfileSource({
-        dockerImageName: "casys/build123d-microsandbox-worker:local",
-        dockerSourceReference: "casys/build123d-microsandbox-worker:local",
+      source: ociDigestSource({
+        reference: BUILD123D_PUBLIC_ARM64_OCI_SOURCE,
       }),
     },
     {

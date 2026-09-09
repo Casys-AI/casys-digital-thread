@@ -25,17 +25,18 @@ those licences nor grants image redistribution. Bundled or production distributi
 requires an image-level SBOM, notices and licence review for the exact digest. A digest
 change requires a new review.
 
-The isolated CalculiX worker material licence is literally `unknown`. The catalogued
-Microsandbox target is an explicit local-developer, non-production pin of already
-published public GHCR `linux/arm64` bytes. That pin is not a production promotion, not
-an aggregate-image licence review, and not redistribution clearance. Do not reuse
-`reviewed` for this digest. The source candidate receipt still records
-`licence: unresolved`, historical `anonymousPull: not-run`,
-`eligibleForPromotion: false`, and SBOM/provenance as `requested`. A separate
-metadata-only census observed anonymous manifest access, and a prior host record passed
-the exact worker qualification; those observations do not rewrite the receipt states or
-this catalogue licence. Other first-party materials keep their existing licence states.
-The catalogue remains `productionEligible: false`.
+The isolated Build123d and CalculiX worker material licences are literally `unknown`.
+Their catalogued Microsandbox targets are explicit local-developer, non-production pins
+of already published GHCR `linux/arm64` bytes. Those pins are not production promotions,
+aggregate-image licence reviews, or redistribution clearance. Do not reuse `reviewed`
+for either digest. Each source candidate receipt still records `licence: unresolved`,
+historical `anonymousPull: not-run`, `eligibleForPromotion: false`, and SBOM/provenance
+as `requested`. The Build123d candidate passed its exact native-ARM64 worker
+qualification with publication-gated STEP reread and proven destruction. A separate
+CalculiX metadata-only census observed anonymous manifest access, and a prior host
+record passed its exact worker qualification. None of those observations rewrites the
+receipt states or either catalogue licence. Other first-party materials keep their
+existing licence states. The catalogue remains `productionEligible: false`.
 
 `casys.mcp-chrono@0.3.2` is a separate, digest-pinned Linux/amd64 material:
 `ghcr.io/casys-ai/mcp-chrono@sha256:2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557`.

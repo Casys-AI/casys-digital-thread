@@ -147,6 +147,19 @@ Deno.test("atomic first-party runtime catalogue exposes only runtime materials a
     "casys.spice-worker",
     "casys.mcp-chrono",
   ]);
+  const build123dWorker = catalog.units.find((unit) =>
+    unit.id === "casys.build123d-isolated-worker"
+  );
+  assertEquals(build123dWorker?.version, "1.0.0");
+  assertEquals(
+    build123dWorker?.materials[0]?.imageReference,
+    "docker.io/casys/build123d-microsandbox-worker@sha256:6484a43b3632972de349ba5aa55f3da7316fb5bd7ad957b7c22aaf7888fad159",
+  );
+  assertEquals(build123dWorker?.materials[0]?.effects.security, "reviewed");
+  assertEquals(build123dWorker?.materials[0]?.effects.licence, {
+    status: "unknown",
+    reference: "docs/reference/runtime/capability-packs/atomic-runtime-boundaries.md",
+  });
   assertEquals(
     catalog.bindings.find((binding) => binding.id === "openmodelica-qualified-kit")
       ?.unitIds,

@@ -200,12 +200,15 @@ can reach execution. Bounded attempt state lives under
 CAS owns the run-and-producer-generation tri-state publication marker and exposes no
 digest-only reader.
 
-The generation-0 real gate passed against
-`casys/build123d-microsandbox-worker@sha256:0e19aee61aaab326ec29e50753a0ef56432d255fb44fd21c40988e90ff7601f8`:
-producer generation 0, a 15,430-byte AP214 STEP validated with OCCT, proven broker
-destruction, publication resolved as `published`, and CAS reread. It performed no
-recovery abort after publication. It did not exercise generation-1 recovery, a persisted
-project executor, or production.
+The current local-developer Build123d runtime is
+`casys/build123d-microsandbox-worker@sha256:6484a43b3632972de349ba5aa55f3da7316fb5bd7ad957b7c22aaf7888fad159`,
+acquired from the separately typed public ARM64 OCI manifest
+`sha256:57bd9f9002cb258f99413b5f314c22b3e75a4b2485058c0780253f4285834609`. Its candidate
+gate produced a 15,430-byte AP214 STEP validated with OCCT, proven broker destruction,
+publication resolved as `published`, and CAS reread. This is host/runtime qualification
+only, not a persisted project execution, L3/L4/L5 result, production promotion or
+redistribution clearance. The historical generation-0 gate for the lost `0e19…601f8` pin
+remains evidence for that prior runtime and is not rewritten.
 
 Native N-API calls are not cancellable once entered; a privileged same-host race remains
 possible between native-artifact hashing and import; and guest directory listing is

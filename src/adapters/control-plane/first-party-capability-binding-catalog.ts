@@ -164,6 +164,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
         ["linux/arm64"],
         "reviewed",
+        "unknown",
       ),
     ]),
     unit("casys.geometry-module-assembler-worker", [

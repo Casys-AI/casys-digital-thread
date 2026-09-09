@@ -4,6 +4,7 @@ import { pinnedOciImageReference } from "../../domain/compile/isolation/local-is
 import { LOCAL_CALCULIX_EXECUTION_IMAGE_REFERENCE } from "../fea/isolated-v3/local-calculix-image-reference.ts";
 import { LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE } from "../../domain/modelica/local-execution-image.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
+import { LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE } from "./first-party-capability-runtime-identities.ts";
 import {
   assertFirstPartyPhysicalImageHasUniqueTargetDigest,
   createFirstPartyMicrosandboxImageBootstrapDescriptors,
@@ -30,7 +31,6 @@ Deno.test("first-party bootstrap descriptors cover the five catalogued microvm-i
     descriptors.filter((descriptor) => descriptor.source.kind === "trusted-dockerfile")
       .map((descriptor) => descriptor.recipeId),
     [
-      FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
       FIRST_PARTY_GEOMETRY_MODULE_CACHE_RECIPE_ID,
       FIRST_PARTY_MODELICA_CACHE_RECIPE_ID,
       FIRST_PARTY_NGSPICE_CACHE_RECIPE_ID,
@@ -39,7 +39,10 @@ Deno.test("first-party bootstrap descriptors cover the five catalogued microvm-i
   assertEquals(
     descriptors.filter((descriptor) => descriptor.source.kind === "oci-digest")
       .map((descriptor) => descriptor.recipeId),
-    [FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID],
+    [
+      FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID,
+      FIRST_PARTY_CALCULIX_CACHE_RECIPE_ID,
+    ],
   );
   for (const descriptor of descriptors) {
     assertEquals(descriptor.buildRecipe.platform, "linux/arm64");
@@ -72,6 +75,53 @@ Deno.test("first-party bootstrap descriptors cover the five catalogued microvm-i
     assertEquals(descriptor.source.kind, "oci-digest");
     assertEquals("dockerImageName" in descriptor.source, false);
   }
+});
+
+Deno.test("Build123d acquires the qualified public GHCR arm64 digest and keeps its recipe", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const descriptors = createFirstPartyMicrosandboxImageBootstrapDescriptors(catalog);
+  const build123d = descriptors.find((descriptor) =>
+    descriptor.recipeId === FIRST_PARTY_BUILD123D_ISOLATED_CACHE_RECIPE_ID
+  );
+  if (!build123d || build123d.source.kind !== "oci-digest") {
+    throw new Error("Build123d bootstrap must acquire by oci-digest");
+  }
+  assertEquals(build123d.unitId, "casys.build123d-isolated-worker");
+  assertEquals(build123d.materialId, "build123d-isolated-worker-image");
+  assertEquals(build123d.physicalImageId, "build123d-isolated-worker");
+  assertEquals(
+    build123d.source.reference,
+    "ghcr.io/casys-ai/casys-digital-thread-build123d-isolated-worker@sha256:57bd9f9002cb258f99413b5f314c22b3e75a4b2485058c0780253f4285834609",
+  );
+  assertEquals(
+    build123d.targetImageReference,
+    pinnedOciImageReference(
+      LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
+      "$bootstrap.build123d",
+    ),
+  );
+  assertEquals(
+    build123d.targetImageReference,
+    "docker.io/casys/build123d-microsandbox-worker@sha256:6484a43b3632972de349ba5aa55f3da7316fb5bd7ad957b7c22aaf7888fad159",
+  );
+  assertEquals(build123d.source.reference === build123d.targetImageReference, false);
+  assertEquals(
+    build123d.buildRecipe.dockerfile,
+    "images/build123d-microsandbox-worker/Dockerfile",
+  );
+  assertEquals(
+    build123d.buildRecipe.context,
+    "images/build123d-microsandbox-worker",
+  );
+  const cataloguedBuild123d = catalog.units.find((unit) =>
+    unit.id === "casys.build123d-isolated-worker"
+  )?.materials.find((material) => material.id === "build123d-isolated-worker-image");
+  assertEquals(build123d.targetImageReference, cataloguedBuild123d?.imageReference);
+  assertEquals(build123d.target.reference, build123d.targetImageReference);
+  assertEquals(
+    build123d.target.manifestDigest,
+    "sha256:6484a43b3632972de349ba5aa55f3da7316fb5bd7ad957b7c22aaf7888fad159",
+  );
 });
 
 Deno.test("CalculiX acquires the public GHCR arm64 digest and keeps its recipe", async () => {
@@ -237,6 +287,7 @@ Deno.test(
       assertNarrowMicrosandboxTaskRead(command, { worktreeRoot: true });
     }
     assertEquals(bootstrapTasks.toSorted(), [
+      "prepare:build123d:microsandbox",
       "prepare:geometry-module:microsandbox",
       "prepare:ngspice:microsandbox",
     ]);

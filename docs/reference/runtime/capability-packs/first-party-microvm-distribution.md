@@ -63,18 +63,32 @@ target. It deliberately records `licence: unresolved`, `anonymousPull: not-run`,
 `requested`. These literal states prevent a successful build from being mistaken for
 distribution clearance, anonymous availability, or runtime evidence.
 
-Four descriptors currently acquire by `trusted-dockerfile`. The CalculiX descriptor
-acquires by `source.kind: "oci-digest"` from the exact public `linux/arm64` GHCR digest
+Three descriptors currently acquire by `trusted-dockerfile`. Build123d isolated
+execution and CalculiX acquire by `source.kind: "oci-digest"`; cache preparation never
+rebuilds either selected runtime.
+
+The Build123d descriptor uses the exact published `linux/arm64` GHCR digest
+`ghcr.io/casys-ai/casys-digital-thread-build123d-isolated-worker@sha256:57bd9f9002cb258f99413b5f314c22b3e75a4b2485058c0780253f4285834609`.
+Its catalogued Microsandbox target is the stable product logical repository
+`casys/build123d-microsandbox-worker` at
+`sha256:6484a43b3632972de349ba5aa55f3da7316fb5bd7ad957b7c22aaf7888fad159`. The
+corresponding OCI index
+`sha256:b37332e72f135ad82fd37e68fba9eca8056a5f93a990ac126ba74e8913cd4088` is provenance
+only. The native-ARM64 candidate qualification retained exact STEP CAS reread, OCCT
+validation and proven destruction; it remains host/runtime evidence with
+`eligibleForPromotion=false` and no L3/L4/L5 claim.
+
+The CalculiX descriptor uses the exact public `linux/arm64` GHCR digest
 `ghcr.io/casys-ai/casys-digital-thread-calculix-worker@sha256:0c96ae7f16c05aaa1b082740e1272ae6b4e35ac58866a4537f9d6e74cb236462`.
-Its `buildRecipe` remains publication metadata for a later candidate; cache preparation
-never builds when this source is selected. The catalogued Microsandbox target stays the
-stable product logical repository `casys/calculix-microsandbox-worker` at
+Its catalogued Microsandbox target stays the stable product logical repository
+`casys/calculix-microsandbox-worker` at
 `sha256:2dc7d17454833a2c17b5812eb1e5504c4a025ef3764fc771fda2938d49fa9771`. The
 corresponding OCI index
 `sha256:8b5aaa8c7b3f88ac2cf4d759cc7a827f70291e1badc5d8173b6ad5947bdf5225` is provenance
-only; it is not the acquisition source and not the runtime pin. Do not use a candidate
-alias as the product pin. This local-developer baseline does not rewrite those receipt
-states. A separate metadata-only census observed anonymous manifest access, and a prior
+only; it is not the acquisition source and not the runtime pin. Both `buildRecipe`
+objects remain publication metadata for a later candidate. Do not use a candidate alias
+as the product pin. These local-developer baselines do not rewrite receipt states. A
+separate CalculiX metadata-only census observed anonymous manifest access, and a prior
 host record passed the exact worker qualification; neither upgrades `anonymousPull`,
 licence, or promotion.
 
