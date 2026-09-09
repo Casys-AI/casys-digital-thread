@@ -2,7 +2,7 @@
 
 Fact-checked on **2026-09-09** by six Terra reviewers, with final source and runtime
 readback checks by Codex. **27 confirmed-fixed entries have been removed.** This file
-retains **13 confirmed-open frictions** and **3 historical incidents whose current
+retains **14 confirmed-open frictions** and **3 historical incidents whose current
 status is unverified**. Original observations remain in Git history.
 
 The registered read-only project snapshot returned **project r693 / Thread r95**. The
@@ -16,24 +16,42 @@ inside retained entries describe the historical trigger, not the current project
 
 ## Confirmed-open issue index
 
-| Friction | GitHub issue                                                                                                                                                    |
-| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F03      | [#22 — Desktop integration: expose Digital Thread project-control tools in the active Codex host](https://github.com/Casys-AI/casys-digital-thread/issues/22)   |
-| F13      | [#14 — Add a governed propulsion and energy pre-sizing capability](https://github.com/Casys-AI/casys-digital-thread/issues/14)                                  |
-| F15      | [#15 — Workbench: preserve discoverability when legacy project heads cannot reopen](https://github.com/Casys-AI/casys-digital-thread/issues/15)                 |
-| F16      | [#16 — Add exact BRep mass-property evidence for canonical geometry](https://github.com/Casys-AI/casys-digital-thread/issues/16)                                |
-| F17      | [#8 — Engineering evidence: close the F1404 KV4600 / GF3016 propeller-interface packet](https://github.com/Casys-AI/casys-digital-thread/issues/8)              |
-| F18      | [#9 — Engineering evidence: reconcile F1507 KV3800 / T3140 operating limits and bench configuration](https://github.com/Casys-AI/casys-digital-thread/issues/9) |
-| F19      | [#10 — Engineering evidence: resolve PM06 V2 output-power and height discrepancies](https://github.com/Casys-AI/casys-digital-thread/issues/10)                 |
-| F20      | [#11 — Engineering evidence: establish usable-energy evidence for the selected ID01 battery pack](https://github.com/Casys-AI/casys-digital-thread/issues/11)   |
-| F21      | [#12 — Add a registered Thread publication path for source-backed pre-sizing worksheets](https://github.com/Casys-AI/casys-digital-thread/issues/12)            |
-| F22      | [#13 — Allow a reviewed later brief to authorize a capability-ceiling amendment](https://github.com/Casys-AI/casys-digital-thread/issues/13)                    |
-| F27      | [#17 — Wire exact sensitivity experience reuse into the production composition](https://github.com/Casys-AI/casys-digital-thread/issues/17)                     |
-| F36      | [#18 — Persist and read back ID01 RadialArm sensitivity edges after the completed study](https://github.com/Casys-AI/casys-digital-thread/issues/18)            |
-| F44      | [#19 — Add a governed generic activation path for qualified first-party microVM candidates](https://github.com/Casys-AI/casys-digital-thread/issues/19)         |
+| Friction | GitHub issue                                                                                                                                                                                                                                                                                     |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| F02      | [#21 — CLI: provide a bounded actionable projection for technical compilation previews](https://github.com/Casys-AI/casys-digital-thread/issues/21); [#24 — MCP: bound technical-compilation previews with immutable paged evidence](https://github.com/Casys-AI/casys-digital-thread/issues/24) |
+| F03      | [#22 — Desktop integration: expose Digital Thread project-control tools in the active Codex host](https://github.com/Casys-AI/casys-digital-thread/issues/22)                                                                                                                                    |
+| F13      | [#14 — Add a governed propulsion and energy pre-sizing capability](https://github.com/Casys-AI/casys-digital-thread/issues/14)                                                                                                                                                                   |
+| F15      | [#15 — Workbench: preserve discoverability when legacy project heads cannot reopen](https://github.com/Casys-AI/casys-digital-thread/issues/15)                                                                                                                                                  |
+| F16      | [#16 — Add exact BRep mass-property evidence for canonical geometry](https://github.com/Casys-AI/casys-digital-thread/issues/16)                                                                                                                                                                 |
+| F17      | [#8 — Engineering evidence: close the F1404 KV4600 / GF3016 propeller-interface packet](https://github.com/Casys-AI/casys-digital-thread/issues/8)                                                                                                                                               |
+| F18      | [#9 — Engineering evidence: reconcile F1507 KV3800 / T3140 operating limits and bench configuration](https://github.com/Casys-AI/casys-digital-thread/issues/9)                                                                                                                                  |
+| F19      | [#10 — Engineering evidence: resolve PM06 V2 output-power and height discrepancies](https://github.com/Casys-AI/casys-digital-thread/issues/10)                                                                                                                                                  |
+| F20      | [#11 — Engineering evidence: establish usable-energy evidence for the selected ID01 battery pack](https://github.com/Casys-AI/casys-digital-thread/issues/11)                                                                                                                                    |
+| F21      | [#12 — Add a registered Thread publication path for source-backed pre-sizing worksheets](https://github.com/Casys-AI/casys-digital-thread/issues/12)                                                                                                                                             |
+| F22      | [#13 — Allow a reviewed later brief to authorize a capability-ceiling amendment](https://github.com/Casys-AI/casys-digital-thread/issues/13)                                                                                                                                                     |
+| F27      | [#17 — Wire exact sensitivity experience reuse into the production composition](https://github.com/Casys-AI/casys-digital-thread/issues/17)                                                                                                                                                      |
+| F36      | [#18 — Persist and read back ID01 RadialArm sensitivity edges after the completed study](https://github.com/Casys-AI/casys-digital-thread/issues/18)                                                                                                                                             |
+| F44      | [#19 — Add a governed generic activation path for qualified first-party microVM candidates](https://github.com/Casys-AI/casys-digital-thread/issues/19)                                                                                                                                          |
 
 F14, F28 and F29 remain `unverified`; no issue was created for them. Their historical
 incidents have neither been disproved nor confirmed as current failures.
+
+## F02 — direct MCP previews still carry the complete compilation dossier
+
+**Fact-check 2026-09-09: confirmed open, partially mitigated.**
+[GitHub #21](https://github.com/Casys-AI/casys-digital-thread/issues/21) is addressed
+locally by `7488d1eb`: `--technical-compilation-summary` bounds the terminal display
+after the response arrives and preserves the lossless default route. It does not reduce
+server serialization, MCP transport, or the direct client's full-response parsing.
+
+`project_technical_compilation_preview` does not return the complete EngineeringProject,
+but it returns the complete technical-compilation dossier: exact Thread/SysML basis and
+elements, source text and analyses, bindings, profile requests, diagnostics and
+projections; ready reviews also carry all decision parameters. The next systemic step is
+[GitHub #24](https://github.com/Casys-AI/casys-digital-thread/issues/24): a bounded
+server-owned summary with immutable paged evidence. A partial summary or page cannot
+replace the full review required for MRTR, and this route must not add provider,
+runtime, dispatch, or project-mutation authority.
 
 ## F03 — current session lacks first-class Digital Thread tools
 
