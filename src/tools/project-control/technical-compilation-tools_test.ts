@@ -46,6 +46,7 @@ Deno.test("Build123d execution review registration is conditional and preserves 
   assertEquals(absent.hasTool("project_build123d_execution_review"), false);
   assertEquals(absent.hasTool("project_isolated_geometry_seal_review"), false);
   assertEquals(absent.hasTool("project_admitted_geometry_export"), false);
+  assertEquals(absent.hasTool("project_admitted_geometry_export_preflight"), false);
 
   const ordered = new CapturingApp();
   registerProjectTechnicalCompilationTools(
@@ -58,6 +59,9 @@ Deno.test("Build123d execution review registration is conditional and preserves 
         execute: () => Promise.reject(new Error("not called")),
       },
       admittedGeometryExport: {
+        execute: () => Promise.reject(new Error("not called")),
+      },
+      admittedGeometryExportPreflight: {
         execute: () => Promise.reject(new Error("not called")),
       },
       build123dExecutionReview: {
@@ -73,6 +77,7 @@ Deno.test("Build123d execution review registration is conditional and preserves 
     "project_technical_source_capture",
     "project_technical_compilation_preview",
     "project_admitted_geometry_export",
+    "project_admitted_geometry_export_preflight",
     "project_build123d_execution_review",
     "project_isolated_geometry_seal_review",
   ]);

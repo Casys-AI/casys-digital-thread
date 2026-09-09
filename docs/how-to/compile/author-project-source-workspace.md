@@ -141,6 +141,21 @@ executions may reopen those historical admissions from descendant Thread tips. A
 `different-basis` authoring read does not invalidate a sealed admission, but a current
 closure drill-down may stay `unavailable`.
 
+### Multi-source CAD admission and canonical export
+
+Canonical `project_admitted_geometry_export` remains a singular Build123d export. When
+one sealed multi-source admission cannot enter that route, call
+`project_admitted_geometry_export_preflight` with the same exact project, Thread basis
+and admission artifact identity. It is read-only and returns either
+`singular-export-ready`, exact independently-admittable child-root identities, or
+`unresolved` when that decomposition is not safe. It never accepts a source, profile,
+provider or runtime selector.
+
+For each returned child root, reread the current workspace head, recross the attachment
+when it is `different-basis`, then capture, preview and seal that root independently
+before using the singular canonical export. Each seal advances the Thread, so do not
+reuse later child attachment heads without rereading and recrossing them as required.
+
 ## Common workspace basis
 
 Keep sources modular: one file per logical assembly, subsystem, analysis or support

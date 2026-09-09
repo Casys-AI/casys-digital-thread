@@ -4,6 +4,10 @@ import type {
   ProjectAdmittedGeometryExportUseCase,
 } from "../../application/ports/in/cad/canonical/project-admitted-geometry-export.ts";
 import type {
+  ProjectAdmittedGeometryExportPreflightCommand,
+  ProjectAdmittedGeometryExportPreflightUseCase,
+} from "../../application/ports/in/cad/canonical/project-admitted-geometry-export-preflight.ts";
+import type {
   ProjectBuild123dExecutionReviewCommand,
   ProjectBuild123dExecutionReviewUseCase,
 } from "../../application/ports/in/cad/isolated/project-build123d-execution-review.ts";
@@ -49,6 +53,8 @@ export interface ProjectTechnicalCompilationToolDependencies {
    * DRAFT. Absent when the sandbox provider is not composed.
    */
   admittedGeometryExport?: ProjectAdmittedGeometryExportUseCase;
+  /** Provider-free route selection for one sealed geometry admission. */
+  admittedGeometryExportPreflight?: ProjectAdmittedGeometryExportPreflightUseCase;
   /** Provider-free preparation of one qualified Build123d execution review. */
   build123dExecutionReview?: ProjectBuild123dExecutionReviewUseCase;
   /** Provider-free preparation of one isolated geometry seal review. */
@@ -115,6 +121,22 @@ export function registerProjectTechnicalCompilationTools(
       return {
         content:
           `Admitted geometry export for sealed admission ${command.artifactId} completed as a geometry draft ${result.draftDigest}. Exact admitted bytes were reopened from compile.seal-admission@3 and sent to the private sandbox; callers supplied no source text, provider, tool, path or image. The result is not Thread state. Construct a later design.write-geometry@1 proposal only from the returned decisionParameters.`,
+        structuredContent: result as unknown as Record<string, unknown>,
+      };
+    });
+  }
+  if (dependencies.admittedGeometryExportPreflight) {
+    const preflight = dependencies.admittedGeometryExportPreflight;
+    app.registerTool(projectAdmittedGeometryExportPreflightTool, async (args) => {
+      const result = await preflight.execute(
+        admittedGeometryExportPreflightCommand(args),
+      );
+      return {
+        content: result.status === "singular-export-ready"
+          ? "The sealed admission is compatible with the singular canonical geometry export."
+          : result.status === "child-root-admission-required"
+          ? "Canonical export remains singular. The server derived independently admitted child-root identities; reread and recross current heads before each later admission."
+          : "Canonical child-root guidance is unresolved; inspect the sealed attachments and current workspace heads.",
         structuredContent: result as unknown as Record<string, unknown>,
       };
     });
@@ -323,6 +345,25 @@ const projectAdmittedGeometryExportTool: MCPTool = {
   annotations: DRAFT_CAS_WRITE_ANNOTATIONS,
 };
 
+const projectAdmittedGeometryExportPreflightTool: MCPTool = {
+  name: "project_admitted_geometry_export_preflight",
+  description:
+    "Read one exact sealed compile.seal-admission@3 Build123d admission and state whether it is ready for the existing singular canonical export, or whether exact independently admitted child roots can be guided. The caller names only projectId, exact Thread basis, admission artifact id and fingerprint. It never starts a runtime, calls a provider, returns source text, or selects a source, profile, provider or runtime. Guidance is documentary: each later admission advances the Thread, so current attachment heads must be reread and recrossed when required.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: TECHNICAL_ID_SCHEMA,
+      basis: TECHNICAL_THREAD_BASIS_SCHEMA,
+      artifactId: TECHNICAL_ID_SCHEMA,
+      artifactFingerprint: FINGERPRINT_SCHEMA,
+    },
+    required: ["projectId", "basis", "artifactId", "artifactFingerprint"],
+    additionalProperties: false,
+  },
+  outputSchema: OBJECT_OUTPUT_SCHEMA,
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
 const projectBuild123dExecutionReviewTool: MCPTool = {
   name: "project_build123d_execution_review",
   description:
@@ -418,6 +459,26 @@ function admittedGeometryExportCommand(
     ["projectId", "basis", "artifactId", "artifactFingerprint"],
     [],
     "admittedGeometryExport",
+  );
+  return {
+    projectId: technicalId(value.projectId, "projectId"),
+    basis: technicalThreadBasis(value.basis, "basis"),
+    artifactId: technicalId(value.artifactId, "artifactId"),
+    artifactFingerprint: fingerprintInput(
+      value.artifactFingerprint,
+      "artifactFingerprint",
+    ),
+  };
+}
+
+function admittedGeometryExportPreflightCommand(
+  value: Record<string, unknown>,
+): ProjectAdmittedGeometryExportPreflightCommand {
+  exactKeys(
+    value,
+    ["projectId", "basis", "artifactId", "artifactFingerprint"],
+    [],
+    "admittedGeometryExportPreflight",
   );
   return {
     projectId: technicalId(value.projectId, "projectId"),
