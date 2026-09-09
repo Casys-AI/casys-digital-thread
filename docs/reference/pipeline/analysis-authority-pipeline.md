@@ -163,6 +163,12 @@ contract in `src/application/ports/in/project-run-executor.ts`. Canonical CAD dr
 come from `project_admitted_geometry_export`. Concrete registered executors remain the
 only components allowed to call private provider MCP clients for admitted project runs.
 
+The preview surface is a breaking response migration. Its `structuredContent` is the
+summary, not the former full `technical-compilation/2.0` dossier. Follow
+`summary.evidenceRef` with the named detail reader sections; request `full-evidence`
+only for the mandatory MRTR review. The terminal client removed
+`--technical-compilation-summary` because it would duplicate the server projection.
+
 ## Implemented generic CAD preview and promotion vertical
 
 The following MCP-backed CAD path remains the current generic sandbox export used by

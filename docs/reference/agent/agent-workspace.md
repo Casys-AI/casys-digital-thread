@@ -98,6 +98,14 @@ required for MRTR, and ready decision parameters and the exact operation appear 
 their explicit detail sections. `cockpit_focus_set` may omit `expectedRevision`.
 `deno task preview:thread` follows cockpit focus unless `--project-id=` pins a vehicle.
 
+This is a breaking `structuredContent` change: callers that previously read `document`,
+`gaps`, `decisionParameters`, or `operation` from the preview response must instead read
+the returned summary, retain its exact `evidenceRef`, then call
+`project_technical_compilation_preview_detail` for `diagnostics`, `gaps`,
+`source-manifest`, `source-text`, `projections`, `decision-parameters`, `operation`, or
+explicit `full-evidence`. The local `--technical-compilation-summary` CLI flag is
+removed because this server-owned summary is now the default response.
+
 ### Control-plane fleet reads
 
 Ops tools on the same `:3020/mcp` server. They are not a human page. The retired Console

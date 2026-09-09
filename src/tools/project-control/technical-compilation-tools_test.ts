@@ -460,6 +460,16 @@ Deno.test("technical source capture accepts only attachmentId,attachmentRevision
     ),
     false,
   );
+  const previewOutput = preview.outputSchema as Record<string, unknown>;
+  assertEquals(previewOutput.additionalProperties, false);
+  const previewSamples = (previewOutput.properties as Record<string, unknown>)
+    .samples as Record<string, unknown>;
+  const sampleProperties = previewSamples.properties as Record<string, unknown>;
+  assertEquals(
+    ((sampleProperties.diagnostics as Record<string, unknown>).maxItems as number) <= 8,
+    true,
+  );
+  assertEquals("$defs" in previewOutput, true);
   const reference = (capture.outputSchema as {
     properties: {
       reference: {
@@ -548,6 +558,14 @@ Deno.test("technical compilation evidence detail is read-only, exact, and explic
     "section",
   ]);
   assertEquals(schema.additionalProperties, false);
+  assertEquals(
+    ((schema.properties as Record<string, unknown>).cursor as Record<string, unknown>)
+      .maxLength,
+    64,
+  );
+  const output = tool.outputSchema as Record<string, unknown>;
+  assertEquals(Array.isArray(output.oneOf), true);
+  assertEquals((output.oneOf as unknown[]).length, 8);
   const page = await app.handler("project_technical_compilation_preview_detail")({
     projectId: "project.drip-tray",
     evidenceRef,

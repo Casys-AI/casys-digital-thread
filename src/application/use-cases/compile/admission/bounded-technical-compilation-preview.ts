@@ -16,6 +16,7 @@ export const TECHNICAL_COMPILATION_PREVIEW_SUMMARY_SCHEMA =
 export const TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_BYTES = 8192;
 export const TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_BYTES = 24576;
 export const TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_ITEMS = 20;
+export const TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_SAMPLES = 8;
 const TECHNICAL_COMPILATION_PREVIEW_SOURCE_TEXT_CHUNK_MAX_BYTES = 1000;
 const TECHNICAL_COMPILATION_PREVIEW_SUMMARY_EXCERPT_MAX_BYTES = 256;
 const SUMMARY_ALLOWED_KEYS = new Set([
@@ -89,8 +90,14 @@ export async function summary(
   evidenceRef: TechnicalCompilationPreviewEvidenceReference,
 ): Promise<BoundedTechnicalCompilationPreviewResult> {
   const diagnostics = result.document.diagnostics, gaps = result.gaps;
-  let diagnosticCount = Math.min(8, diagnostics.length);
-  let gapCount = Math.min(8, gaps.length);
+  let diagnosticCount = Math.min(
+    TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_SAMPLES,
+    diagnostics.length,
+  );
+  let gapCount = Math.min(
+    TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_SAMPLES,
+    gaps.length,
+  );
   while (true) {
     const out: BoundedTechnicalCompilationPreviewResult = {
       schemaVersion: TECHNICAL_COMPILATION_PREVIEW_SUMMARY_SCHEMA,

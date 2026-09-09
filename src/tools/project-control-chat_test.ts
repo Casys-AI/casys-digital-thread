@@ -237,7 +237,7 @@ Deno.test("technical compilation preview exposes only the bounded server summary
 
   const tool = app.tool("project_technical_compilation_preview");
   assertEquals(tool.annotations, {
-    readOnlyHint: true,
+    readOnlyHint: false,
     destructiveHint: false,
     idempotentHint: true,
     openWorldHint: false,

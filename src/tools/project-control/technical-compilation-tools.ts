@@ -22,6 +22,8 @@ import {
   type BoundedTechnicalCompilationPreview,
   type BoundedTechnicalCompilationPreviewResult,
   type ReadTechnicalCompilationPreviewEvidence,
+  TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_ITEMS,
+  TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_SAMPLES,
 } from "../../application/use-cases/compile/admission/bounded-technical-compilation-preview.ts";
 import type { TechnicalCompilationPreviewEvidenceReference } from "../../application/ports/out/compile/admission/technical-compilation-preview-evidence-store.ts";
 import type {
@@ -44,6 +46,7 @@ import {
 import {
   FINGERPRINT_SCHEMA,
   OBJECT_OUTPUT_SCHEMA,
+  OPERATION_REF_SCHEMA,
   READ_ONLY_ANNOTATIONS,
 } from "./mcp-tool-schemas.ts";
 
@@ -364,10 +367,12 @@ const projectTechnicalCompilationPreviewTool: MCPTool = {
           diagnosticsByCode: {
             type: "object",
             additionalProperties: { type: "integer", minimum: 1 },
+            maxProperties: 9,
           },
           gapsByCode: {
             type: "object",
             additionalProperties: { type: "integer", minimum: 1 },
+            maxProperties: 8,
           },
         },
         required: [
@@ -383,8 +388,16 @@ const projectTechnicalCompilationPreviewTool: MCPTool = {
       samples: {
         type: "object",
         properties: {
-          diagnostics: { type: "array" },
-          gaps: { type: "array" },
+          diagnostics: {
+            type: "array",
+            maxItems: TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_SAMPLES,
+            items: { $ref: "#/$defs/sample" },
+          },
+          gaps: {
+            type: "array",
+            maxItems: TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_SAMPLES,
+            items: { $ref: "#/$defs/sample" },
+          },
           omittedDiagnostics: { type: "integer", minimum: 0 },
           omittedGaps: { type: "integer", minimum: 0 },
         },
@@ -403,8 +416,55 @@ const projectTechnicalCompilationPreviewTool: MCPTool = {
       "requiresFullEvidenceForMrtr",
     ],
     additionalProperties: false,
+    $defs: {
+      excerpt: {
+        type: "object",
+        properties: {
+          excerpt: { type: "string", maxLength: 256 },
+          originalByteCount: { type: "integer", minimum: 0 },
+          sha256: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          truncatedBytes: { type: "integer", minimum: 0 },
+        },
+        required: ["excerpt", "originalByteCount", "sha256", "truncatedBytes"],
+        additionalProperties: false,
+      },
+      sample: {
+        anyOf: [
+          { type: "null" },
+          { type: "boolean" },
+          { type: "number" },
+          { $ref: "#/$defs/excerpt" },
+          {
+            type: "array",
+            maxItems: TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_SAMPLES,
+            items: { $ref: "#/$defs/sample" },
+          },
+          {
+            type: "object",
+            properties: {
+              code: { $ref: "#/$defs/sample" },
+              profileRef: { $ref: "#/$defs/sample" },
+              subjectRef: { $ref: "#/$defs/sample" },
+              sourceId: { $ref: "#/$defs/sample" },
+              relation: { $ref: "#/$defs/sample" },
+              symbolName: { $ref: "#/$defs/sample" },
+              symbolKind: { $ref: "#/$defs/sample" },
+              reason: { $ref: "#/$defs/sample" },
+              candidateCount: { $ref: "#/$defs/sample" },
+              closureKind: { $ref: "#/$defs/sample" },
+              modelSymbolId: { $ref: "#/$defs/sample" },
+              attributeUsageId: { $ref: "#/$defs/sample" },
+              role: { $ref: "#/$defs/sample" },
+              requirementElementId: { $ref: "#/$defs/sample" },
+              recovery: { $ref: "#/$defs/sample" },
+            },
+            additionalProperties: false,
+          },
+        ],
+      },
+    },
   },
-  annotations: READ_ONLY_ANNOTATIONS,
+  annotations: DRAFT_CAS_WRITE_ANNOTATIONS,
 };
 
 const TECHNICAL_COMPILATION_PREVIEW_EVIDENCE_REF_SCHEMA = {
@@ -430,6 +490,88 @@ const TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS = [
   "full-evidence",
 ] as const;
 
+const PREVIEW_CURSOR_SCHEMA = {
+  type: ["string", "null"],
+  minLength: 64,
+  maxLength: 64,
+  pattern: "^[a-f0-9]{64}$",
+} as const;
+
+function detailPageSchema(
+  section: typeof TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS[number],
+  items: Record<string, unknown>,
+  maxItems = TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_ITEMS,
+) {
+  return {
+    type: "object",
+    properties: {
+      section: { const: section },
+      items: { type: "array", maxItems, items },
+      nextCursor: PREVIEW_CURSOR_SCHEMA,
+    },
+    required: ["section", "items", "nextCursor"],
+    additionalProperties: false,
+  } as const;
+}
+
+/** The detail reader's fixed section names are a discriminant, never a filter. */
+function technicalCompilationPreviewDetailOutputSchema() {
+  const boundedOpaqueItem = { type: "object", minProperties: 1 } as const;
+  return {
+    oneOf: [
+      detailPageSchema("diagnostics", {
+        type: "object",
+        properties: {
+          code: { type: "string", maxLength: 128 },
+          profileRef: { type: "string", maxLength: 256 },
+          subjectRef: { type: "string", maxLength: 256 },
+        },
+        required: ["code", "profileRef", "subjectRef"],
+        additionalProperties: false,
+      }),
+      detailPageSchema("gaps", boundedOpaqueItem),
+      detailPageSchema("source-manifest", boundedOpaqueItem),
+      detailPageSchema("source-text", {
+        type: "object",
+        properties: {
+          sourceId: TECHNICAL_ID_SCHEMA,
+          offset: { type: "integer", minimum: 0 },
+          text: { type: "string", maxLength: 1000 },
+        },
+        required: ["sourceId", "offset", "text"],
+        additionalProperties: false,
+      }),
+      detailPageSchema("projections", boundedOpaqueItem),
+      detailPageSchema("decision-parameters", {
+        type: "object",
+        properties: {
+          key: { type: "string", minLength: 1, maxLength: 256 },
+          label: { type: "string", minLength: 1, maxLength: 256 },
+          value: { type: ["string", "number", "boolean"] },
+          unit: { type: "string", minLength: 1, maxLength: 64 },
+        },
+        required: ["key", "label", "value"],
+        additionalProperties: false,
+      }),
+      detailPageSchema("operation", OPERATION_REF_SCHEMA),
+      detailPageSchema("full-evidence", {
+        type: "object",
+        properties: {
+          status: { enum: ["unresolved", "rejected", "ready-for-review"] },
+          document: { type: "object" },
+          fingerprint: FINGERPRINT_SCHEMA,
+          gaps: { type: "array" },
+          draft: { type: "object" },
+          decisionParameters: { type: "array" },
+          operation: OPERATION_REF_SCHEMA,
+        },
+        required: ["status", "document", "fingerprint", "gaps"],
+        additionalProperties: false,
+      }, 1),
+    ],
+  } as const;
+}
+
 const projectTechnicalCompilationPreviewDetailTool: MCPTool = {
   name: "project_technical_compilation_preview_detail",
   description:
@@ -440,21 +582,17 @@ const projectTechnicalCompilationPreviewDetailTool: MCPTool = {
       projectId: TECHNICAL_ID_SCHEMA,
       evidenceRef: TECHNICAL_COMPILATION_PREVIEW_EVIDENCE_REF_SCHEMA,
       section: { type: "string", enum: TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS },
-      cursor: { type: "string", pattern: "^[a-f0-9]{64}$" },
+      cursor: {
+        type: "string",
+        minLength: 64,
+        maxLength: 64,
+        pattern: "^[a-f0-9]{64}$",
+      },
     },
     required: ["projectId", "evidenceRef", "section"],
     additionalProperties: false,
   },
-  outputSchema: {
-    type: "object",
-    properties: {
-      section: { type: "string", enum: TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS },
-      items: { type: "array" },
-      nextCursor: { type: ["string", "null"] },
-    },
-    required: ["section", "items", "nextCursor"],
-    additionalProperties: false,
-  },
+  outputSchema: technicalCompilationPreviewDetailOutputSchema(),
   annotations: READ_ONLY_ANNOTATIONS,
 };
 
