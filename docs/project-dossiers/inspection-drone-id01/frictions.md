@@ -38,20 +38,20 @@ incidents have neither been disproved nor confirmed as current failures.
 
 ## F02 — direct MCP previews still carry the complete compilation dossier
 
-**Fact-check 2026-09-09: confirmed open, partially mitigated.**
-[GitHub #21](https://github.com/Casys-AI/casys-digital-thread/issues/21) is addressed
-locally by `7488d1eb`: `--technical-compilation-summary` bounds the terminal display
-after the response arrives and preserves the lossless default route. It does not reduce
-server serialization, MCP transport, or the direct client's full-response parsing.
+**Fact-check 2026-09-09: confirmed open; server-side correction awaiting merge.**
+[GitHub #21](https://github.com/Casys-AI/casys-digital-thread/issues/21) was a local
+terminal mitigation after transport. It is superseded on this branch by the bounded
+server-owned surface for #24; direct callers receive the canonical summary rather than
+the full dossier.
 
 `project_technical_compilation_preview` does not return the complete EngineeringProject,
 but it returns the complete technical-compilation dossier: exact Thread/SysML basis and
 elements, source text and analyses, bindings, profile requests, diagnostics and
-projections; ready reviews also carry all decision parameters. The next systemic step is
-[GitHub #24](https://github.com/Casys-AI/casys-digital-thread/issues/24): a bounded
-server-owned summary with immutable paged evidence. A partial summary or page cannot
-replace the full review required for MRTR, and this route must not add provider,
-runtime, dispatch, or project-mutation authority.
+projections; ready reviews also carry all decision parameters.
+[GitHub #24](https://github.com/Casys-AI/casys-digital-thread/issues/24) changes that
+surface to a bounded server-owned summary plus immutable paged evidence. A partial
+summary or page cannot replace the full review required for MRTR, and this route must
+not add provider, runtime, dispatch, or project-mutation authority.
 
 ## F03 — current session lacks first-class Digital Thread tools
 

@@ -4,6 +4,7 @@ import type { ProjectAdmittedGeometryExportResult } from "../../application/port
 import type { ProjectBuild123dExecutionReviewResult } from "../../application/ports/in/cad/isolated/project-build123d-execution-review.ts";
 import type { ProjectIsolatedGeometrySealReviewResult } from "../../application/ports/in/cad/sealed-isolated/project-isolated-geometry-seal-review.ts";
 import { ProjectTechnicalSourceCaptureError } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
+import { sampleTechnicalSourceAnalysisCaptureLocator } from "../../testing/technical-source-capture-test-support.ts";
 import { registerProjectTechnicalCompilationTools } from "./technical-compilation-tools.ts";
 
 const ARTIFACT_DIGEST = "a".repeat(64);
@@ -36,6 +37,9 @@ const SEAL_REVIEW_COMMAND = {
     digest: ARTIFACT_DIGEST,
   },
 } as const;
+
+const TECHNICAL_SOURCE_CAPTURE_REFERENCE =
+  sampleTechnicalSourceAnalysisCaptureLocator();
 
 Deno.test("Build123d execution review registration is conditional and preserves the existing technical tool order", () => {
   const absent = new CapturingApp();
@@ -501,6 +505,138 @@ Deno.test("technical source capture exposes an exact lowerer rejection to MCP", 
     TypeError,
     "project_technical_source_capture rejected (workspace_import_not_prelude)",
   );
+});
+
+Deno.test("technical compilation evidence detail is read-only, exact, and explicit", async () => {
+  const app = new CapturingApp();
+  const calls: unknown[] = [];
+  const evidenceRef = {
+    schemaVersion: "technical-compilation-preview-evidence-reference/1.0",
+    projectId: "project.drip-tray",
+    fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+    byteCount: 246612,
+  } as const;
+  registerProjectTechnicalCompilationTools(app as unknown as McpApp, {
+    technicalCompilationPreviewEvidence: {
+      execute(value) {
+        calls.push(value);
+        const input = value as { section: string; cursor?: string };
+        return Promise.resolve({
+          section: input.section,
+          items: input.section === "full-evidence"
+            ? [{ document: "explicit" }]
+            : [{ code: "binding.missing" }],
+          nextCursor: input.section === "diagnostics" && !input.cursor
+            ? "c".repeat(64)
+            : null,
+        });
+      },
+    },
+  });
+  const tool = app.tool("project_technical_compilation_preview_detail");
+  assertEquals(tool.annotations, {
+    readOnlyHint: true,
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: false,
+  });
+  const schema = tool.inputSchema as Record<string, unknown>;
+  assertEquals(Object.keys(schema.properties as Record<string, unknown>).sort(), [
+    "cursor",
+    "evidenceRef",
+    "projectId",
+    "section",
+  ]);
+  assertEquals(schema.additionalProperties, false);
+  const page = await app.handler("project_technical_compilation_preview_detail")({
+    projectId: "project.drip-tray",
+    evidenceRef,
+    section: "diagnostics",
+  }) as Record<string, unknown>;
+  assertEquals(
+    (page.structuredContent as Record<string, unknown>).nextCursor,
+    "c".repeat(64),
+  );
+  const full = await app.handler("project_technical_compilation_preview_detail")({
+    projectId: "project.drip-tray",
+    evidenceRef,
+    section: "full-evidence",
+  }) as Record<string, unknown>;
+  assertEquals((full.structuredContent as Record<string, unknown>).items, [{
+    document: "explicit",
+  }]);
+  await assertRejects(
+    () =>
+      app.handler("project_technical_compilation_preview_detail")({
+        projectId: "project.drip-tray",
+        evidenceRef,
+        section: "diagnostics",
+        provider: "caller-owned",
+      }) as Promise<unknown>,
+    TypeError,
+    "unsupported field(s): provider",
+  );
+  assertEquals(calls.length, 2);
+});
+
+Deno.test("raw preview tool responses stay bounded and exclude full evidence for every status", async () => {
+  const app = new CapturingApp();
+  const statuses = ["unresolved", "rejected", "ready-for-review"] as const;
+  let index = 0;
+  registerProjectTechnicalCompilationTools(app as unknown as McpApp, {
+    technicalCompilationPreview: {
+      execute: () => {
+        const status = statuses[index++ % statuses.length];
+        return Promise.resolve({
+          schemaVersion: "technical-compilation-preview-summary/1.0",
+          status,
+          evidenceRef: {
+            schemaVersion: "technical-compilation-preview-evidence-reference/1.0",
+            projectId: "project.drip-tray",
+            fingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
+            byteCount: 246612,
+          },
+          evidenceBytes: 246612,
+          counts: {
+            sources: 11,
+            projections: 52,
+            diagnostics: 946,
+            gaps: 946,
+            diagnosticsByCode: { "binding.missing": 946 },
+            gapsByCode: { "binding.missing": 946 },
+          },
+          samples: {
+            diagnostics: [{
+              code: "binding.missing",
+              subjectRef: "parameter.thickness",
+            }],
+            gaps: [{
+              code: "binding.missing",
+              recovery: "Declare the AttributeUsage.",
+            }],
+            omittedDiagnostics: 945,
+            omittedGaps: 945,
+          },
+          requiresFullEvidenceForMrtr: status === "ready-for-review",
+        }) as never;
+      },
+    },
+  });
+  for (const status of statuses) {
+    const response = await app.handler("project_technical_compilation_preview")({
+      projectId: "project.drip-tray",
+      sourceRefs: [TECHNICAL_SOURCE_CAPTURE_REFERENCE],
+    }) as Record<string, unknown>;
+    const raw = JSON.stringify(response);
+    const structured = response.structuredContent as Record<string, unknown>;
+    assertEquals(structured.status, status);
+    assertEquals(new TextEncoder().encode(raw).byteLength <= 8192, true);
+    assertEquals(structured.document, undefined);
+    assertEquals(structured.sourceText, undefined);
+    assertEquals(structured.decisionParameters, undefined);
+    assertEquals(structured.operation, undefined);
+    assertEquals(raw.includes("sourceText"), false);
+  }
 });
 
 function assertClosedObjectSchemas(schema: Record<string, unknown>): void {

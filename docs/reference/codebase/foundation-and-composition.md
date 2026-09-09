@@ -85,10 +85,10 @@ millimetre may become nanometre as `fractional-mm-to-nm` without a native-`mm` m
 Write-capable loopback `tools/call` client for `:3020/mcp`; fills omitted `issuedAt`
 only on mutations that already carry `commandId`; `--args=-` reads the JSON object from
 stdin; `--receipt` prints the compact human receipt for a completed mutation; does not
-change server clock rules. For `project_technical_compilation_preview` only,
-`--technical-compilation-summary` is a bounded local terminal projection of diagnostics,
-join gaps and the exact next operation. It records omitted entries and does not alter
-the request or server result; omit the flag for the lossless review.
+change server clock rules. `project_technical_compilation_preview` already prints its
+bounded server-owned summary; pass its opaque `evidenceRef` to
+`project_technical_compilation_preview_detail` for a named page or explicit
+`full-evidence`. The CLI performs no second local projection.
 
 #### [`docs/reference/pipeline/analysis-authority-pipeline.md`](../pipeline/analysis-authority-pipeline.md)
 

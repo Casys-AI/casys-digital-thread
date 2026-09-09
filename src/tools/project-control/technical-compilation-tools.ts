@@ -17,14 +17,18 @@ import type {
 } from "../../application/ports/in/cad/sealed-isolated/project-isolated-geometry-seal-review.ts";
 import type {
   ProjectTechnicalCompilationPreviewCommand,
-  ProjectTechnicalCompilationPreviewUseCase,
 } from "../../application/ports/in/compile/admission/project-technical-compilation-preview.ts";
+import {
+  type BoundedTechnicalCompilationPreview,
+  type BoundedTechnicalCompilationPreviewResult,
+  type ReadTechnicalCompilationPreviewEvidence,
+} from "../../application/use-cases/compile/admission/bounded-technical-compilation-preview.ts";
+import type { TechnicalCompilationPreviewEvidenceReference } from "../../application/ports/out/compile/admission/technical-compilation-preview-evidence-store.ts";
 import type {
   ProjectTechnicalSourceCaptureCommand,
   ProjectTechnicalSourceCaptureUseCase,
 } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
 import { ProjectTechnicalSourceCaptureError } from "../../application/ports/in/compile/admission/project-technical-source-capture.ts";
-import { compilationPreviewContent } from "../../domain/compile/admission/technical-compilation-preview-review.ts";
 import {
   captureReviewContent,
   TECHNICAL_SOURCE_CAPTURE_REVIEW_SCHEMA,
@@ -46,8 +50,13 @@ import {
 export interface ProjectTechnicalCompilationToolDependencies {
   /** Provider-free CAS capture of exact agent-authored technical source text. */
   technicalSourceCapture?: ProjectTechnicalSourceCaptureUseCase;
-  /** Provider-free compilation of captured sources against an exact basis. */
-  technicalCompilationPreview?: ProjectTechnicalCompilationPreviewUseCase;
+  /** Provider-free bounded compilation review against an exact basis. */
+  technicalCompilationPreview?: Pick<BoundedTechnicalCompilationPreview, "execute">;
+  /** Read-only, immutable evidence pages for one bounded compilation review. */
+  technicalCompilationPreviewEvidence?: Pick<
+    ReadTechnicalCompilationPreviewEvidence,
+    "execute"
+  >;
   /**
    * Private-sandbox export of exact admitted Build123d bytes as a geometry
    * DRAFT. Absent when the sandbox provider is not composed.
@@ -96,19 +105,23 @@ export function registerProjectTechnicalCompilationTools(
     app.registerTool(projectTechnicalCompilationPreviewTool, async (args) => {
       const command = technicalCompilationPreviewCommand(args);
       const result = await preview.execute(command);
-      const content = compilationPreviewContent({
-        status: result.status,
-        ...(result.status === "ready-for-review"
-          ? { draftId: result.draft.draftId, operation: result.operation }
-          : {}),
-        gaps: result.gaps,
-      });
       return {
-        content,
-        // Preserve every use-case-owned review field verbatim, including
-        // decisionParameters when the ready result provides them. The MCP
-        // surface must never derive or repair MRTR parameters itself.
+        content: boundedCompilationPreviewContent(result),
         structuredContent: result as unknown as Record<string, unknown>,
+      };
+    });
+  }
+  if (dependencies.technicalCompilationPreviewEvidence) {
+    const evidence = dependencies.technicalCompilationPreviewEvidence;
+    app.registerTool(projectTechnicalCompilationPreviewDetailTool, async (args) => {
+      const result = await evidence.execute(
+        technicalCompilationPreviewDetailCommand(args),
+      );
+      return {
+        content: result.section === "full-evidence"
+          ? "Explicit full technical-compilation evidence. Full review remains required for MRTR."
+          : `Technical-compilation evidence section ${result.section}; inspect nextCursor when present.`,
+        structuredContent: result as Record<string, unknown>,
       };
     });
   }
@@ -303,7 +316,7 @@ const projectTechnicalSourceCaptureTool: MCPTool = {
 const projectTechnicalCompilationPreviewTool: MCPTool = {
   name: "project_technical_compilation_preview",
   description:
-    "Compile captured technical sources against the unique current Thread tip using only server-owned analysis, catalog profiles, and unique SysML joins. Name projectId and sourceRefs from project_technical_source_capture result.reference locators; never pass the capture review envelope, capture document, bindings, or profileRequests. Omitted basis is the unique current Thread tip, not latest. A reachable CAD lever is reopened from the source; the server does not invent one. A ready result contains the exact review draft, compilation document, MRTR decisionParameters, and the exact compile.seal-admission@3 operation. Reuse that operation verbatim in the later project_change_append; never reconstruct its sysmlModel binding from a historical snapshot. The preview writes no EngineeringProject or Thread state and grants no MRTR or execution authority.",
+    "Compile captured technical sources against the unique current Thread tip using only server-owned analysis, catalog profiles, and unique SysML joins. Name projectId and sourceRefs from project_technical_source_capture result.reference locators; never pass the capture review envelope, capture document, bindings, or profileRequests. Omitted basis is the unique current Thread tip, not latest. The result is a bounded canonical summary plus opaque immutable evidenceRef. Read diagnostics, gaps, source manifest, source text, projections, or explicit full-evidence through project_technical_compilation_preview_detail. A ready result still requires full evidence review for MRTR; decisionParameters and the exact compile.seal-admission@3 operation are available only through explicit detail sections. Reuse that operation verbatim in the later project_change_append; never reconstruct its sysmlModel binding. This preview writes no EngineeringProject or Thread state and grants no MRTR, provider, runtime, or execution authority.",
   inputSchema: {
     type: "object",
     properties: {
@@ -322,8 +335,127 @@ const projectTechnicalCompilationPreviewTool: MCPTool = {
     required: ["projectId", "sourceRefs"],
     additionalProperties: false,
   },
-  outputSchema: OBJECT_OUTPUT_SCHEMA,
-  annotations: DRAFT_CAS_WRITE_ANNOTATIONS,
+  outputSchema: {
+    type: "object",
+    properties: {
+      schemaVersion: { const: "technical-compilation-preview-summary/1.0" },
+      status: { enum: ["unresolved", "rejected", "ready-for-review"] },
+      evidenceRef: {
+        type: "object",
+        properties: {
+          schemaVersion: {
+            const: "technical-compilation-preview-evidence-reference/1.0",
+          },
+          projectId: TECHNICAL_ID_SCHEMA,
+          fingerprint: FINGERPRINT_SCHEMA,
+          byteCount: { type: "integer", minimum: 1 },
+        },
+        required: ["schemaVersion", "projectId", "fingerprint", "byteCount"],
+        additionalProperties: false,
+      },
+      evidenceBytes: { type: "integer", minimum: 1 },
+      counts: {
+        type: "object",
+        properties: {
+          sources: { type: "integer", minimum: 0 },
+          projections: { type: "integer", minimum: 0 },
+          diagnostics: { type: "integer", minimum: 0 },
+          gaps: { type: "integer", minimum: 0 },
+          diagnosticsByCode: {
+            type: "object",
+            additionalProperties: { type: "integer", minimum: 1 },
+          },
+          gapsByCode: {
+            type: "object",
+            additionalProperties: { type: "integer", minimum: 1 },
+          },
+        },
+        required: [
+          "sources",
+          "projections",
+          "diagnostics",
+          "gaps",
+          "diagnosticsByCode",
+          "gapsByCode",
+        ],
+        additionalProperties: false,
+      },
+      samples: {
+        type: "object",
+        properties: {
+          diagnostics: { type: "array" },
+          gaps: { type: "array" },
+          omittedDiagnostics: { type: "integer", minimum: 0 },
+          omittedGaps: { type: "integer", minimum: 0 },
+        },
+        required: ["diagnostics", "gaps", "omittedDiagnostics", "omittedGaps"],
+        additionalProperties: false,
+      },
+      requiresFullEvidenceForMrtr: { type: "boolean" },
+    },
+    required: [
+      "schemaVersion",
+      "status",
+      "evidenceRef",
+      "evidenceBytes",
+      "counts",
+      "samples",
+      "requiresFullEvidenceForMrtr",
+    ],
+    additionalProperties: false,
+  },
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
+const TECHNICAL_COMPILATION_PREVIEW_EVIDENCE_REF_SCHEMA = {
+  type: "object",
+  properties: {
+    schemaVersion: { const: "technical-compilation-preview-evidence-reference/1.0" },
+    projectId: TECHNICAL_ID_SCHEMA,
+    fingerprint: FINGERPRINT_SCHEMA,
+    byteCount: { type: "integer", minimum: 1 },
+  },
+  required: ["schemaVersion", "projectId", "fingerprint", "byteCount"],
+  additionalProperties: false,
+} as const;
+
+const TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS = [
+  "diagnostics",
+  "gaps",
+  "source-manifest",
+  "source-text",
+  "projections",
+  "decision-parameters",
+  "operation",
+  "full-evidence",
+] as const;
+
+const projectTechnicalCompilationPreviewDetailTool: MCPTool = {
+  name: "project_technical_compilation_preview_detail",
+  description:
+    "Read one immutable technical-compilation preview evidence section. Name only projectId, the opaque evidenceRef returned by project_technical_compilation_preview, section, and an optional opaque cursor. Pages are bounded except full-evidence, which is deliberately complete only when explicitly requested. decision-parameters and operation stay in their explicit sections. A ready summary never substitutes for the full MRTR review. This read grants no MRTR, provider, runtime, dispatch, or mutation authority.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: TECHNICAL_ID_SCHEMA,
+      evidenceRef: TECHNICAL_COMPILATION_PREVIEW_EVIDENCE_REF_SCHEMA,
+      section: { type: "string", enum: TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS },
+      cursor: { type: "string", pattern: "^[a-f0-9]{64}$" },
+    },
+    required: ["projectId", "evidenceRef", "section"],
+    additionalProperties: false,
+  },
+  outputSchema: {
+    type: "object",
+    properties: {
+      section: { type: "string", enum: TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS },
+      items: { type: "array" },
+      nextCursor: { type: ["string", "null"] },
+    },
+    required: ["section", "items", "nextCursor"],
+    additionalProperties: false,
+  },
+  annotations: READ_ONLY_ANNOTATIONS,
 };
 
 const projectAdmittedGeometryExportTool: MCPTool = {
@@ -449,6 +581,72 @@ function technicalCompilationPreviewCommand(
       technicalSourceCaptureReference(reference, `sourceRefs[${index}]`)
     ),
   };
+}
+
+function technicalCompilationPreviewDetailCommand(
+  value: Record<string, unknown>,
+): {
+  readonly projectId: string;
+  readonly evidenceRef: TechnicalCompilationPreviewEvidenceReference;
+  readonly section: typeof TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS[number];
+  readonly cursor?: string;
+} {
+  exactKeys(
+    value,
+    ["projectId", "evidenceRef", "section"],
+    ["cursor"],
+    "technicalCompilationPreviewDetail",
+  );
+  const section = exactNonEmptyText(value.section, "section");
+  if (
+    !TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS.includes(
+      section as typeof TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS[number],
+    )
+  ) throw new TypeError("section is not a technical-compilation evidence section");
+  const evidence = exactRecord(value.evidenceRef, "evidenceRef");
+  exactKeys(
+    evidence,
+    ["schemaVersion", "projectId", "fingerprint", "byteCount"],
+    [],
+    "evidenceRef",
+  );
+  if (
+    evidence.schemaVersion !== "technical-compilation-preview-evidence-reference/1.0"
+  ) {
+    throw new TypeError("evidenceRef.schemaVersion is invalid");
+  }
+  const projectId = technicalId(value.projectId, "projectId");
+  const evidenceProjectId = technicalId(evidence.projectId, "evidenceRef.projectId");
+  if (evidenceProjectId !== projectId) {
+    throw new TypeError("evidenceRef.projectId must equal projectId");
+  }
+  const cursor = value.cursor === undefined
+    ? undefined
+    : exactNonEmptyText(value.cursor, "cursor");
+  if (cursor !== undefined && !/^[a-f0-9]{64}$/.test(cursor)) {
+    throw new TypeError("cursor must be 64 lowercase hex characters");
+  }
+  return {
+    projectId,
+    evidenceRef: {
+      schemaVersion: "technical-compilation-preview-evidence-reference/1.0",
+      projectId,
+      fingerprint: fingerprintInput(evidence.fingerprint, "evidenceRef.fingerprint"),
+      byteCount: positiveInteger(evidence.byteCount, "evidenceRef.byteCount"),
+    },
+    section: section as typeof TECHNICAL_COMPILATION_PREVIEW_DETAIL_SECTIONS[number],
+    ...(cursor === undefined ? {} : { cursor }),
+  };
+}
+
+function boundedCompilationPreviewContent(
+  result: BoundedTechnicalCompilationPreviewResult,
+): string {
+  const counts = result.counts;
+  const review = result.requiresFullEvidenceForMrtr
+    ? " Full evidence review is required before MRTR."
+    : "";
+  return `Technical compilation preview is ${result.status}: ${counts.diagnostics} diagnostics and ${counts.gaps} gaps across ${counts.sources} sources. Read immutable evidence sections with project_technical_compilation_preview_detail using evidenceRef.${review}`;
 }
 
 function admittedGeometryExportCommand(
