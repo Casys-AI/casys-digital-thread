@@ -23,9 +23,8 @@ same-kind `+`/`-`, named `Pos`/`Rot` bindings and left-associative
 `offset(solid, amount)`, `revolve(sketch, Axis.X\|Y\|Z)` and math scalars
 `pi`/`e`/`tau`; standalone physical module comment lines are non-semantic provenance
 annotations while their exact bytes stay fingerprinted; earlier qualified bundles stay
-bit-identical; a sketch is never a valid
-result; `shell` is not a 0.11.1 algebra function; `&` is D4-rejected; anything allowed
-but not proven remains unresolved
+bit-identical; a sketch is never a valid result; `shell` is not a 0.11.1 algebra
+function; `&` is D4-rejected; anything allowed but not proven remains unresolved
 
 #### [`src/domain/cad/isolated/build123d-execution-proposal.ts`](../../../src/domain/cad/isolated/build123d-execution-proposal.ts)
 

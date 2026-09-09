@@ -6,8 +6,8 @@ Census of admission, source analysis, ROP, and the shared isolation runner. Narr
 stays on [compilation and isolation](../pipeline/compilation-and-isolation.md). Not a
 CAD tree.
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
 
 ## Source map
 
@@ -86,10 +86,9 @@ V2 `technical-compilation-input/2.0` and `technical-compilation/2.0`: exact
 Thread/SysML/source fingerprints, explicit symbol-to-element bindings and server-owned
 profiles produce deterministic target-local review projections. Current Build123d
 profile 3.1.0 adds non-semantic standalone module comment annotations to the exact
-direct scalar-leaf workspace-closure lowering and requires a
-parser-reported finite module-level numeric parameter bound through `parameterizes` and
-causally reaching the unique `result`; it has no legacy-profile reader or compatibility
-path
+direct scalar-leaf workspace-closure lowering and requires a parser-reported finite
+module-level numeric parameter bound through `parameterizes` and causally reaching the
+unique `result`; it has no legacy-profile reader or compatibility path
 
 #### [`src/domain/compile/source/named-cad-levers.ts`](../../../src/domain/compile/source/named-cad-levers.ts)
 

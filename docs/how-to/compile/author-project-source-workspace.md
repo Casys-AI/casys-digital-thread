@@ -121,10 +121,10 @@ the one effective script, and records its full manifest. Never infer admission f
 workspace membership, MIME, path or a successful isolated run. A later correction is a
 new `project_resource_capture` plus a successor file revision, then a new capture.
 
-When a preview is `ready-for-review`, it returns the exact `compile.seal-admission@3` `operation`
-alongside its MRTR `decisionParameters`. Pass that operation verbatim to the later
-`project_change_append`; do not rebuild its `sysmlModel` binding from the review text.
-It names the exact Thread snapshot reviewed by the server. A stale or historical
+When a preview is `ready-for-review`, it returns the exact `compile.seal-admission@3`
+`operation` alongside its MRTR `decisionParameters`. Pass that operation verbatim to the
+later `project_change_append`; do not rebuild its `sysmlModel` binding from the review
+text. It names the exact Thread snapshot reviewed by the server. A stale or historical
 Thread-entity binding is refused both when appending the seal and when queueing it.
 
 Only stop for dependency lowering when the returned preview literally reports
@@ -172,8 +172,8 @@ one child keeps its stable file identity and does not rewrite its siblings. A wo
 dependency closure remains navigable and historically readable. Only the Build123d V1
 direct scalar-leaf form is additionally executable through its profile-owned lowering;
 it is still not a Python import environment. Other closures, including Modelica and
-circuit-only SPICE multi-file closures, keep
-`source.dependency-lowering-unavailable` literal.
+circuit-only SPICE multi-file closures, keep `source.dependency-lowering-unavailable`
+literal.
 
 Before capturing placements or exporting the module, run the registered
 `model.capture-part-definitions@1` operation for the current architecture. The module
