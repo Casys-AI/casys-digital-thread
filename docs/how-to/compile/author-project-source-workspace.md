@@ -51,7 +51,7 @@ direct scalar-leaf dependencies in the same exact workspace revision. Declare ea
 root-to-leaf dependency by exact `fileId@revision`; the root imports it only through the
 fixed virtual-module form defined in
 [Build123d workspace-closure lowering v1](../../reference/domains/cad/build123d-workspace-closure-lowering-v1.md).
-Do not supply a path, module name, lowerer, provider, tool or runtime. The Build123d 3.0
+Do not supply a path, module name, lowerer, provider, tool or runtime. The Build123d 3.1
 profile owns the 32-file, root, aggregate and effective-script limits.
 
 Attach the root, not a synthetic generated script. Its V4 capture preserves the authored
@@ -121,11 +121,18 @@ the one effective script, and records its full manifest. Never infer admission f
 workspace membership, MIME, path or a successful isolated run. A later correction is a
 new `project_resource_capture` plus a successor file revision, then a new capture.
 
-When a preview is `ready-for-review`, it returns the exact `compile.seal-admission@3` `operation`
-alongside its MRTR `decisionParameters`. Pass that operation verbatim to the later
-`project_change_append`; do not rebuild its `sysmlModel` binding from the review text.
-It names the exact Thread snapshot reviewed by the server. A stale or historical
-Thread-entity binding is refused both when appending the seal and when queueing it.
+Before canonical geometry export, `project_admitted_geometry_export_preflight` rereads
+the sealed admission and enforces the singular export rule. Multi-source assemblies do
+not grant a caller-selected root, child, source, profile, provider or runtime;
+unresolved or independently admitted child roots require the server-derived follow-up
+guidance.
+
+The normal preview returns a summary and `evidenceRef`, never the ready operation or
+MRTR parameters. For a ready result, read `decision-parameters`, `operation`, and then
+explicit `full-evidence` through `project_technical_compilation_preview_detail`; full
+evidence review is mandatory before MRTR. Pass that exact detail operation verbatim to
+the later `project_change_append`; do not rebuild its `sysmlModel` binding from review
+text. It names the exact Thread snapshot reviewed by the server.
 
 Only stop for dependency lowering when the returned preview literally reports
 `source.dependency-lowering-unavailable`. That remains expected for Modelica and
@@ -157,8 +164,8 @@ one child keeps its stable file identity and does not rewrite its siblings. A wo
 dependency closure remains navigable and historically readable. Only the Build123d V1
 direct scalar-leaf form is additionally executable through its profile-owned lowering;
 it is still not a Python import environment. Other closures, including Modelica and
-circuit-only SPICE multi-file closures, keep
-`source.dependency-lowering-unavailable` literal.
+circuit-only SPICE multi-file closures, keep `source.dependency-lowering-unavailable`
+literal.
 
 Before capturing placements or exporting the module, run the registered
 `model.capture-part-definitions@1` operation for the current architecture. The module

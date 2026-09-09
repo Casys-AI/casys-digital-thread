@@ -8,8 +8,8 @@ Digital Thread MCP server. Provider MCP servers remain private backend dependenc
 they are never a second, bypassable tool surface.
 
 The prescribed-kinematics L3 path has a bounded provider-specific WAL and recovery
-contract: [observation recovery](prescribed-kinematics-observation-recovery.md). It
-does not make the private host qualification WAL into project or Thread evidence.
+contract: [observation recovery](prescribed-kinematics-observation-recovery.md). It does
+not make the private host qualification WAL into project or Thread evidence.
 
 | Open                                                                        | Owns                                                                     |
 | --------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
@@ -308,15 +308,21 @@ so older links still land. The sealed compilation is reviewed engineering input,
 transport envelope. Build123d, Modelica and CalculiX keep distinct method and evidence
 contracts even when they consume projections from the same compilation.
 
-The active Build123d 3.0 profile is the one exception to otherwise non-executable
+The active Build123d 3.1 profile is the one exception to otherwise non-executable
 multi-file technical closures: it lowers the narrow direct scalar-leaf shape defined in
 [workspace-closure lowering v1](../domains/cad/build123d-workspace-closure-lowering-v1.md).
-Its V4 capture persists the full manifest and separates `technical-unit:<closure sha256>`
-from workspace file identity. Every subsequent reopen recrosses the closure, reopens all
-bytes, re-lowers, compares the full manifest and effective script, then reanalyses.
-Modelica and circuit-only SPICE multi-file closures remain literally
-`source.dependency-lowering-unavailable`. This compiler contract gives no caller a
-provider, tool, path or lowerer choice, and is not itself runtime proof.
+Its V4 capture persists the full manifest and separates
+`technical-unit:<closure sha256>` from workspace file identity. Every subsequent reopen
+recrosses the closure, reopens all bytes, re-lowers, compares the full manifest and
+effective script, then reanalyses. Modelica and circuit-only SPICE multi-file closures
+remain literally `source.dependency-lowering-unavailable`. This compiler contract gives
+no caller a provider, tool, path or lowerer choice, and is not itself runtime proof.
+
+`project_technical_compilation_preview` writes the immutable full dossier to evidence
+CAS but returns only a server-owned summary at most 8 KiB and its `evidenceRef`.
+`project_technical_compilation_preview_detail` reads fixed named sections as bounded
+pages with opaque cursors; `full-evidence` is deliberately large only when explicit. The
+summary is a breaking response migration, and full evidence remains required for MRTR.
 
 Admitted CAD/Modelica file → microVM:
 [admitted source isolated execution](admitted-source-isolated-execution.md).

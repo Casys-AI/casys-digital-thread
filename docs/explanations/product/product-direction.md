@@ -168,7 +168,7 @@ A new canonical STEP supersedes prior behave / make / buy evidence of that geome
 Re-runs are new reviewed operations. One branch's `pass` never proves another.
 
 New behave CAD is born parameterized. The technical compiler admits a `build123d-source`
-under the current profile 3.0.0 only when at least one finite module-level numeric
+under the current profile 3.1.0 only when at least one finite module-level numeric
 parameter is parser-reported, bound through `parameterizes`, and causally reaches the
 unique `result` artifact. Its only multi-file exception is the narrow direct scalar-leaf
 workspace closure; Modelica and circuit-only SPICE multi-file closures remain

@@ -5,8 +5,8 @@ Audience: agent · Diátaxis: reference · Kind: contract
 Census of entry contracts, hexagonal port roots, kernel primitives, and shared adapters.
 Not domain coverage and not a runtime port list.
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
 
 ## Source map
 
@@ -82,9 +82,13 @@ multiplicative transforms are named functions, not coefficients
 #### `deno task mcp:call --name=<tool> --args='{}'`
 
 Write-capable loopback `tools/call` client for `:3020/mcp`; fills omitted `issuedAt`
-only on mutations that already carry `commandId`; `--args=-` reads the JSON object
-from stdin; `--receipt` prints the compact human receipt for a completed mutation;
-does not change server clock rules
+only on mutations that already carry `commandId`; `--args=-` reads the JSON object from
+stdin; `--receipt` prints the compact human receipt for a completed mutation; does not
+change server clock rules. `project_technical_compilation_preview` already prints its
+bounded server-owned summary; follow its `evidenceRef` with
+`project_technical_compilation_preview_detail` for named pages or explicit
+`full-evidence`. `--technical-compilation-summary` is retired because the CLI performs
+no second local projection.
 
 #### [`docs/reference/pipeline/analysis-authority-pipeline.md`](../pipeline/analysis-authority-pipeline.md)
 
