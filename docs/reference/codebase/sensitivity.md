@@ -154,7 +154,9 @@ rechecked against the bound fresh study before any write
 #### [`src/application/use-cases/sensitivity/edges/prepare-project-sensitivity-edges-review.ts`](../../../src/application/use-cases/sensitivity/edges/prepare-project-sensitivity-edges-review.ts)
 
 Provider-free current-head compiler for the exact `studyCapture` binding and paste-ready
-append/propose route; accepts no SysML or numerical values
+append/propose route; accepts no SysML or numerical values. Both consumer reviews can
+resume with a proposal-only route after recrossing an already-recorded exact append,
+pending untouched decision, audit change and absence of a run
 
 #### [`src/domain/sensitivity/study/sensitivity-study-consumer-admission.ts`](../../../src/domain/sensitivity/study/sensitivity-study-consumer-admission.ts)
 
@@ -189,8 +191,8 @@ the whole set
 
 #### [`src/application/use-cases/sensitivity/base-evaluation/prepare-project-sensitivity-base-evaluation-review.ts`](../../../src/application/use-cases/sensitivity/base-evaluation/prepare-project-sensitivity-base-evaluation-review.ts)
 
-Provider-free join check plus current-head paste-ready append/propose compiler; writes no
-Thread state and invents no metric mapping
+Provider-free join check plus current-head paste-ready append/propose compiler; writes
+no Thread state and invents no metric mapping
 
 #### [`src/adapters/sensitivity/base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts`](../../../src/adapters/sensitivity/base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts)
 

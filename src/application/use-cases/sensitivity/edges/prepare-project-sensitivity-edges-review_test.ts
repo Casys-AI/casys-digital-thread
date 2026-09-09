@@ -28,6 +28,8 @@ Deno.test("sensitivity-edges review emits one exact typed append/propose route",
   if (result.status !== "ready-for-review") return;
   assertEquals(result.edges.length, 1);
   assertEquals(result.partDefName, "Id01RadialArmHeightIsolatedEdges");
+  assertEquals(result.next.mode, "append-and-propose");
+  if (result.next.mode !== "append-and-propose") return;
   assertEquals(
     result.next.append.arguments.workItems[0]?.operation,
     {

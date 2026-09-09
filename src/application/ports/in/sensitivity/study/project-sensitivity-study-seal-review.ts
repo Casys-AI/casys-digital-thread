@@ -91,6 +91,22 @@ export interface SensitivityStudySealReviewNext {
   };
 }
 
+/**
+ * Consumer reviews may be refreshed after their append was committed but before
+ * the decision proposal was recorded.  In that exact resumable state the
+ * server emits only the still-valid proposal step; it never suggests a second
+ * append with a new issuedAt value under the old command id.
+ */
+export type SensitivityStudyConsumerReviewNext =
+  | ({
+    readonly mode: "append-and-propose";
+  } & SensitivityStudySealReviewNext)
+  | {
+    readonly mode: "propose-only";
+    readonly append: null;
+    readonly propose: SensitivityStudySealReviewNext["propose"];
+  };
+
 export type ProjectSensitivityStudySealReviewResult =
   | {
     readonly status: "resolved";

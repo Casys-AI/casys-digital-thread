@@ -8,7 +8,7 @@
 import type { EngineeringThreadSnapshotBasis } from "../../../../../domain/project/engineering-project.ts";
 import type { EngineeringDecisionProposalParameter } from "../../../../../domain/project/engineering-project.ts";
 import type { SensitivityStudyConsumerAdmission } from "../../../../../domain/sensitivity/study/sensitivity-study-consumer-admission.ts";
-import type { SensitivityStudySealReviewNext } from "../study/project-sensitivity-study-seal-review.ts";
+import type { SensitivityStudyConsumerReviewNext } from "../study/project-sensitivity-study-seal-review.ts";
 
 export interface ProjectSensitivityBaseEvaluationReviewCommand {
   readonly projectId: string;
@@ -35,7 +35,7 @@ export type ProjectSensitivityBaseEvaluationReviewResult =
     };
     readonly admission: SensitivityStudyConsumerAdmission;
     readonly decisionParameters: readonly EngineeringDecisionProposalParameter[];
-    readonly next: SensitivityStudySealReviewNext;
+    readonly next: SensitivityStudyConsumerReviewNext;
     readonly grants: "none";
   }
   | {

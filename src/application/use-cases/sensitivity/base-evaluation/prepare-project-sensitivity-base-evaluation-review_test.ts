@@ -15,6 +15,7 @@ import { sha256Fingerprint } from "../../../../domain/kernel/deterministic-json.
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
 import type { EngineeringProjectSnapshot } from "../../../../domain/project/engineering-project.ts";
 import { validateThreadSnapshot } from "../../../../domain/thread/thread-snapshot-validation.ts";
+import type { SensitivityStudySealReviewNext } from "../../../ports/in/sensitivity/study/project-sensitivity-study-seal-review.ts";
 
 const AT = "2026-08-15T00:00:00.000Z";
 const PROJECT_ID = "desk-lamp-dl05";
@@ -69,6 +70,8 @@ Deno.test("sensitivity-base evaluation review is ready when each study metric jo
   assertEquals(result.status, "ready-for-review");
   if (result.status !== "ready-for-review") return;
   assertEquals(result.metrics, ["maxDisplacement", "maxVonMises"]);
+  assertEquals(result.next.mode, "append-and-propose");
+  if (result.next.mode !== "append-and-propose") return;
   assertEquals(result.next.append.tool, "project_change_append");
   assertEquals(result.next.propose.tool, "project_decision_propose");
   assertEquals(result.next.append.arguments.expectedRevision, 1);
@@ -88,6 +91,78 @@ Deno.test("sensitivity-base evaluation review is ready when each study metric jo
   assertEquals(fixture.snapshots.saves, 0);
 });
 
+Deno.test("sensitivity-base evaluation review resumes with propose-only after its exact append", async () => {
+  const fixture = await harness();
+  const fresh = await fixture.service.execute(fixture.command);
+  assertEquals(fresh.status, "ready-for-review");
+  if (
+    fresh.status !== "ready-for-review" ||
+    fresh.next.mode !== "append-and-propose"
+  ) return;
+  const staged = projectAfterCompiledAppend(fixture.project, fresh.next);
+  const service = new PrepareProjectSensitivityBaseEvaluationReview({
+    projects: { get: () => Promise.resolve(staged) },
+    snapshots: fixture.snapshots,
+    studyCaptures: fixture.captures,
+  });
+
+  const resumed = await service.execute(fixture.command);
+  assertEquals(resumed.status, "ready-for-review");
+  if (resumed.status !== "ready-for-review") return;
+  assertEquals(resumed.next.mode, "propose-only");
+  assertEquals(resumed.next.append, null);
+  assertEquals(resumed.next.propose.arguments.expectedRevision, staged.revision);
+  assertEquals(
+    resumed.next.propose.arguments.proposal.parameters,
+    fresh.decisionParameters,
+  );
+});
+
+Deno.test("propose-only sensitivity resume refuses a drifted existing binding", async () => {
+  const fixture = await harness();
+  const fresh = await fixture.service.execute(fixture.command);
+  if (
+    fresh.status !== "ready-for-review" ||
+    fresh.next.mode !== "append-and-propose"
+  ) return;
+  const staged = projectAfterCompiledAppend(fixture.project, fresh.next);
+  const drifted: EngineeringProjectSnapshot = {
+    ...staged,
+    workItems: staged.workItems.map((item) =>
+      item.id === fresh.selected.workItemId
+        ? {
+          ...item,
+          operation: {
+            ...item.operation!,
+            bindings: [{
+              name: "studyCapture",
+              source: {
+                kind: "thread-entity" as const,
+                reference: {
+                  snapshotId: fixture.command.basis.snapshotId,
+                  snapshotRevision: fixture.command.basis.revision,
+                  kind: "artifact" as const,
+                  id: "sensitivity-study-drifted",
+                },
+              },
+            }],
+          },
+        }
+        : item
+    ),
+  };
+  const service = new PrepareProjectSensitivityBaseEvaluationReview({
+    projects: { get: () => Promise.resolve(drifted) },
+    snapshots: fixture.snapshots,
+    studyCaptures: fixture.captures,
+  });
+
+  const result = await service.execute(fixture.command);
+  assertEquals(result.status, "unresolved");
+  if (result.status !== "unresolved") return;
+  assertEquals(result.error.code, "compiled-identities-conflict");
+});
+
 async function harness(options: {
   readonly includeStudy?: boolean;
   readonly templatePath?: string;
@@ -102,16 +177,19 @@ async function harness(options: {
     built.fingerprint,
     built.captureText,
   );
+  const project = projectFor(built.snapshot, built.artifactId);
   const service = new PrepareProjectSensitivityBaseEvaluationReview({
     projects: {
-      get: () => Promise.resolve(projectFor(built.snapshot, built.artifactId)),
+      get: () => Promise.resolve(project),
     },
     snapshots,
     studyCaptures: captures,
   });
   return {
     service,
+    project,
     snapshots,
+    captures,
     command: {
       projectId: PROJECT_ID,
       basis: {
@@ -122,6 +200,75 @@ async function harness(options: {
       },
       studyArtifactId: built.artifactId,
     },
+  };
+}
+
+function projectAfterCompiledAppend(
+  project: EngineeringProjectSnapshot,
+  next: SensitivityStudySealReviewNext,
+): EngineeringProjectSnapshot {
+  const args = next.append.arguments;
+  const phase = args.phases[0]!;
+  const work = args.workItems[0]!;
+  const decision = args.requiredDecisions[0]!;
+  const resultingRevision = project.revision + 1;
+  const publishedBy = { id: "agent:test", origin: "agent" as const };
+  const evidenceRefs = work.operation.bindings.map((binding) => {
+    if (binding.source.kind !== "thread-entity") {
+      throw new Error("Expected one exact Thread entity binding.");
+    }
+    return binding.source.reference;
+  });
+  return {
+    ...project,
+    revision: resultingRevision,
+    planChanges: [...(project.planChanges ?? []), {
+      id: `change:${args.commandId}`,
+      commandId: args.commandId,
+      baseSnapshot: args.baseSnapshot,
+      phaseIds: [phase.id],
+      workItemIds: [work.id],
+      decisionIds: [decision.id],
+      publishedAt: AT,
+      publishedBy,
+    }],
+    phases: [...project.phases, {
+      ...phase,
+      order: project.phases.length + 1,
+      workItemIds: [work.id],
+      requiredDecisionIds: [decision.id],
+      evidenceRefs: [],
+    }],
+    workItems: [...project.workItems, {
+      ...work,
+      activityId: `activity:${work.id}`,
+      title: "Evaluate the study-base observations against named requirements",
+      description:
+        "Re-read the sealed sensitivity-study capture and evaluate its base observations.",
+      kind: "verify",
+      status: "waiting-for-decision",
+      evidenceRefs: [],
+      blockerIds: [],
+    }],
+    decisions: [...project.decisions, {
+      ...decision,
+      status: "required",
+      requestedAt: AT,
+      inputEvidenceRefs: evidenceRefs,
+      approvalIds: [],
+    }],
+    commandReceipts: [...(project.commandReceipts ?? []), {
+      commandId: args.commandId,
+      type: "project.change-append",
+      actor: publishedBy,
+      issuedAt: AT,
+      appliedAt: AT,
+      requestFingerprint: { algorithm: "sha256", digest: "8".repeat(64) },
+      resultingSnapshot: {
+        snapshotId: `${PROJECT_ID}:project:r${resultingRevision}:test`,
+        revision: resultingRevision,
+      },
+    }],
   };
 }
 

@@ -130,11 +130,11 @@ Every consequential step is still: append work + decision → propose → human 
 Call `project_sensitivity_base_evaluation_review` with the exact project, Thread basis
 and study artifact id. It writes nothing.
 
-| Review status                          | Meaning                                                                                                            | Next step                                                            |
-| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
+| Review status                          | Meaning                                                                                                            | Next step                                                                                                            |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
 | `ready-for-review`                     | Each study metric Object.is-equals one Thread requirement and its `sensitivity-base-<metric>-<digest>` observation | Paste `next.append.arguments`, then `next.propose.arguments`; after MRTR, queue `verify.evaluate-sensitivity-base@1` |
-| `unresolved` / `study-metric-unlinked` | Metric ids do not match. That is `UNLINKED`                                                                        | Seal a new study from the matching template. Do not invent a mapping |
-| `unresolved` / `observation-unlinked`  | The study-base observation is missing                                                                              | Re-run `analyze.run-fea-sensitivity@1` on this exact case            |
+| `unresolved` / `study-metric-unlinked` | Metric ids do not match. That is `UNLINKED`                                                                        | Seal a new study from the matching template. Do not invent a mapping                                                 |
+| `unresolved` / `observation-unlinked`  | The study-base observation is missing                                                                              | Re-run `analyze.run-fea-sensitivity@1` on this exact case                                                            |
 
 On the local r16 capture the honest result is `study-metric-unlinked`.
 
@@ -144,6 +144,13 @@ ids. The proposal grammar refuses aliases, units, extra fields, caller SysML, so
 arguments and numerical sensitivity values. After the base evaluation advances the
 Thread, call `project_sensitivity_edges_review` again on that exact new head; its
 paste-ready route writes only the server-reconstructed local relations.
+
+The consumer reviews are resumable between their two project mutations. A fresh review
+returns `next.mode: append-and-propose`. If the exact compiled append is already in the
+project ledger and the decision is still untouched, a refresh returns
+`next.mode: propose-only`, `next.append: null`, and a proposal bound to the current
+project revision. Any drift in the phase, work item, binding, decision, audit change or
+Thread head stays `compiled-identities-conflict`; the review never resumes by id alone.
 
 ## 2. Evaluate the study base
 

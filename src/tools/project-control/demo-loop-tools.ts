@@ -17,7 +17,9 @@ export function registerProjectDemoLoopTools(
     app.registerTool(sensitivityBaseEvaluationReviewTool, async (args) => {
       const result = await review.execute(args);
       const content = result.status === "ready-for-review"
-        ? "Study-base observations join the Thread requirements. Paste next.append.arguments into project_change_append and next.propose.arguments into project_decision_propose. The typed MRTR binds the exact studyCapture; no metric mapping was invented."
+        ? result.next.mode === "propose-only"
+          ? "Study-base observations join the Thread requirements and the exact append is already recorded. Paste only next.propose.arguments into project_decision_propose. The typed MRTR binds the exact studyCapture; no metric mapping was invented."
+          : "Study-base observations join the Thread requirements. Paste next.append.arguments into project_change_append and next.propose.arguments into project_decision_propose. The typed MRTR binds the exact studyCapture; no metric mapping was invented."
         : `Study-base evaluation review is unresolved (${result.error.code}). ${result.error.recovery}`;
       return {
         content,
@@ -30,7 +32,9 @@ export function registerProjectDemoLoopTools(
     app.registerTool(sensitivityEdgesReviewTool, async (args) => {
       const result = await review.execute(args);
       const content = result.status === "ready-for-review"
-        ? "Sensitivity relations were reconstructed from the exact study result. Paste next.append.arguments into project_change_append and next.propose.arguments into project_decision_propose. The writer accepts no caller SysML or numerical values."
+        ? result.next.mode === "propose-only"
+          ? "Sensitivity relations were reconstructed and the exact append is already recorded. Paste only next.propose.arguments into project_decision_propose. The writer accepts no caller SysML or numerical values."
+          : "Sensitivity relations were reconstructed from the exact study result. Paste next.append.arguments into project_change_append and next.propose.arguments into project_decision_propose. The writer accepts no caller SysML or numerical values."
         : `Sensitivity-edges review is unresolved (${result.error.code}). ${result.error.recovery}`;
       return {
         content,
