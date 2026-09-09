@@ -18,6 +18,16 @@ import {
 export const FIRST_PARTY_MICROSANDBOX_IMAGE_CANDIDATE_RECEIPT_SCHEMA =
   "first-party-microsandbox-image-candidate-receipt/1.0" as const;
 
+/**
+ * Binding policy for reusing one immutable image receipt after unrelated
+ * entries in the server-owned distribution matrix have changed. The receipt
+ * keeps its complete historical matrix and fingerprint. Only its selected
+ * physical-image entry may bind to the current matrix, and that entry must be
+ * byte-for-byte identical under deterministic JSON.
+ */
+export const FIRST_PARTY_MICROSANDBOX_IMAGE_CANDIDATE_ENTRY_COMPATIBILITY_SCHEMA =
+  "first-party-microsandbox-image-candidate-entry-compatibility/1.0" as const;
+
 const SHA256 = /^sha256:[0-9a-f]{64}$/u;
 const GIT_SHA = /^[0-9a-f]{40}$/u;
 const LOCATOR_TAG = /^git-[0-9a-f]{40}-run-[1-9][0-9]*-[1-9][0-9]*$/u;
@@ -235,29 +245,28 @@ export async function bindFirstPartyMicrosandboxImageCandidateReceiptToCurrentMa
   receipt: FirstPartyMicrosandboxImageCandidateReceipt,
   matrix: FirstPartyMicrosandboxImageDistributionMatrix,
 ): Promise<FirstPartyMicrosandboxImageCandidateReceipt> {
-  const fingerprint = await fingerprintFirstPartyMicrosandboxImageDistributionMatrix(
-    matrix,
-  );
-  if (receipt.inputMatrix.fingerprint !== fingerprint) {
+  assertFirstPartyMicrosandboxImageDistributionContract(matrix);
+  const historicalMatrix = receiptInputMatrix(receipt);
+  const historicalFingerprint =
+    await fingerprintFirstPartyMicrosandboxImageDistributionMatrix(
+      historicalMatrix,
+    );
+  if (receipt.inputMatrix.fingerprint !== historicalFingerprint) {
     throw new TypeError(
-      "Candidate receipt matrix fingerprint is not the current server-owned distribution matrix.",
+      "Candidate receipt matrix fingerprint is not the SHA-256 of its exact historical distribution matrix.",
     );
   }
-  const currentBody = Object.freeze({
-    schemaVersion: matrix.schemaVersion,
-    contract: matrix.contract,
-    platform: matrix.platform,
-    images: matrix.images,
-  });
-  const receiptBody = Object.freeze({
-    schemaVersion: receipt.inputMatrix.schemaVersion,
-    contract: receipt.inputMatrix.contract,
-    platform: receipt.inputMatrix.platform,
-    images: receipt.inputMatrix.images,
-  });
-  if (deterministicJson(currentBody) !== deterministicJson(receiptBody)) {
+  const historicalEntry = selectPhysicalImage(
+    historicalMatrix,
+    receipt.candidate.physicalImageId,
+  );
+  const currentEntry = selectPhysicalImage(
+    matrix,
+    receipt.candidate.physicalImageId,
+  );
+  if (deterministicJson(historicalEntry) !== deterministicJson(currentEntry)) {
     throw new TypeError(
-      "Candidate receipt input matrix is not the current server-owned distribution matrix.",
+      `Candidate receipt selected entry is not identical to the current server-owned distribution entry under ${FIRST_PARTY_MICROSANDBOX_IMAGE_CANDIDATE_ENTRY_COMPATIBILITY_SCHEMA}.`,
     );
   }
   return receipt;
@@ -332,6 +341,17 @@ function selectPhysicalImage(
     );
   }
   return matches[0]!;
+}
+
+function receiptInputMatrix(
+  receipt: FirstPartyMicrosandboxImageCandidateReceipt,
+): FirstPartyMicrosandboxImageDistributionMatrix {
+  return Object.freeze({
+    schemaVersion: receipt.inputMatrix.schemaVersion,
+    contract: receipt.inputMatrix.contract,
+    platform: receipt.inputMatrix.platform,
+    images: receipt.inputMatrix.images,
+  });
 }
 
 function assertSha256(value: string, label: string): void {

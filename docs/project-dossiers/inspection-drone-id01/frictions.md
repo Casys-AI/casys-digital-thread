@@ -1131,6 +1131,51 @@ cache acquisition and the queued run crossing the prerequisite. Do not manually 
 load or retag a merely plausible image, and do not replace the required base/stepped FEA
 receipts plus typed sensitivity edge with a whiteboard node.
 
+## F43 — one unrelated matrix change invalidated an exact Build123d candidate receipt
+
+(closed, quick win)
+
+The retained 2026-09-05 Build123d publication receipt preserves a complete historical
+five-image matrix and exact OCI index, ARM64 manifest, recipe, runtime contract, logical
+target and qualification target. Its Build123d entry is byte-for-byte identical to the
+current entry, but the import binder rejected it because the CalculiX catalogue target
+had advanced since publication. This global equality check coupled independent physical
+images and prevented recovery work before Docker or Microsandbox without identifying a
+Build123d incompatibility.
+
+`first-party-microsandbox-image-candidate-entry-compatibility/1.0` now recalculates and
+verifies the fingerprint of the complete historical matrix retained by the receipt, then
+requires exact deterministic equality between its selected physical-image entry and the
+unique current entry. Unrelated entries may advance. Any selected-entry change —
+including image name, recipe, platform, user, entrypoint, labels, logical targets or
+qualification target — still fails closed. The receipt and import-record schemas remain
+unchanged, all provenance is retained, and `eligibleForPromotion=false` remains literal.
+Focused tests cover historical-fingerprint tampering, permitted unrelated drift and
+refused selected-entry drift. The real Build123d receipt now crosses the read-only
+import plan with no Docker or Microsandbox effect.
+
+## F44 — candidate qualification has no generic catalogue-activation route
+
+(open, deferred hard friction)
+
+The maintained candidate path ends at host/runtime qualification with
+`eligibleForPromotion=false`. It deliberately neither rewrites the catalogue pin nor
+changes the immutable acquisition source. The active Build123d pin and execution profile
+remain code-owned and are reconstructed at server start, so a new candidate cannot be
+adopted by a low-level tag, digest flag or cache mutation. A dynamic append-only
+activation authority would require atomic catalogue revisions, predecessor-linked
+rollback, crash recovery, cache coherence and explicit invalidation of pending approvals
+bound to the preceding profile.
+
+That platform extension is disproportionate to the ID01 pilot and stays deferred. The
+bounded pilot path follows the existing CalculiX local-developer precedent instead:
+qualify the exact public ARM64 candidate, review a source-and-target pin change in code,
+mark unresolved aggregate-image licence literally, bump the Build123d execution profile,
+restart at a controlled boundary, and obtain a fresh project capability review plus
+human MRTR before any run uses the successor runtime. This is not production promotion
+or redistribution clearance. Close F44 only when a maintained generic activation and
+forward-only rollback route exists.
+
 ## Expected states, not defects
 
 - The old preview was explicitly pinned to TPS03. It correctly ignored the new durable

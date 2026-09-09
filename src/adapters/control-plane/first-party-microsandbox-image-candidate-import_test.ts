@@ -189,7 +189,7 @@ Deno.test("candidate import is deterministic for the same receipt and observatio
   assertEquals(first, second);
 });
 
-Deno.test("candidate import re-binds the receipt to the current matrix before Docker or Microsandbox", async () => {
+Deno.test("candidate import verifies the historical matrix before Docker or Microsandbox", async () => {
   const { receipt, indexDocument, matrix } = await fixtures();
   const stale = JSON.parse(deterministicJson(receipt)) as Record<string, unknown>;
   const inputMatrix = JSON.parse(deterministicJson(stale.inputMatrix)) as Record<
@@ -207,7 +207,7 @@ Deno.test("candidate import re-binds the receipt to the current matrix before Do
         ports,
       }),
     TypeError,
-    "current server-owned distribution matrix",
+    "exact historical distribution matrix",
   );
   assertEquals(ports.operations, []);
   assertEquals(ports.pulls, []);

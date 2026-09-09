@@ -106,11 +106,16 @@ workflow is `.github/workflows/publish-first-party-microvm-images.yml`.
 ## Candidate import identities
 
 The GHCR receipt is not a Microsandbox cache entry. Maintainer import takes that exact
-receipt plus the current server-owned matrix, re-parses and re-binds the receipt before
-any Docker or Microsandbox effect, re-reads the OCI index, proves exactly one
-`linux/arm64` child matches the receipt, pulls the platform-manifest digest, inspects
-OS/arch/user/entrypoint/labels, saves, and generates an invocation-owned nonce for a
-unique non-catalog staging tag. It refuses a pre-existing staging tag. Returned
+receipt plus the current server-owned matrix, re-parses the receipt, recalculates the
+fingerprint of its complete historical matrix, and applies
+`first-party-microsandbox-image-candidate-entry-compatibility/1.0` before any Docker or
+Microsandbox effect. This bind requires the receipt's unique selected physical-image
+entry to be byte-for-byte identical to the corresponding current entry. Unrelated image
+entries may have advanced; the selected image name, recipe, runtime contract, logical
+targets and qualification target may not. Import then re-reads the OCI index and proves
+exactly one `linux/arm64` child matches the receipt, pulls the platform-manifest digest,
+inspects OS/arch/user/entrypoint/labels, saves, and generates an invocation-owned nonce
+for a unique non-catalog staging tag. It refuses a pre-existing staging tag. Returned
 `Image.load` handles must prove the requested tag was applied and must not include the
 active catalogue pin. The observed Microsandbox digest is recorded, only the
 proven-owned staging reference is removed, and the same archive is loaded again as the
@@ -133,8 +138,8 @@ Default mode is planning/read. `--run` is the mutation acknowledgement. Qualific
 remains `not-run` and `eligibleForPromotion` remains `false`. The factual import record
 is the strict reusable authority for a later per-domain qualification: it preserves the
 exact source candidate receipt, recalculates that fingerprint on parse/bind, rebinds to
-the current matrix on read, and lives locally under
-`state/local/first-party-microsandbox-image-candidate-import/`. It is not a
+the exact compatible selected entry in the current matrix on read, and lives locally
+under `state/local/first-party-microsandbox-image-candidate-import/`. It is not a
 qualification attestation, catalogue pin, or promotion. Callers cannot select a
 provider, image, digest, tool, or argument.
 

@@ -12,6 +12,7 @@ import {
 import {
   createFirstPartyMicrosandboxImageDistributionMatrix,
   fingerprintFirstPartyMicrosandboxImageDistributionMatrix,
+  type FirstPartyMicrosandboxImageDistributionMatrix,
 } from "./first-party-microsandbox-image-distribution-matrix.ts";
 
 const GIT_SHA = "a".repeat(40);
@@ -156,7 +157,7 @@ Deno.test("candidate receipt parse rebuilds the exact document and binds the cur
   assertEquals(reread.candidate.physicalImageId, "ngspice-worker");
 });
 
-Deno.test("candidate receipt bind refuses a fingerprint or matrix that is not current", async () => {
+Deno.test("candidate receipt bind refuses a fingerprint that is not its historical matrix", async () => {
   const catalog = await createFirstPartyCapabilityRuntimeCatalog();
   const matrix = createFirstPartyMicrosandboxImageDistributionMatrix(catalog);
   const receipt = buildFirstPartyMicrosandboxImageCandidateReceipt({
@@ -174,7 +175,7 @@ Deno.test("candidate receipt bind refuses a fingerprint or matrix that is not cu
     () =>
       bindFirstPartyMicrosandboxImageCandidateReceiptToCurrentMatrix(receipt, matrix),
     TypeError,
-    "current server-owned distribution matrix",
+    "exact historical distribution matrix",
   );
   assertThrows(
     () =>
@@ -192,3 +193,69 @@ Deno.test("candidate receipt bind refuses a fingerprint or matrix that is not cu
     "exact rebuilt first-party receipt",
   );
 });
+
+Deno.test("candidate receipt bind accepts unrelated matrix drift and refuses selected-entry drift", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const matrix = createFirstPartyMicrosandboxImageDistributionMatrix(catalog);
+  const receipt = buildFirstPartyMicrosandboxImageCandidateReceipt({
+    matrix,
+    matrixFingerprint: await fingerprintFirstPartyMicrosandboxImageDistributionMatrix(
+      matrix,
+    ),
+    physicalImageId: "ngspice-worker",
+    ociIndexDigest: OCI_INDEX_DIGEST,
+    platformManifestDigest: PLATFORM_MANIFEST_DIGEST,
+    locatorTag: `git-${GIT_SHA}-run-7-1`,
+    gitSha: GIT_SHA,
+    gitTag: "first-party-microvm-v0.1.0",
+    buildMetadata: { "containerimage.digest": OCI_INDEX_DIGEST },
+  });
+
+  const unrelatedDrift = withChangedQualificationTarget(
+    matrix,
+    "calculix-worker",
+    "8",
+  );
+  const bound = await bindFirstPartyMicrosandboxImageCandidateReceiptToCurrentMatrix(
+    receipt,
+    unrelatedDrift,
+  );
+  assertEquals(bound.inputMatrix.fingerprint, receipt.inputMatrix.fingerprint);
+
+  const selectedEntryDrift = withChangedQualificationTarget(
+    matrix,
+    "ngspice-worker",
+    "9",
+  );
+  await assertRejects(
+    () =>
+      bindFirstPartyMicrosandboxImageCandidateReceiptToCurrentMatrix(
+        receipt,
+        selectedEntryDrift,
+      ),
+    TypeError,
+    "candidate-entry-compatibility/1.0",
+  );
+});
+
+function withChangedQualificationTarget(
+  matrix: FirstPartyMicrosandboxImageDistributionMatrix,
+  physicalImageId: string,
+  digestCharacter: string,
+): FirstPartyMicrosandboxImageDistributionMatrix {
+  const manifestDigest = `sha256:${digestCharacter.repeat(64)}`;
+  return {
+    ...matrix,
+    images: matrix.images.map((entry) =>
+      entry.physicalImageId === physicalImageId
+        ? {
+          ...entry,
+          qualificationTarget: {
+            imageReference: `docker.io/casys/${physicalImageId}@${manifestDigest}`,
+            manifestDigest,
+          },
+        }
+        : entry
+    ),
+  };
+}

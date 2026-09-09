@@ -124,7 +124,7 @@ Deno.test("candidate import record parse recalculates the source-receipt fingerp
   assertEquals(deterministicJson(source), snapshot);
 });
 
-Deno.test("candidate import record bind refuses a stale matrix fingerprint", async () => {
+Deno.test("candidate import record bind refuses a stale historical matrix fingerprint", async () => {
   const { matrix, receipt } = await fixtures();
   const staleReceipt = buildFirstPartyMicrosandboxImageCandidateReceipt({
     matrix,
@@ -152,7 +152,37 @@ Deno.test("candidate import record bind refuses a stale matrix fingerprint", asy
         matrix,
       ),
     TypeError,
-    "current server-owned distribution matrix",
+    "exact historical distribution matrix",
+  );
+});
+
+Deno.test("candidate import record bind accepts unrelated matrix drift and refuses selected-entry drift", async () => {
+  const { matrix, record } = await fixtures();
+  const unrelatedDrift = withChangedQualificationTarget(
+    matrix,
+    "calculix-worker",
+    "7",
+  );
+  const bound =
+    await bindFirstPartyMicrosandboxImageCandidateImportRecordToCurrentMatrix(
+      record,
+      unrelatedDrift,
+    );
+  assertEquals(deterministicJson(bound), deterministicJson(record));
+
+  const selectedEntryDrift = withChangedQualificationTarget(
+    matrix,
+    "ngspice-worker",
+    "8",
+  );
+  await assertRejects(
+    () =>
+      bindFirstPartyMicrosandboxImageCandidateImportRecordToCurrentMatrix(
+        record,
+        selectedEntryDrift,
+      ),
+    TypeError,
+    "candidate-entry-compatibility/1.0",
   );
 });
 
@@ -430,6 +460,28 @@ function retargetQualification(
   };
   source.candidate = candidate;
   return source;
+}
+
+function withChangedQualificationTarget(
+  matrix: FirstPartyMicrosandboxImageDistributionMatrix,
+  physicalImageId: string,
+  digestCharacter: string,
+): FirstPartyMicrosandboxImageDistributionMatrix {
+  const manifestDigest = `sha256:${digestCharacter.repeat(64)}`;
+  return {
+    ...matrix,
+    images: matrix.images.map((entry) =>
+      entry.physicalImageId === physicalImageId
+        ? {
+          ...entry,
+          qualificationTarget: {
+            imageReference: `docker.io/casys/${physicalImageId}@${manifestDigest}`,
+            manifestDigest,
+          },
+        }
+        : entry
+    ),
+  };
 }
 
 function jsonObject(value: unknown): Record<string, unknown> {

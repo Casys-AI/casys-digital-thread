@@ -23,7 +23,6 @@ import {
 } from "./first-party-microsandbox-image-candidate-receipt.ts";
 import {
   assertFirstPartyMicrosandboxImageDistributionContract,
-  fingerprintFirstPartyMicrosandboxImageDistributionMatrix,
   FIRST_PARTY_MICROSANDBOX_IMAGE_DISTRIBUTION_MATRIX_SCHEMA,
   firstPartyMicrosandboxGhcrImageName,
   firstPartyMicrosandboxGhcrPackageName,
@@ -243,14 +242,6 @@ export async function bindFirstPartyMicrosandboxImageCandidateImportRecordToCurr
     JSON.parse(deterministicJson(record)),
   );
   assertFirstPartyMicrosandboxImageDistributionContract(matrix);
-  const fingerprint = await fingerprintFirstPartyMicrosandboxImageDistributionMatrix(
-    matrix,
-  );
-  if (parsed.inputMatrix.fingerprint !== fingerprint) {
-    throw new TypeError(
-      "Candidate import record matrix fingerprint is not the current server-owned distribution matrix.",
-    );
-  }
   if (parsed.inputMatrix.schemaVersion !== matrix.schemaVersion) {
     throw new TypeError(
       "Candidate import record input matrix schema is not the current server-owned distribution matrix.",

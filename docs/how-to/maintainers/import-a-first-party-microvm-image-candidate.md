@@ -14,12 +14,20 @@ candidate. Those paths import under the active catalogue pin.
 
 ## 1. Start from an exact receipt
 
-On the reviewed ARM Mac, take `receipt.json` produced by this repository for the current
-commit's distribution matrix. The receipt already names the OCI index digest, the
-`linux/arm64` platform-manifest digest, and the existing qualification target. OCI
+On the reviewed ARM Mac, take an exact `receipt.json` produced by this repository. The
+receipt already names the OCI index digest, the `linux/arm64` platform-manifest digest,
+the existing qualification target, and the complete historical distribution matrix. OCI
 index, OCI platform-manifest, and later Microsandbox identities are separately typed and
 recorded. Their digest text may happen to be equal; that coincidence never merges their
 provenance.
+
+Binding uses `first-party-microsandbox-image-candidate-entry-compatibility/1.0`. It
+recalculates the fingerprint of the complete historical matrix preserved in the receipt,
+then requires the selected physical-image entry to be byte-for-byte identical to its
+unique entry in the current server-owned matrix. A change to another physical image does
+not invalidate this candidate. Any change to the selected image name, recipe, runtime
+contract, logical targets, or qualification target fails closed before Docker or
+Microsandbox.
 
 ## 2. Plan first
 
@@ -27,12 +35,12 @@ provenance.
 deno task release:first-party-microvm-images:import-candidate --receipt=<path>
 ```
 
-Default mode is planning/read. It validates the receipt against the current server-owned
-matrix and fingerprint, then prints the planned pull plus the generated-at-run staging
-namespace and tag prefix. It does not call Docker or Microsandbox, and does not pretend
-to know the per-invocation staging reference. Output keeps
-`runtimeQualification=not-run` and `eligibleForPromotion=false`. Domain qualification is
-not run. Promotion is false.
+Default mode is planning/read. It validates the receipt's historical matrix fingerprint
+and binds its exact selected entry to the current server-owned matrix, then prints the
+planned pull plus the generated-at-run staging namespace and tag prefix. It does not
+call Docker or Microsandbox, and does not pretend to know the per-invocation staging
+reference. Output keeps `runtimeQualification=not-run` and `eligibleForPromotion=false`.
+Domain qualification is not run. Promotion is false.
 
 The CLI accepts only `--receipt=<path>` and optional `--run`. It refuses provider,
 image, digest, platform, command, endpoint, tool, or worker inputs.
@@ -44,15 +52,16 @@ deno task release:first-party-microvm-images:import-candidate --receipt=<path> -
 ```
 
 `--run` is the explicit mutation acknowledgement. The import orchestration re-parses the
-receipt and re-binds it to the current server-owned matrix before any Docker or
-Microsandbox effect. Callers cannot select a provider, image, digest, platform, tool, or
-argument. The flow then re-reads the exact OCI index, pulls the receipt's
-platform-manifest reference, inspects OS/arch/user/entrypoint/labels, saves, generates
-an invocation-owned nonce, preflights that exact non-catalog staging tag is absent, then
-loads Microsandbox under it. The returned `Image.load` handles must include that
-requested staging tag and must not include the active catalogue pin. The flow records
-the observed Microsandbox digest, removes only its proven-owned staging reference, and
-re-imports the same archive under the canonical Microsandbox cache reference
+receipt, verifies its complete historical matrix fingerprint, and re-binds its selected
+entry to the current server-owned matrix before any Docker or Microsandbox effect.
+Callers cannot select a provider, image, digest, platform, tool, or argument. The flow
+then re-reads the exact OCI index, pulls the receipt's platform-manifest reference,
+inspects OS/arch/user/entrypoint/labels, saves, generates an invocation-owned nonce,
+preflights that exact non-catalog staging tag is absent, then loads Microsandbox under
+it. The returned `Image.load` handles must include that requested staging tag and must
+not include the active catalogue pin. The flow records the observed Microsandbox digest,
+removes only its proven-owned staging reference, and re-imports the same archive under
+the canonical Microsandbox cache reference
 `docker.io/casys/first-party-candidate-<physicalImageId>@sha256:<observed-msb-digest>`
 derived by `pinnedOciImageReference`. The factual import record still stores the short
 `casys/first-party-candidate-<physicalImageId>@sha256:<observed-msb-digest>` identity.
