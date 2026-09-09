@@ -59,10 +59,10 @@ export const TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA =
   "technical-compilation-profile-catalog/1.0" as const;
 export const TECHNICAL_COMPILATION_SCHEMA = "technical-compilation/2.0" as const;
 /**
- * Profile semantics 3.0 add the exact Build123d workspace-closure lowering
- * boundary alongside the causal named-lever admission gate.
+ * Profile semantics 3.1 add non-semantic standalone module comments alongside
+ * the exact Build123d workspace-closure lowering and causal named-lever gates.
  */
-export const PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION = "3.0.0" as const;
+export const PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION = "3.1.0" as const;
 
 export type TechnicalCompilationTarget =
   | "build123d-source"

@@ -9,6 +9,7 @@
 import {
   ExportAdmittedProjectGeometry,
 } from "../../application/use-cases/cad/canonical/export-admitted-project-geometry.ts";
+import { PrepareProjectAdmittedGeometryExportPreflight } from "../../application/use-cases/cad/canonical/prepare-project-admitted-geometry-export-preflight.ts";
 import type { CapabilityRuntimeExecutionSessionCoordinator } from "../../application/control-plane/capability-runtime-execution-session.ts";
 import type { CapabilityRuntimeExecutionEligibility } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { CapabilityRuntimePreparationPort } from "../../application/ports/out/capability/capability-runtime-preparation-session.ts";
@@ -124,6 +125,9 @@ export interface CadProject {
 }
 
 export interface PrivateBuild123dGeometrySurfaces {
+  /** Provider-free route selection; available whether or not a sandbox starts. */
+  readonly admittedGeometryExportPreflight:
+    PrepareProjectAdmittedGeometryExportPreflight;
   readonly admittedGeometryExport:
     | ExportAdmittedProjectGeometry
     | undefined;
@@ -296,6 +300,10 @@ export function composePrivateBuild123dGeometrySurfaces(input: {
     `${input.geometryDraftCaptureDirectory}/replay`,
   );
   return {
+    admittedGeometryExportPreflight: new PrepareProjectAdmittedGeometryExportPreflight({
+      admissions: input.admissions,
+      projects: input.projects,
+    }),
     admittedGeometryExport: new ExportAdmittedProjectGeometry({
       admissions: input.admissions,
       snapshots: input.snapshots,

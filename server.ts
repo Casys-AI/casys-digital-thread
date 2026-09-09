@@ -303,6 +303,10 @@ import {
   createTechnicalCompilationPreview,
   createTechnicalCompilationProject,
 } from "./src/adapters/compile/server-composition.ts";
+import {
+  BoundedTechnicalCompilationPreview,
+  ReadTechnicalCompilationPreviewEvidence,
+} from "./src/application/use-cases/compile/admission/bounded-technical-compilation-preview.ts";
 import { createRecordedOperationPlanComposition } from "./src/adapters/compile/plans/server-composition.ts";
 import { createLedDriverSourceComposition } from "./src/adapters/electrical/led-driver/server-composition.ts";
 import {
@@ -1106,6 +1110,14 @@ async function createProjectControl(
     projects: runtime.projects,
     methodSheets: thermalJoin.thermalMethodSheetCompilationJoin,
   });
+  const boundedTechnicalCompilationPreview = new BoundedTechnicalCompilationPreview(
+    technicalCompilationPreview,
+    compilationFoundation.technicalCompilationPreviewEvidence,
+  );
+  const technicalCompilationPreviewEvidence =
+    new ReadTechnicalCompilationPreviewEvidence(
+      compilationFoundation.technicalCompilationPreviewEvidence,
+    );
   const cadProject = createCadProject({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -1635,7 +1647,8 @@ async function createProjectControl(
       geometryModuleExport,
       assemblyIntegrityReview,
       assemblyIntegrityEvaluationReview,
-      technicalCompilationPreview,
+      technicalCompilationPreview: boundedTechnicalCompilationPreview,
+      technicalCompilationPreviewEvidence,
       architectureSysmlSourceCapture:
         architectureFoundation.architectureSysmlSourceCapture,
       architectureSysmlPreview: architectureFoundation.architectureSysmlPreview,
