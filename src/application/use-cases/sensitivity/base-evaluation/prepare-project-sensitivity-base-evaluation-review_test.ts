@@ -1,7 +1,6 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals } from "@std/assert";
 import {
   PrepareProjectSensitivityBaseEvaluationReview,
-  ProjectSensitivityBaseEvaluationReviewError,
 } from "./prepare-project-sensitivity-base-evaluation-review.ts";
 import {
   assembleSensitivityStudyCaseV3,
@@ -14,6 +13,7 @@ import {
 } from "../../../../domain/sensitivity/study/sensitivity-study-capture.ts";
 import { sha256Fingerprint } from "../../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../../domain/kernel/primitives.ts";
+import type { EngineeringProjectSnapshot } from "../../../../domain/project/engineering-project.ts";
 import { validateThreadSnapshot } from "../../../../domain/thread/thread-snapshot-validation.ts";
 
 const AT = "2026-08-15T00:00:00.000Z";
@@ -22,24 +22,23 @@ const SUBJECT_ID = "project:desk-lamp-dl05";
 
 Deno.test("sensitivity-base evaluation review fails closed when the Thread basis is absent", async () => {
   const review = new PrepareProjectSensitivityBaseEvaluationReview({
+    projects: { get: () => Promise.resolve(emptyProject()) },
     snapshots: emptySnapshots(),
     studyCaptures: { read: () => Promise.resolve(undefined) },
   });
-  await assertRejects(
-    () =>
-      review.execute({
-        projectId: PROJECT_ID,
-        basis: {
-          kind: "thread-snapshot",
-          snapshotId: "missing",
-          revision: 16,
-          subjectId: SUBJECT_ID,
-        },
-        studyArtifactId: "sensitivity-study-x",
-      }),
-    ProjectSensitivityBaseEvaluationReviewError,
-    "exact Thread basis",
-  );
+  const result = await review.execute({
+    projectId: PROJECT_ID,
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: "missing",
+      revision: 16,
+      subjectId: SUBJECT_ID,
+    },
+    studyArtifactId: "sensitivity-study-x",
+  });
+  assertEquals(result.status, "unresolved");
+  if (result.status !== "unresolved") return;
+  assertEquals(result.error.code, "snapshot_not_found");
 });
 
 Deno.test("sensitivity-base evaluation review is unresolved when the study artifact is absent", async () => {
@@ -70,6 +69,22 @@ Deno.test("sensitivity-base evaluation review is ready when each study metric jo
   assertEquals(result.status, "ready-for-review");
   if (result.status !== "ready-for-review") return;
   assertEquals(result.metrics, ["maxDisplacement", "maxVonMises"]);
+  assertEquals(result.next.append.tool, "project_change_append");
+  assertEquals(result.next.propose.tool, "project_decision_propose");
+  assertEquals(result.next.append.arguments.expectedRevision, 1);
+  assertEquals(result.next.propose.arguments.expectedRevision, 2);
+  assertEquals(
+    result.next.append.arguments.workItems[0]?.operation.bindings[0]?.source,
+    {
+      kind: "thread-entity",
+      reference: {
+        snapshotId: fixture.command.basis.snapshotId,
+        snapshotRevision: fixture.command.basis.revision,
+        kind: "artifact",
+        id: fixture.command.studyArtifactId,
+      },
+    },
+  );
   assertEquals(fixture.snapshots.saves, 0);
 });
 
@@ -88,6 +103,9 @@ async function harness(options: {
     built.captureText,
   );
   const service = new PrepareProjectSensitivityBaseEvaluationReview({
+    projects: {
+      get: () => Promise.resolve(projectFor(built.snapshot, built.artifactId)),
+    },
     snapshots,
     studyCaptures: captures,
   });
@@ -104,6 +122,94 @@ async function harness(options: {
       },
       studyArtifactId: built.artifactId,
     },
+  };
+}
+
+function projectFor(
+  snapshot: ReturnType<typeof validateThreadSnapshot>,
+  artifactId: string,
+): EngineeringProjectSnapshot {
+  const basis = {
+    snapshotId: snapshot.id,
+    revision: snapshot.revision,
+    subjectId: snapshot.subject.id,
+  };
+  const sourceWorkItemId = "work.sensitivity-source";
+  return {
+    schemaVersion: "4.0",
+    id: `${PROJECT_ID}:project:r1`,
+    revision: 1,
+    generatedAt: AT,
+    project: {
+      id: PROJECT_ID,
+      name: "dl05",
+      subjectId: SUBJECT_ID,
+      objective: { title: "Review sensitivity", statement: "Review sensitivity." },
+    },
+    threadSnapshots: [basis],
+    phases: [{
+      id: "phase.sensitivity-source",
+      name: "Sensitivity source",
+      order: 1,
+      description: "Produce the study result.",
+      workItemIds: [sourceWorkItemId],
+      requiredDecisionIds: [],
+      evidenceRefs: [],
+    }],
+    workItems: [{
+      id: sourceWorkItemId,
+      activityId: `activity:${sourceWorkItemId}`,
+      phaseId: "phase.sensitivity-source",
+      title: "Run sensitivity",
+      description: "Produce the study result.",
+      kind: "simulate",
+      operation: {
+        id: "analyze.run-fea-sensitivity",
+        version: "1",
+        bindings: [],
+      },
+      status: "completed",
+      owner: "agent",
+      dependsOnWorkItemIds: [],
+      evidenceRefs: [],
+      decisionIds: [],
+      blockerIds: [],
+    }],
+    agentRuns: [{
+      id: "run.sensitivity",
+      workItemId: sourceWorkItemId,
+      status: "completed",
+      summary: "Published sensitivity.",
+      queuedAt: AT,
+      startedAt: AT,
+      claimedAt: AT,
+      completedAt: AT,
+      basis: { kind: "thread-snapshot", ...basis },
+      inputFingerprint: { algorithm: "sha256", digest: "9".repeat(64) },
+      resultSnapshot: basis,
+      evidenceRefs: [{
+        snapshotId: snapshot.id,
+        snapshotRevision: snapshot.revision,
+        kind: "artifact",
+        id: artifactId,
+      }],
+    }],
+    decisions: [],
+    approvals: [],
+    blockers: [],
+    commandReceipts: [],
+  } as EngineeringProjectSnapshot;
+}
+
+function emptyProject(): EngineeringProjectSnapshot {
+  return {
+    ...projectFor(buildBriefOnlyWorld().snapshot, "sensitivity-study-absent"),
+    threadSnapshots: [{
+      snapshotId: "missing",
+      revision: 16,
+      subjectId: SUBJECT_ID,
+    }],
+    agentRuns: [],
   };
 }
 

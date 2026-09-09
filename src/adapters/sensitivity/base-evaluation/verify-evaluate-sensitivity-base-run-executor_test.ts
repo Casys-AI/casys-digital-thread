@@ -18,7 +18,12 @@ import {
   type SensitivityStudyCapture,
 } from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
 import {
+  encodeSensitivityStudyConsumerDecisionParameters,
+  sensitivityStudyConsumerAdmission,
+} from "../../../domain/sensitivity/study/sensitivity-study-consumer-admission.ts";
+import {
   makeSensitivityStudyReuseResult,
+  SENSITIVITY_STUDY_REUSE_ARTIFACT_ID_PREFIX,
   SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX,
   type SensitivityStudyResult,
 } from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
@@ -109,6 +114,17 @@ Deno.test("the base evaluator reopens an exact-reused scientific result", async 
   assertEquals(fixture.syson.calls, 1);
 });
 
+Deno.test("a completed historical base evaluation replays without reinterpreting its old MRTR", async () => {
+  const fixture = await createFixture();
+  (fixture.commands.project.agentRuns[0]! as { status: string }).status = "completed";
+  (fixture.commands.project.decisions[0]!.proposal! as unknown as {
+    parameters: unknown[];
+  }).parameters = [];
+  const project = await fixture.executor.execute(AGENT, fixture.command);
+  assertEquals(project.agentRuns[0]?.status, "completed");
+  assertEquals(fixture.syson.calls, 0);
+});
+
 Deno.test("an unlinked study metric fails closed before SysON is called", async () => {
   const fixture = await createFixture({ dropRequirement: true });
   await assertRejects(
@@ -190,6 +206,16 @@ async function createFixture(
     kind: "artifact" as const,
     id: world.artifactId,
   }];
+  const decisionParameters = encodeSensitivityStudyConsumerDecisionParameters(
+    sensitivityStudyConsumerAdmission({
+      operation: VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
+      projectId: PROJECT_ID,
+      basis: runBasis,
+      artifactId: world.artifactId,
+      artifactFingerprint: world.fingerprint,
+      capture: world.capture,
+    }),
+  );
   const decisionFingerprint = await sha256Fingerprint({
     operation,
     evidenceRefs,
@@ -252,7 +278,7 @@ async function createFixture(
       approvalIds: [APPROVAL_ID],
       proposal: {
         summary: "Evaluate study-base.",
-        parameters: [],
+        parameters: decisionParameters,
         proposedAt: AT,
         proposedBy: { id: AGENT.actorId, origin: "agent" },
       },
@@ -388,7 +414,9 @@ async function buildWorld(options: {
     })
     : freshCapture;
   const fingerprint = await sha256Fingerprint(capture);
-  const artifactId = `sensitivity-study-${fingerprint.digest}`;
+  const artifactId = capture.schemaVersion === SENSITIVITY_STUDY_CAPTURE_SCHEMA
+    ? `sensitivity-study-${fingerprint.digest}`
+    : `${SENSITIVITY_STUDY_REUSE_ARTIFACT_ID_PREFIX}${fingerprint.digest}`;
   const briefId = "artifact.brief";
   const requirementsArtifactId = "requirements-fixture";
   const requirements = studyCase.metrics.map((metric, index) => ({
@@ -559,6 +587,7 @@ async function buildWorld(options: {
   });
   return {
     snapshot,
+    capture,
     captureText: deterministicJson(capture),
     fingerprint,
     artifactId,

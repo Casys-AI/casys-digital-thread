@@ -16,6 +16,7 @@ import type { CapabilityRuntimeExecutionSessionCoordinator } from "../../applica
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { PreviewProjectTechnicalCompilation } from "../../application/use-cases/compile/admission/preview-project-technical-compilation.ts";
 import { PrepareProjectSensitivityBaseEvaluationReview } from "../../application/use-cases/sensitivity/base-evaluation/prepare-project-sensitivity-base-evaluation-review.ts";
+import { PrepareProjectSensitivityEdgesReview } from "../../application/use-cases/sensitivity/edges/prepare-project-sensitivity-edges-review.ts";
 import { PrepareProjectSensitivityStudySealReview } from "../../application/use-cases/sensitivity/study/prepare-project-sensitivity-study-seal-review.ts";
 import { PrepareProjectVectorCorrectionReview } from "../../application/use-cases/sensitivity/vector-correction/prepare-project-vector-correction-review.ts";
 import { parseSysonModelSeedCapture } from "../../domain/architecture/seed/syson-model-seed.ts";
@@ -107,6 +108,7 @@ export interface SensitivityComposition {
   readonly vectorCorrectionReview: PrepareProjectVectorCorrectionReview;
   readonly sensitivityBaseEvaluationReview:
     PrepareProjectSensitivityBaseEvaluationReview;
+  readonly sensitivityEdgesReview: PrepareProjectSensitivityEdgesReview;
   readonly sensitivityStudySealReview: PrepareProjectSensitivityStudySealReview;
   readonly designApplyVectorCorrection: DesignApplyVectorCorrectionRunExecutor;
   readonly analyzeSealSensitivityStudy: AnalyzeSealSensitivityStudyRunExecutor;
@@ -146,9 +148,16 @@ export function createSensitivityComposition(
   });
   const sensitivityBaseEvaluationReview =
     new PrepareProjectSensitivityBaseEvaluationReview({
+      projects: options.projects,
       snapshots: options.snapshots,
       studyCaptures: sensitivityStudyCaptures,
     });
+  const sensitivityEdgesReview = new PrepareProjectSensitivityEdgesReview({
+    projects: options.projects,
+    snapshots: options.snapshots,
+    studyCaptures: sensitivityStudyCaptures,
+    hasArchitecture: (snapshot) => Boolean(findArchitectureArtifact(snapshot)),
+  });
   const sensitivityStudySealReview = new PrepareProjectSensitivityStudySealReview(
     {
       snapshots: options.snapshots,
@@ -275,6 +284,7 @@ export function createSensitivityComposition(
   return {
     vectorCorrectionReview,
     sensitivityBaseEvaluationReview,
+    sensitivityEdgesReview,
     sensitivityStudySealReview,
     designApplyVectorCorrection,
     analyzeSealSensitivityStudy,

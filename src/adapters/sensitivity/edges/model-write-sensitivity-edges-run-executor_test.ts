@@ -25,9 +25,17 @@ import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
-import { SENSITIVITY_STUDY_CAPTURE_SCHEMA } from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
+import {
+  SENSITIVITY_STUDY_CAPTURE_SCHEMA,
+  type SensitivityStudyCapture,
+} from "../../../domain/sensitivity/study/sensitivity-study-capture.ts";
+import {
+  encodeSensitivityStudyConsumerDecisionParameters,
+  sensitivityStudyConsumerAdmission,
+} from "../../../domain/sensitivity/study/sensitivity-study-consumer-admission.ts";
 import {
   makeSensitivityStudyReuseResult,
+  SENSITIVITY_STUDY_REUSE_ARTIFACT_ID_PREFIX,
   SENSITIVITY_STUDY_REUSE_RESULT_URI_PREFIX,
 } from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
 import { FileSensitivityEdgesAttemptStore } from "./file-sensitivity-edges-attempt-store.ts";
@@ -48,7 +56,6 @@ const RUN_ID = "run.edges";
 const WORK_ID = "work.edges";
 const DECISION_ID = "decision.edges";
 const APPROVAL_ID = "approval.edges";
-const STUDY_ID = "sensitivity-study-1";
 const AGENT = { kind: "agent" as const, actorId: "agent:test" };
 const HUMAN = { kind: "human" as const, actorId: "human:test" };
 
@@ -90,6 +97,25 @@ Deno.test(
       const project = await fixture.executor.execute(AGENT, fixture.command);
       assertEquals(project.agentRuns[0]?.status, "completed");
       assertEquals(fixture.syson.inserted, [fixture.expectedSysml]);
+    } finally {
+      await fixture.dispose();
+    }
+  },
+);
+
+Deno.test(
+  "a completed historical edge write replays without reinterpreting its old MRTR",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      (fixture.commands.project.agentRuns[0]! as { status: string }).status =
+        "completed";
+      (fixture.commands.project.decisions[0]!.proposal! as unknown as {
+        parameters: unknown[];
+      }).parameters = [];
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      assertEquals(project.agentRuns[0]?.status, "completed");
+      assertEquals(fixture.syson.inserted.length, 0);
     } finally {
       await fixture.dispose();
     }
@@ -280,7 +306,7 @@ async function createFixture(
     new Map(base.map((item) => [item.metric, item])),
     new Map(stepped.map((item) => [item.metric, item])),
   );
-  const freshStudyCapture = {
+  const freshStudyCapture: SensitivityStudyCapture = {
     schemaVersion: SENSITIVITY_STUDY_CAPTURE_SCHEMA,
     operation: { id: "analyze.run-fea-sensitivity", version: "1" },
     trustedRunId: "run.sensitivity",
@@ -317,6 +343,9 @@ async function createFixture(
     })
     : freshStudyCapture;
   const studyFingerprint = await sha256Fingerprint(studyCapture);
+  const studyId = studyCapture.schemaVersion === SENSITIVITY_STUDY_CAPTURE_SCHEMA
+    ? `sensitivity-study-${studyFingerprint.digest}`
+    : `${SENSITIVITY_STUDY_REUSE_ARTIFACT_ID_PREFIX}${studyFingerprint.digest}`;
   const expectedEdges = sensitivityEdgesFromStudy(
     studyCase,
     new Map(base.map((item) => [item.metric, item])),
@@ -356,7 +385,7 @@ async function createFixture(
     freshness: fresh(AT),
   };
   const studyArtifact = {
-    id: STUDY_ID,
+    id: studyId,
     name: "Study",
     kind: "evidence" as const,
     version: studyFingerprint.digest,
@@ -395,7 +424,7 @@ async function createFixture(
       changes: [{
         id: "change.study",
         kind: "created",
-        target: { kind: "artifact", id: STUDY_ID },
+        target: { kind: "artifact", id: studyId },
         summary: "Published the sensitivity study.",
         afterFingerprint: studyFingerprint,
       }],
@@ -435,7 +464,7 @@ async function createFixture(
       id: "provenance.change.study",
       relation: "changes",
       from: { kind: "change", id: "change.study" },
-      to: { kind: "artifact", id: STUDY_ID },
+      to: { kind: "artifact", id: studyId },
       rationale: "The applied change introduced the study.",
     }, {
       id: "derived-from-seed-by-arch",
@@ -461,7 +490,7 @@ async function createFixture(
     snapshotId: basisSnapshot.id,
     snapshotRevision: basisSnapshot.revision,
     kind: "artifact" as const,
-    id: STUDY_ID,
+    id: studyId,
   };
   const operation = {
     id: "model.write-sensitivity-edges",
@@ -471,10 +500,20 @@ async function createFixture(
       source: { kind: "thread-entity" as const, reference: evidenceRef },
     }],
   };
+  const decisionParameters = encodeSensitivityStudyConsumerDecisionParameters(
+    sensitivityStudyConsumerAdmission({
+      operation: MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+      projectId: PROJECT_ID,
+      basis: { kind: "thread-snapshot", ...reviewBasis },
+      artifactId: studyId,
+      artifactFingerprint: studyFingerprint,
+      capture: studyCapture,
+    }),
+  );
   const decisionFingerprint = await sha256Fingerprint({
     baseSnapshot: reviewBasis,
     inputEvidenceRefs: [evidenceRef],
-    proposal: { summary: "Write edges", parameters: [] },
+    proposal: { summary: "Write edges", parameters: decisionParameters },
   });
   const project = {
     schemaVersion: "4.0",
@@ -540,7 +579,7 @@ async function createFixture(
       approvalIds: [APPROVAL_ID],
       proposal: {
         summary: "Write edges",
-        parameters: [],
+        parameters: decisionParameters,
         proposedAt: AT,
         proposedBy: { id: AGENT.actorId, origin: "agent" },
       },

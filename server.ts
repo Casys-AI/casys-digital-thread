@@ -1650,6 +1650,7 @@ async function createProjectControl(
       isolatedGeometrySealReview: build123dCapability.isolatedGeometrySealReview,
       vectorCorrectionReview: sensitivity.vectorCorrectionReview,
       sensitivityBaseEvaluationReview: sensitivity.sensitivityBaseEvaluationReview,
+      sensitivityEdgesReview: sensitivity.sensitivityEdgesReview,
       modelicaQualifiedKitRunReview: modelicaProject.modelicaQualifiedKitRunReview,
       admittedModelicaRunReview: modelicaProject.admittedModelicaRunReview,
       admittedModelicaEvaluationReview:

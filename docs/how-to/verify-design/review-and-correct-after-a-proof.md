@@ -79,6 +79,8 @@ project_sensitivity_study_seal_review   # JSON manifest case or signed offer →
   → analyze.run-fea-sensitivity@1          # observations only
   → project_sensitivity_base_evaluation_review
   → verify.evaluate-sensitivity-base@1     # only if review is ready
+  → project_sensitivity_edges_review
+  → model.write-sensitivity-edges@1        # server-rendered relations; no caller SysML
   → project_vector_correction_review       # only if a study-base evaluation fails
   → design.apply-vector-correction@1       # grants: none; not CAD
   → project_resource_capture               # successor CAD bytes
@@ -130,11 +132,18 @@ and study artifact id. It writes nothing.
 
 | Review status                          | Meaning                                                                                                            | Next step                                                            |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------------------------------------------------------- |
-| `ready-for-review`                     | Each study metric Object.is-equals one Thread requirement and its `sensitivity-base-<metric>-<digest>` observation | Queue `verify.evaluate-sensitivity-base@1` bound to `studyCapture`   |
+| `ready-for-review`                     | Each study metric Object.is-equals one Thread requirement and its `sensitivity-base-<metric>-<digest>` observation | Paste `next.append.arguments`, then `next.propose.arguments`; after MRTR, queue `verify.evaluate-sensitivity-base@1` |
 | `unresolved` / `study-metric-unlinked` | Metric ids do not match. That is `UNLINKED`                                                                        | Seal a new study from the matching template. Do not invent a mapping |
 | `unresolved` / `observation-unlinked`  | The study-base observation is missing                                                                              | Re-run `analyze.run-fea-sensitivity@1` on this exact case            |
 
 On the local r16 capture the honest result is `study-metric-unlinked`.
+
+The ready result carries a closed `sensitivity-study-consumer-admission/1.0`. It binds
+the exact current Thread basis, capture id and digest, trusted run, target and metric
+ids. The proposal grammar refuses aliases, units, extra fields, caller SysML, solver
+arguments and numerical sensitivity values. After the base evaluation advances the
+Thread, call `project_sensitivity_edges_review` again on that exact new head; its
+paste-ready route writes only the server-reconstructed local relations.
 
 ## 2. Evaluate the study base
 

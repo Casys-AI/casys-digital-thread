@@ -20,8 +20,13 @@ import {
 } from "../../domain/fea/seal-case/fea-proof-proposal.ts";
 import {
   ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION,
+  MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
   parseSensitivityStudyDecisionParameters,
 } from "../../domain/sensitivity/study/sensitivity-study-proposal.ts";
+import {
+  parseSensitivityStudyConsumerDecisionParameters,
+} from "../../domain/sensitivity/study/sensitivity-study-consumer-admission.ts";
+import { VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION } from "../../domain/sensitivity/base-evaluation/sensitivity-base-evaluation.ts";
 import {
   MODEL_WRITE_ARCHITECTURE_OPERATION,
   parseArchitectureProposalParameters,
@@ -388,6 +393,24 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION),
     (parameters) => {
       parseSensitivityStudyDecisionParameters(parameters);
+    },
+  ],
+  [
+    keyOf(VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION),
+    (parameters) => {
+      parseSensitivityStudyConsumerDecisionParameters(
+        parameters,
+        VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
+      );
+    },
+  ],
+  [
+    keyOf(MODEL_WRITE_SENSITIVITY_EDGES_OPERATION),
+    (parameters) => {
+      parseSensitivityStudyConsumerDecisionParameters(
+        parameters,
+        MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+      );
     },
   ],
   [

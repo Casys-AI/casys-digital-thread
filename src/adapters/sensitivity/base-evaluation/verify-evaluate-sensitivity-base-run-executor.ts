@@ -34,7 +34,15 @@ import {
   type SensitivityStudyResult,
   validateSensitivityStudyResult,
 } from "../../../domain/sensitivity/study/sensitivity-study-result.ts";
-import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  parseSensitivityStudyConsumerDecisionParameters,
+  type SensitivityStudyConsumerAdmission,
+  sensitivityStudyConsumerAdmission,
+} from "../../../domain/sensitivity/study/sensitivity-study-consumer-admission.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import { requirementEvaluationIdentity } from "../../../domain/thread/requirement-evaluation-identity.ts";
 import type {
@@ -156,17 +164,22 @@ export class VerifyEvaluateSensitivityBaseRunExecutor {
     const project = await this.#requiredProject(command.projectId);
     const run = requireRun(project, command.runId);
     requireShape(project, run);
-    requireMrtrApproval(project, run);
+    // Completed historical @1 runs predate the typed public MRTR route. They
+    // are immutable replay results: return them before applying the new-run
+    // proposal grammar, and never reinterpret or republish their evidence.
+    if (run.status === "completed") return project;
+    const admission = requireMrtrApproval(project, run);
     return await this.#lease.withLease(
       command.projectId,
       threadWriteBasisLeaseScope(run),
-      () => this.#executeLeased(origin, command),
+      () => this.#executeLeased(origin, command, admission),
     );
   }
 
   async #executeLeased(
     origin: EngineeringProjectCommandOrigin,
     command: VerifyEvaluateSensitivityBaseRunExecutorCommand,
+    admission: SensitivityStudyConsumerAdmission,
   ): Promise<EngineeringProjectSnapshot> {
     let claimed = false;
     let capabilitySession: CapabilityRuntimeExecutionSession | undefined;
@@ -229,6 +242,19 @@ export class VerifyEvaluateSensitivityBaseRunExecutor {
       const studyCapture = await validateSensitivityStudyResult(
         JSON.parse(captureText),
       );
+      const actualAdmission = sensitivityStudyConsumerAdmission({
+        operation: VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
+        projectId: command.projectId,
+        basis,
+        artifactId: studyArtifact.id,
+        artifactFingerprint: studyArtifact.fingerprint,
+        capture: studyCapture,
+      });
+      if (deterministicJson(actualAdmission) !== deterministicJson(admission)) {
+        throw invalidTransition(
+          "The approved study-base evaluation MRTR does not match the bound study result.",
+        );
+      }
       const digest = studyArtifact.fingerprint.digest;
       const join = resolveSensitivityBaseJoin({
         capture: studyCapture,
@@ -721,10 +747,7 @@ function requireShape(
 function requireMrtrApproval(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
-): {
-  decision: EngineeringDecision;
-  proposal: NonNullable<EngineeringDecision["proposal"]>;
-} {
+): SensitivityStudyConsumerAdmission {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   if (!workItem) {
     throw new EngineeringProjectCommandError(
@@ -753,7 +776,39 @@ function requireMrtrApproval(
       "No exact human-approved study-base evaluation decision is bound to this run basis.",
     );
   }
-  return candidates[0]!;
+  let admission: SensitivityStudyConsumerAdmission;
+  try {
+    admission = parseSensitivityStudyConsumerDecisionParameters(
+      candidates[0]!.proposal.parameters,
+      VERIFY_EVALUATE_SENSITIVITY_BASE_OPERATION,
+    );
+  } catch (error) {
+    throw invalidTransition(
+      error instanceof Error
+        ? error.message
+        : "The study-base evaluation MRTR parameters are invalid.",
+    );
+  }
+  const binding = workItem.operation?.bindings.find((item) =>
+    item.name === "studyCapture"
+  );
+  const reference = binding?.source.kind === "thread-entity"
+    ? binding.source.reference
+    : undefined;
+  if (
+    admission.projectId !== project.project.id ||
+    admission.basis.snapshotId !== basis.snapshotId ||
+    admission.basis.revision !== basis.revision ||
+    admission.basis.subjectId !== basis.subjectId ||
+    reference?.id !== admission.studyCapture.artifactId ||
+    reference.snapshotId !== basis.snapshotId ||
+    reference.snapshotRevision !== basis.revision
+  ) {
+    throw invalidTransition(
+      "The approved study-base evaluation MRTR identity does not match the queued run binding.",
+    );
+  }
+  return admission;
 }
 
 async function exactBasisSnapshot(

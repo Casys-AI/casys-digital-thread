@@ -16,6 +16,7 @@ Deno.test("demo-loop review tools register only when their use cases are compose
   const absent = new CapturingApp();
   registerProjectDemoLoopTools(absent as unknown as McpApp, {});
   assertEquals(absent.hasTool("project_sensitivity_base_evaluation_review"), false);
+  assertEquals(absent.hasTool("project_sensitivity_edges_review"), false);
   assertEquals(absent.hasTool("project_corrected_admission_review"), false);
 
   const present = new CapturingApp();
@@ -23,7 +24,11 @@ Deno.test("demo-loop review tools register only when their use cases are compose
     sensitivityBaseEvaluationReview: {
       execute: () => Promise.reject(new Error("not called")),
     },
+    sensitivityEdgesReview: {
+      execute: () => Promise.reject(new Error("not called")),
+    },
   });
   assertEquals(present.hasTool("project_sensitivity_base_evaluation_review"), true);
+  assertEquals(present.hasTool("project_sensitivity_edges_review"), true);
   assertEquals(present.hasTool("project_corrected_admission_review"), false);
 });

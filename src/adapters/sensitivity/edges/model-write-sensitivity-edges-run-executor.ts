@@ -36,6 +36,11 @@ import {
   deterministicJson,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  parseSensitivityStudyConsumerDecisionParameters,
+  type SensitivityStudyConsumerAdmission,
+  sensitivityStudyConsumerAdmission,
+} from "../../../domain/sensitivity/study/sensitivity-study-consumer-admission.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type {
   EngineeringAgentRun,
@@ -173,11 +178,15 @@ export class ModelWriteSensitivityEdgesRunExecutor {
     const project = await this.#requiredProject(command.projectId);
     const run = requireRun(project, command.runId);
     requireShape(project, run);
-    await requireMrtrApproval(project, run);
+    // Completed historical @1 runs predate the typed public MRTR route. They
+    // remain immutable replay results and must not be reinterpreted or written
+    // again under the new proposal grammar.
+    if (run.status === "completed") return project;
+    const admission = requireMrtrApproval(project, run);
     return await this.#lease.withLease(
       command.projectId,
       threadWriteBasisLeaseScope(run),
-      () => this.#executeLeased(origin, command),
+      () => this.#executeLeased(origin, command, admission),
     );
   }
 
@@ -190,6 +199,7 @@ export class ModelWriteSensitivityEdgesRunExecutor {
       readonly issuedAt: string;
       readonly runId: string;
     },
+    admission: SensitivityStudyConsumerAdmission,
   ): Promise<EngineeringProjectSnapshot> {
     let claimed = false;
     let capabilitySession: CapabilityRuntimeExecutionSession | undefined;
@@ -267,6 +277,19 @@ export class ModelWriteSensitivityEdgesRunExecutor {
           error instanceof Error
             ? error.message
             : "The bound artifact is not a sensitivity-study capture.",
+        );
+      }
+      const actualAdmission = sensitivityStudyConsumerAdmission({
+        operation: MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+        projectId: command.projectId,
+        basis,
+        artifactId: studyArtifact.id,
+        artifactFingerprint: studyArtifact.fingerprint,
+        capture: studyCapture,
+      });
+      if (deterministicJson(actualAdmission) !== deterministicJson(admission)) {
+        throw invalidTransition(
+          "The approved sensitivity-edges MRTR does not match the bound study result.",
         );
       }
       const baseMetrics = new Map(
@@ -519,9 +542,9 @@ function requireBoundArtifact(
   }
   const reference = binding.source.reference as EngineeringThreadEntityRef;
   const artifact = snapshot.artifacts.find((item) => item.id === reference.id);
-  if (!artifact) {
+  if (!artifact || artifact.freshness.status !== "fresh") {
     throw invalidTransition(
-      `Bound ${name} artifact is absent from the execution basis.`,
+      `Bound ${name} artifact is absent or not fresh on the execution basis.`,
     );
   }
   return artifact;
@@ -539,7 +562,8 @@ function requireShape(
     run.basis?.kind !== "thread-snapshot" ||
     operation?.id !== MODEL_WRITE_SENSITIVITY_EDGES_OPERATION.id ||
     operation.version !== MODEL_WRITE_SENSITIVITY_EDGES_OPERATION.version ||
-    binding?.source.kind !== "thread-entity"
+    binding?.source.kind !== "thread-entity" ||
+    operation.bindings.length !== 1
   ) {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
@@ -551,10 +575,7 @@ function requireShape(
 function requireMrtrApproval(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
-): {
-  decision: EngineeringDecision;
-  proposal: NonNullable<EngineeringDecision["proposal"]>;
-} {
+): SensitivityStudyConsumerAdmission {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   if (!workItem) {
     throw new EngineeringProjectCommandError(
@@ -584,7 +605,39 @@ function requireMrtrApproval(
       "No exact human-approved sensitivity-edges MRTR decision is bound to this run basis.",
     );
   }
-  return candidates[0]!;
+  let admission: SensitivityStudyConsumerAdmission;
+  try {
+    admission = parseSensitivityStudyConsumerDecisionParameters(
+      candidates[0]!.proposal.parameters,
+      MODEL_WRITE_SENSITIVITY_EDGES_OPERATION,
+    );
+  } catch (error) {
+    throw invalidTransition(
+      error instanceof Error
+        ? error.message
+        : "The sensitivity-edges MRTR parameters are invalid.",
+    );
+  }
+  const binding = workItem.operation?.bindings.find((item) =>
+    item.name === "studyCapture"
+  );
+  const reference = binding?.source.kind === "thread-entity"
+    ? binding.source.reference
+    : undefined;
+  if (
+    admission.projectId !== project.project.id ||
+    admission.basis.snapshotId !== basis.snapshotId ||
+    admission.basis.revision !== basis.revision ||
+    admission.basis.subjectId !== basis.subjectId ||
+    reference?.id !== admission.studyCapture.artifactId ||
+    reference.snapshotId !== basis.snapshotId ||
+    reference.snapshotRevision !== basis.revision
+  ) {
+    throw invalidTransition(
+      "The approved sensitivity-edges MRTR identity does not match the queued run binding.",
+    );
+  }
+  return admission;
 }
 
 async function exactBasisSnapshot(

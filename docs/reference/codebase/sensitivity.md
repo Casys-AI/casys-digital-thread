@@ -148,7 +148,18 @@ reconstructible deterministic index
 
 #### [`src/adapters/sensitivity/edges/model-write-sensitivity-edges-run-executor.ts`](../../../src/adapters/sensitivity/edges/model-write-sensitivity-edges-run-executor.ts)
 
-Server-rendered `renderSensitivityEdgeSetSysml` insert into SysON
+Server-rendered `renderSensitivityEdgeSetSysml` insert into SysON; exact typed MRTR is
+rechecked against the bound fresh study before any write
+
+#### [`src/application/use-cases/sensitivity/edges/prepare-project-sensitivity-edges-review.ts`](../../../src/application/use-cases/sensitivity/edges/prepare-project-sensitivity-edges-review.ts)
+
+Provider-free current-head compiler for the exact `studyCapture` binding and paste-ready
+append/propose route; accepts no SysML or numerical values
+
+#### [`src/domain/sensitivity/study/sensitivity-study-consumer-admission.ts`](../../../src/domain/sensitivity/study/sensitivity-study-consumer-admission.ts)
+
+Shared closed MRTR identity for base evaluation and edge writing: exact operation,
+project, Thread basis, capture fingerprint, trusted run, target and metric ids
 
 #### [`src/domain/sensitivity/vector-correction/propose-vector-correction.ts`](../../../src/domain/sensitivity/vector-correction/propose-vector-correction.ts)
 
@@ -178,7 +189,8 @@ the whole set
 
 #### [`src/application/use-cases/sensitivity/base-evaluation/prepare-project-sensitivity-base-evaluation-review.ts`](../../../src/application/use-cases/sensitivity/base-evaluation/prepare-project-sensitivity-base-evaluation-review.ts)
 
-Provider-free join check; writes no Thread state and invents no metric mapping
+Provider-free join check plus current-head paste-ready append/propose compiler; writes no
+Thread state and invents no metric mapping
 
 #### [`src/adapters/sensitivity/base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts`](../../../src/adapters/sensitivity/base-evaluation/verify-evaluate-sensitivity-base-run-executor.ts)
 
