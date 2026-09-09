@@ -164,7 +164,7 @@ export class ReadTechnicalCompilationPreviewEvidence {
     if (!e || e.projectId !== x.projectId) {
       throw new TypeError("Preview evidence is unavailable or foreign.");
     }
-    const data = section(e.result, x.section);
+    const data = await section(e.result, x.section);
     const offset = x.cursor === undefined
       ? 0
       : await this.#decode(x.cursor, x.evidenceRef, x.section, data.length);
@@ -232,21 +232,66 @@ export class ReadTechnicalCompilationPreviewEvidence {
     return record.offset;
   }
 }
-function section(
+async function section(
   r: ProjectTechnicalCompilationPreviewResult,
   s: string,
-): readonly unknown[] {
+): Promise<readonly unknown[]> {
   if (s === "diagnostics") return r.document.diagnostics;
-  if (s === "gaps") return r.gaps;
+  if (s === "gaps") {
+    return await Promise.all(r.gaps.map(async (gap) => ({
+      ...gap,
+      recovery: await excerpt(gap.recovery),
+    })));
+  }
   if (s === "source-manifest") {
-    return r.document.inputManifest.sources.map(({ sourceText, ...x }) => x);
+    return r.document.inputManifest.sources.map((source) => ({
+      sourceId: source.analysis.source.id,
+      role: source.analysis.source.role,
+      language: source.analysis.source.language,
+      sourceFingerprint: source.analysis.source.fingerprint.digest,
+      analysisFingerprint: source.analysisFingerprint.digest,
+      effectiveUnit: {
+        kind: source.effectiveUnit.kind,
+        closureKind: source.effectiveUnit.closureKind,
+        unitId: source.effectiveUnit.unitId,
+        closureFingerprint: source.effectiveUnit.closureFingerprint.digest,
+      },
+      counts: {
+        symbols: source.analysis.symbols.length,
+        dependencies: source.analysis.dependencies.length,
+        unresolvedConstructs: source.analysis.unresolvedConstructs.length,
+        bindings: r.document.inputManifest.bindings.filter((binding) =>
+          binding.sourceId === source.analysis.source.id
+        ).length,
+      },
+      bindingIds: r.document.inputManifest.bindings.filter((binding) =>
+        binding.sourceId === source.analysis.source.id
+      ).map((binding) =>
+        binding.id
+      ),
+    }));
   }
   if (s === "source-text") {
     return r.document.inputManifest.sources.flatMap((x) =>
       chunks(x.analysis.source.id, x.sourceText)
     );
   }
-  if (s === "projections") return r.document.projections;
+  if (s === "projections") {
+    return r.document.projections.map((projection) => ({
+      target: projection.target,
+      profile: { id: projection.profile.id, version: projection.profile.version },
+      status: projection.status,
+      profileFingerprint: projection.profileFingerprint.digest,
+      counts: {
+        sources: projection.sources.length,
+        bindings: projection.sources.reduce(
+          (total, source) => total + source.bindings.length,
+          0,
+        ),
+        diagnostics: projection.diagnostics.length,
+      },
+    }));
+  }
   if (s === "decision-parameters") {
     return r.status === "ready-for-review" ? r.decisionParameters : [];
   }

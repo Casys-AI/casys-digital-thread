@@ -516,7 +516,106 @@ function detailPageSchema(
 
 /** The detail reader's fixed section names are a discriminant, never a filter. */
 function technicalCompilationPreviewDetailOutputSchema() {
-  const boundedOpaqueItem = { type: "object", minProperties: 1 } as const;
+  const gap = {
+    type: "object",
+    properties: {
+      code: { type: "string" },
+      sourceId: TECHNICAL_ID_SCHEMA,
+      relation: { type: "string" },
+      symbolName: { type: "string" },
+      symbolKind: { type: "string" },
+      reason: { type: "string" },
+      candidateCount: { type: "integer", minimum: 0 },
+      closureKind: { type: "string" },
+      modelSymbolId: TECHNICAL_ID_SCHEMA,
+      attributeUsageId: TECHNICAL_ID_SCHEMA,
+      role: { type: "string" },
+      requirementElementId: TECHNICAL_ID_SCHEMA,
+      recovery: {
+        type: "object",
+        properties: {
+          excerpt: { type: "string", maxLength: 256 },
+          originalByteCount: { type: "integer", minimum: 0 },
+          sha256: { type: "string", pattern: "^[a-f0-9]{64}$" },
+          truncatedBytes: { type: "integer", minimum: 0 },
+        },
+        required: ["excerpt", "originalByteCount", "sha256", "truncatedBytes"],
+        additionalProperties: false,
+      },
+    },
+    required: ["code", "recovery"],
+    additionalProperties: false,
+  } as const;
+  const manifest = {
+    type: "object",
+    properties: {
+      sourceId: TECHNICAL_ID_SCHEMA,
+      role: { type: "string" },
+      language: { type: "string" },
+      sourceFingerprint: { type: "string", pattern: "^[a-f0-9]{64}$" },
+      analysisFingerprint: { type: "string", pattern: "^[a-f0-9]{64}$" },
+      effectiveUnit: {
+        type: "object",
+        properties: {
+          kind: { type: "string" },
+          closureKind: { type: "string" },
+          unitId: TECHNICAL_ID_SCHEMA,
+          closureFingerprint: { type: "string", pattern: "^[a-f0-9]{64}$" },
+        },
+        required: ["kind", "closureKind", "unitId", "closureFingerprint"],
+        additionalProperties: false,
+      },
+      counts: {
+        type: "object",
+        properties: {
+          symbols: { type: "integer", minimum: 0 },
+          dependencies: { type: "integer", minimum: 0 },
+          unresolvedConstructs: { type: "integer", minimum: 0 },
+          bindings: { type: "integer", minimum: 0 },
+        },
+        required: ["symbols", "dependencies", "unresolvedConstructs", "bindings"],
+        additionalProperties: false,
+      },
+      bindingIds: { type: "array", items: TECHNICAL_ID_SCHEMA },
+    },
+    required: [
+      "sourceId",
+      "role",
+      "language",
+      "sourceFingerprint",
+      "analysisFingerprint",
+      "effectiveUnit",
+      "counts",
+      "bindingIds",
+    ],
+    additionalProperties: false,
+  } as const;
+  const projection = {
+    type: "object",
+    properties: {
+      target: { type: "string" },
+      profile: {
+        type: "object",
+        properties: { id: TECHNICAL_ID_SCHEMA, version: { type: "string" } },
+        required: ["id", "version"],
+        additionalProperties: false,
+      },
+      status: { type: "string" },
+      profileFingerprint: { type: "string", pattern: "^[a-f0-9]{64}$" },
+      counts: {
+        type: "object",
+        properties: {
+          sources: { type: "integer", minimum: 0 },
+          bindings: { type: "integer", minimum: 0 },
+          diagnostics: { type: "integer", minimum: 0 },
+        },
+        required: ["sources", "bindings", "diagnostics"],
+        additionalProperties: false,
+      },
+    },
+    required: ["target", "profile", "status", "profileFingerprint", "counts"],
+    additionalProperties: false,
+  } as const;
   return {
     oneOf: [
       detailPageSchema("diagnostics", {
@@ -529,8 +628,8 @@ function technicalCompilationPreviewDetailOutputSchema() {
         required: ["code", "profileRef", "subjectRef"],
         additionalProperties: false,
       }),
-      detailPageSchema("gaps", boundedOpaqueItem),
-      detailPageSchema("source-manifest", boundedOpaqueItem),
+      detailPageSchema("gaps", gap),
+      detailPageSchema("source-manifest", manifest),
       detailPageSchema("source-text", {
         type: "object",
         properties: {
@@ -541,7 +640,7 @@ function technicalCompilationPreviewDetailOutputSchema() {
         required: ["sourceId", "offset", "text"],
         additionalProperties: false,
       }),
-      detailPageSchema("projections", boundedOpaqueItem),
+      detailPageSchema("projections", projection),
       detailPageSchema("decision-parameters", {
         type: "object",
         properties: {
