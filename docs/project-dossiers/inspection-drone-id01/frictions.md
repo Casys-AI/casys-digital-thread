@@ -1176,6 +1176,24 @@ human MRTR before any run uses the successor runtime. This is not production pro
 or redistribution clearance. Close F44 only when a maintained generic activation and
 forward-only rollback route exists.
 
+## F45 — the Build123d candidate gate omitted its shared fixture read grant
+
+(closed, quick win)
+
+The first physical candidate-qualification attempt stopped before its isolated execution
+because the CLI's runtime-read composition also loads the code-owned CalculiX
+qualification fixture at `examples/bracket/bracket.step`, while this one Deno task did
+not grant `examples/bracket`. The candidate, active catalogue pin and project state were
+untouched. This is the same narrow composition permission class previously observed in
+F32, not a Build123d or FEA failure.
+
+The task now grants only `examples/bracket`, matching the other qualification and admin
+entry points, and a regression test pins that exact permission. Replaying the same bound
+import record then passed on the native `linux/arm64` host: the real candidate executed,
+its STEP was reread from publication-gated CAS and validated as `occt-step-ap214@1.0.0`,
+and destruction was proven. The retained qualification keeps
+`eligibleForPromotion=false` and `L3/L4/L5=false`; it is runtime evidence only.
+
 ## Expected states, not defects
 
 - The old preview was explicitly pinned to TPS03. It correctly ignored the new durable

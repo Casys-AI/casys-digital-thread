@@ -21,6 +21,16 @@ const OCI_INDEX_DIGEST = `sha256:${"b".repeat(64)}`;
 const PLATFORM_MANIFEST_DIGEST = `sha256:${"c".repeat(64)}`;
 const MICROSANDBOX_DIGEST = `sha256:${"9".repeat(64)}`;
 
+Deno.test("Build123d candidate qualification task grants its code-owned runtime fixture", async () => {
+  const config = JSON.parse(
+    await Deno.readTextFile(new URL("../../deno.json", import.meta.url)),
+  ) as { readonly tasks: Readonly<Record<string, string>> };
+  const task =
+    config.tasks["verify:build123d-isolated-worker:candidate-qualification"] ??
+      "";
+  assertMatch(task, /--allow-read=[^ ]*examples\/bracket(?:,| )/u);
+});
+
 Deno.test("Build123d candidate qualification CLI is planning by default and refuses selector flags", () => {
   assertEquals(
     parseBuild123dIsolatedWorkerCandidateQualificationCli(["--help"]),
