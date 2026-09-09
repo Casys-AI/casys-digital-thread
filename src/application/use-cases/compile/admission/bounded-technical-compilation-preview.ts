@@ -151,7 +151,12 @@ export class ReadTechnicalCompilationPreviewEvidence {
       readonly nextCursor: string | null;
     }
   > {
-    const x = value as any;
+    const x = value as unknown as Record<string, unknown> & {
+      readonly projectId: string;
+      readonly evidenceRef: TechnicalCompilationPreviewEvidenceReference;
+      readonly section: string;
+      readonly cursor?: string;
+    };
     if (
       !x || typeof x !== "object" || typeof x.projectId !== "string" ||
       !x.evidenceRef || typeof x.section !== "string"
@@ -317,10 +322,12 @@ function chunks(sourceId: string, text: string): readonly unknown[] {
   }
   return out;
 }
-function count(a: readonly any[]): Record<string, number> {
+function count(a: readonly unknown[]): Record<string, number> {
   const r: Record<string, number> = {};
   for (const x of a) {
-    const k = typeof x?.code === "string" ? x.code : "unknown";
+    const k = typeof (x as { code?: unknown } | undefined)?.code === "string"
+      ? (x as { code: string }).code
+      : "unknown";
     r[k] = (r[k] ?? 0) + 1;
   }
   return r;

@@ -269,6 +269,8 @@ class FakeExporter implements AdmittedGeometryExporter {
   }
 }
 
+type Mutable<T> = { -readonly [K in keyof T]: Mutable<T[K]> };
+
 Deno.test("admitted geometry export reopens one sealed source and never accepts caller Python", async () => {
   const fixture = await harness();
   const result = await fixture.service.execute(fixture.command);
@@ -773,7 +775,9 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   const secondId = `technical-unit:${"5".repeat(64)}`;
   const secondDocumentSource = structuredClone(
     capture.document.inputManifest.sources[0],
-  ) as any;
+  ) as unknown as Mutable<
+    (typeof capture.document.projections)[number]["sources"][number]
+  >;
   secondDocumentSource.analysis.source.id = secondId;
   secondDocumentSource.effectiveUnit.unitId = secondId;
   secondDocumentSource.effectiveUnit.closureFingerprint.digest = "5".repeat(64);
@@ -783,7 +787,9 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   (capture.document.inputManifest.sources as unknown[]).push(secondDocumentSource);
   const secondProjectionSource = structuredClone(
     capture.document.projections[0]!.sources[0],
-  ) as any;
+  ) as unknown as Mutable<
+    (typeof capture.document.projections)[number]["sources"][number]["bindings"]
+  >;
   secondProjectionSource.analysis.source.id = secondId;
   secondProjectionSource.effectiveUnit.unitId = secondId;
   secondProjectionSource.effectiveUnit.closureFingerprint.digest = "5".repeat(64);
@@ -792,15 +798,18 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   );
   secondProjectionSource.bindings = structuredClone(
     capture.document.projections[0]!.sources[0]!.bindings,
-  ) as any;
+  ) as unknown as Mutable<typeof capture.admission.sources[0]>;
   for (const binding of secondProjectionSource.bindings) {
     binding.sourceId = secondId;
     binding.id = `${binding.id}.second`;
     if (binding.relation === "represents") binding.sysmlElementId = "sysml.part.lid";
   }
   (capture.document.projections[0]!.sources as unknown[]).push(secondProjectionSource);
-  const secondAdmissionSource = structuredClone(capture.admission.sources[0]) as any;
-  (capture.admission.sources[0] as any).attachment.target.elementId = "sysml.part.box";
+  const secondAdmissionSource = structuredClone(
+    capture.admission.sources[0],
+  ) as Mutable<typeof capture.document.inputManifest.sources[0]>;
+  (capture.admission.sources[0] as Mutable<typeof capture.admission.sources[0]>)
+    .attachment.target.elementId = "sysml.part.box";
   secondAdmissionSource.id = secondId;
   secondAdmissionSource.effectiveUnit.unitId = secondId;
   secondAdmissionSource.effectiveUnit.closureFingerprint.digest = "5".repeat(64);
@@ -812,13 +821,13 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   secondAdmissionSource.analysisFingerprint = secondDocumentSource.analysisFingerprint;
   (capture.admission.sources as unknown[]).push(secondAdmissionSource);
   const secondBindings = structuredClone(capture.admission.bindings).map((
-    binding: any,
+    binding: Mutable<typeof capture.admission.bindings[number]>,
   ) => ({
     ...binding,
     id: `${binding.id}.second`,
     sourceId: secondId,
   }));
-  secondBindings.find((binding: any) => binding.relation === "represents")!
+  secondBindings.find((binding) => binding.relation === "represents")!
     .sysmlElementId = "sysml.part.lid";
   (capture.admission.bindings as unknown[]).push(...secondBindings);
   (capture.document.inputManifest.bindings as unknown[]).push(
@@ -830,7 +839,7 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   (capture.document.inputManifest.profileRequests[0]!.sourceIds as string[]).push(
     secondId,
   );
-  const basis = capture.document.basis as any;
+  const basis = capture.document.basis as Mutable<typeof capture.document.basis>;
   basis.sysmlAnchor.elements.push({
     id: "sysml.part.lid",
     kind: "PartDefinition",
@@ -839,9 +848,10 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   basis.sysmlAnchorFingerprint = await fingerprintTechnicalSysmlAnchor(
     basis.sysmlAnchor,
   );
-  (capture.document as any).basisFingerprint =
+  (capture.document as Mutable<typeof capture.document>).basisFingerprint =
     await fingerprintTechnicalCompilationBasis(basis);
-  (capture.admission.basis as any).fingerprint = capture.document.basisFingerprint;
+  (capture.admission.basis as Mutable<typeof capture.admission.basis>).fingerprint =
+    capture.document.basisFingerprint;
   ambiguous.reader.result = capture;
   const childRoute = await new PrepareProjectAdmittedGeometryExportPreflight({
     admissions: ambiguous.reader,
@@ -862,7 +872,7 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
     "unresolved",
   );
   secondAdmissionSource.attachment.target.elementId = "sysml.part.lid";
-  secondBindings.find((binding: any) => binding.relation === "represents")!
+  secondBindings.find((binding) => binding.relation === "represents")!
     .sysmlElementId = "sysml.part.box";
   ambiguous.reader.result = capture;
   assertEquals(
@@ -875,7 +885,8 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
 
   const corrupted = await harness();
   const corruptCapture = structuredClone(corrupted.reopened);
-  (corruptCapture.admission.basis as any).fingerprint.digest = "0".repeat(64);
+  (corruptCapture.admission.basis as Mutable<typeof corruptCapture.admission.basis>)
+    .fingerprint.digest = "0".repeat(64);
   corrupted.reader.result = corruptCapture;
   await assertRejects(
     () =>

@@ -403,7 +403,9 @@ Deno.test("MRTR-only detail sections are verbatim and full evidence remains expl
       (manifest.items[0] as { counts: { bindings: number } }).counts.bindings,
       result.document.inputManifest.bindings.length,
     );
-    const dense = structuredClone(result) as any;
+    const dense = structuredClone(result) as unknown as typeof result & {
+      document: { inputManifest: { bindings: unknown[] } };
+    };
     dense.document.inputManifest.bindings = Array.from({ length: 256 }, (_, index) => ({
       ...result.document.inputManifest.bindings[0],
       id: `binding.${index}.${"x".repeat(240)}`,

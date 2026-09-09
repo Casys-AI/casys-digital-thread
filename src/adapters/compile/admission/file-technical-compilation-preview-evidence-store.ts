@@ -168,7 +168,7 @@ function parseRef(value: unknown): TechnicalCompilationPreviewEvidenceReference 
     x.schemaVersion !== TECHNICAL_COMPILATION_PREVIEW_EVIDENCE_REFERENCE_SCHEMA ||
     !Number.isSafeInteger(x.byteCount) || Number(x.byteCount) < 1
   ) throw new TypeError("Invalid preview evidence reference.");
-  const fp = x.fingerprint as any;
+  const fp = exactRecord(x.fingerprint, ["algorithm", "digest"], "$ref.fingerprint");
   if (
     !fp || fp.algorithm !== "sha256" || typeof fp.digest !== "string" ||
     !/^[a-f0-9]{64}$/.test(fp.digest)
@@ -257,12 +257,12 @@ function parseFingerprint(value: unknown, path: string) {
   return { algorithm: "sha256" as const, digest: fingerprint.digest };
 }
 
-async function validateReadyPreview(
+function validateReadyPreview(
   value: Record<string, unknown>,
   projectId: string,
   fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
   document: Awaited<ReturnType<typeof validateTechnicalCompilationDocument>>,
-): Promise<void> {
+): void {
   const draft = exactRecord(value.draft, [
     "schemaVersion",
     "draftId",
