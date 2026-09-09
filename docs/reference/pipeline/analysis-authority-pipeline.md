@@ -154,12 +154,18 @@ lowerings are adapters. The agent-facing project-control tools validate MCP inpu
 call inward-facing use cases; they do not own provider clients or CAS stores. Capture
 returns `technical-source-capture-review/4.0` (`parser`, `levers`, opaque
 `technical-source-analysis-capture-locator/4.0` `reference`). Compilation preview
-accepts only `result.reference` and produces `technical-compilation/2.0`; unresolved
-previews hoist join `gaps` beside that closed document. Exact operation dispatch lives
-under `src/application/use-cases/` and depends only on the generic `ProjectRunExecutor`
-contract in `src/application/ports/in/project-run-executor.ts`. Canonical CAD drafts
-come from `project_admitted_geometry_export`. Concrete registered executors remain the
-only components allowed to call private provider MCP clients for admitted project runs.
+accepts only `result.reference`, writes the closed `technical-compilation/2.0` as
+immutable evidence, and returns a bounded server-owned summary with an opaque
+`evidenceRef`. `project_technical_compilation_preview_detail` reads named bounded
+sections and pages from that reference; `full-evidence` is explicit and is required for
+MRTR review, including the ready decision parameters and exact next operation. This is a
+breaking migration from the historical full `structuredContent`; the CLI summary flag is
+removed because the server-owned summary is now the normal result. Exact operation
+dispatch lives under `src/application/use-cases/` and depends only on the generic
+`ProjectRunExecutor` contract in `src/application/ports/in/project-run-executor.ts`.
+Canonical CAD drafts come from `project_admitted_geometry_export`. Concrete registered
+executors remain the only components allowed to call private provider MCP clients for
+admitted project runs.
 
 ## Implemented generic CAD preview and promotion vertical
 

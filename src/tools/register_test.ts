@@ -886,6 +886,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "console_server_detail",
     "console_snapshot",
     "project_admitted_geometry_export",
+    "project_admitted_geometry_export_preflight",
     "project_admitted_modelica_evaluation_closeout_review",
     "project_admitted_modelica_evaluation_review",
     "project_admitted_spice_evaluation_closeout_review",
@@ -951,6 +952,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_source_workspace_snapshot",
     "project_start",
     "project_technical_compilation_preview",
+    "project_technical_compilation_preview_detail",
     "project_technical_source_capture",
     "project_thermal_method_sheet_seal_review",
     "project_vector_correction_review",
@@ -985,6 +987,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "console_server_detail",
       "console_snapshot",
       "project_admitted_geometry_export",
+      "project_admitted_geometry_export_preflight",
       "project_admitted_modelica_evaluation_closeout_review",
       "project_admitted_modelica_evaluation_review",
       "project_admitted_spice_evaluation_closeout_review",
@@ -1050,6 +1053,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_source_workspace_snapshot",
       "project_start",
       "project_technical_compilation_preview",
+      "project_technical_compilation_preview_detail",
       "project_technical_source_capture",
       "project_thermal_method_sheet_seal_review",
       "project_vector_correction_review",
@@ -1286,6 +1290,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_product_inspect" ||
           tool.name === "project_product_search" ||
           tool.name === "project_source_closure" ||
+          tool.name === "project_admitted_geometry_export_preflight" ||
+          tool.name === "project_technical_compilation_preview_detail" ||
           tool.name === "project_agent_run_plan_get" ||
           tool.name === "project_capability_inspect" ||
           tool.name === "project_prescribed_kinematics_case_review" ||
@@ -1364,6 +1370,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_technical_source_capture" ||
           tool.name === "project_cad_placement_capture" ||
           tool.name === "project_admitted_geometry_export" ||
+          tool.name === "project_admitted_geometry_export_preflight" ||
+          tool.name === "project_technical_compilation_preview_detail" ||
           tool.name === "project_work_item_abandon" ||
           tool.name === "project_decision_approve" ||
           tool.name === "project_decision_reject" ||
