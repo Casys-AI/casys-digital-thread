@@ -398,6 +398,45 @@ Deno.test("MRTR-only detail sections are verbatim and full evidence remains expl
       section: "source-manifest",
     });
     assertEquals(hasForbiddenKey(manifest), false);
+    assertEquals("bindingIds" in (manifest.items[0] as Record<string, unknown>), false);
+    assertEquals(
+      (manifest.items[0] as { counts: { bindings: number } }).counts.bindings,
+      result.document.inputManifest.bindings.length,
+    );
+    const dense = structuredClone(result) as any;
+    dense.document.inputManifest.bindings = Array.from({ length: 256 }, (_, index) => ({
+      ...result.document.inputManifest.bindings[0],
+      id: `binding.${index}.${"x".repeat(240)}`,
+    }));
+    const denseReader = new ReadTechnicalCompilationPreviewEvidence({
+      read: () =>
+        Promise.resolve({
+          schemaVersion: "technical-compilation-preview-evidence/1.0",
+          projectId: "project.preview",
+          result: dense,
+        }),
+      save: () => Promise.reject(new Error("not used")),
+      saveCursor: () => Promise.resolve("a".repeat(64)),
+      readCursor: () => Promise.resolve(undefined),
+    });
+    const densePage = await denseReader.execute({
+      projectId: "project.preview",
+      evidenceRef: ref,
+      section: "source-manifest",
+    });
+    assertEquals(
+      new TextEncoder().encode(deterministicJson(densePage)).byteLength <=
+        TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_BYTES,
+      true,
+    );
+    assertEquals(
+      (densePage.items[0] as { counts: { bindings: number } }).counts.bindings,
+      256,
+    );
+    assertEquals(
+      "bindingIds" in (densePage.items[0] as Record<string, unknown>),
+      false,
+    );
     assertEquals(
       (await reader.execute({
         projectId: "project.preview",

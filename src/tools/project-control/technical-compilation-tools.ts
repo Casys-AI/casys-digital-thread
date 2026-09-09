@@ -576,7 +576,6 @@ function technicalCompilationPreviewDetailOutputSchema() {
         required: ["symbols", "dependencies", "unresolvedConstructs", "bindings"],
         additionalProperties: false,
       },
-      bindingIds: { type: "array", items: TECHNICAL_ID_SCHEMA },
     },
     required: [
       "sourceId",
@@ -586,7 +585,6 @@ function technicalCompilationPreviewDetailOutputSchema() {
       "analysisFingerprint",
       "effectiveUnit",
       "counts",
-      "bindingIds",
     ],
     additionalProperties: false,
   } as const;

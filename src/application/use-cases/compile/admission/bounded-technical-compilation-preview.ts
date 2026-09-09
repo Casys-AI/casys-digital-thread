@@ -264,11 +264,6 @@ async function section(
           binding.sourceId === source.analysis.source.id
         ).length,
       },
-      bindingIds: r.document.inputManifest.bindings.filter((binding) =>
-        binding.sourceId === source.analysis.source.id
-      ).map((binding) =>
-        binding.id
-      ),
     }));
   }
   if (s === "source-text") {
