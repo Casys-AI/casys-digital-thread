@@ -1112,6 +1112,19 @@ and the public registry lookup for that exact digest is unavailable. The current
 Build123d bootstrap descriptor deliberately remains `trusted-dockerfile`; rebuilding it
 does not prove byte identity with the active pin.
 
+The 2026-09-09 read-only cache forensics narrows the failure. Microsandbox still records
+the exact manifest, its qualified alias and ten referenced layers, and retained
+Build123d receipts prove that this digest executed successfully on this host on
+2026-08-14 and 2026-08-15. The physical cache is nevertheless incomplete: five of those
+ten EROFS layers (the Build123d-specific positions 4 through 8) are absent, while the
+shared base layers remain. The cache directory was materialized again on 2026-08-31,
+after the last recorded use of the missing layers on 2026-08-20. No governed removal
+record, shell history entry or accessible runtime log identifies an exact deletion
+command or actor. The immediate cause is therefore a partial cache loss or eviction; its
+precise trigger remains unproven. The durable product defect is that the active pin was
+introduced with a preload assumption but without a versioned immutable source able to
+restore its exact bytes after such a loss.
+
 Close this only through a reviewed immutable distribution — or the full
 candidate-to-qualification-to-catalog-promotion path — followed by successful exact
 cache acquisition and the queued run crossing the prerequisite. Do not manually inject,
