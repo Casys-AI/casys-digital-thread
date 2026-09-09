@@ -11,6 +11,7 @@
  * Usage:
  *   deno task mcp:call --name=project_start --args='{...}'
  *   deno task mcp:call --receipt --name=project_agent_run_execute --args='{...}'
+ *   deno task mcp:call --technical-compilation-summary --name=project_technical_compilation_preview --args='{...}'
  *   deno task mcp:call --name=project_start --args=-
  */
 
@@ -19,6 +20,8 @@ import { parseArgs } from "../lib/cli.ts";
 export const DEFAULT_MCP_URL = "http://127.0.0.1:3020/mcp";
 export const MCP_PROTOCOL_VERSION = "2026-07-28";
 export const CLIENT_NAME = "casys-mcp-call";
+export const TECHNICAL_COMPILATION_SUMMARY_ITEM_LIMIT = 12;
+const TECHNICAL_COMPILATION_PREVIEW_TOOL = "project_technical_compilation_preview";
 
 export interface McpCallRequest {
   readonly name: string;
@@ -26,6 +29,12 @@ export interface McpCallRequest {
   readonly url: string;
   /** Print the server's compact human receipt for a completed mutation. */
   readonly receipt?: boolean;
+  /**
+   * Render a bounded, terminal-oriented view of one technical compilation
+   * preview. This is a local display projection; it never changes the MCP
+   * request or the server result.
+   */
+  readonly technicalCompilationSummary?: boolean;
 }
 
 export interface McpCallIo {
@@ -61,7 +70,11 @@ export function applyIssuedAt(
   return { ...args, issuedAt: utcIssuedAt(now) };
 }
 
-export function printableResult(result: unknown, receipt = false): unknown {
+export function printableResult(
+  result: unknown,
+  receipt = false,
+  technicalCompilationSummary = false,
+): unknown {
   if (!isRecord(result)) {
     return result;
   }
@@ -73,6 +86,9 @@ export function printableResult(result: unknown, receipt = false): unknown {
     return { receipt: text };
   }
   if (isRecord(result.structuredContent)) {
+    if (technicalCompilationSummary) {
+      return technicalCompilationPreviewSummary(result.structuredContent);
+    }
     return result.structuredContent;
   }
   if (text !== undefined) {
@@ -104,11 +120,24 @@ export function parseMcpCallCli(argv: string[]): McpCallRequest {
   if (!isRecord(parsed)) {
     throw new TypeError("mcp-call --args must be a JSON object.");
   }
+  const technicalCompilationSummary = flags["technical-compilation-summary"] ===
+    "true";
+  if (technicalCompilationSummary && name !== TECHNICAL_COMPILATION_PREVIEW_TOOL) {
+    throw new TypeError(
+      "mcp-call --technical-compilation-summary requires --name=project_technical_compilation_preview.",
+    );
+  }
+  if (technicalCompilationSummary && flags.receipt === "true") {
+    throw new TypeError(
+      "mcp-call --technical-compilation-summary cannot be combined with --receipt.",
+    );
+  }
   return {
     name,
     args: parsed,
     url: flags.url ?? DEFAULT_MCP_URL,
     receipt: flags.receipt === "true",
+    technicalCompilationSummary,
   };
 }
 
@@ -175,7 +204,11 @@ export async function callMcpTool(
   const result = envelope.result;
   const failed = isRecord(result) && result.isError === true;
   return {
-    payload: printableResult(result, request.receipt === true),
+    payload: printableResult(
+      result,
+      request.receipt === true,
+      request.technicalCompilationSummary === true,
+    ),
     exitCode: failed ? 1 : 0,
   };
 }
@@ -245,6 +278,81 @@ function isJsonObjectText(value: string): boolean {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Derive a bounded display-only summary from the already returned preview.
+ * Unknown result shapes stay lossless: a malformed or future server response
+ * must not be hidden behind a partial local interpretation.
+ */
+export function technicalCompilationPreviewSummary(
+  structuredContent: Record<string, unknown>,
+): unknown {
+  const status = structuredContent.status;
+  const document = structuredContent.document;
+  const gaps = structuredContent.gaps;
+  if (
+    (status !== "unresolved" && status !== "rejected" &&
+      status !== "ready-for-review") ||
+    !isRecord(document) || !Array.isArray(document.diagnostics) ||
+    !Array.isArray(gaps) ||
+    (status === "ready-for-review" && !isRecord(structuredContent.operation))
+  ) {
+    return structuredContent;
+  }
+
+  return {
+    schemaVersion: "technical-compilation-preview-cli-summary/1.0",
+    status,
+    diagnostics: summarizeDiagnostics(document.diagnostics),
+    gaps: summarizeItems(gaps),
+    ...(status === "ready-for-review"
+      ? { nextOperation: structuredContent.operation }
+      : {}),
+  };
+}
+
+function summarizeDiagnostics(diagnostics: readonly unknown[]): {
+  readonly total: number;
+  readonly byCode: readonly { readonly code: string; readonly count: number }[];
+  readonly items: readonly {
+    readonly code: string;
+    readonly subjectRef: string;
+  }[];
+  readonly omitted: number;
+} {
+  const byCode = new Map<string, number>();
+  const items: { code: string; subjectRef: string }[] = [];
+  for (const diagnostic of diagnostics) {
+    if (!isRecord(diagnostic)) continue;
+    const code = diagnostic.code;
+    const subjectRef = diagnostic.subjectRef;
+    if (typeof code !== "string" || typeof subjectRef !== "string") continue;
+    byCode.set(code, (byCode.get(code) ?? 0) + 1);
+    if (items.length < TECHNICAL_COMPILATION_SUMMARY_ITEM_LIMIT) {
+      items.push({ code, subjectRef });
+    }
+  }
+  return {
+    total: diagnostics.length,
+    byCode: [...byCode.entries()].sort(([left], [right]) => left.localeCompare(right))
+      .map(([code, count]) => ({ code, count })),
+    items,
+    omitted: Math.max(0, diagnostics.length - items.length),
+  };
+}
+
+function summarizeItems(items: readonly unknown[]): {
+  readonly total: number;
+  readonly items: readonly unknown[];
+  readonly omitted: number;
+} {
+  const bounded = items.slice(0, TECHNICAL_COMPILATION_SUMMARY_ITEM_LIMIT);
+  return {
+    total: items.length,
+    items: bounded,
+    omitted: items.length - bounded.length,
+  };
 }
 
 if (import.meta.main) {

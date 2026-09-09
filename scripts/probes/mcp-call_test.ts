@@ -9,6 +9,7 @@ import {
   parseMcpCallCli,
   printableResult,
   runMcpCall,
+  TECHNICAL_COMPILATION_SUMMARY_ITEM_LIMIT,
   utcIssuedAt,
 } from "./mcp-call.ts";
 
@@ -57,6 +58,35 @@ Deno.test("mcp-call enables compact mutation receipts only when requested", () =
     true,
   );
   assertEquals(parseMcpCallCli(["--name=project_start"]).receipt, false);
+});
+
+Deno.test("mcp-call enables the technical compilation summary only for its preview", () => {
+  assertEquals(
+    parseMcpCallCli([
+      "--technical-compilation-summary",
+      "--name=project_technical_compilation_preview",
+    ]).technicalCompilationSummary,
+    true,
+  );
+  assertThrows(
+    () =>
+      parseMcpCallCli([
+        "--technical-compilation-summary",
+        "--name=project_snapshot",
+      ]),
+    TypeError,
+    "--technical-compilation-summary requires --name=project_technical_compilation_preview",
+  );
+  assertThrows(
+    () =>
+      parseMcpCallCli([
+        "--technical-compilation-summary",
+        "--receipt",
+        "--name=project_technical_compilation_preview",
+      ]),
+    TypeError,
+    "--technical-compilation-summary cannot be combined with --receipt",
+  );
 });
 
 Deno.test("mcp-call fills issuedAt with current UTC seconds only when omitted on a mutation", () => {
@@ -261,6 +291,92 @@ Deno.test("mcp-call prints structuredContent instead of the MCP envelope", async
   });
 });
 
+Deno.test("mcp-call keeps a large technical compilation preview lossless by default", async () => {
+  const preview = unresolvedTechnicalCompilationPreview();
+  const io = captureIo({ fetch: mcpResult(preview) });
+
+  const code = await runMcpCall(
+    ["--name=project_technical_compilation_preview"],
+    io,
+  );
+
+  assertEquals(code, 0);
+  assertEquals(JSON.parse(io.written.stdout[0]!), preview);
+});
+
+Deno.test("mcp-call bounds unresolved technical compilation diagnostics and gaps", async () => {
+  const preview = unresolvedTechnicalCompilationPreview();
+  const io = captureIo({ fetch: mcpResult(preview) });
+
+  const code = await runMcpCall(
+    [
+      "--technical-compilation-summary",
+      "--name=project_technical_compilation_preview",
+    ],
+    io,
+  );
+
+  assertEquals(code, 0);
+  const summary = JSON.parse(io.written.stdout[0]!) as Record<string, unknown>;
+  assertEquals(summary.schemaVersion, "technical-compilation-preview-cli-summary/1.0");
+  assertEquals(summary.status, "unresolved");
+  assertEquals(summary.nextOperation, undefined);
+  assertEquals(summary.document, undefined);
+  const diagnostics = summary.diagnostics as Record<string, unknown>;
+  assertEquals(diagnostics.total, TECHNICAL_COMPILATION_SUMMARY_ITEM_LIMIT + 5);
+  assertEquals(diagnostics.omitted, 5);
+  assertEquals(
+    (diagnostics.items as unknown[]).length,
+    TECHNICAL_COMPILATION_SUMMARY_ITEM_LIMIT,
+  );
+  assertEquals(diagnostics.byCode, [
+    { code: "binding.missing", count: TECHNICAL_COMPILATION_SUMMARY_ITEM_LIMIT + 5 },
+  ]);
+  assertEquals((diagnostics.items as Record<string, unknown>[])[0], {
+    code: "binding.missing",
+    subjectRef: "source:parameter.0",
+  });
+  const gaps = summary.gaps as Record<string, unknown>;
+  assertEquals(gaps.total, TECHNICAL_COMPILATION_SUMMARY_ITEM_LIMIT + 3);
+  assertEquals(gaps.omitted, 3);
+  assertEquals(
+    (gaps.items as unknown[]).length,
+    TECHNICAL_COMPILATION_SUMMARY_ITEM_LIMIT,
+  );
+  assertEquals((gaps.items as Record<string, unknown>[])[0], {
+    code: "binding.missing",
+    sourceId: "source",
+    relation: "parameterizes",
+    symbolName: "thickness.0",
+    recovery: "Declare the matching AttributeUsage before retrying.",
+  });
+});
+
+Deno.test("mcp-call preserves the exact ready next operation in its bounded summary", async () => {
+  const preview = readyTechnicalCompilationPreview();
+  const io = captureIo({ fetch: mcpResult(preview) });
+
+  const code = await runMcpCall(
+    [
+      "--technical-compilation-summary",
+      "--name=project_technical_compilation_preview",
+    ],
+    io,
+  );
+
+  assertEquals(code, 0);
+  const summary = JSON.parse(io.written.stdout[0]!) as Record<string, unknown>;
+  assertEquals(summary.status, "ready-for-review");
+  assertEquals(summary.nextOperation, preview.operation);
+  assertEquals(summary.decisionParameters, undefined);
+  const diagnostics = summary.diagnostics as Record<string, unknown>;
+  assertEquals(diagnostics.total, 0);
+  assertEquals(diagnostics.omitted, 0);
+  const gaps = summary.gaps as Record<string, unknown>;
+  assertEquals(gaps.total, 0);
+  assertEquals(gaps.omitted, 0);
+});
+
 Deno.test("mcp-call --receipt prints the completed server receipt without the snapshot", async () => {
   const io = captureIo({
     fetch: (() =>
@@ -398,5 +514,79 @@ function captureIo(
     written,
     stdout: (text: string) => written.stdout.push(text),
     stderr: (text: string) => written.stderr.push(text),
+  };
+}
+
+function mcpResult(structuredContent: Record<string, unknown>): typeof fetch {
+  return (() =>
+    Promise.resolve(Response.json({
+      jsonrpc: "2.0",
+      id: 1,
+      result: {
+        resultType: "complete",
+        isError: false,
+        content: [{ type: "text", text: "Technical compilation preview." }],
+        structuredContent,
+      },
+    }))) as typeof fetch;
+}
+
+function unresolvedTechnicalCompilationPreview(): Record<string, unknown> {
+  return {
+    status: "unresolved",
+    document: {
+      diagnostics: Array.from(
+        { length: TECHNICAL_COMPILATION_SUMMARY_ITEM_LIMIT + 5 },
+        (_, index) => ({
+          code: "binding.missing",
+          subjectRef: `source:parameter.${index}`,
+          profileRef: "build123d@3.0.0",
+        }),
+      ),
+      inputManifest: { sources: Array.from({ length: 100 }, (_, index) => index) },
+    },
+    gaps: Array.from(
+      { length: TECHNICAL_COMPILATION_SUMMARY_ITEM_LIMIT + 3 },
+      (_, index) => ({
+        code: "binding.missing",
+        sourceId: "source",
+        relation: "parameterizes",
+        symbolName: `thickness.${index}`,
+        recovery: "Declare the matching AttributeUsage before retrying.",
+      }),
+    ),
+    fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
+  };
+}
+
+function readyTechnicalCompilationPreview(): Record<string, unknown> {
+  const operation = {
+    id: "compile.seal-admission",
+    version: "3",
+    bindings: [{
+      name: "sysmlModel",
+      source: {
+        kind: "thread-entity",
+        reference: {
+          snapshotId: "thread:95",
+          snapshotRevision: 95,
+          kind: "artifact",
+          id: "sysml:cad-model",
+        },
+      },
+    }],
+  };
+  return {
+    status: "ready-for-review",
+    document: {
+      diagnostics: [],
+      inputManifest: { sources: Array.from({ length: 100 }, (_, index) => index) },
+    },
+    gaps: [],
+    operation,
+    decisionParameters: Array.from({ length: 156 }, (_, index) => ({
+      name: `parameter.${index}`,
+      value: index,
+    })),
   };
 }

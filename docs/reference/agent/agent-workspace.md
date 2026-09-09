@@ -91,7 +91,11 @@ Provider MCP ports are private backend dependencies. Loopback CLI:
 the arguments already include `commandId`. Pass `--args=-` to read the JSON object from
 stdin. Add `--receipt` for a completed mutation when the compact server receipt is
 useful and the full structured snapshot is not. Reads, failures and input-required
-results remain structured. `cockpit_focus_set` may omit `expectedRevision`.
+results remain structured. For `project_technical_compilation_preview` only,
+`--technical-compilation-summary` renders a bounded local display of diagnostic codes and
+subjects, join gaps and any exact next operation; it reports omitted entries. It changes
+neither the MCP request nor the server result. Run without that flag to retain the full
+lossless review, including any decision parameters. `cockpit_focus_set` may omit `expectedRevision`.
 `deno task preview:thread` follows cockpit focus unless `--project-id=` pins a vehicle.
 
 ### Control-plane fleet reads
