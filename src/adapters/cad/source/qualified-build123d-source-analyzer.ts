@@ -42,7 +42,7 @@
  * a fully qualified compilation by omission.  Every geometry-kind mix is
  * labelled with the expected kind and the received kind.
  *
- * QUALIFIED_BUILD123D_CALLS below is a hand table for analyzer 1.6.0. It is
+ * QUALIFIED_BUILD123D_CALLS below is a hand table for analyzer 1.7.0. It is
  * not the closed language. `config/build123d-api/inventory-0.11.1.json` is
  * the introspected ground truth; no module imports it yet. F1 (RFC
  * build123d-full-compilation-plan) replaces this Map with generated tables
@@ -93,12 +93,12 @@ export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_ID =
  * admits the import name. Same-kind & is parsed here but D4 rejects
  * the token.
  */
-export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.6.0" as const;
+export const QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION = "1.7.0" as const;
 export const QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE =
   "build123d-closed-subset-v1" as const;
 
 /**
- * Hand table for 1.6.0 — not the inventory. F1 generates the replacement
+ * Hand table for 1.7.0 — not the inventory. F1 generates the replacement
  * from `config/build123d-api/inventory-0.11.1.json` plus type methods.
  * D4 remains authoritative for reachability; this set only states which
  * calls the frontend can currently qualify semantically.
@@ -413,6 +413,7 @@ export class QualifiedBuild123dSourceAnalyzer implements SourceAnalysisFrontend 
     const shapes: SupportedShape[] = [];
     for (const node of root.children) {
       if (node.name === "ImportStatement") continue;
+      if (isStandaloneModuleComment(node, positions)) continue;
       if (node.name !== "AssignStatement") {
         addTopLevelUnresolved(node, addUnresolved);
         continue;
@@ -2391,6 +2392,19 @@ function addTopLevelUnresolved(
   addExpressionUnresolved(node, add);
 }
 
+/**
+ * A Python comment is non-semantic only when Lezer places it directly under the
+ * module and its physical line has no code before `#`. This deliberately keeps
+ * trailing comments, comments in expressions/continuations, and comments in
+ * parenthesised imports on their existing paths.
+ */
+function isStandaloneModuleComment(
+  node: ParsedNode,
+  positions: Utf16Positions,
+): boolean {
+  return node.name === "Comment" && positions.linePrefixIsWhitespace(node.from);
+}
+
 function addExpressionUnresolved(
   node: ParsedNode,
   add: (kind: string, message: string, node: ParsedNode) => void,
@@ -2666,6 +2680,7 @@ function kebab(value: string): string {
 
 class Utf16Positions {
   readonly #lineStarts: readonly number[];
+  readonly #sourceText: string;
 
   constructor(sourceText: string) {
     const starts = [0];
@@ -2673,6 +2688,13 @@ class Utf16Positions {
       if (sourceText[index] === "\n") starts.push(index + 1);
     }
     this.#lineStarts = starts;
+    this.#sourceText = sourceText;
+  }
+
+  linePrefixIsWhitespace(offset: number): boolean {
+    const location = this.location(offset);
+    const lineStart = this.#lineStarts[location.line - 1]!;
+    return /^[ \t]*$/.test(this.#sourceText.slice(lineStart, offset));
   }
 
   span(from: number, to: number): SourceAnalysisSpan {

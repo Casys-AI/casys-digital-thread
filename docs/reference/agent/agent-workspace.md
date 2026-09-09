@@ -402,8 +402,9 @@ the parameter name. Declare that AttributeUsage on `model.write-architecture@1` 
 relation, candidate count, recovery). The compilation document keeps its closed
 diagnostic record. The server does not invent a causal lever or an AttributeUsage.
 
-The current Build123d compilation profile is 3.0.0. It adds the narrow direct
-scalar-leaf workspace-closure lowering boundary; `technical-compilation/2.0` remains the
+The current Build123d compilation profile is 3.1.0. It adds physical standalone module
+comments as non-semantic provenance annotations to the narrow direct scalar-leaf
+workspace-closure lowering boundary; `technical-compilation/2.0` remains the
 distinct schema of the resulting compilation document. Capture and compile keep three
 facts apart:
 
@@ -560,7 +561,7 @@ _class_ in the evidence instead of being excluded. Why and how:
 | ---------------------------------------------------------------------- | ---------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------- |
 | `sysml-architecture-closed-subset-v1`                                  | SysML v2 closed subset | `package`, `part def`, `part usage`; other constructs stay unresolved           | This page                                                         |
 | Rendered architecture companion                                        | Server-rendered SysML  | Manifest-attested PartUsage→target only                                         | This page                                                         |
-| `build123d-closed-subset-v1` (`build123d-qualified-lezer` **1.6.0**)   | Python / Build123d     | Finite geometry algebra, numeric parameters, one solid `result`                 | [CAD closed subset](../domains/cad/build123d-closed-subset-v1.md) |
+| `build123d-closed-subset-v1` (`build123d-qualified-lezer` **1.7.0**)   | Python / Build123d     | Finite geometry algebra, standalone provenance comments, numeric parameters, one solid `result` | [CAD closed subset](../domains/cad/build123d-closed-subset-v1.md) |
 | `modelica-closed-subset-v2` (`modelica-qualified-mo-subset` **2.0.0**) | Modelica               | Bounded generic scalar models with exact experiment annotation; no MSL packages | [Modelica language](../domains/modelica/language.md)              |
 | Python CAD frontend (generic preview)                                  | Python                 | Conservative bindings into `result`                                             | This page                                                         |
 | Project-brief frontend                                                 | Canonical brief JSON   | Item ids + explicit V2 gate dependencies                                        | This page                                                         |

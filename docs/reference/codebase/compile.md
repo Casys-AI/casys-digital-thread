@@ -85,7 +85,8 @@ execution arguments
 V2 `technical-compilation-input/2.0` and `technical-compilation/2.0`: exact
 Thread/SysML/source fingerprints, explicit symbol-to-element bindings and server-owned
 profiles produce deterministic target-local review projections. Current Build123d
-profile 3.0.0 adds exact direct scalar-leaf workspace-closure lowering and requires a
+profile 3.1.0 adds non-semantic standalone module comment annotations to the exact
+direct scalar-leaf workspace-closure lowering and requires a
 parser-reported finite module-level numeric parameter bound through `parameterizes` and
 causally reaching the unique `result`; it has no legacy-profile reader or compatibility
 path
@@ -148,7 +149,7 @@ and supplies verified bytes plus analysis to the inward compiler
 
 #### [fixed technical-compilation profile catalogue][technical-compilation-profile-catalogue]
 
-Immutable server-owned compiler-profile catalogue. Build123d is profile 3.0.0 over the
+Immutable server-owned compiler-profile catalogue. Build123d is profile 3.1.0 over the
 qualified closed subset with direct scalar-leaf workspace-closure lowering
 (`Box`/`Cylinder`/`Cone`/`Sphere`/`Torus`/`Ellipsoid`/`Wedge`/`Rectangle`/`Circle`/`Ellipse`/`RegularPolygon`/`Pos`/`Rot`/`Compound`,
 named `Pos`/`Rot` bindings and `Plane.XY\|…\|ZY *` shape, `scale`, `fillet`, `chamfer`,

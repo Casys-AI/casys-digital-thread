@@ -12,7 +12,7 @@ Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stay
 
 #### [`src/adapters/cad/source/qualified-build123d-source-analyzer.ts`](../../../src/adapters/cad/source/qualified-build123d-source-analyzer.ts)
 
-Qualified executable-source frontend `build123d-qualified-lezer` 1.6.0: D4 guard plus
+Qualified executable-source frontend `build123d-qualified-lezer` 1.7.0: D4 guard plus
 Lezer-proved
 `Box`/`Cylinder`/`Cone`/`Sphere`/`Torus`/`Ellipsoid`/`Wedge`/`Rectangle`/`Circle`/`Ellipse`/`RegularPolygon`/`Pos`/`Rot`/`Compound`,
 same-kind `+`/`-`, named `Pos`/`Rot` bindings and left-associative
@@ -21,7 +21,9 @@ same-kind `+`/`-`, named `Pos`/`Rot` bindings and left-associative
 `chamfer(solid, scalar)` or `chamfer(solid.edges(), scalar)`,
 `extrude(sketch, amount=scalar or positional, optional taper=scalar)`,
 `offset(solid, amount)`, `revolve(sketch, Axis.X\|Y\|Z)` and math scalars
-`pi`/`e`/`tau`; earlier qualified bundles stay bit-identical; a sketch is never a valid
+`pi`/`e`/`tau`; standalone physical module comment lines are non-semantic provenance
+annotations while their exact bytes stay fingerprinted; earlier qualified bundles stay
+bit-identical; a sketch is never a valid
 result; `shell` is not a 0.11.1 algebra function; `&` is D4-rejected; anything allowed
 but not proven remains unresolved
 

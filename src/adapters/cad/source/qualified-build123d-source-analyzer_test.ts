@@ -79,6 +79,65 @@ result = Box(width, height, depth)
   assert(byName.get("result")?.id.startsWith("artifact:"));
 });
 
+Deno.test("qualified build123d frontend treats physical standalone module comments as non-semantic", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const uncommented = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `from build123d import Box
+width = 10
+result = Box(width, 2, 3)
+`,
+  });
+  const annotated = await analyzer.analyze({
+    ...INPUT,
+    sourceText: `# provenance: requirement.width
+from build123d import Box
+\t# provenance: CAD-01
+width = 10
+  # review: named lever retained
+result = Box(width, 2, 3)
+`,
+  });
+
+  assertEquals(annotated.unresolvedConstructs, []);
+  assertEquals(identityView(annotated), identityView(uncommented));
+  assertNotEquals(
+    annotated.source.fingerprint.digest,
+    uncommented.source.fingerprint.digest,
+  );
+});
+
+Deno.test("qualified build123d frontend keeps non-standalone comments unresolved", async () => {
+  const analyzer = new QualifiedBuild123dSourceAnalyzer();
+  const scripts = [
+    `from build123d import Box
+result = Box(1, 2, 3) # provenance: inline
+`,
+    `from build123d import Box
+result = Box(
+  # provenance: argument
+  1, 2, 3)
+`,
+    `from build123d import (
+  # provenance: import
+  Box
+)
+result = Box(1, 2, 3)
+`,
+    `from build123d import Box
+if True:
+  # provenance: block
+  width = 1
+result = Box(1, 2, 3)
+`,
+  ];
+
+  for (const sourceText of scripts) {
+    const bundle = await analyzer.analyze({ ...INPUT, sourceText });
+    assert(bundle.unresolvedConstructs.length > 0);
+  }
+});
+
 Deno.test("qualified build123d frontend accepts an explicit Box alias and parsed flat lists", async () => {
   const bundle = await new QualifiedBuild123dSourceAnalyzer().analyze({
     ...INPUT,
@@ -2493,7 +2552,7 @@ result = extrude(Rectangle(10, 20), taper=1)
   );
 });
 
-Deno.test("existing qualified bundles stay bit-identical under 1.6.0", async () => {
+Deno.test("existing qualified bundles stay bit-identical under 1.7.0", async () => {
   const analyzer = new QualifiedBuild123dSourceAnalyzer();
   const scripts = {
     box: `from build123d import Box
