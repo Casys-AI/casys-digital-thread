@@ -13,6 +13,24 @@ export const TECHNICAL_COMPILATION_PREVIEW_SUMMARY_SCHEMA =
 export const TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_BYTES = 8192;
 export const TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_BYTES = 24576;
 export const TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_ITEMS = 20;
+const TECHNICAL_COMPILATION_PREVIEW_SOURCE_TEXT_CHUNK_MAX_BYTES = 1000;
+const SUMMARY_ALLOWED_KEYS = new Set([
+  "code",
+  "profileRef",
+  "subjectRef",
+  "sourceId",
+  "relation",
+  "symbolName",
+  "symbolKind",
+  "reason",
+  "candidateCount",
+  "closureKind",
+  "modelSymbolId",
+  "attributeUsageId",
+  "role",
+  "requirementElementId",
+  "recovery",
+]);
 export interface BoundedTechnicalCompilationPreviewResult {
   readonly schemaVersion: typeof TECHNICAL_COMPILATION_PREVIEW_SUMMARY_SCHEMA;
   readonly status: ProjectTechnicalCompilationPreviewResult["status"];
@@ -68,8 +86,8 @@ export function summary(
       gapsByCode: count(gaps),
     },
     samples: {
-      diagnostics: diagnostics.slice(0, 8),
-      gaps: gaps.slice(0, 8),
+      diagnostics: diagnostics.slice(0, 8).map(summaryItem),
+      gaps: gaps.slice(0, 8).map(summaryItem),
       omittedDiagnostics: Math.max(0, diagnostics.length - 8),
       omittedGaps: Math.max(0, gaps.length - 8),
     },
@@ -105,8 +123,10 @@ export class ReadTechnicalCompilationPreviewEvidence {
     if (!e || e.projectId !== x.projectId) {
       throw new TypeError("Preview evidence is unavailable or foreign.");
     }
-    const offset = x.cursor === undefined ? 0 : decode(x.cursor, e, x.section);
     const data = section(e.result, x.section);
+    const offset = x.cursor === undefined
+      ? 0
+      : decode(x.cursor, x.evidenceRef, x.section, data.length);
     const page = data.slice(
       offset,
       offset + TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_ITEMS,
@@ -115,10 +135,11 @@ export class ReadTechnicalCompilationPreviewEvidence {
       section: x.section,
       items: page,
       nextCursor: offset + page.length < data.length
-        ? encode(offset + page.length, e, x.section)
+        ? encode(offset + page.length, x.evidenceRef, x.section)
         : null,
     };
     if (
+      x.section !== "full-evidence" &&
       new TextEncoder().encode(deterministicJson(out)).byteLength >
         TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_BYTES
     ) throw new TypeError("Preview evidence page exceeds its fixed bound.");
@@ -148,10 +169,25 @@ function section(
   throw new TypeError("Unknown preview evidence section.");
 }
 function chunks(sourceId: string, text: string): readonly unknown[] {
-  const size = 12_000;
   const out: unknown[] = [];
-  for (let offset = 0; offset < text.length; offset += size) {
-    out.push({ sourceId, offset, text: text.slice(offset, offset + size) });
+  let offset = 0;
+  while (offset < text.length) {
+    let end = offset;
+    let byteCount = 0;
+    while (end < text.length) {
+      const codePoint = text.codePointAt(end);
+      if (codePoint === undefined) break;
+      const character = String.fromCodePoint(codePoint);
+      const characterBytes = new TextEncoder().encode(character).byteLength;
+      if (
+        byteCount > 0 && byteCount + characterBytes >
+          TECHNICAL_COMPILATION_PREVIEW_SOURCE_TEXT_CHUNK_MAX_BYTES
+      ) break;
+      byteCount += characterBytes;
+      end += character.length;
+    }
+    out.push({ sourceId, offset, text: text.slice(offset, end) });
+    offset = end;
   }
   return out;
 }
@@ -163,17 +199,41 @@ function count(a: readonly any[]): Record<string, number> {
   }
   return r;
 }
-function encode(offset: number, e: any, section: string) {
+function summaryItem(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(summaryItem);
+  if (value === null || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => SUMMARY_ALLOWED_KEYS.has(key))
+      .map(([key, nested]) => [key, summaryItem(nested)]),
+  );
+}
+function encode(
+  offset: number,
+  reference: TechnicalCompilationPreviewEvidenceReference,
+  section: string,
+) {
   return btoa(
-    JSON.stringify({ p: e.projectId, f: e.fingerprint.digest, s: section, o: offset }),
+    JSON.stringify({
+      p: reference.projectId,
+      f: reference.fingerprint.digest,
+      s: section,
+      o: offset,
+    }),
   ).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
 }
-function decode(cursor: string, e: any, section: string) {
+function decode(
+  cursor: string,
+  reference: TechnicalCompilationPreviewEvidenceReference,
+  section: string,
+  length: number,
+) {
   try {
     const x = JSON.parse(atob(cursor.replaceAll("-", "+").replaceAll("_", "/")));
     if (
-      x.p !== e.projectId || x.f !== e.fingerprint.digest || x.s !== section ||
-      !Number.isSafeInteger(x.o) || x.o < 0
+      x.p !== reference.projectId || x.f !== reference.fingerprint.digest ||
+      x.s !== section ||
+      !Number.isSafeInteger(x.o) || x.o < 0 || x.o > length
     ) throw 0;
     return x.o;
   } catch {
