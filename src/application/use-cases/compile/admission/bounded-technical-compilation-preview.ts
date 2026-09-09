@@ -100,6 +100,12 @@ export function summary(
   return out;
 }
 export class ReadTechnicalCompilationPreviewEvidence {
+  readonly #cursors = new Map<string, {
+    readonly projectId: string;
+    readonly fingerprint: string;
+    readonly section: string;
+    readonly offset: number;
+  }>();
   constructor(private readonly evidence: TechnicalCompilationPreviewEvidenceStore) {}
   async execute(
     value: unknown,
@@ -126,16 +132,13 @@ export class ReadTechnicalCompilationPreviewEvidence {
     const data = section(e.result, x.section);
     const offset = x.cursor === undefined
       ? 0
-      : decode(x.cursor, x.evidenceRef, x.section, data.length);
-    const page = data.slice(
-      offset,
-      offset + TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_ITEMS,
-    );
+      : this.#decode(x.cursor, x.evidenceRef, x.section, data.length);
+    const page = this.#page(data, offset, x.section);
     const out = {
       section: x.section,
       items: page,
       nextCursor: offset + page.length < data.length
-        ? encode(offset + page.length, x.evidenceRef, x.section)
+        ? this.#encode(offset + page.length, x.evidenceRef, x.section)
         : null,
     };
     if (
@@ -144,6 +147,56 @@ export class ReadTechnicalCompilationPreviewEvidence {
         TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_BYTES
     ) throw new TypeError("Preview evidence page exceeds its fixed bound.");
     return out;
+  }
+  #page(data: readonly unknown[], offset: number, section: string): readonly unknown[] {
+    const page: unknown[] = [];
+    for (
+      const item of data.slice(
+        offset,
+        offset + TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_ITEMS,
+      )
+    ) {
+      const candidate = [...page, item];
+      if (
+        section !== "full-evidence" &&
+        new TextEncoder().encode(
+            deterministicJson({ section, items: candidate, nextCursor: "x" }),
+          ).byteLength > TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_BYTES
+      ) break;
+      page.push(item);
+    }
+    if (page.length === 0 && offset < data.length && section !== "full-evidence") {
+      throw new TypeError("Preview evidence item exceeds its fixed bound.");
+    }
+    return page;
+  }
+  #encode(
+    offset: number,
+    reference: TechnicalCompilationPreviewEvidenceReference,
+    section: string,
+  ): string {
+    const token = crypto.randomUUID();
+    this.#cursors.set(token, {
+      projectId: reference.projectId,
+      fingerprint: reference.fingerprint.digest,
+      section,
+      offset,
+    });
+    return token;
+  }
+  #decode(
+    cursor: string,
+    reference: TechnicalCompilationPreviewEvidenceReference,
+    section: string,
+    length: number,
+  ): number {
+    const record = this.#cursors.get(cursor);
+    if (
+      !record || record.projectId !== reference.projectId ||
+      record.fingerprint !== reference.fingerprint.digest ||
+      record.section !== section || record.offset < 0 || record.offset > length
+    ) throw new TypeError("Preview evidence cursor is invalid or foreign.");
+    return record.offset;
   }
 }
 function section(
@@ -207,36 +260,4 @@ function summaryItem(value: unknown): unknown {
       .filter(([key]) => SUMMARY_ALLOWED_KEYS.has(key))
       .map(([key, nested]) => [key, summaryItem(nested)]),
   );
-}
-function encode(
-  offset: number,
-  reference: TechnicalCompilationPreviewEvidenceReference,
-  section: string,
-) {
-  return btoa(
-    JSON.stringify({
-      p: reference.projectId,
-      f: reference.fingerprint.digest,
-      s: section,
-      o: offset,
-    }),
-  ).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
-}
-function decode(
-  cursor: string,
-  reference: TechnicalCompilationPreviewEvidenceReference,
-  section: string,
-  length: number,
-) {
-  try {
-    const x = JSON.parse(atob(cursor.replaceAll("-", "+").replaceAll("_", "/")));
-    if (
-      x.p !== reference.projectId || x.f !== reference.fingerprint.digest ||
-      x.s !== section ||
-      !Number.isSafeInteger(x.o) || x.o < 0 || x.o > length
-    ) throw 0;
-    return x.o;
-  } catch {
-    throw new TypeError("Preview evidence cursor is invalid or foreign.");
-  }
 }
