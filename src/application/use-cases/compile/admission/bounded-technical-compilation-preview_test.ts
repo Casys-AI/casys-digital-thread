@@ -16,7 +16,16 @@ import {
   type TechnicalCompilationResult,
 } from "../../../../domain/compile/admission/technical-compilation.ts";
 import { fingerprintSourceAnalysisBundle } from "../../../../domain/compile/source/source-analysis.ts";
-import { deterministicJson } from "../../../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Hex,
+} from "../../../../domain/kernel/deterministic-json.ts";
+import {
+  encodeTechnicalCompilationAdmissionParameters,
+  parseTechnicalCompilationAdmissionParameters,
+} from "../../../../domain/compile/admission/technical-compilation-proposal.ts";
+import { assembleTechnicalCompilationAdmissionOperation } from "../../../../domain/compile/admission/technical-compilation-admission-operation.ts";
+import { sampleAdmissionSourceWorkspaceFields } from "../../../../testing/technical-source-capture-test-support.ts";
 import type {
   ProjectTechnicalCompilationPreviewResult,
 } from "../../../ports/in/compile/admission/project-technical-compilation-preview.ts";
@@ -67,6 +76,32 @@ Deno.test("preview evidence store has an exact deterministic round trip and fail
       TypeError,
       "operation",
     );
+    const arbitraryParameter = result.decisionParameters.map((parameter) =>
+      parameter.key === "compile.admission.basis.thread.revision"
+        ? { ...parameter, value: 2 }
+        : parameter
+    );
+    await assertRejects(
+      () =>
+        store.save({
+          ...evidence,
+          result: { ...result, decisionParameters: arbitraryParameter },
+        }),
+      TypeError,
+      "document",
+    );
+    await assertRejects(
+      () =>
+        store.save({
+          ...evidence,
+          result: {
+            ...result,
+            gaps: [{ code: "source.no-named-numeric-lever" }],
+          } as never,
+        }),
+      TypeError,
+      "technicalCompilationJoinGaps",
+    );
     const unresolved = await previewFixture("unresolved");
     const unresolvedEvidence = {
       schemaVersion: "technical-compilation-preview-evidence/1.0" as const,
@@ -107,7 +142,7 @@ Deno.test("preview evidence store has an exact deterministic round trip and fail
     await assertRejects(() => store.read(first), Error);
     await Deno.writeTextFile(
       `${directory}/${first.fingerprint.digest}`,
-      original.replace("fixture", "forged"),
+      original.replace("project.preview", "project.forged"),
     );
     await assertRejects(() => store.read(first), Error);
   });
@@ -158,7 +193,7 @@ Deno.test("bounded summaries cover every preview state, omit evidence recursivel
         nested: { operation: "must-not-leak", decisionParameters: [index] },
       })),
     } as unknown as ProjectTechnicalCompilationPreviewResult;
-    const denseSummary = summary(dense, {
+    const denseSummary = await summary(dense, {
       schemaVersion: "technical-compilation-preview-evidence-reference/1.0",
       projectId: "project.preview",
       fingerprint: { algorithm: "sha256", digest: "a".repeat(64) },
@@ -177,6 +212,56 @@ Deno.test("bounded summaries cover every preview state, omit evidence recursivel
     });
     assertEquals(hasForbiddenKey(denseSummary), false);
   });
+});
+
+Deno.test("summary excerpts preserve Unicode boundaries, exact digests, and reduce samples", async () => {
+  const result = await previewFixture("ready-for-review");
+  const enormous = "🦾é".repeat(10_000);
+  const dense = {
+    ...result,
+    document: {
+      ...result.document,
+      diagnostics: Array.from({ length: 9 }, () => ({
+        code: "source.profile-incompatible",
+        profileRef: enormous,
+        subjectRef: enormous,
+      })),
+    },
+    gaps: Array.from({ length: 9 }, () => ({
+      code: "source.no-named-numeric-lever",
+      sourceId: enormous,
+      recovery: enormous,
+    })),
+  } as unknown as ProjectTechnicalCompilationPreviewResult;
+  const out = await summary(dense, {
+    schemaVersion: "technical-compilation-preview-evidence-reference/1.0",
+    projectId: "project.preview",
+    fingerprint: { algorithm: "sha256", digest: "b".repeat(64) },
+    byteCount: 1,
+  });
+  assertEquals(
+    summaryByteCount(out) <= TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_BYTES,
+    true,
+  );
+  assertEquals(out.samples.omittedDiagnostics > 1 || out.samples.omittedGaps > 1, true);
+  const excerpt = (out.samples.diagnostics[0] as Record<string, unknown>)
+    .profileRef as {
+      excerpt: string;
+      originalByteCount: number;
+      sha256: string;
+      truncatedBytes: number;
+    };
+  assertEquals(new TextEncoder().encode(excerpt.excerpt).byteLength <= 256, true);
+  assertEquals(excerpt.excerpt.endsWith("\ud83d"), false);
+  assertEquals(
+    excerpt.originalByteCount,
+    new TextEncoder().encode(enormous).byteLength,
+  );
+  assertEquals(excerpt.sha256, await sha256Hex(new TextEncoder().encode(enormous)));
+  assertEquals(
+    excerpt.truncatedBytes,
+    excerpt.originalByteCount - new TextEncoder().encode(excerpt.excerpt).byteLength,
+  );
 });
 
 Deno.test("evidence details paginate exact Unicode source text and refuse altered cursors", async () => {
@@ -286,14 +371,19 @@ Deno.test("MRTR-only detail sections are verbatim and full evidence remains expl
       result,
     });
     const reader = new ReadTechnicalCompilationPreviewEvidence(store);
-    assertEquals(
-      (await reader.execute({
+    const parameterItems: unknown[] = [];
+    let parameterCursor: string | undefined;
+    do {
+      const parameters = await reader.execute({
         projectId: "project.preview",
         evidenceRef: ref,
         section: "decision-parameters",
-      })).items,
-      result.decisionParameters,
-    );
+        ...(parameterCursor ? { cursor: parameterCursor } : {}),
+      });
+      parameterItems.push(...parameters.items);
+      parameterCursor = parameters.nextCursor ?? undefined;
+    } while (parameterCursor);
+    assertEquals(parameterItems, [...result.decisionParameters]);
     assertEquals(
       (await reader.execute({
         projectId: "project.preview",
@@ -466,40 +556,90 @@ async function previewFixture(
     fingerprint: compiled.fingerprint,
     gaps: [],
   };
-  return status === "ready-for-review"
-    ? {
-      ...base,
-      status,
+  if (status !== "ready-for-review") return { ...base, status };
+  const source = compiled.document.inputManifest.sources[0];
+  const projection = compiled.document.projections[0];
+  const workspace = sampleAdmissionSourceWorkspaceFields(sourceId, {
+    projectId: basis.thread.projectId,
+  });
+  const sourceClosure = {
+    ...workspace.sourceClosure,
+    fingerprint,
+  };
+  const admission = parseTechnicalCompilationAdmissionParameters(
+    encodeTechnicalCompilationAdmissionParameters({
+      schemaVersion: "technical-compilation-admission/4.0",
       draft: {
-        schemaVersion: "technical-compilation-draft-reference/1.0",
-        draftId: "technical-compilation:project.preview:fixture",
-        projectId: "project.preview",
+        draftId:
+          `technical-compilation:${basis.thread.projectId}:${compiled.fingerprint.digest}`,
+        projectId: basis.thread.projectId,
         documentFingerprint: compiled.fingerprint,
         envelopeFingerprint: compiled.fingerprint,
       },
-      decisionParameters: [{
-        key: "compile.fixture",
-        label: "Fixture",
-        value: "verbatim",
-      }] as never,
-      operation: {
-        id: "compile.seal-admission",
-        version: "3",
-        bindings: [{
-          name: "sysmlModel",
-          source: {
-            kind: "thread-entity",
-            reference: {
-              snapshotId: basis.thread.snapshotId,
-              snapshotRevision: basis.thread.revision,
-              kind: "artifact",
-              id: anchor.artifactId,
-            },
-          },
-        }],
-      } as never,
-    }
-    : { ...base, status };
+      basis: {
+        fingerprint: compiled.document.basisFingerprint,
+        thread: {
+          projectId: basis.thread.projectId,
+          subjectId: basis.thread.subjectId,
+          snapshotId: basis.thread.snapshotId,
+          revision: basis.thread.revision,
+          fingerprint: basis.thread.snapshotFingerprint,
+        },
+        sysml: {
+          artifactId: anchor.artifactId,
+          artifactFingerprint: anchor.artifactFingerprint,
+          captureId: anchor.captureId,
+          editingContextId: anchor.editingContextId,
+          rootElementId: anchor.rootElementId,
+          rootElementKind: anchor.rootElementKind,
+          anchorFingerprint: compiled.document.basis.sysmlAnchorFingerprint,
+        },
+      },
+      sources: [{
+        id: source.analysis.source.id,
+        role: source.analysis.source.role,
+        language: source.analysis.source.language,
+        profileId: projection.profile.id,
+        profileVersion: projection.profile.version,
+        profileFingerprint: projection.profileFingerprint,
+        analyzer: source.analysis.analyzer,
+        sourceFingerprint: fingerprint,
+        captureFingerprint: fingerprint,
+        analysisFingerprint: source.analysisFingerprint,
+        effectiveUnit: source.effectiveUnit,
+        attachment: workspace.attachment,
+        sourceClosure,
+        locator: workspace.locator,
+      }],
+      bindings: compiled.document.inputManifest.bindings,
+      compilationProfileRequests: [{
+        profileId: projection.profile.id,
+        profileVersion: projection.profile.version,
+        target: projection.target,
+        sourceIds: [sourceId],
+        profileFingerprint: projection.profileFingerprint,
+      }],
+      compilation: { fingerprint: compiled.fingerprint, status: "ready-for-review" },
+    }),
+  );
+  return {
+    ...base,
+    status,
+    draft: {
+      schemaVersion: "technical-compilation-draft-reference/1.0",
+      ...admission.draft,
+    },
+    decisionParameters: encodeTechnicalCompilationAdmissionParameters(admission),
+    operation: assembleTechnicalCompilationAdmissionOperation({
+      basis: {
+        kind: "thread-snapshot",
+        snapshotId: admission.basis.thread.snapshotId,
+        revision: admission.basis.thread.revision,
+        subjectId: admission.basis.thread.subjectId,
+      },
+      sysmlArtifactId: admission.basis.sysml.artifactId,
+    }),
+  };
 }
 
 function largeUnicodeSource() {
@@ -515,6 +655,9 @@ async function sourceFingerprint(text: string) {
       byte.toString(16).padStart(2, "0")
     ).join(""),
   };
+}
+function summaryByteCount(value: unknown): number {
+  return new TextEncoder().encode(deterministicJson(value)).byteLength;
 }
 function countByCode(items: readonly unknown[]) {
   const counts: Record<string, number> = {};

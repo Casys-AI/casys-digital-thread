@@ -9,6 +9,12 @@ import {
   validateTechnicalCompilationDocument,
 } from "../../../domain/compile/admission/technical-compilation.ts";
 import {
+  encodeTechnicalCompilationAdmissionParameters,
+  parseTechnicalCompilationAdmissionParameters,
+} from "../../../domain/compile/admission/technical-compilation-proposal.ts";
+import { assembleTechnicalCompilationAdmissionOperation } from "../../../domain/compile/admission/technical-compilation-admission-operation.ts";
+import { validateTechnicalCompilationJoinGaps } from "../../../domain/compile/admission/technical-compilation-preview-review.ts";
+import {
   deterministicJson,
   fingerprintsEqual,
 } from "../../../domain/kernel/deterministic-json.ts";
@@ -214,6 +220,10 @@ async function parse(value: unknown): Promise<TechnicalCompilationPreviewEvidenc
   if (document.status !== r.status) {
     throw new TypeError("Preview evidence status must equal its document status.");
   }
+  const gaps = validateTechnicalCompilationJoinGaps(r.gaps);
+  if (deterministicJson(gaps) !== deterministicJson(r.gaps)) {
+    throw new TypeError("Preview evidence gaps are not canonical.");
+  }
   if (r.status === "ready-for-review") {
     exactRecord(r, [
       "status",
@@ -224,7 +234,7 @@ async function parse(value: unknown): Promise<TechnicalCompilationPreviewEvidenc
       "decisionParameters",
       "operation",
     ], "$evidence.result");
-    validateReadyPreview(r, projectId, fingerprint, document);
+    await validateReadyPreview(r, projectId, fingerprint, document);
   } else if (
     Object.hasOwn(r, "draft") || Object.hasOwn(r, "decisionParameters") ||
     Object.hasOwn(r, "operation")
@@ -247,12 +257,12 @@ function parseFingerprint(value: unknown, path: string) {
   return { algorithm: "sha256" as const, digest: fingerprint.digest };
 }
 
-function validateReadyPreview(
+async function validateReadyPreview(
   value: Record<string, unknown>,
   projectId: string,
   fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
   document: Awaited<ReturnType<typeof validateTechnicalCompilationDocument>>,
-): void {
+): Promise<void> {
   const draft = exactRecord(value.draft, [
     "schemaVersion",
     "draftId",
@@ -262,7 +272,7 @@ function validateReadyPreview(
   ], "$evidence.result.draft");
   if (
     draft.schemaVersion !== "technical-compilation-draft-reference/1.0" ||
-    safeId(draft.draftId, "$evidence.result.draft.draftId") === "" ||
+    draft.draftId !== `technical-compilation:${projectId}:${fingerprint.digest}` ||
     draft.projectId !== projectId ||
     !fingerprintsEqual(
       parseFingerprint(
@@ -276,54 +286,106 @@ function validateReadyPreview(
     draft.envelopeFingerprint,
     "$evidence.result.draft.envelopeFingerprint",
   );
+
   if (!Array.isArray(value.decisionParameters)) {
     throw new TypeError("Ready preview decisionParameters must be an array.");
   }
-  for (const [index, parameter] of value.decisionParameters.entries()) {
-    const record = exactRecord(
-      parameter,
-      ["key", "label", "value"],
-      `$evidence.result.decisionParameters[${index}]`,
+  const admission = parseTechnicalCompilationAdmissionParameters(
+    value.decisionParameters as never,
+  );
+  const reencoded = encodeTechnicalCompilationAdmissionParameters(admission);
+  if (deterministicJson(reencoded) !== deterministicJson(value.decisionParameters)) {
+    throw new TypeError("Ready preview decision parameters are not canonical.");
+  }
+  if (
+    admission.draft.draftId !== draft.draftId ||
+    admission.draft.projectId !== projectId ||
+    !fingerprintsEqual(admission.draft.documentFingerprint, fingerprint) ||
+    !fingerprintsEqual(
+      admission.draft.envelopeFingerprint,
+      parseFingerprint(
+        draft.envelopeFingerprint,
+        "$evidence.result.draft.envelopeFingerprint",
+      ),
+    ) ||
+    !fingerprintsEqual(admission.compilation.fingerprint, fingerprint) ||
+    admission.compilation.status !== "ready-for-review" ||
+    !fingerprintsEqual(admission.basis.fingerprint, document.basisFingerprint) ||
+    admission.basis.thread.projectId !== document.basis.thread.projectId ||
+    admission.basis.thread.subjectId !== document.basis.thread.subjectId ||
+    admission.basis.thread.snapshotId !== document.basis.thread.snapshotId ||
+    admission.basis.thread.revision !== document.basis.thread.revision ||
+    !fingerprintsEqual(
+      admission.basis.thread.fingerprint,
+      document.basis.thread.snapshotFingerprint,
+    ) ||
+    admission.basis.sysml.artifactId !== document.basis.sysmlAnchor.artifactId ||
+    admission.basis.sysml.captureId !== document.basis.sysmlAnchor.captureId ||
+    admission.basis.sysml.editingContextId !==
+      document.basis.sysmlAnchor.editingContextId ||
+    admission.basis.sysml.rootElementId !== document.basis.sysmlAnchor.rootElementId ||
+    admission.basis.sysml.rootElementKind !==
+      document.basis.sysmlAnchor.rootElementKind ||
+    !fingerprintsEqual(
+      admission.basis.sysml.artifactFingerprint,
+      document.basis.sysmlAnchor.artifactFingerprint,
+    ) ||
+    !fingerprintsEqual(
+      admission.basis.sysml.anchorFingerprint,
+      document.basis.sysmlAnchorFingerprint,
+    ) ||
+    deterministicJson(admission.bindings) !==
+      deterministicJson(document.inputManifest.bindings)
+  ) throw new TypeError("Ready preview admission does not exactly match its document.");
+  if (
+    admission.sources.length !== document.inputManifest.sources.length ||
+    admission.compilationProfileRequests.length !==
+      document.inputManifest.profileRequests.length
+  ) throw new TypeError("Ready preview admission does not exactly cover its document.");
+  for (const source of document.inputManifest.sources) {
+    const expected = admission.sources.find((item) =>
+      item.id === source.analysis.source.id
     );
-    safeId(record.key, `$evidence.result.decisionParameters[${index}].key`);
     if (
-      typeof record.label !== "string" || record.label.length === 0 ||
-      (typeof record.value !== "string" && typeof record.value !== "number" &&
-        typeof record.value !== "boolean") ||
-      (typeof record.value === "number" && !Number.isFinite(record.value))
+      !expected || expected.role !== source.analysis.source.role ||
+      expected.language !== source.analysis.source.language ||
+      !fingerprintsEqual(
+        expected.sourceFingerprint,
+        source.analysis.source.fingerprint,
+      ) ||
+      !fingerprintsEqual(expected.analysisFingerprint, source.analysisFingerprint) ||
+      deterministicJson(expected.effectiveUnit) !==
+        deterministicJson(source.effectiveUnit)
     ) {
-      throw new TypeError("Ready preview decision parameter is invalid.");
+      throw new TypeError(
+        "Ready preview admission source does not exactly match its document.",
+      );
     }
   }
-  const operation = exactRecord(
-    value.operation,
-    ["id", "version", "bindings"],
-    "$evidence.result.operation",
-  );
-  if (
-    operation.id !== "compile.seal-admission" || operation.version !== "3" ||
-    !Array.isArray(operation.bindings) || operation.bindings.length !== 1
-  ) throw new TypeError("Ready preview operation is invalid.");
-  const binding = exactRecord(
-    operation.bindings[0],
-    ["name", "source"],
-    "$evidence.result.operation.bindings[0]",
-  );
-  const source = exactRecord(
-    binding.source,
-    ["kind", "reference"],
-    "$evidence.result.operation.bindings[0].source",
-  );
-  const reference = exactRecord(
-    source.reference,
-    ["snapshotId", "snapshotRevision", "kind", "id"],
-    "$evidence.result.operation.bindings[0].source.reference",
-  );
-  if (
-    binding.name !== "sysmlModel" || source.kind !== "thread-entity" ||
-    reference.kind !== "artifact" ||
-    reference.snapshotId !== document.basis.thread.snapshotId ||
-    reference.snapshotRevision !== document.basis.thread.revision ||
-    reference.id !== document.basis.sysmlAnchor.artifactId
-  ) throw new TypeError("Ready preview operation is foreign or mismatched.");
+  for (const request of document.inputManifest.profileRequests) {
+    const expected = admission.compilationProfileRequests.find((item) =>
+      item.profileId === request.profileId &&
+      item.profileVersion === request.profileVersion
+    );
+    if (
+      !expected ||
+      deterministicJson(expected.sourceIds) !== deterministicJson(request.sourceIds)
+    ) {
+      throw new TypeError(
+        "Ready preview admission profile does not exactly match its document.",
+      );
+    }
+  }
+  const expectedOperation = assembleTechnicalCompilationAdmissionOperation({
+    basis: {
+      kind: "thread-snapshot",
+      snapshotId: admission.basis.thread.snapshotId,
+      revision: admission.basis.thread.revision,
+      subjectId: admission.basis.thread.subjectId,
+    },
+    sysmlArtifactId: admission.basis.sysml.artifactId,
+  });
+  if (deterministicJson(value.operation) !== deterministicJson(expectedOperation)) {
+    throw new TypeError("Ready preview operation is foreign or mismatched.");
+  }
 }

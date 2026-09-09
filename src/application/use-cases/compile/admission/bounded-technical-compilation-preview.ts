@@ -6,7 +6,10 @@ import type {
   TechnicalCompilationPreviewEvidenceReference,
   TechnicalCompilationPreviewEvidenceStore,
 } from "../../../ports/out/compile/admission/technical-compilation-preview-evidence-store.ts";
-import { deterministicJson } from "../../../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Hex,
+} from "../../../../domain/kernel/deterministic-json.ts";
 
 export const TECHNICAL_COMPILATION_PREVIEW_SUMMARY_SCHEMA =
   "technical-compilation-preview-summary/1.0" as const;
@@ -14,6 +17,7 @@ export const TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_BYTES = 8192;
 export const TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_BYTES = 24576;
 export const TECHNICAL_COMPILATION_PREVIEW_DETAIL_MAX_ITEMS = 20;
 const TECHNICAL_COMPILATION_PREVIEW_SOURCE_TEXT_CHUNK_MAX_BYTES = 1000;
+const TECHNICAL_COMPILATION_PREVIEW_SUMMARY_EXCERPT_MAX_BYTES = 256;
 const SUMMARY_ALLOWED_KEYS = new Set([
   "code",
   "profileRef",
@@ -45,13 +49,26 @@ export interface BoundedTechnicalCompilationPreviewResult {
     readonly gapsByCode: Readonly<Record<string, number>>;
   };
   readonly samples: {
-    readonly diagnostics: readonly unknown[];
-    readonly gaps: readonly unknown[];
+    readonly diagnostics: readonly BoundedTechnicalCompilationPreviewSample[];
+    readonly gaps: readonly BoundedTechnicalCompilationPreviewSample[];
     readonly omittedDiagnostics: number;
     readonly omittedGaps: number;
   };
   readonly requiresFullEvidenceForMrtr: boolean;
 }
+export interface BoundedTechnicalCompilationPreviewExcerpt {
+  readonly excerpt: string;
+  readonly originalByteCount: number;
+  readonly sha256: string;
+  readonly truncatedBytes: number;
+}
+export type BoundedTechnicalCompilationPreviewSample =
+  | null
+  | boolean
+  | number
+  | BoundedTechnicalCompilationPreviewExcerpt
+  | readonly BoundedTechnicalCompilationPreviewSample[]
+  | { readonly [key: string]: BoundedTechnicalCompilationPreviewSample };
 export class BoundedTechnicalCompilationPreview {
   constructor(
     private readonly preview: ProjectTechnicalCompilationPreviewUseCase,
@@ -64,40 +81,57 @@ export class BoundedTechnicalCompilationPreview {
       projectId: result.document.basis.thread.projectId,
       result,
     });
-    return summary(result, evidenceRef);
+    return await summary(result, evidenceRef);
   }
 }
-export function summary(
+export async function summary(
   result: ProjectTechnicalCompilationPreviewResult,
   evidenceRef: TechnicalCompilationPreviewEvidenceReference,
-): BoundedTechnicalCompilationPreviewResult {
+): Promise<BoundedTechnicalCompilationPreviewResult> {
   const diagnostics = result.document.diagnostics, gaps = result.gaps;
-  const out: BoundedTechnicalCompilationPreviewResult = {
-    schemaVersion: TECHNICAL_COMPILATION_PREVIEW_SUMMARY_SCHEMA,
-    status: result.status,
-    evidenceRef,
-    evidenceBytes: evidenceRef.byteCount,
-    counts: {
-      sources: result.document.inputManifest.sources.length,
-      projections: result.document.projections.length,
-      diagnostics: diagnostics.length,
-      gaps: gaps.length,
-      diagnosticsByCode: count(diagnostics),
-      gapsByCode: count(gaps),
-    },
-    samples: {
-      diagnostics: diagnostics.slice(0, 8).map(summaryItem),
-      gaps: gaps.slice(0, 8).map(summaryItem),
-      omittedDiagnostics: Math.max(0, diagnostics.length - 8),
-      omittedGaps: Math.max(0, gaps.length - 8),
-    },
-    requiresFullEvidenceForMrtr: result.status === "ready-for-review",
-  };
-  if (
-    new TextEncoder().encode(deterministicJson(out)).byteLength >
-      TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_BYTES
-  ) throw new TypeError("Preview summary exceeds its fixed bound.");
-  return out;
+  let diagnosticCount = Math.min(8, diagnostics.length);
+  let gapCount = Math.min(8, gaps.length);
+  while (true) {
+    const out: BoundedTechnicalCompilationPreviewResult = {
+      schemaVersion: TECHNICAL_COMPILATION_PREVIEW_SUMMARY_SCHEMA,
+      status: result.status,
+      evidenceRef,
+      evidenceBytes: evidenceRef.byteCount,
+      counts: {
+        sources: result.document.inputManifest.sources.length,
+        projections: result.document.projections.length,
+        diagnostics: diagnostics.length,
+        gaps: gaps.length,
+        diagnosticsByCode: count(diagnostics),
+        gapsByCode: count(gaps),
+      },
+      samples: {
+        diagnostics: await Promise.all(
+          diagnostics.slice(0, diagnosticCount).map(summaryItem),
+        ),
+        gaps: await Promise.all(gaps.slice(0, gapCount).map(summaryItem)),
+        omittedDiagnostics: Math.max(0, diagnostics.length - diagnosticCount),
+        omittedGaps: Math.max(0, gaps.length - gapCount),
+      },
+      requiresFullEvidenceForMrtr: result.status === "ready-for-review",
+    };
+    if (summaryBytes(out) <= TECHNICAL_COMPILATION_PREVIEW_SUMMARY_MAX_BYTES) {
+      return out;
+    }
+    // Preserve the first occurrence of each class for deterministic triage.
+    if (gapCount > 0) {
+      gapCount--;
+      continue;
+    }
+    if (diagnosticCount > 0) {
+      diagnosticCount--;
+      continue;
+    }
+    throw new TypeError("Preview summary metadata exceeds its fixed bound.");
+  }
+}
+function summaryBytes(value: unknown): number {
+  return new TextEncoder().encode(deterministicJson(value)).byteLength;
 }
 export class ReadTechnicalCompilationPreviewEvidence {
   constructor(private readonly evidence: TechnicalCompilationPreviewEvidenceStore) {}
@@ -244,12 +278,45 @@ function count(a: readonly any[]): Record<string, number> {
   }
   return r;
 }
-function summaryItem(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(summaryItem);
-  if (value === null || typeof value !== "object") return value;
-  return Object.fromEntries(
+async function summaryItem(
+  value: unknown,
+): Promise<BoundedTechnicalCompilationPreviewSample> {
+  if (typeof value === "string") return await excerpt(value);
+  if (typeof value === "boolean" || typeof value === "number" || value === null) {
+    return value;
+  }
+  if (Array.isArray(value)) return await Promise.all(value.map(summaryItem));
+  if (typeof value !== "object") return null;
+  const entries = await Promise.all(
     Object.entries(value as Record<string, unknown>)
       .filter(([key]) => SUMMARY_ALLOWED_KEYS.has(key))
-      .map(([key, nested]) => [key, summaryItem(nested)]),
+      .map(async ([key, nested]) => [key, await summaryItem(nested)] as const),
   );
+  return Object.fromEntries(entries);
+}
+async function excerpt(
+  value: string,
+): Promise<BoundedTechnicalCompilationPreviewExcerpt> {
+  const encoder = new TextEncoder();
+  const original = encoder.encode(value);
+  let end = 0;
+  let byteCount = 0;
+  while (end < value.length) {
+    const codePoint = value.codePointAt(end);
+    if (codePoint === undefined) break;
+    const character = String.fromCodePoint(codePoint);
+    const bytes = encoder.encode(character).byteLength;
+    if (byteCount + bytes > TECHNICAL_COMPILATION_PREVIEW_SUMMARY_EXCERPT_MAX_BYTES) {
+      break;
+    }
+    byteCount += bytes;
+    end += character.length;
+  }
+  const visible = value.slice(0, end);
+  return {
+    excerpt: visible,
+    originalByteCount: original.byteLength,
+    sha256: await sha256Hex(original),
+    truncatedBytes: original.byteLength - byteCount,
+  };
 }
