@@ -225,6 +225,16 @@ Deno.test("evidence details paginate exact Unicode source text and refuse altere
       section: "source-text",
     });
     const validCursor = first.nextCursor!;
+    const reconstructedReader = new ReadTechnicalCompilationPreviewEvidence(store);
+    assertEquals(
+      (await reconstructedReader.execute({
+        projectId: "project.preview",
+        evidenceRef: ref,
+        section: "source-text",
+        cursor: validCursor,
+      })).items.length > 0,
+      true,
+    );
     const altered = `${validCursor.slice(0, -1)}${
       validCursor.endsWith("A") ? "B" : "A"
     }`;

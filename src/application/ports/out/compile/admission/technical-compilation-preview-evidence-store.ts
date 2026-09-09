@@ -22,4 +22,22 @@ export interface TechnicalCompilationPreviewEvidenceStore {
   read(
     reference: TechnicalCompilationPreviewEvidenceReference,
   ): Promise<TechnicalCompilationPreviewEvidence | undefined>;
+  saveCursor(
+    value: {
+      readonly projectId: string;
+      readonly fingerprint: string;
+      readonly section: string;
+      readonly offset: number;
+    },
+  ): Promise<string>;
+  readCursor(
+    cursor: string,
+  ): Promise<
+    {
+      readonly projectId: string;
+      readonly fingerprint: string;
+      readonly section: string;
+      readonly offset: number;
+    } | undefined
+  >;
 }

@@ -80,6 +80,76 @@ export class FileTechnicalCompilationPreviewEvidenceStore
     ) throw new TypeError("Preview evidence is foreign or corrupt.");
     return evidence;
   }
+  async saveCursor(
+    value: {
+      readonly projectId: string;
+      readonly fingerprint: string;
+      readonly section: string;
+      readonly offset: number;
+    },
+  ): Promise<string> {
+    const record = exactRecord(
+      value,
+      ["projectId", "fingerprint", "section", "offset"],
+      "$cursor",
+    );
+    if (
+      !/^[a-f0-9]{64}$/.test(String(record.fingerprint)) ||
+      typeof record.section !== "string" || !Number.isSafeInteger(record.offset) ||
+      Number(record.offset) < 0
+    ) throw new TypeError("Preview evidence cursor is invalid or foreign.");
+    const text = deterministicJson({
+      projectId: safeId(record.projectId, "$cursor.projectId"),
+      fingerprint: record.fingerprint,
+      section: record.section,
+      offset: Number(record.offset),
+    });
+    const fp = {
+      algorithm: "sha256" as const,
+      digest: await fingerprintResourceBytes(new TextEncoder().encode(text)),
+    };
+    await this.bytes.save(fp, new TextEncoder().encode(text));
+    return fp.digest;
+  }
+  async readCursor(
+    cursor: string,
+  ): Promise<
+    {
+      readonly projectId: string;
+      readonly fingerprint: string;
+      readonly section: string;
+      readonly offset: number;
+    } | undefined
+  > {
+    if (!/^[a-f0-9]{64}$/.test(cursor)) {
+      throw new TypeError("Preview evidence cursor is invalid or foreign.");
+    }
+    const bytes = await this.bytes.read({ algorithm: "sha256", digest: cursor });
+    if (!bytes) return undefined;
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(bytes.copy());
+    let value: unknown;
+    try {
+      value = JSON.parse(text);
+    } catch {
+      throw new TypeError("Preview evidence cursor is corrupt.");
+    }
+    const record = exactRecord(
+      value,
+      ["projectId", "fingerprint", "section", "offset"],
+      "$cursor",
+    );
+    if (
+      !/^[a-f0-9]{64}$/.test(String(record.fingerprint)) ||
+      typeof record.section !== "string" || !Number.isSafeInteger(record.offset) ||
+      Number(record.offset) < 0
+    ) throw new TypeError("Preview evidence cursor is corrupt.");
+    return {
+      projectId: safeId(record.projectId, "$cursor.projectId"),
+      fingerprint: String(record.fingerprint),
+      section: record.section,
+      offset: Number(record.offset),
+    };
+  }
 }
 function parseRef(value: unknown): TechnicalCompilationPreviewEvidenceReference {
   const x = exactRecord(value, [

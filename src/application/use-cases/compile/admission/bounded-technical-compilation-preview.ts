@@ -100,12 +100,6 @@ export function summary(
   return out;
 }
 export class ReadTechnicalCompilationPreviewEvidence {
-  readonly #cursors = new Map<string, {
-    readonly projectId: string;
-    readonly fingerprint: string;
-    readonly section: string;
-    readonly offset: number;
-  }>();
   constructor(private readonly evidence: TechnicalCompilationPreviewEvidenceStore) {}
   async execute(
     value: unknown,
@@ -132,13 +126,13 @@ export class ReadTechnicalCompilationPreviewEvidence {
     const data = section(e.result, x.section);
     const offset = x.cursor === undefined
       ? 0
-      : this.#decode(x.cursor, x.evidenceRef, x.section, data.length);
+      : await this.#decode(x.cursor, x.evidenceRef, x.section, data.length);
     const page = this.#page(data, offset, x.section);
     const out = {
       section: x.section,
       items: page,
       nextCursor: offset + page.length < data.length
-        ? this.#encode(offset + page.length, x.evidenceRef, x.section)
+        ? await this.#encode(offset + page.length, x.evidenceRef, x.section)
         : null,
     };
     if (
@@ -170,27 +164,25 @@ export class ReadTechnicalCompilationPreviewEvidence {
     }
     return page;
   }
-  #encode(
+  async #encode(
     offset: number,
     reference: TechnicalCompilationPreviewEvidenceReference,
     section: string,
-  ): string {
-    const token = crypto.randomUUID();
-    this.#cursors.set(token, {
+  ): Promise<string> {
+    return await this.evidence.saveCursor({
       projectId: reference.projectId,
       fingerprint: reference.fingerprint.digest,
       section,
       offset,
     });
-    return token;
   }
-  #decode(
+  async #decode(
     cursor: string,
     reference: TechnicalCompilationPreviewEvidenceReference,
     section: string,
     length: number,
-  ): number {
-    const record = this.#cursors.get(cursor);
+  ): Promise<number> {
+    const record = await this.evidence.readCursor(cursor);
     if (
       !record || record.projectId !== reference.projectId ||
       record.fingerprint !== reference.fingerprint.digest ||
