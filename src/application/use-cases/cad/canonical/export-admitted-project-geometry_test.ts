@@ -27,6 +27,7 @@ import {
   TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
   type TechnicalCompilationBasis,
   type TechnicalCompilationProfile,
+  type TechnicalProjectionSource,
 } from "../../../../domain/compile/admission/technical-compilation.ts";
 import {
   QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
@@ -38,6 +39,7 @@ import {
   encodeTechnicalCompilationAdmissionParameters,
   parseTechnicalCompilationAdmissionParameters,
   TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
+  type TechnicalCompilationAdmissionSource,
 } from "../../../../domain/compile/admission/technical-compilation-proposal.ts";
 import {
   GEOMETRY_DRAFT_ADMISSION_SCHEMA,
@@ -775,9 +777,7 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   const secondId = `technical-unit:${"5".repeat(64)}`;
   const secondDocumentSource = structuredClone(
     capture.document.inputManifest.sources[0],
-  ) as unknown as Mutable<
-    (typeof capture.document.projections)[number]["sources"][number]
-  >;
+  ) as Mutable<TechnicalProjectionSource>;
   secondDocumentSource.analysis.source.id = secondId;
   secondDocumentSource.effectiveUnit.unitId = secondId;
   secondDocumentSource.effectiveUnit.closureFingerprint.digest = "5".repeat(64);
@@ -787,9 +787,7 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   (capture.document.inputManifest.sources as unknown[]).push(secondDocumentSource);
   const secondProjectionSource = structuredClone(
     capture.document.projections[0]!.sources[0],
-  ) as unknown as Mutable<
-    (typeof capture.document.projections)[number]["sources"][number]["bindings"]
-  >;
+  ) as Mutable<TechnicalProjectionSource>;
   secondProjectionSource.analysis.source.id = secondId;
   secondProjectionSource.effectiveUnit.unitId = secondId;
   secondProjectionSource.effectiveUnit.closureFingerprint.digest = "5".repeat(64);
@@ -798,7 +796,7 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   );
   secondProjectionSource.bindings = structuredClone(
     capture.document.projections[0]!.sources[0]!.bindings,
-  ) as unknown as Mutable<typeof capture.admission.sources[0]>;
+  ) as Mutable<TechnicalProjectionSource["bindings"]>;
   for (const binding of secondProjectionSource.bindings) {
     binding.sourceId = secondId;
     binding.id = `${binding.id}.second`;
@@ -807,7 +805,7 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   (capture.document.projections[0]!.sources as unknown[]).push(secondProjectionSource);
   const secondAdmissionSource = structuredClone(
     capture.admission.sources[0],
-  ) as Mutable<typeof capture.document.inputManifest.sources[0]>;
+  ) as Mutable<TechnicalCompilationAdmissionSource>;
   (capture.admission.sources[0] as Mutable<typeof capture.admission.sources[0]>)
     .attachment.target.elementId = "sysml.part.box";
   secondAdmissionSource.id = secondId;
