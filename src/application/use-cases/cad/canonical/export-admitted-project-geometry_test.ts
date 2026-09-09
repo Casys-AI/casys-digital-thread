@@ -22,11 +22,17 @@ import {
   fingerprintTechnicalCompilationBasis,
   fingerprintTechnicalSourceText,
   fingerprintTechnicalSysmlAnchor,
+  PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
   TECHNICAL_COMPILATION_INPUT_SCHEMA,
   TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
   type TechnicalCompilationBasis,
   type TechnicalCompilationProfile,
 } from "../../../../domain/compile/admission/technical-compilation.ts";
+import {
+  QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+  QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
+  QualifiedBuild123dSourceAnalyzer,
+} from "../../../../adapters/cad/source/qualified-build123d-source-analyzer.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   encodeTechnicalCompilationAdmissionParameters,
@@ -321,6 +327,26 @@ Deno.test("admitted geometry export reopens one sealed source and never accepts 
   assertEquals(serialized.includes("from build123d import Box"), false);
   assertEquals(recursiveKeys(result).has("sourceText"), false);
   assertEquals(recursiveKeys(result).has("script"), false);
+});
+
+Deno.test("canonical geometry export reopens exact standalone-comment bytes from a 3.1.0 admission", async () => {
+  const fixture = await harness({ standaloneComment: true });
+
+  await fixture.service.execute(fixture.command);
+
+  assertEquals(
+    fixture.reopened.admission.sources[0]?.profileVersion,
+    PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
+  );
+  assertEquals(
+    fixture.reopened.admission.sources[0]?.analyzer.version,
+    QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
+  );
+  assertEquals(fixture.exporter.calls[0]?.script, fixture.admittedSource);
+  assertEquals(
+    fixture.exporter.calls[0]?.script,
+    "# physical provenance annotation\nfrom build123d import Box\nthickness = 2\nresult = Box(20, 10, thickness)\n",
+  );
 });
 
 Deno.test("admitted geometry export is deterministic across exact reopens", async () => {
@@ -1188,8 +1214,11 @@ Deno.test("an existing unique geometry tip becomes the signed predecessor", asyn
   );
 });
 
-async function harness(): Promise<Harness> {
+async function harness(
+  options: { readonly standaloneComment?: boolean } = {},
+): Promise<Harness> {
   const admittedSource = [
+    ...(options.standaloneComment ? ["# physical provenance annotation"] : []),
     "from build123d import Box",
     "thickness = 2",
     "result = Box(20, 10, thickness)",
@@ -1207,47 +1236,54 @@ async function harness(): Promise<Harness> {
     closureFingerprint: sourceWorkspace.sourceClosure.fingerprint,
     scriptFingerprint: sourceFingerprint,
   };
-  const analysis: SourceAnalysisBundle = {
-    schemaVersion: "source-analysis/1.0",
-    source: {
-      id: sourceId,
+  const analysis: SourceAnalysisBundle = options.standaloneComment
+    ? await new QualifiedBuild123dSourceAnalyzer().analyze({
+      sourceId,
       role: "cad-script",
       language: "python",
-      fingerprint: sourceFingerprint,
-    },
-    analyzer: {
-      id: "build123d-qualified-lezer",
-      version: "1.1.0",
-    },
-    policy: {
-      profile: "build123d-closed-subset-v1",
-      status: "passed",
-      findings: [],
-    },
-    symbols: [
-      {
-        id: "artifact:qualified-box",
-        kind: "artifact",
-        name: "result",
+      sourceText: admittedSource,
+    })
+    : {
+      schemaVersion: "source-analysis/1.0",
+      source: {
+        id: sourceId,
+        role: "cad-script",
+        language: "python",
+        fingerprint: sourceFingerprint,
       },
-      {
-        id: "parameter:thickness",
-        kind: "parameter",
-        name: "thickness",
-        span: {
-          start: { line: 2, column: 0 },
-          end: { line: 2, column: 9 },
+      analyzer: {
+        id: "build123d-qualified-lezer",
+        version: "1.1.0",
+      },
+      policy: {
+        profile: "build123d-closed-subset-v1",
+        status: "passed",
+        findings: [],
+      },
+      symbols: [
+        {
+          id: "artifact:qualified-box",
+          kind: "artifact",
+          name: "result",
         },
-      },
-    ],
-    dependencies: [{
-      id: "dependency:thickness:result",
-      kind: "structural-incidence",
-      fromSymbolId: "parameter:thickness",
-      toSymbolId: "artifact:qualified-box",
-    }],
-    unresolvedConstructs: [],
-  };
+        {
+          id: "parameter:thickness",
+          kind: "parameter",
+          name: "thickness",
+          span: {
+            start: { line: 2, column: 0 },
+            end: { line: 2, column: 9 },
+          },
+        },
+      ],
+      dependencies: [{
+        id: "dependency:thickness:result",
+        kind: "structural-incidence",
+        fromSymbolId: "parameter:thickness",
+        toSymbolId: "artifact:qualified-box",
+      }],
+      unresolvedConstructs: [],
+    };
   const analysisFingerprint = await fingerprintSourceAnalysisBundle(analysis);
   const sysmlFingerprint = {
     algorithm: "sha256" as const,
@@ -1291,14 +1327,25 @@ async function harness(): Promise<Harness> {
   };
   const compilationProfile: TechnicalCompilationProfile = {
     id: "build123d-closed-subset-v1",
-    version: "1.0.0",
+    version: options.standaloneComment
+      ? PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION
+      : "1.0.0",
     target: "build123d-source",
     sourceRole: "cad-script",
     language: "python",
     analyzer: analysis.analyzer,
-    analysisPolicyProfile: "build123d-closed-subset-v1",
+    analysisPolicyProfile: options.standaloneComment
+      ? QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE
+      : "build123d-closed-subset-v1",
     requiredBindingSymbolKinds: ["artifact", "parameter"],
   };
+  const artifactSymbol = analysis.symbols.find((symbol) => symbol.kind === "artifact");
+  const thicknessSymbol = analysis.symbols.find((symbol) =>
+    symbol.kind === "parameter" && symbol.name === "thickness"
+  );
+  if (!artifactSymbol || !thicknessSymbol) {
+    throw new Error("fixture analysis must contain result and thickness symbols");
+  }
   const compiled = await compileTechnicalSources({
     schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
     basis,
@@ -1313,7 +1360,7 @@ async function harness(): Promise<Harness> {
       {
         id: "binding.result",
         sourceId: analysis.source.id,
-        sourceSymbolId: analysis.symbols[0]!.id,
+        sourceSymbolId: artifactSymbol.id,
         sysmlElementId: "sysml.part.box",
         sysmlElementKind: "PartDefinition",
         relation: "represents",
@@ -1321,7 +1368,7 @@ async function harness(): Promise<Harness> {
       {
         id: "binding.thickness",
         sourceId: analysis.source.id,
-        sourceSymbolId: "parameter:thickness",
+        sourceSymbolId: thicknessSymbol.id,
         sysmlElementId: "sysml.attribute.thickness",
         sysmlElementKind: "AttributeUsage",
         relation: "parameterizes",

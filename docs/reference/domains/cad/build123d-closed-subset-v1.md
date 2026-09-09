@@ -6,6 +6,10 @@ The current CAD language is not Python or build123d in general. It is the server
 profile `build123d-closed-subset-v1`, compiled as profile `3.1.0` by analyzer
 `build123d-qualified-lezer` `1.7.0`.
 
+The comment addition is an admission and exact-reopen contract change. Its evidence
+exercises the canonical and isolated server paths with the preserved source bytes; it
+does not claim a new comment-specific canary or a pinned-runtime qualification receipt.
+
 Code authorities:
 
 - [D4 execution-surface validator](../../../../src/domain/cad/source/geometry-script-validation.ts)

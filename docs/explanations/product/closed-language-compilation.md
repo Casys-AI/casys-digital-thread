@@ -107,9 +107,10 @@ both sides of the lowering.
 
 ## Status at the time of writing
 
-Analyzer **1.7.0** is shipped (named `Pos`/`Rot` bindings, `Plane.*`, `offset`,
+Analyzer **1.7.0** is implemented in the source-admission contract (named `Pos`/`Rot` bindings, `Plane.*`, `offset`,
 `revolve`, extrude `taper=`, and standalone module comments as non-semantic
-annotations). The hand table still includes `Ellipsoid`, which the 0.11.1 inventory does
+annotations). The comment addition has canonical and isolated exact-reopen tests, not a
+new comment-specific pinned-runtime receipt. The hand table still includes `Ellipsoid`, which the 0.11.1 inventory does
 not list. The next proposed family is **F1** (generated tables + analyzer 2.0.0), not a
 further idiom lot. It remains a proposal until the public coverage and closed-subset
 contract are updated.
