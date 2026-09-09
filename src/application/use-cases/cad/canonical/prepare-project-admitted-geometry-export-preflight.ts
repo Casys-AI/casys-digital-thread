@@ -237,6 +237,7 @@ function deriveChildRoots(
         represents.length !== 1 ||
         represents[0]?.sysmlElementKind !== "PartDefinition" ||
         source.attachment.target.elementKind !== "PartDefinition" ||
+        source.attachment.target.elementId !== represents[0].sysmlElementId ||
         source.attachment.fileId !== source.sourceClosure.root.fileId ||
         ids.has(source.id) || targets.has(represents[0].sysmlElementId)
       ) return undefined;

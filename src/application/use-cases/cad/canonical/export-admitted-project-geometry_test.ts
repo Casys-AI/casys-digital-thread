@@ -800,6 +800,7 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   }
   (capture.document.projections[0]!.sources as unknown[]).push(secondProjectionSource);
   const secondAdmissionSource = structuredClone(capture.admission.sources[0]) as any;
+  (capture.admission.sources[0] as any).attachment.target.elementId = "sysml.part.box";
   secondAdmissionSource.id = secondId;
   secondAdmissionSource.effectiveUnit.unitId = secondId;
   secondAdmissionSource.effectiveUnit.closureFingerprint.digest = "5".repeat(64);
@@ -852,6 +853,15 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
       [...childRoute.childRoots].map((root) => root.sourceId).sort(),
     );
   }
+  secondAdmissionSource.attachment.target.elementId = "sysml.part.box";
+  ambiguous.reader.result = capture;
+  assertEquals(
+    (await new PrepareProjectAdmittedGeometryExportPreflight({
+      admissions: ambiguous.reader,
+    }).execute(ambiguous.command)).status,
+    "unresolved",
+  );
+  secondAdmissionSource.attachment.target.elementId = "sysml.part.lid";
   secondBindings.find((binding: any) => binding.relation === "represents")!
     .sysmlElementId = "sysml.part.box";
   ambiguous.reader.result = capture;
