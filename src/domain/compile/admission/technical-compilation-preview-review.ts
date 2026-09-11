@@ -447,3 +447,166 @@ function gapSortKey(gap: TechnicalCompilationJoinGap): string {
 function compareText(left: string, right: string): number {
   return left < right ? -1 : left > right ? 1 : 0;
 }
+
+/** Parse persisted preview gaps back through the same closed union used by review assembly. */
+export function validateTechnicalCompilationJoinGaps(
+  value: unknown,
+): readonly TechnicalCompilationJoinGap[] {
+  if (!Array.isArray(value)) {
+    throw new TypeError("$technicalCompilationJoinGaps must be an array.");
+  }
+  return deepFreeze(
+    value.map((item, index) => validateTechnicalCompilationJoinGap(item, index)),
+  );
+}
+
+function validateTechnicalCompilationJoinGap(
+  value: unknown,
+  index: number,
+): TechnicalCompilationJoinGap {
+  const path = `$technicalCompilationJoinGaps[${index}]`;
+  const item = value as Record<string, unknown>;
+  if (
+    !item || typeof item !== "object" || Array.isArray(item) ||
+    typeof item.code !== "string"
+  ) {
+    throw new TypeError(`${path} is invalid.`);
+  }
+  const exact = (keys: readonly string[]) => {
+    const actual = Object.keys(item).sort();
+    if (
+      actual.length !== keys.length ||
+      actual.some((key, i) => key !== [...keys].sort()[i])
+    ) {
+      throw new TypeError(`${path} must have exact keys.`);
+    }
+  };
+  const id = (key: string) => {
+    if (typeof item[key] !== "string" || item[key] === "") {
+      throw new TypeError(`${path}.${key} is invalid.`);
+    }
+    return item[key] as string;
+  };
+  const recovery = <T extends string>(expected: T): T => {
+    if (item.recovery !== expected) throw new TypeError(`${path}.recovery is invalid.`);
+    return expected;
+  };
+  switch (item.code) {
+    case "source.no-named-numeric-lever":
+      exact(["code", "sourceId", "recovery"]);
+      return {
+        code: item.code,
+        sourceId: id("sourceId"),
+        recovery: recovery(TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.noNamedNumericLever),
+      };
+    case "source.dependency-lowering-unavailable":
+      exact(["code", "sourceId", "closureKind", "recovery"]);
+      if (item.closureKind !== "unlowered-closure") {
+        throw new TypeError(`${path}.closureKind is invalid.`);
+      }
+      return {
+        code: item.code,
+        sourceId: id("sourceId"),
+        closureKind: "unlowered-closure",
+        recovery: recovery(TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.dependencyLowering),
+      };
+    case "attachment.different-basis":
+      exact(["code", "sourceId", "recovery"]);
+      return {
+        code: item.code,
+        sourceId: id("sourceId"),
+        recovery: recovery(TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.differentBasis),
+      };
+    case "attachment.target-missing":
+      exact(["code", "sourceId", "recovery"]);
+      return {
+        code: item.code,
+        sourceId: id("sourceId"),
+        recovery: recovery(TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.targetMissing),
+      };
+    case "binding.missing": {
+      exact([
+        "code",
+        "relation",
+        "sourceId",
+        "symbolName",
+        "symbolKind",
+        "reason",
+        "candidateCount",
+        "recovery",
+      ]);
+      if (
+        !Number.isSafeInteger(item.candidateCount) || Number(item.candidateCount) < 0
+      ) throw new TypeError(`${path}.candidateCount is invalid.`);
+      const isArtifact = item.relation === "represents" &&
+        item.symbolKind === "artifact" && item.reason === "no-unique-PartDefinition";
+      const isParameter = item.relation === "parameterizes" &&
+        item.symbolKind === "parameter" && item.reason === "no-unique-AttributeUsage";
+      if (!isArtifact && !isParameter) throw new TypeError(`${path} is invalid.`);
+      return isArtifact
+        ? {
+          code: item.code,
+          relation: "represents",
+          sourceId: id("sourceId"),
+          symbolName: id("symbolName"),
+          symbolKind: "artifact",
+          reason: "no-unique-PartDefinition",
+          candidateCount: Number(item.candidateCount),
+          recovery: recovery(
+            TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.noUniquePartDefinition,
+          ),
+        }
+        : {
+          code: item.code,
+          relation: "parameterizes",
+          sourceId: id("sourceId"),
+          symbolName: id("symbolName"),
+          symbolKind: "parameter",
+          reason: "no-unique-AttributeUsage",
+          candidateCount: Number(item.candidateCount),
+          recovery: recovery(
+            TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.noUniqueAttributeUsage,
+          ),
+        };
+    }
+    case "thermal-method-sheet.parameter.unresolved":
+      exact(["code", "modelSymbolId", "attributeUsageId", "reason", "recovery"]);
+      if (
+        item.reason !== "symbol-absent" && item.reason !== "no-unique-parameterizes"
+      ) throw new TypeError(`${path}.reason is invalid.`);
+      return {
+        code: item.code,
+        modelSymbolId: id("modelSymbolId"),
+        attributeUsageId: id("attributeUsageId"),
+        reason: item.reason,
+        recovery: recovery(
+          TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.thermalParameterizes,
+        ),
+      };
+    case "thermal-method-sheet.output.unresolved":
+      exact([
+        "code",
+        "modelSymbolId",
+        "role",
+        "requirementElementId",
+        "reason",
+        "recovery",
+      ]);
+      if (
+        (item.role !== "final" && item.role !== "max_abs") ||
+        (item.reason !== "symbol-absent" && item.reason !== "requirement-absent")
+      ) throw new TypeError(`${path} is invalid.`);
+      return {
+        code: item.code,
+        modelSymbolId: id("modelSymbolId"),
+        role: item.role,
+        requirementElementId: id("requirementElementId"),
+        reason: item.reason,
+        recovery: recovery(
+          TECHNICAL_COMPILATION_JOIN_GAP_RECOVERY.thermalOutputRequirement,
+        ),
+      };
+    default:
+      throw new TypeError(`${path}.code is invalid.`);
+  }
+}

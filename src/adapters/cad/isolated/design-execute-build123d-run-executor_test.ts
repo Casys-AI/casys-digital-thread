@@ -75,9 +75,15 @@ import {
   fingerprintTechnicalCompilationBasis,
   fingerprintTechnicalSourceText,
   fingerprintTechnicalSysmlAnchor,
+  PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
   TECHNICAL_COMPILATION_INPUT_SCHEMA,
   TECHNICAL_COMPILATION_PROFILE_CATALOG_SCHEMA,
 } from "../../../domain/compile/admission/technical-compilation.ts";
+import {
+  QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE,
+  QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
+  QualifiedBuild123dSourceAnalyzer,
+} from "../source/qualified-build123d-source-analyzer.ts";
 import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   TECHNICAL_COMPILATION_ADMISSION_SCHEMA,
@@ -148,6 +154,28 @@ Deno.test("Build123d executor publishes one documentary artifact and never a STE
     false,
   );
   assertEquals(fixture.attempts.current?.phase, "completed");
+});
+
+Deno.test("isolated execution reopens exact standalone-comment bytes from a 3.1.0 admission", async () => {
+  const fixture = await createFixture({ standaloneComment: true });
+
+  await fixture.executor.execute(AGENT, COMMAND);
+
+  assertEquals(
+    fixture.profile.compilationProfile.version,
+    PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION,
+  );
+  assertEquals(
+    fixture.profile.compilationProfile.analyzer.version,
+    QUALIFIED_BUILD123D_SOURCE_ANALYZER_VERSION,
+  );
+  assertEquals(fixture.runner.calls, 1);
+  assertEquals(
+    fixture.runner.sourceTexts,
+    [
+      "# physical provenance annotation\nfrom build123d import Box\nthickness = 2\nresult = Box(20, 10, thickness)\n",
+    ],
+  );
 });
 
 Deno.test("completed Build123d replay reopens all evidence without a second isolated run or successor", async () => {
@@ -682,6 +710,7 @@ Deno.test("cache profile mismatch leaves the queued Build123d run untouched", as
 });
 
 interface FixtureOptions {
+  readonly standaloneComment?: boolean;
   readonly resume?: "published" | "not-published" | "outcome-unknown";
   readonly profileDrift?: boolean;
   readonly publishAckLostOnce?: boolean;
@@ -716,6 +745,7 @@ interface Fixture {
 
 async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
   const sourceText = [
+    ...(options.standaloneComment ? ["# physical provenance annotation"] : []),
     "from build123d import Box",
     "thickness = 2",
     "result = Box(20, 10, thickness)",
@@ -733,40 +763,47 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
     closureFingerprint: sourceWorkspace.sourceClosure.fingerprint,
     scriptFingerprint: sourceFingerprint,
   };
-  const analysis: SourceAnalysisBundle = {
-    schemaVersion: "source-analysis/1.0",
-    source: {
-      id: sourceId,
+  const analysis: SourceAnalysisBundle = options.standaloneComment
+    ? await new QualifiedBuild123dSourceAnalyzer().analyze({
+      sourceId,
       role: "cad-script",
       language: "python",
-      fingerprint: sourceFingerprint,
-    },
-    analyzer: { id: "build123d-qualified-lezer", version: "1.1.0" },
-    policy: {
-      profile: "build123d-closed-subset-v1",
-      status: "passed",
-      findings: [],
-    },
-    symbols: [
-      { id: "artifact:box", kind: "artifact", name: "result" },
-      {
-        id: "parameter:thickness",
-        kind: "parameter",
-        name: "thickness",
-        span: {
-          start: { line: 2, column: 0 },
-          end: { line: 2, column: 9 },
-        },
+      sourceText,
+    })
+    : {
+      schemaVersion: "source-analysis/1.0",
+      source: {
+        id: sourceId,
+        role: "cad-script",
+        language: "python",
+        fingerprint: sourceFingerprint,
       },
-    ],
-    dependencies: [{
-      id: "dependency:thickness:result",
-      kind: "structural-incidence",
-      fromSymbolId: "parameter:thickness",
-      toSymbolId: "artifact:box",
-    }],
-    unresolvedConstructs: [],
-  };
+      analyzer: { id: "build123d-qualified-lezer", version: "1.1.0" },
+      policy: {
+        profile: "build123d-closed-subset-v1",
+        status: "passed",
+        findings: [],
+      },
+      symbols: [
+        { id: "artifact:box", kind: "artifact", name: "result" },
+        {
+          id: "parameter:thickness",
+          kind: "parameter",
+          name: "thickness",
+          span: {
+            start: { line: 2, column: 0 },
+            end: { line: 2, column: 9 },
+          },
+        },
+      ],
+      dependencies: [{
+        id: "dependency:thickness:result",
+        kind: "structural-incidence",
+        fromSymbolId: "parameter:thickness",
+        toSymbolId: "artifact:box",
+      }],
+      unresolvedConstructs: [],
+    };
   const analysisFingerprint = await fingerprintSourceAnalysisBundle(analysis);
   const sysmlFingerprint = await sha256Fingerprint({ sysml: "box" });
   const sysmlArtifact = {
@@ -862,14 +899,25 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
   };
   const compilationProfile = {
     id: "build123d-closed-subset-v1",
-    version: "1.0.0",
+    version: options.standaloneComment
+      ? PARAMETERIZED_BUILD123D_COMPILATION_PROFILE_VERSION
+      : "1.0.0",
     target: "build123d-source" as const,
     sourceRole: "cad-script" as const,
     language: "python" as const,
     analyzer: analysis.analyzer,
-    analysisPolicyProfile: "build123d-closed-subset-v1",
+    analysisPolicyProfile: options.standaloneComment
+      ? QUALIFIED_BUILD123D_SOURCE_ANALYSIS_PROFILE
+      : "build123d-closed-subset-v1",
     requiredBindingSymbolKinds: ["artifact", "parameter"] as const,
   };
+  const artifactSymbol = analysis.symbols.find((symbol) => symbol.kind === "artifact");
+  const thicknessSymbol = analysis.symbols.find((symbol) =>
+    symbol.kind === "parameter" && symbol.name === "thickness"
+  );
+  if (!artifactSymbol || !thicknessSymbol) {
+    throw new Error("fixture analysis must contain result and thickness symbols");
+  }
   const compiled = await compileTechnicalSources({
     schemaVersion: TECHNICAL_COMPILATION_INPUT_SCHEMA,
     basis: compilationBasis,
@@ -884,7 +932,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
       {
         id: "binding.result",
         sourceId: analysis.source.id,
-        sourceSymbolId: analysis.symbols[0]!.id,
+        sourceSymbolId: artifactSymbol.id,
         sysmlElementId: "sysml.part.box",
         sysmlElementKind: "PartUsage",
         relation: "represents",
@@ -892,7 +940,7 @@ async function createFixture(options: FixtureOptions = {}): Promise<Fixture> {
       {
         id: "binding.thickness",
         sourceId: analysis.source.id,
-        sourceSymbolId: "parameter:thickness",
+        sourceSymbolId: thicknessSymbol.id,
         sysmlElementId: "sysml.attribute.thickness",
         sysmlElementKind: "AttributeUsage",
         relation: "parameterizes",
@@ -1529,6 +1577,7 @@ function extraMicrosandboxCapability(
 class FakeRunner implements IsolatedCodeRunner {
   calls = 0;
   readonly producerGenerations: Array<0 | 1> = [];
+  readonly sourceTexts: string[] = [];
   #failsOnce: boolean;
   constructor(
     private readonly runtime: Parameters<
@@ -1550,6 +1599,7 @@ class FakeRunner implements IsolatedCodeRunner {
   ): Promise<IsolatedCodeExecutionReceipt> {
     this.calls += 1;
     this.producerGenerations.push(request.producerGeneration);
+    this.sourceTexts.push(new TextDecoder().decode(request.source.bytes));
     if (this.#rejectOutputValidation) {
       throw new IsolatedCodeOutputValidationRejectedError(
         { role: "geometry", byteCount: 32, sha256: "7".repeat(64) },

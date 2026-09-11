@@ -2,7 +2,7 @@
 
 Fact-checked on **2026-09-09** by six Terra reviewers, with final source and runtime
 readback checks by Codex. **27 confirmed-fixed entries have been removed.** This file
-retains **16 confirmed-open frictions** and **3 historical incidents whose current
+retains **13 confirmed-open frictions** and **3 historical incidents whose current
 status is unverified**. Original observations remain in Git history.
 
 The registered read-only project snapshot returned **project r693 / Thread r95**. The
@@ -16,71 +16,24 @@ inside retained entries describe the historical trigger, not the current project
 
 ## Confirmed-open issue index
 
-| Friction | GitHub issue                                                                                                                                                              |
-| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F01      | [#20 — Qualified Build123d: make standalone provenance comments reviewable without widening Python authority](https://github.com/Casys-AI/casys-digital-thread/issues/20) |
-| F02      | [#21 — CLI: provide a bounded actionable projection for technical compilation previews](https://github.com/Casys-AI/casys-digital-thread/issues/21)                       |
-| F03      | [#22 — Desktop integration: expose Digital Thread project-control tools in the active Codex host](https://github.com/Casys-AI/casys-digital-thread/issues/22)             |
-| F06      | [#23 — CAD workflow: expose singular-export preflight and child-root guidance after multi-source admission](https://github.com/Casys-AI/casys-digital-thread/issues/23)   |
-| F13      | [#14 — Add a governed propulsion and energy pre-sizing capability](https://github.com/Casys-AI/casys-digital-thread/issues/14)                                            |
-| F15      | [#15 — Workbench: preserve discoverability when legacy project heads cannot reopen](https://github.com/Casys-AI/casys-digital-thread/issues/15)                           |
-| F16      | [#16 — Add exact BRep mass-property evidence for canonical geometry](https://github.com/Casys-AI/casys-digital-thread/issues/16)                                          |
-| F17      | [#8 — Engineering evidence: close the F1404 KV4600 / GF3016 propeller-interface packet](https://github.com/Casys-AI/casys-digital-thread/issues/8)                        |
-| F18      | [#9 — Engineering evidence: reconcile F1507 KV3800 / T3140 operating limits and bench configuration](https://github.com/Casys-AI/casys-digital-thread/issues/9)           |
-| F19      | [#10 — Engineering evidence: resolve PM06 V2 output-power and height discrepancies](https://github.com/Casys-AI/casys-digital-thread/issues/10)                           |
-| F20      | [#11 — Engineering evidence: establish usable-energy evidence for the selected ID01 battery pack](https://github.com/Casys-AI/casys-digital-thread/issues/11)             |
-| F21      | [#12 — Add a registered Thread publication path for source-backed pre-sizing worksheets](https://github.com/Casys-AI/casys-digital-thread/issues/12)                      |
-| F22      | [#13 — Allow a reviewed later brief to authorize a capability-ceiling amendment](https://github.com/Casys-AI/casys-digital-thread/issues/13)                              |
-| F27      | [#17 — Wire exact sensitivity experience reuse into the production composition](https://github.com/Casys-AI/casys-digital-thread/issues/17)                               |
-| F36      | [#18 — Persist and read back ID01 RadialArm sensitivity edges after the completed study](https://github.com/Casys-AI/casys-digital-thread/issues/18)                      |
-| F44      | [#19 — Add a governed generic activation path for qualified first-party microVM candidates](https://github.com/Casys-AI/casys-digital-thread/issues/19)                   |
+| Friction | GitHub issue                                                                                                                                                    |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F03      | [#22 — Desktop integration: expose Digital Thread project-control tools in the active Codex host](https://github.com/Casys-AI/casys-digital-thread/issues/22)   |
+| F13      | [#14 — Add a governed propulsion and energy pre-sizing capability](https://github.com/Casys-AI/casys-digital-thread/issues/14)                                  |
+| F15      | [#15 — Workbench: preserve discoverability when legacy project heads cannot reopen](https://github.com/Casys-AI/casys-digital-thread/issues/15)                 |
+| F16      | [#16 — Add exact BRep mass-property evidence for canonical geometry](https://github.com/Casys-AI/casys-digital-thread/issues/16)                                |
+| F17      | [#8 — Engineering evidence: close the F1404 KV4600 / GF3016 propeller-interface packet](https://github.com/Casys-AI/casys-digital-thread/issues/8)              |
+| F18      | [#9 — Engineering evidence: reconcile F1507 KV3800 / T3140 operating limits and bench configuration](https://github.com/Casys-AI/casys-digital-thread/issues/9) |
+| F19      | [#10 — Engineering evidence: resolve PM06 V2 output-power and height discrepancies](https://github.com/Casys-AI/casys-digital-thread/issues/10)                 |
+| F20      | [#11 — Engineering evidence: establish usable-energy evidence for the selected ID01 battery pack](https://github.com/Casys-AI/casys-digital-thread/issues/11)   |
+| F21      | [#12 — Add a registered Thread publication path for source-backed pre-sizing worksheets](https://github.com/Casys-AI/casys-digital-thread/issues/12)            |
+| F22      | [#13 — Allow a reviewed later brief to authorize a capability-ceiling amendment](https://github.com/Casys-AI/casys-digital-thread/issues/13)                    |
+| F27      | [#17 — Wire exact sensitivity experience reuse into the production composition](https://github.com/Casys-AI/casys-digital-thread/issues/17)                     |
+| F36      | [#18 — Persist and read back ID01 RadialArm sensitivity edges after the completed study](https://github.com/Casys-AI/casys-digital-thread/issues/18)            |
+| F44      | [#19 — Add a governed generic activation path for qualified first-party microVM candidates](https://github.com/Casys-AI/casys-digital-thread/issues/19)         |
 
 F14, F28 and F29 remain `unverified`; no issue was created for them. Their historical
 incidents have neither been disproved nor confirmed as current failures.
-
-## F01 — standalone provenance comments block CAD qualification
-
-**Fact-check 2026-09-09: confirmed open.** Tracked in
-[GitHub #20](https://github.com/Casys-AI/casys-digital-thread/issues/20).
-
-- Exact source r1 SHA-256:
-  `7ba29fdfb752d7e00d7322efcc87fdee04669b3c1e4c6162d762a1fa8370f075`.
-- Technical capture: `ae3341e0ff598b75988e4c4c50f2f548959a6aa9c3121375ae1eb43fbc84e6f6`.
-  `parser.status=passed`, eleven numeric levers returned.
-- Compilation: `a8122b403df1eef4a5f380947aaa99f0fade7892088b0c6d89646b5aca24ed24`,
-  `status=unresolved`, `gaps=[]`, no decision parameters or operation. Six
-  `python-comment` unresolved constructs explain the refusal in the full analysis:
-  `Top-level Comment is not qualified in v1.`
-- All eleven `parameterizes` joins and the `represents` join were present. This was
-  neither a missing SysML attribute nor absence of a numeric lever.
-- Explicit authoring response: retain r1, put a successor r2 with only those comments
-  removed, retain the explanations in a separately captured provenance document and the
-  approved living brief. No analyzer/contract bypass.
-- The revised source was `ready-for-review`, admitted and executed canonically. This
-  comparison establishes the comment refusal on this exact source. It does not establish
-  support for arbitrary Python or comments in all positions.
-- Grok completed a separate read-only diagnosis of the AST handling, capture-status
-  wording and missing compact explanation. It located the top-level fallback in
-  `qualified-build123d-source-analyzer.ts` and the selective gap projection in
-  `technical-compilation-preview-review.ts`. These are correction candidates, not a
-  deployed fix. Astra has not accepted a silent widening of analyzer 1.6.0 or a claim
-  that static tests alone establish the extension runbook's runtime completion.
-
-## F02 — large transport output hides the actionable preview
-
-**Fact-check 2026-09-09: confirmed open.** Tracked in
-[GitHub #21](https://github.com/Casys-AI/casys-digital-thread/issues/21).
-
-The CLI defaults to the complete structured response. Here, the non-ready preview was
-about 35,000 output tokens and the ready review carried 156 flat decision parameters. A
-bounded terminal result can truncate before the actionable diagnostics. The server
-response itself was not shown to be corrupt or incomplete.
-
-The existing CLI plus `jq` can project status, diagnostic constructs and operation; the
-full returned decision parameters must still be preserved verbatim. This is observed
-agent ergonomics, not evidence of an MCP protocol or admission defect. Using the direct
-existing CLI entry point avoids Deno task echoing a large payload; the CLI also supports
-`--args=-` and `--receipt` for their documented purposes.
 
 ## F03 — current session lacks first-class Digital Thread tools
 
@@ -92,23 +45,6 @@ the repo's existing loopback `scripts/probes/mcp-call.ts` transport to call thos
 registered commands directly. No provider API, runtime arguments, or alternate authority
 was substituted. This observation is session-specific; it does not prove that another
 host integration lacks the tools.
-
-## F06 — multi-source admission is broader than canonical CAD export
-
-**Fact-check 2026-09-09: confirmed open.** Tracked in
-[GitHub #23](https://github.com/Casys-AI/casys-digital-thread/issues/23).
-
-The eleven-source preview was `ready-for-review`; its 946 returned decision parameters
-were preserved and the admission sealed successfully at Thread r9. Inspection of the
-canonical exporter then confirmed its deliberate singular-source gate: one projection,
-one source and one profile request. No failed provider call was needed to establish that
-boundary.
-
-The completed response was separate current-basis admissions at Thread r10-r20 and
-canonical exports at r21-r31 for the eleven roots, preserving the multi-source admission
-as history. This is a workflow granularity mismatch, not a corrupt admission, a provider
-failure, or authorization to add a caller-selected source selector. The source-workspace
-how-to already requires independent child-root admission for immediate CAD modules.
 
 ## F13 — no registered generic propulsion/energy pre-sizing authority (open, deferred)
 

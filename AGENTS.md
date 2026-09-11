@@ -85,11 +85,14 @@ into a parallel product effort.
   `unresolved` / `source.dependency-lowering-unavailable`.
 - `project_technical_compilation_preview` takes `projectId` + `result.reference`. The
   server selects the current Thread tip, the unique catalog profile, and unique SysML
-  joins. Do not pass bindings or profileRequests. It returns a closed
-  `technical-compilation/2.0` document; unresolved previews hoist `gaps` (name,
-  relation, recovery). The server does not invent a named CAD lever or an
-  AttributeUsage. Declare CAD handles on `model.write-architecture@1` with
-  `attribute.<slug>.name` and `attribute.<slug>.parent`.
+  joins. Do not pass bindings or profileRequests. It returns only a bounded canonical
+  summary and opaque immutable `evidenceRef`; use
+  `project_technical_compilation_preview_detail` for named evidence pages or explicit
+  `full-evidence`. Full evidence review remains required for MRTR; ready
+  `decisionParameters` and the exact operation are detail sections only. The server does
+  not invent a named CAD lever or an AttributeUsage. Declare CAD handles on
+  `model.write-architecture@1` with `attribute.<slug>.name` and
+  `attribute.<slug>.parent`.
 - Product FEA run is `verify.run-fea-static-proof@3` (isolated microVM). Historical MCP
   `@1`/`@2` are not registered. Do not queue them.
 - `verify.evaluate-sensitivity-base@1` joins `sensitivity-base-<metric>-<digest>` only.

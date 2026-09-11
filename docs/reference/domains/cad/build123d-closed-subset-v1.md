@@ -3,8 +3,12 @@
 Audience: both · Diátaxis: reference · Kind: contract
 
 The current CAD language is not Python or build123d in general. It is the server-owned
-profile `build123d-closed-subset-v1`, compiled as profile `3.0.0` by analyzer
-`build123d-qualified-lezer` `1.6.0`.
+profile `build123d-closed-subset-v1`, compiled as profile `3.1.0` by analyzer
+`build123d-qualified-lezer` `1.7.0`.
+
+The comment addition is an admission and exact-reopen contract change. Its evidence
+exercises the canonical and isolated server paths with the preserved source bytes; it
+does not claim a new comment-specific canary or a pinned-runtime qualification receipt.
 
 Code authorities:
 
@@ -36,12 +40,15 @@ most 8000 tokenizer entries and rejects the 8001st. The outer source-capture cei
 262,144 bytes does not widen D4. D4 is a reachability guard, not semantic qualification
 and not the sandbox boundary. Inventory: [CAD boundedness](boundedness.md).
 
-### Analyzer 1.6.0: what is understood today
+### Analyzer 1.7.0: what is understood today
 
 Only these forms can finish with no `unresolvedConstructs`:
 
 - Explicit named imports, with aliases, for the constructs used below; math scalars are
   limited to `pi`, `e`, and `tau`.
+- Physical comment lines placed directly at module level, with only optional spaces or
+  tabs before `#`. They are provenance annotations: their bytes remain captured and
+  fingerprinted, but they do not create a semantic symbol or dependency.
 - Module-level values made from finite decimal literals, unary and binary arithmetic,
   earlier values, those math scalars, and reviewed flat lists.
 - Solids: `Box`, `Cylinder`, `Cone`, `Sphere`, `Torus`, and `Wedge`.
@@ -67,16 +74,18 @@ D4-allowed syntax that the analyzer cannot prove remains explicit `unresolved`; 
 never accepted by omission. Current examples include builders and `with` blocks, loops,
 comprehensions, functions, classes, lambdas, general method or selector chains, `loft`,
 `sweep`, `mirror`, arbitrary `Plane` or `Axis` construction, and unreviewed arguments to
-otherwise known calls. A sketch as `result` is unresolved. D4 rejects `&` and `|` before
-semantic analysis.
+otherwise known calls. Inline comments, comments in expressions or continuations,
+comments in parenthesized imports, docstrings, and comments in indented blocks remain
+outside that comment exception. A sketch as `result` is unresolved. D4 rejects `&` and
+`|` before semantic analysis.
 
-The pinned inventory contains 473 public build123d 0.11.1 names. The 1.6.0 analyzer is a
+The pinned inventory contains 473 public build123d 0.11.1 names. The 1.7.0 analyzer is a
 bootstrap hand table, not complete coverage of that finite language. The accepted
 direction is documented in
 [closed-language compilation](../../../explanations/product/closed-language-compilation.md);
 future coverage does not change the current contract.
 
-## Compilation admission 3.0.0
+## Compilation admission 3.1.0
 
 Parser success is not admission. A new Build123d compilation is reviewable only when:
 

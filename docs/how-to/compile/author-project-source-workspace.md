@@ -121,10 +121,10 @@ the one effective script, and records its full manifest. Never infer admission f
 workspace membership, MIME, path or a successful isolated run. A later correction is a
 new `project_resource_capture` plus a successor file revision, then a new capture.
 
-When a preview is `ready-for-review`, it returns the exact `compile.seal-admission@3` `operation`
-alongside its MRTR `decisionParameters`. Pass that operation verbatim to the later
-`project_change_append`; do not rebuild its `sysmlModel` binding from the review text.
-It names the exact Thread snapshot reviewed by the server. A stale or historical
+When a preview is `ready-for-review`, it returns the exact `compile.seal-admission@3`
+`operation` alongside its MRTR `decisionParameters`. Pass that operation verbatim to the
+later `project_change_append`; do not rebuild its `sysmlModel` binding from the review
+text. It names the exact Thread snapshot reviewed by the server. A stale or historical
 Thread-entity binding is refused both when appending the seal and when queueing it.
 
 Only stop for dependency lowering when the returned preview literally reports
@@ -140,6 +140,21 @@ when possible; this reduces attachment rebases between sequential admissions. La
 executions may reopen those historical admissions from descendant Thread tips. A
 `different-basis` authoring read does not invalidate a sealed admission, but a current
 closure drill-down may stay `unavailable`.
+
+### Multi-source CAD admission and canonical export
+
+Canonical `project_admitted_geometry_export` remains a singular Build123d export. When
+one sealed multi-source admission cannot enter that route, call
+`project_admitted_geometry_export_preflight` with the same exact project, Thread basis
+and admission artifact identity. It is read-only and returns either
+`singular-export-ready`, exact independently-admittable child-root identities, or
+`unresolved` when that decomposition is not safe. It never accepts a source, profile,
+provider or runtime selector.
+
+For each returned child root, reread the current workspace head, recross the attachment
+when it is `different-basis`, then capture, preview and seal that root independently
+before using the singular canonical export. Each seal advances the Thread, so do not
+reuse later child attachment heads without rereading and recrossing them as required.
 
 ## Common workspace basis
 
@@ -157,8 +172,8 @@ one child keeps its stable file identity and does not rewrite its siblings. A wo
 dependency closure remains navigable and historically readable. Only the Build123d V1
 direct scalar-leaf form is additionally executable through its profile-owned lowering;
 it is still not a Python import environment. Other closures, including Modelica and
-circuit-only SPICE multi-file closures, keep
-`source.dependency-lowering-unavailable` literal.
+circuit-only SPICE multi-file closures, keep `source.dependency-lowering-unavailable`
+literal.
 
 Before capturing placements or exporting the module, run the registered
 `model.capture-part-definitions@1` operation for the current architecture. The module
