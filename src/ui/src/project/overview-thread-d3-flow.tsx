@@ -122,6 +122,14 @@ export interface OverviewThreadStageSummary {
   readonly count: string;
 }
 
+/** Native read-only detail available from an exact graph-backed row. */
+export interface OverviewThreadD3FlowNativeDetail {
+  readonly kind: string;
+  readonly label: string;
+  readonly title: string;
+  readonly ariaLabel: string;
+}
+
 export interface OverviewThreadD3FlowProps {
   readonly layout: OverviewThreadD3FlowLayout;
   readonly nodesByKey: ReadonlyMap<string, OverviewHeroNode>;
@@ -136,6 +144,10 @@ export interface OverviewThreadD3FlowProps {
     groupKey: string,
   ) => void;
   readonly selectedRowKey?: string;
+  readonly nativeDetailsByNodeKey?: ReadonlyMap<
+    string,
+    OverviewThreadD3FlowNativeDetail
+  >;
   readonly stages?: readonly OverviewThreadStageSummary[];
   readonly showLaneStrip?: boolean;
   readonly activeKey?: string;
@@ -266,6 +278,7 @@ export function OverviewThreadD3Flow({
   rowAnchors,
   onActivateHullRow,
   selectedRowKey,
+  nativeDetailsByNodeKey,
   stages = [],
   showLaneStrip = true,
   selectedKey,
@@ -1043,6 +1056,7 @@ export function OverviewThreadD3Flow({
                     inspection={inspection}
                     relatedKeys={relatedKeys}
                     selectedRowKey={selectedRowKey}
+                    nativeDetailsByNodeKey={nativeDetailsByNodeKey}
                     focusedKey={focusedKey}
                     refNode={refNode}
                     onActivateHullRow={onActivateHullRow}
@@ -1172,6 +1186,7 @@ function FlowStructureRow({
   inspection,
   relatedKeys,
   selectedRowKey,
+  nativeDetailsByNodeKey,
   focusedKey,
   refNode,
   onActivateHullRow,
@@ -1190,6 +1205,10 @@ function FlowStructureRow({
   readonly inspection: OverviewInspectionTarget;
   readonly relatedKeys: ReadonlySet<string>;
   readonly selectedRowKey?: string;
+  readonly nativeDetailsByNodeKey?: ReadonlyMap<
+    string,
+    OverviewThreadD3FlowNativeDetail
+  >;
   readonly focusedKey?: string;
   readonly refNode: (key: string, node: HTMLButtonElement | null) => void;
   readonly onActivateHullRow?: (
@@ -1217,7 +1236,12 @@ function FlowStructureRow({
   const contextKey = row.viewerNodeKey ??
     overviewHullRowPrimaryGraphRef(row);
   const boundItem = graphKey ? nodesByKey.get(graphKey) : undefined;
-  const tooltip = structureRowTooltip(row, boundItem, group.view);
+  const nativeDetail = graphKey
+    ? nativeDetailsByNodeKey?.get(graphKey)
+    : undefined;
+  const tooltip = nativeDetail
+    ? { title: row.label, body: nativeDetail.title }
+    : structureRowTooltip(row, boundItem, group.view);
   const selected = presentationKey === selectedRowKey;
   const inspectionRelated = overviewInspectionIsRelatedRow(
     inspection,
@@ -1259,6 +1283,7 @@ function FlowStructureRow({
         className={cn(
           "overview-thread-flow-structure-row",
           "cursor-context-menu data-[has-viewer=true]:cursor-pointer",
+          "data-[has-native-detail=true]:cursor-pointer",
           "data-[hull-row-kind=source]:cursor-pointer",
           whiteboardFlowItem({ density }),
         )}
@@ -1276,6 +1301,8 @@ function FlowStructureRow({
         data-overview-presentation-row={presentationKey}
         data-hull-row-view={group.view}
         data-has-viewer={presentation.hasViewer ? "true" : "false"}
+        data-has-native-detail={nativeDetail ? "true" : "false"}
+        data-native-detail={nativeDetail?.kind}
         data-selected={selected ? "true" : "false"}
         data-state={flowItemVisualState(
           inspectionActive,
@@ -1284,7 +1311,9 @@ function FlowStructureRow({
         )}
         data-focused={focused ? "true" : "false"}
         tabIndex={flowItemTabIndex(focused)}
-        aria-label={presentation.ariaLabel}
+        aria-label={`${presentation.ariaLabel}${
+          nativeDetail ? ` · ${nativeDetail.ariaLabel}` : ""
+        }`}
         aria-pressed={selected}
         aria-keyshortcuts={FLOW_ITEM_KEYSHORTCUTS}
         style={{
@@ -1337,6 +1366,7 @@ function FlowStructureRow({
         <FlowItemSurface
           density={density}
           hasViewer={presentation.hasViewer}
+          nativeDetailLabel={nativeDetail?.label}
           label={presentation.label}
           detail={presentation.detail}
           status={activityStatus}

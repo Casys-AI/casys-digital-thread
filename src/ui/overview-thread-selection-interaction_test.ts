@@ -59,6 +59,39 @@ Deno.test("selection note pins independently of opening an exact viewer", async 
   assertEquals(note.includes("openViewer("), false);
 });
 
+Deno.test("a related sensitivity FEA enriches the exact verdict selection note without an edge badge", async () => {
+  const hero = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-hero.tsx", import.meta.url),
+  );
+  const flow = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-d3-flow.tsx", import.meta.url),
+  );
+  const disclosure = await Deno.readTextFile(
+    new URL(
+      "./src/project/overview-sensitivity-journey-note.tsx",
+      import.meta.url,
+    ),
+  );
+
+  assertStringIncludes(hero, "buildOverviewSensitivityVerdictBindings(");
+  assertStringIncludes(hero, "sensitivityJourneysByVerdictNodeKey");
+  assertStringIncludes(
+    hero,
+    "nativeDetailsByNodeKey={sensitivityVerdictNativeDetails}",
+  );
+  assertStringIncludes(hero, "<OverviewSensitivityJourneyDisclosure");
+  assertStringIncludes(
+    disclosure,
+    "Related sensitivity FEA for ${journey.requirement.label}",
+  );
+  assertEquals(disclosure.includes("overview-thread-selection-note"), false);
+  assertEquals(hero.includes("FEA Δ"), false);
+  assertEquals(hero.includes("selectedSensitivityJourneyId"), false);
+  assertStringIncludes(flow, "data-native-detail={nativeDetail?.kind}");
+  assertEquals(flow.includes("data-edge-action-key"), false);
+  assertEquals(flow.includes("data-route-edge-key"), false);
+});
+
 Deno.test("hull row activation goes through the shared selection reducer", async () => {
   const hero = await Deno.readTextFile(
     new URL("./src/project/overview-thread-hero.tsx", import.meta.url),

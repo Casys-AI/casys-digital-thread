@@ -2,6 +2,7 @@ import { assertEquals } from "@std/assert";
 import { GENERIC_THREAD_FIXTURE } from "../testing/workbench/generic-thread-workbench-fixture.ts";
 import {
   overviewDisambiguatedRecordLabel,
+  overviewDomainGroupKeyFor,
   overviewRecordProvenanceQualifier,
 } from "./src/project/overview/hulls/domain-groups.ts";
 import {
@@ -605,6 +606,97 @@ Deno.test("typed SysML, Requirements, Brief, FEA, and Simulation stay fail-close
   assertEquals(byId("fea-static").label, "Static structural proof");
   assertEquals(byId("OBS-FEA").label, "Maximum von Mises stress");
   assertEquals(byId("arbitrary-solver").label, "Legacy CalculiX bundle");
+});
+
+Deno.test("sealed, measured, and evaluated sensitivity records stay in FEA hulls", () => {
+  const sealed = workbenchArtifact({
+    id: "sensitivity-case",
+    label: "Sensitivity case",
+    kind: "document",
+    system: "digital-thread",
+    fingerprint: `sha256:${"a".repeat(64)}`,
+    producer: {
+      serverId: "digital-thread",
+      tool: "analyze.seal-sensitivity-study@1",
+      runId: "run:sensitivity-seal",
+    },
+  });
+  const measured = workbenchArtifact({
+    id: "sensitivity-study",
+    label: "Measured sensitivity study",
+    kind: "evidence",
+    system: "digital-thread",
+    fingerprint: `sha256:${"b".repeat(64)}`,
+    producer: {
+      serverId: "digital-thread",
+      tool: "analyze.run-fea-sensitivity@1",
+      runId: "run:sensitivity-measure",
+    },
+  });
+  const evaluated = workbenchArtifact({
+    id: "sensitivity-evaluation",
+    label: "Sensitivity base evaluation",
+    kind: "evidence",
+    system: "syson",
+    fingerprint: `sha256:${"c".repeat(64)}`,
+    producer: {
+      serverId: "syson",
+      tool: "verify.evaluate-sensitivity-base@1",
+      runId: "run:sensitivity-evaluate",
+    },
+  });
+  const observation: ThreadObservation = {
+    id: "OBS-SENSITIVITY",
+    label: "Stress at base",
+    value: 100,
+    unit: "MPa",
+    display: "100 MPa",
+    sourceArtifactId: measured.id,
+    requirementIds: ["REQ-MECH-014"],
+    freshness: "fresh",
+  };
+  const observationNode: ThreadGraphNode = {
+    id: "graph:observation:OBS-SENSITIVITY",
+    ref: { kind: "observation", id: observation.id },
+    entityKind: "observation",
+    label: observation.label,
+    system: "CalculiX",
+    freshness: "fresh",
+    summary: observation.display,
+  };
+  const evaluationNode: ThreadGraphNode = {
+    id: "graph:evaluation:EVAL-SENSITIVITY",
+    ref: { kind: "evaluation", id: "EVAL-SENSITIVITY" },
+    entityKind: "evaluation",
+    label: "Sensitivity base evaluation",
+    system: "syson",
+    freshness: "fresh",
+    summary: "pass",
+    evaluationFamily: "study-base",
+  };
+
+  assertEquals(
+    overviewDomainGroupKeyFor({
+      node: graphArtifact(sealed.id, sealed.label, sealed.system, sealed.kind),
+      artifact: sealed,
+    }),
+    OVERVIEW_DOMAIN_GROUP_KEYS.fea,
+  );
+  assertEquals(
+    overviewDomainGroupKeyFor({
+      node: observationNode,
+      observation,
+      sourceArtifact: measured,
+    }),
+    OVERVIEW_DOMAIN_GROUP_KEYS.fea,
+  );
+  assertEquals(
+    overviewDomainGroupKeyFor({
+      node: evaluationNode,
+      sourceArtifact: evaluated,
+    }),
+    OVERVIEW_DOMAIN_GROUP_KEYS.fea,
+  );
 });
 
 Deno.test("camera-bracket FEA evaluation uses the evidencing operation, not syson", () => {

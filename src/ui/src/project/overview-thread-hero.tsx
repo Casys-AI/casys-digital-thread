@@ -64,6 +64,12 @@ import { overviewThreadSelectionConnections } from "./overview-thread-selection-
 import { OverviewThreadSelectionNote } from "./overview-thread-selection-note.tsx";
 import { OverviewThreadRequirementsBriefTrace } from "./overview-thread-requirements-brief-trace.tsx";
 import { OverviewThreadBriefSourceNote } from "./overview-thread-brief-source-note.tsx";
+import { OverviewSensitivityJourneyDisclosure } from "./overview-sensitivity-journey-note.tsx";
+import {
+  buildOverviewSensitivityJourneys,
+  buildOverviewSensitivityVerdictBindings,
+  type OverviewSensitivityJourney,
+} from "./overview-sensitivity-journey.ts";
 import type { ProjectBriefRevision } from "../../../domain/project/project-brief.ts";
 import { overviewHullRowAnchors } from "./overview/hulls/row-anchors.ts";
 import { withOverviewCurrentBrief } from "./overview/hulls/current-brief.ts";
@@ -283,6 +289,47 @@ export function OverviewThreadHero({
       ),
     [thread, activities, requirementsBriefTraces, currentBrief],
   );
+  const sensitivityJourneys = useMemo(
+    () => buildOverviewSensitivityJourneys(thread),
+    [thread],
+  );
+  const sensitivityVerdictBindings = useMemo(
+    () => buildOverviewSensitivityVerdictBindings(thread, sensitivityJourneys),
+    [sensitivityJourneys, thread],
+  );
+  const sensitivityJourneysByVerdictNodeKey = useMemo(() => {
+    const journeysById = new Map(
+      sensitivityJourneys.map((journey) => [journey.id, journey]),
+    );
+    const grouped = new Map<string, OverviewSensitivityJourney[]>();
+    for (const binding of sensitivityVerdictBindings) {
+      const journey = journeysById.get(binding.journeyId);
+      if (!journey) continue;
+      grouped.set(binding.verdictNodeKey, [
+        ...grouped.get(binding.verdictNodeKey) ?? [],
+        journey,
+      ]);
+    }
+    return grouped;
+  }, [sensitivityJourneys, sensitivityVerdictBindings]);
+  const sensitivityVerdictNativeDetails = useMemo(() =>
+    new Map(
+      [...sensitivityJourneysByVerdictNodeKey].map(([nodeKey, journeys]) => [
+        nodeKey,
+        {
+          kind: "sensitivity",
+          label: journeys.length === 1
+            ? "Sensitivity"
+            : `Sensitivity ${journeys.length}`,
+          title: journeys.length === 1
+            ? "Open the related measured sensitivity FEA"
+            : `Open ${journeys.length} related measured sensitivity FEA studies`,
+          ariaLabel: journeys.length === 1
+            ? "Open related sensitivity FEA"
+            : `Open ${journeys.length} related sensitivity FEA studies`,
+        },
+      ]),
+    ), [sensitivityJourneysByVerdictNodeKey]);
   const classifiedRecords = useMemo(
     () =>
       recordView.nodes.flatMap((item) =>
@@ -726,7 +773,9 @@ export function OverviewThreadHero({
       const anchor =
         (selectedRowKey ? nodeRefs.current.get(selectedRowKey) : undefined) ??
           (selectedKey ? nodeRefs.current.get(selectedKey) : undefined);
-      if (!anchor) return;
+      if (!anchor) {
+        return;
+      }
       const note = host.querySelector(".overview-thread-selection-note");
       setSelectionNotePlacement(
         readOverviewSelectionNotePlacement(host, anchor, note),
@@ -736,7 +785,9 @@ export function OverviewThreadHero({
     const observer = new ResizeObserver(update);
     observer.observe(host);
     const note = host.querySelector(".overview-thread-selection-note");
-    if (note) observer.observe(note);
+    if (note) {
+      observer.observe(note);
+    }
     return () => observer.disconnect();
   }, [
     selectedKey,
@@ -894,6 +945,9 @@ export function OverviewThreadHero({
   }, [immersive, layoutMode]);
   const activeKey = hoveredKey ?? selectedKey;
   const selectedItem = selectedKey ? nodesByKey.get(selectedKey) : undefined;
+  const selectedSensitivityJourneys = selectedItem?.kind === "recorded"
+    ? sensitivityJourneysByVerdictNodeKey.get(selectedItem.key) ?? []
+    : [];
   const selectedPresentation = selectedRowKey
     ? parseOverviewHullPresentationRowKey(selectedRowKey)
     : undefined;
@@ -1872,11 +1926,19 @@ export function OverviewThreadHero({
               else onOpenEvidence(reference);
             }}
             supplement={
-              <OverviewThreadRequirementsBriefTrace
-                reference={selectedItem.node.ref}
-                traces={requirementsBriefTraces}
-                onFollowBriefSource={(key) => selectNode(key)}
-              />
+              <>
+                <OverviewThreadRequirementsBriefTrace
+                  reference={selectedItem.node.ref}
+                  traces={requirementsBriefTraces}
+                  onFollowBriefSource={(key) => selectNode(key)}
+                />
+                {selectedSensitivityJourneys.map((journey) => (
+                  <OverviewSensitivityJourneyDisclosure
+                    key={journey.id}
+                    journey={journey}
+                  />
+                ))}
+              </>
             }
           >
             {overviewNodeContextActions(
@@ -2018,6 +2080,7 @@ export function OverviewThreadHero({
                   pendingHierarchyGroupKeys={pendingHierarchyGroupKeys}
                   rowAnchors={groupRowAnchors}
                   selectedRowKey={selectedRowKey}
+                  nativeDetailsByNodeKey={sensitivityVerdictNativeDetails}
                   onActivateHullRow={(row, groupKey) => {
                     const rowKey = overviewHullPresentationRowKey(
                       groupKey,

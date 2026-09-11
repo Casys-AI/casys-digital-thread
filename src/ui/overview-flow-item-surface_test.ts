@@ -168,7 +168,7 @@ Deno.test("structured rows expose the same data-lane as FlowNode", async () => {
   assertStringIncludes(recipes, "group-data-[lane=verdicts]:right-0");
 });
 
-Deno.test("listed viewer affordance stays right-aligned without a detail", async () => {
+Deno.test("listed viewer and native-detail affordances stay distinct", async () => {
   const recipes = await Deno.readTextFile(
     new URL("./src/ui/whiteboard.ts", import.meta.url),
   );
@@ -177,6 +177,9 @@ Deno.test("listed viewer affordance stays right-aligned without a detail", async
       "./src/project/overview/components/flow-item-surface.tsx",
       import.meta.url,
     ),
+  );
+  const flow = await Deno.readTextFile(
+    new URL("./src/project/overview-thread-d3-flow.tsx", import.meta.url),
   );
   const rowBody = await Deno.readTextFile(
     new URL(
@@ -194,9 +197,21 @@ Deno.test("listed viewer affordance stays right-aligned without a detail", async
   );
   assertStringIncludes(
     surface,
-    '{density === "listed" && hasViewer && !pending && (',
+    '{density === "listed" && (nativeDetailLabel || hasViewer) && !pending && (',
   );
-  assertEquals(surface.includes("detail && hasViewer"), false);
+  assertStringIncludes(surface, 'nativeDetailLabel ?? "Viewer"');
+  assertStringIncludes(flow, "data-has-viewer={presentation.hasViewer");
+  assertStringIncludes(
+    flow,
+    'data-has-native-detail={nativeDetail ? "true" : "false"}',
+  );
+  assertStringIncludes(flow, "nativeDetailLabel={nativeDetail?.label}");
+  assertStringIncludes(
+    recipes,
+    "group-data-[has-native-detail=true]:outline-[var(--flow-color)]",
+  );
+  assertEquals(flow.includes("data-edge-action-key"), false);
+  assertEquals(flow.includes("data-route-edge-key"), false);
 });
 
 function sourceSection(

@@ -84,6 +84,18 @@ const DOMAIN_BY_EXACT_OPERATION = new Map<string, OverviewDomainGroupKey>([
     OVERVIEW_DOMAIN_GROUP_KEYS.fea,
   ],
   [
+    "analyze.seal-sensitivity-study@1",
+    OVERVIEW_DOMAIN_GROUP_KEYS.fea,
+  ],
+  [
+    "analyze.run-fea-sensitivity@1",
+    OVERVIEW_DOMAIN_GROUP_KEYS.fea,
+  ],
+  [
+    "verify.evaluate-sensitivity-base@1",
+    OVERVIEW_DOMAIN_GROUP_KEYS.fea,
+  ],
+  [
     "decide.accept-evaluation-closeout@1",
     OVERVIEW_DOMAIN_GROUP_KEYS.fea,
   ],

@@ -466,6 +466,11 @@ export const whiteboardFlowItemPart = cva("", {
         "group-data-[has-viewer=true]:outline-[1.5px]",
         "group-data-[has-viewer=true]:outline-[var(--flow-color)]",
         "group-data-[has-viewer=true]:outline-offset-2",
+        "group-data-[has-native-detail=true]:rounded-[0.125rem]",
+        "group-data-[has-native-detail=true]:outline",
+        "group-data-[has-native-detail=true]:outline-[1.5px]",
+        "group-data-[has-native-detail=true]:outline-[var(--flow-color)]",
+        "group-data-[has-native-detail=true]:outline-offset-2",
         "group-data-[kind=activity]:rounded-[0.125rem]",
       ),
       pendingMarker: cn(

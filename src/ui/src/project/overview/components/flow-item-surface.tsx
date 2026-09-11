@@ -11,6 +11,7 @@ export function FlowItemSurface(
   {
     density,
     hasViewer,
+    nativeDetailLabel,
     label,
     detail,
     children,
@@ -20,6 +21,8 @@ export function FlowItemSurface(
   }: {
     readonly density: "point" | "listed";
     readonly hasViewer: boolean;
+    /** Read-only inline detail; deliberately not a registered App viewer. */
+    readonly nativeDetailLabel?: string;
     readonly label?: string;
     readonly detail?: string;
     readonly children?: ReactNode;
@@ -64,12 +67,12 @@ export function FlowItemSurface(
           )}
         </>
       ))}
-      {density === "listed" && hasViewer && !pending && (
+      {density === "listed" && (nativeDetailLabel || hasViewer) && !pending && (
         <span
           className={whiteboardFlowItemPart({ part: "viewer" })}
           aria-hidden="true"
         >
-          Viewer
+          {nativeDetailLabel ?? "Viewer"}
         </span>
       )}
     </>
