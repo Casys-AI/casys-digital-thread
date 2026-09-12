@@ -24,7 +24,7 @@ import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot
 import type { EngineeringProjectRevisionStore } from "../../ports/out/engineering-project-revision-store.ts";
 import {
   canonicalBuyCandidateCaptureText,
-  isExactBuyCandidateArtifact,
+  resolveExactBuyCandidateArtifact,
   validateBuyCandidateCapture,
 } from "../../../domain/buy/buy-candidate-capture.ts";
 
@@ -58,13 +58,11 @@ export class PrepareProjectBuyConfigurationCostSealReview
         reason: "The exact Thread basis snapshot could not be reopened.",
       };
     }
-    const artifact = snapshot.artifacts.find((item) =>
-      item.id === command.candidateArtifactId
+    const artifact = resolveExactBuyCandidateArtifact(
+      snapshot,
+      command.candidateFingerprint.digest,
     );
-    if (
-      !artifact || !isExactBuyCandidateArtifact(artifact) ||
-      artifact.fingerprint.digest !== command.candidateFingerprint.digest
-    ) {
+    if (!artifact || artifact.id !== command.candidateArtifactId) {
       return {
         status: "unresolved",
         reason: "The signed Buy candidate artefact is not on this basis.",

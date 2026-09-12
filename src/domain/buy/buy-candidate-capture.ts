@@ -6,7 +6,11 @@
  */
 
 import { assertBuySourceLineage } from "./buy-source-lineage.ts";
-import type { ThreadArtifact } from "../thread/thread-snapshot.ts";
+import {
+  archivedRefKeys,
+  type ThreadArtifact,
+  type ThreadSnapshot,
+} from "../thread/thread-snapshot.ts";
 import { BUY_CAPTURE_CONFIGURATION_COST_TOOL } from "./buy-operations.ts";
 import { BUY_CAPTURE_CONFIGURATION_COST_OPERATION } from "./buy-operations.ts";
 import {
@@ -163,8 +167,22 @@ export function canonicalBuyCandidateCaptureText(
   return deterministicJson(capture);
 }
 
-/** The persisted candidate artifact contract, shared by review and dispatch. */
-export function isExactBuyCandidateArtifact(artifact: ThreadArtifact): boolean {
+/** One active candidate on the exact basis, shared by review and dispatch. */
+export function resolveExactBuyCandidateArtifact(
+  snapshot: ThreadSnapshot,
+  digest: string,
+): ThreadArtifact | undefined {
+  const candidates = snapshot.artifacts.filter((artifact) =>
+    artifact.fingerprint.digest === digest
+  );
+  const artifact = candidates[0];
+  return candidates.length === 1 && artifact && isExactBuyCandidateArtifact(artifact) &&
+      !archivedRefKeys(snapshot).has(`artifact:${artifact.id}`)
+    ? artifact
+    : undefined;
+}
+
+function isExactBuyCandidateArtifact(artifact: ThreadArtifact): boolean {
   const digest = artifact.fingerprint.digest;
   return artifact.id === `buy-cost-candidate-${digest}` &&
     artifact.kind === "document" &&

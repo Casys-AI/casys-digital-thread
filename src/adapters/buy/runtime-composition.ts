@@ -1,4 +1,3 @@
-import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 /**
  * Production Buy ERP runtime composition.
  *
@@ -7,6 +6,11 @@ import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
  * editing this factory.
  */
 
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import {
+  sameAuthorizedBindingIdentity,
+  sameMaterialSet,
+} from "../../application/control-plane/capability-runtime-binding-identity.ts";
 import type { BuyQualifiedErpBindingResolver } from "../../application/ports/out/buy/buy-qualified-erp-binding.ts";
 import type {
   BuyQualifiedErpBindingResolution,
@@ -146,7 +150,10 @@ export class CapabilityRuntimeBuyQualifiedErpBindingResolver
           "A legacy fleet image tag or source version is not qualification. Capture remains unresolved and will not dispatch.",
       };
     }
-    if (context.authorization?.status !== "authorized") {
+    if (
+      context.authorization?.status !== "authorized" ||
+      context.authorization.projectId !== input.project.project.id
+    ) {
       return {
         status: "unresolved",
         reason:
@@ -154,18 +161,42 @@ export class CapabilityRuntimeBuyQualifiedErpBindingResolver
       };
     }
     const allowed = context.authorization.allowedBindings.filter((binding) =>
-      binding.binding.id === catalogBinding.id &&
-      binding.binding.version === catalogBinding.version &&
-      binding.capability.id === COMMERCE_READ_ERPNEXT_BUY_SOURCE_CAPABILITY.id &&
-      binding.capability.version ===
-        COMMERCE_READ_ERPNEXT_BUY_SOURCE_CAPABILITY.version &&
-      binding.capability.use === "execution"
+      binding.capability.id === catalogBinding.capability.id &&
+      binding.capability.version === catalogBinding.capability.version &&
+      binding.capability.use === catalogBinding.use
     );
-    if (allowed.length !== 1) {
+    const authorizedUnits = context.authorization.allowedUnits.filter((unit) =>
+      unit.id === expectedUnit.id
+    );
+    if (
+      allowed.length !== 1 ||
+      !sameAuthorizedBindingIdentity(allowed[0]!, {
+        capability: {
+          ...catalogBinding.capability,
+          use: catalogBinding.use,
+          minimumQualification: "qualified",
+        },
+        binding: { id: catalogBinding.id, version: catalogBinding.version },
+        adapter: catalogBinding.adapter,
+        profile: catalogBinding.profile,
+      }) ||
+      deterministicJson([...allowed[0]!.unitIds].sort()) !==
+        deterministicJson([...expected.unitIds].sort()) ||
+      !sameMaterialSet(
+        allowed[0]!.materials,
+        this.options.contribution.launchGroup.materials.map((member) =>
+          member.material
+        ),
+      ) ||
+      authorizedUnits.length !== 1 ||
+      authorizedUnits[0]!.version !== expectedUnit.version ||
+      deterministicJson(authorizedUnits[0]!.manifestFingerprint) !==
+        deterministicJson(expectedUnit.manifestFingerprint)
+    ) {
       return {
         status: "unresolved",
         reason:
-          "The current project authorization does not include the exact qualified ERP Buy binding.",
+          "The current project authorization does not include the exact qualified ERP Buy binding, units and material digests.",
       };
     }
     return {

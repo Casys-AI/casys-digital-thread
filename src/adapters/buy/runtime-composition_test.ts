@@ -351,7 +351,7 @@ function fakeContexts(
     qualification: flags.qualified ? "qualified" as const : "unqualified" as const,
   };
   return {
-    read: () =>
+    read: (project) =>
       Promise.resolve({
         catalog: {
           schemaVersion: "capability-runtime-catalog/1.0",
@@ -361,7 +361,7 @@ function fakeContexts(
         },
         authorization: flags.authorized
           ? {
-            projectId: "project-synthetic-erp",
+            projectId: project.project.id,
             status: "authorized" as const,
             fingerprint: {
               algorithm: "sha256" as const,
@@ -1070,6 +1070,7 @@ Deno.test("qualified ERP catalog cannot substitute the installed binding, adapte
     { ...binding, adapter: { ...binding.adapter, version: "foreign-version" } },
     { ...binding, adapter: { ...binding.adapter, source: "foreign-source" } },
     { ...binding, unitIds: [...binding.unitIds, "foreign-unit"] },
+    { ...binding, profile: { id: "foreign-profile", version: "1", fingerprint: null } },
   ];
   for (const changed of mutations) {
     const composition = await createBuyErpRuntimeComposition({
@@ -1081,6 +1082,81 @@ Deno.test("qualified ERP catalog cannot substitute the installed binding, adapte
             catalog: { ...context.catalog, bindings: [changed] },
           }),
       },
+    });
+    assertEquals(
+      (await composition.bindings.resolve({ project: fixture.project })).status,
+      "unresolved",
+    );
+  }
+  assertEquals(fixture.calls, []);
+});
+
+Deno.test("qualified ERP rejects installed unit and full authorization substitutions without calls", async () => {
+  const fixture = await compositionFixture();
+  const context = await fakeContexts(fixture, { authorized: true, qualified: true })
+    .read(fixture.project);
+  const unit = context.catalog.units[0]!;
+  const authorization = context.authorization!;
+  const allowed = authorization.allowedBindings[0]!;
+  const approvedUnit = authorization.allowedUnits[0]!;
+  const foreignFingerprint = { algorithm: "sha256" as const, digest: "f".repeat(64) };
+  const changedBindings = [
+    { ...allowed, adapter: { ...allowed.adapter, id: "foreign-adapter" } },
+    { ...allowed, adapter: { ...allowed.adapter, version: "foreign-version" } },
+    { ...allowed, adapter: { ...allowed.adapter, source: "foreign-source" } },
+    { ...allowed, profile: { id: "foreign-profile", version: "1", fingerprint: null } },
+    { ...allowed, unitIds: [...allowed.unitIds, "foreign-unit"] },
+    { ...allowed, materials: [] },
+    {
+      ...allowed,
+      materials: [{
+        ...allowed.materials[0]!,
+        imageDigest: "sha256:" + "f".repeat(64),
+      }],
+    },
+    {
+      ...allowed,
+      materials: [{ ...allowed.materials[0]!, materialId: "foreign-material" }],
+    },
+    { ...allowed, materials: [{ ...allowed.materials[0]!, unitId: "foreign-unit" }] },
+  ];
+  const changedContexts: ProjectCapabilityRuntimeContext[] = [
+    ...[
+      { ...unit, version: "foreign-version" },
+      { ...unit, manifestFingerprint: foreignFingerprint },
+    ].map((changed) => ({
+      ...context,
+      catalog: { ...context.catalog, units: [changed] },
+    })),
+    ...changedBindings.map((changed) => ({
+      ...context,
+      authorization: { ...authorization, allowedBindings: [changed] },
+    })),
+    ...[
+      { ...approvedUnit, version: "foreign-version" },
+      { ...approvedUnit, manifestFingerprint: foreignFingerprint },
+    ].map((changed) => ({
+      ...context,
+      authorization: { ...authorization, allowedUnits: [changed] },
+    })),
+    { ...context, authorization: { ...authorization, projectId: "foreign-project" } },
+    {
+      ...context,
+      authorization: {
+        ...authorization,
+        allowedBindings: [allowed, changedBindings[0]!],
+      },
+    },
+    { ...context, authorization: { ...authorization, allowedUnits: [] } },
+    {
+      ...context,
+      authorization: { ...authorization, allowedUnits: [approvedUnit, approvedUnit] },
+    },
+  ];
+  for (const changed of changedContexts) {
+    const composition = await createBuyErpRuntimeComposition({
+      ...fixture.options,
+      contexts: { read: () => Promise.resolve(changed) },
     });
     assertEquals(
       (await composition.bindings.resolve({ project: fixture.project })).status,

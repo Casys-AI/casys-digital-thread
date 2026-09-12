@@ -57,6 +57,10 @@ import type {
   ProjectCapabilityRuntimeContextReader,
 } from "../ports/out/capability/capability-runtime-supervisor.ts";
 import {
+  sameAuthorizedBindingIdentity,
+  sameMaterialSet,
+} from "./capability-runtime-binding-identity.ts";
+import {
   authorizeDurableAdministrativeMaterialRemoval,
   authorizeDurableMaterialAcquire,
   authorizeDurableNormalRuntimeStart,
@@ -626,44 +630,6 @@ function assertUnambiguousAuthorizedBindings(
     }
     identities.add(key);
   }
-}
-
-function sameAuthorizedBindingIdentity(
-  left: ProjectCapabilityRuntimeAuthorizedBinding,
-  right: ResolvedCapabilityRuntimeBinding,
-): boolean {
-  return left.capability.id === right.capability.id &&
-    left.capability.version === right.capability.version &&
-    left.capability.use === right.capability.use &&
-    left.binding.id === right.binding.id &&
-    left.binding.version === right.binding.version &&
-    left.adapter.id === right.adapter.id &&
-    left.adapter.version === right.adapter.version &&
-    left.adapter.source === right.adapter.source &&
-    sameProfile(left.profile, right.profile);
-}
-
-function sameProfile(
-  left: ProjectCapabilityRuntimeAuthorizedBinding["profile"],
-  right: ResolvedCapabilityRuntimeBinding["profile"],
-): boolean {
-  if (left === null || right === null) return left === right;
-  return left.id === right.id && left.version === right.version &&
-    ((left.fingerprint === null && right.fingerprint === null) ||
-      (left.fingerprint !== null && right.fingerprint !== null &&
-        sameFingerprint(left.fingerprint, right.fingerprint)));
-}
-
-function sameMaterialSet(
-  left: readonly CapabilityRuntimeMaterialIdentity[],
-  right: readonly CapabilityRuntimeMaterialIdentity[],
-): boolean {
-  const materialToken = (material: CapabilityRuntimeMaterialIdentity) =>
-    `${capabilityRuntimeMaterialKey(material)}\u0000${material.imageDigest}`;
-  const leftTokens = left.map(materialToken).toSorted();
-  const rightTokens = right.map(materialToken).toSorted();
-  return leftTokens.length === rightTokens.length &&
-    leftTokens.every((token, index) => token === rightTokens[index]);
 }
 
 function bindingMatchesRequirement(

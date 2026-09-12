@@ -61,7 +61,7 @@ import {
 import {
   type BuyCandidateCapture,
   canonicalBuyCandidateCaptureText,
-  isExactBuyCandidateArtifact,
+  resolveExactBuyCandidateArtifact,
   validateBuyCandidateCapture,
 } from "../../domain/buy/buy-candidate-capture.ts";
 import {
@@ -369,13 +369,11 @@ export class BuySealConfigurationCostRunExecutor {
     projectId: string,
     basis: EngineeringThreadSnapshotBasis,
   ): Promise<BuyCandidateCapture> {
-    const candidates = snapshot.artifacts.filter((item) =>
-      item.fingerprint.digest === decisionParams.candidateDigest
+    const artifact = resolveExactBuyCandidateArtifact(
+      snapshot,
+      decisionParams.candidateDigest,
     );
-    const artifact = candidates[0];
-    if (
-      candidates.length !== 1 || !artifact || !isExactBuyCandidateArtifact(artifact)
-    ) {
+    if (!artifact) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
         "The exact fresh signed Buy candidate artifact is absent from the basis snapshot.",
