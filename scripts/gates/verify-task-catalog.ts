@@ -1,8 +1,11 @@
 /**
- * Verify that every task registered in deno.json is cited in the task catalog.
+ * Verify that every task registered in deno.json is cited in the task catalog,
+ * and that every catalog bullet claims a task that still exists.
  *
  * The gate deliberately uses only built-in APIs. A task is cited when its exact
  * name appears as a Markdown code span in docs/reference/runtime/task-catalog.md.
+ * The reverse direction only trusts top-level catalog bullets (`- `name``), so
+ * prose code spans never fail the gate when a task is renamed or removed.
  */
 
 interface CitationFailure {
@@ -15,7 +18,9 @@ const DENO_JSON_PATH = "deno.json";
 const CATALOG_PATH = "docs/reference/runtime/task-catalog.md";
 
 const tasks = await readDenoTasks();
-const cited = await readCatalogCitations();
+const taskSet = new Set(tasks);
+const body = await readCatalogBody();
+const cited = collectCodeSpans(body);
 const failures: CitationFailure[] = [];
 
 for (const task of tasks) {
@@ -23,6 +28,15 @@ for (const task of tasks) {
     failures.push({
       task,
       reason: `not cited as a Markdown code span in ${CATALOG_PATH}`,
+    });
+  }
+}
+
+for (const claimed of collectBulletClaims(body)) {
+  if (!taskSet.has(claimed)) {
+    failures.push({
+      task: claimed,
+      reason: `claimed by a ${CATALOG_PATH} bullet but missing from ${DENO_JSON_PATH}`,
     });
   }
 }
@@ -62,12 +76,24 @@ async function readDenoTasks(): Promise<readonly string[]> {
   return Object.keys(parsed.tasks as Record<string, unknown>);
 }
 
-async function readCatalogCitations(): Promise<ReadonlySet<string>> {
-  const body = await Deno.readTextFile(new URL(CATALOG_PATH, REPOSITORY_URL));
+async function readCatalogBody(): Promise<string> {
+  return await Deno.readTextFile(new URL(CATALOG_PATH, REPOSITORY_URL));
+}
+
+function collectCodeSpans(body: string): ReadonlySet<string> {
   const cited = new Set<string>();
   const codeSpan = /`([^`\n]+)`/gu;
   for (const match of body.matchAll(codeSpan)) {
     cited.add(match[1]!.trim());
   }
   return cited;
+}
+
+function collectBulletClaims(body: string): readonly string[] {
+  const claimed: string[] = [];
+  const bullet = /^- `([^`\n]+)`/gmu;
+  for (const match of body.matchAll(bullet)) {
+    claimed.push(match[1]!.trim());
+  }
+  return claimed;
 }
