@@ -77,9 +77,7 @@ function hierarchy(
     schemaVersion: "thread-viewer-hierarchy/1.0",
     status: "available",
     nodes,
-    rootIds: nodes.filter((node) => node.parentId === undefined).map((node) =>
-      node.id
-    ),
+    rootIds: nodes.filter((node) => node.parentId === undefined).map((node) => node.id),
   };
 }
 
@@ -321,9 +319,7 @@ function samePoint(
 function routeSegment(
   layout: ReturnType<typeof localLayout>,
 ) {
-  const route = layout.routes.find((candidate) =>
-    candidate.edgeKey === "edge:a-b"
-  );
+  const route = layout.routes.find((candidate) => candidate.edgeKey === "edge:a-b");
   assert(route);
   assertEquals(route.segmentKeys.length, 1);
   const segment = layout.segments.find((candidate) =>
@@ -392,9 +388,7 @@ Deno.test("expanded folded stubs dock on the hull body rail outside the header b
   assertEquals(layout.unroutedEdgeKeys, []);
   const headerBottom = group.y + group.headerHeight;
   const edgeX = group.x + group.width;
-  const hullEdge = segment.points.filter((point) =>
-    Math.abs(point.x - edgeX) <= 1e-6
-  );
+  const hullEdge = segment.points.filter((point) => Math.abs(point.x - edgeX) <= 1e-6);
   assert(hullEdge.length > 0);
   for (const point of hullEdge) {
     assert(
@@ -492,9 +486,7 @@ function segmentFor(
   layout: ReturnType<typeof liveShapedLayout>["layout"],
   edgeKey: string,
 ) {
-  const route = layout.routes.find((candidate) =>
-    candidate.edgeKey === edgeKey
-  );
+  const route = layout.routes.find((candidate) => candidate.edgeKey === edgeKey);
   assert(route, `Missing exact route ${edgeKey}`);
   assertEquals(route.segmentKeys.length, 1);
   const segment = layout.segments.find((candidate) =>

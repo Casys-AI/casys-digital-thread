@@ -1,4 +1,5 @@
 import { deepFreeze } from "../../domain/kernel/case-validation.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type {
   CapabilityQualification,
   RequiredEngineeringCapability,
@@ -572,26 +573,16 @@ function aggregateEffects(
     storageBytes: sumNullable(
       imageMaterials.map((material) => material.effects.storageBytes),
     ),
-    services: services.toSorted((left, right) => compareText(left.id, right.id)),
-    volumes: volumes.toSorted((left, right) => compareText(left.id, right.id)),
+    services: services.toSorted(compareByDeterministicJson),
+    volumes: volumes.toSorted(compareByDeterministicJson),
     networks,
     loopbackPorts,
-    bindMounts: bindMounts.toSorted((left, right) =>
-      compareText(
-        `${left.target}\u0000${left.access}`,
-        `${right.target}\u0000${right.access}`,
-      )
-    ),
+    bindMounts: bindMounts.toSorted(compareByDeterministicJson),
     privileged: false,
     dockerSocket: false,
     devices,
     secretSlots,
-    licences: licences.toSorted((left, right) =>
-      compareText(
-        `${left.status}\u0000${left.reference ?? ""}`,
-        `${right.status}\u0000${right.reference ?? ""}`,
-      )
-    ),
+    licences: licences.toSorted(compareByDeterministicJson),
     security: materials.some((material) => material.effects.security === "unknown")
       ? "unknown" as const
       : "reviewed" as const,
@@ -688,6 +679,10 @@ function compareMaterial(
     `${left.unitId}\u0000${left.materialId}`,
     `${right.unitId}\u0000${right.materialId}`,
   );
+}
+
+function compareByDeterministicJson(left: unknown, right: unknown): number {
+  return compareText(deterministicJson(left), deterministicJson(right));
 }
 
 function compareText(left: string, right: string): number {

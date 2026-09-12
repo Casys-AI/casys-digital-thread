@@ -192,9 +192,7 @@ Deno.test("hull tree retains parent-first levels and widens a single readable co
   assertEquals(group.promotedKey, "root");
   assertEquals(group.columns, 1);
   assertEquals(group.width, 620);
-  const rows = layout.nodes.filter((n) =>
-    n.groupKey === "assembly" && !n.folded
-  )
+  const rows = layout.nodes.filter((n) => n.groupKey === "assembly" && !n.folded)
     .toSorted((a, b) => a.y - b.y);
   assertEquals(rows.map((n) => [n.key, n.depth]), [["module", 0], ["part", 1], [
     "other",
@@ -455,9 +453,7 @@ Deno.test("switching hull views content-fits while a same-mode resize keeps its 
     },
   });
   const treeHull = largeTree.groups.find((group) => group.key === identity)!;
-  const matrixHull = matrixAfterTree.groups.find((group) =>
-    group.key === identity
-  )!;
+  const matrixHull = matrixAfterTree.groups.find((group) => group.key === identity)!;
   assertEquals(treeHull.x, 120);
   assertEquals(matrixHull.x, 120);
   assertEquals(matrixHull.y, 90);
@@ -485,12 +481,8 @@ Deno.test("switching hull views content-fits while a same-mode resize keeps its 
       [identity]: nextHullViewPlacement(compactMatrixPlacement, "tree"),
     },
   });
-  const compactHull = compactMatrix.groups.find((group) =>
-    group.key === identity
-  )!;
-  const recoveredTree = treeAfterMatrix.groups.find((group) =>
-    group.key === identity
-  )!;
+  const compactHull = compactMatrix.groups.find((group) => group.key === identity)!;
+  const recoveredTree = treeAfterMatrix.groups.find((group) => group.key === identity)!;
   assertEquals(recoveredTree.x, 40);
   assertEquals(recoveredTree.y, 60);
   assertEquals(recoveredTree.view, "tree");
@@ -504,9 +496,7 @@ Deno.test("switching hull views content-fits while a same-mode resize keeps its 
       [identity]: { view: "tree", width: 300, height: 88, x: 15, y: 25 },
     },
   });
-  const resizedHull = resizedTree.groups.find((group) =>
-    group.key === identity
-  )!;
+  const resizedHull = resizedTree.groups.find((group) => group.key === identity)!;
   assertEquals(resizedHull.x, 15);
   assertEquals(resizedHull.y, 25);
   assertEquals(resizedHull.width, 300);

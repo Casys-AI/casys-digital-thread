@@ -9,9 +9,17 @@ import { computeSensitivities } from "../study/sensitivity-study.ts";
 import type { SensitivityStudyCaseV3 } from "../study/sensitivity-study-v3.ts";
 import {
   compileSensitivityExperienceTarget,
+  compileSensitivityExperienceTargetWithMethod,
   deriveSensitivityExperienceRecord,
+  SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD,
+  SENSITIVITY_EXPERIENCE_RECORDED_SOLVER_METHOD,
+  SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_LEGACY,
+  SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_RECORDED,
+  SENSITIVITY_EXPERIENCE_WORK_AVOIDED,
+  SENSITIVITY_EXPERIENCE_WORK_AVOIDED_LEGACY,
   type SensitivityExperienceBuild123dProfileInput,
   validateSensitivityExperienceRecord,
+  validateSensitivityExperienceReuseReceipt,
 } from "./sensitivity-experience.ts";
 
 const AT = "2026-08-23T00:00:00.000Z";
@@ -124,6 +132,141 @@ Deno.test("experience key includes frozen CAD and solver method identities", asy
   );
   assertEquals(
     baseline.scientificKey.digest === changedSolver.scientificKey.digest,
+    false,
+  );
+});
+
+Deno.test("current experience targets the recorded CalculiX protocol, not the legacy live call", async () => {
+  const sealedCase = await studyCase("project-a", "subject-a", "case-a", 1);
+  const admission = await admittedSource();
+  const current = await compileSensitivityExperienceTarget({
+    studyCase: sealedCase,
+    admission,
+    build123dProfile: profile(),
+    solverRuntime: solverRuntime(DIGEST_B),
+  });
+  assertEquals(
+    current.identity.method.solver.operationId,
+    SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_RECORDED,
+  );
+  assertEquals(
+    current.identity.method.solver.requestLowerer,
+    SENSITIVITY_EXPERIENCE_RECORDED_SOLVER_METHOD.requestLowerer,
+  );
+  assertEquals(
+    current.identity.method.solver.responseParser,
+    SENSITIVITY_EXPERIENCE_RECORDED_SOLVER_METHOD.responseParser,
+  );
+  assertEquals(
+    current.identity.method.solver.outputValidator,
+    SENSITIVITY_EXPERIENCE_RECORDED_SOLVER_METHOD.outputValidator,
+  );
+  const currentMethod = current.identity.method;
+  const legacy = await compileSensitivityExperienceTargetWithMethod({
+    studyCase: sealedCase,
+    admission,
+    method: {
+      ...currentMethod,
+      solver: {
+        ...currentMethod.solver,
+        operationId: SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD.operationId,
+        requestLowerer: SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD.requestLowerer,
+        responseParser: SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD.responseParser,
+        outputValidator: SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD.outputValidator,
+      },
+    },
+  });
+  assertEquals(
+    legacy.identity.method.solver.operationId,
+    SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_LEGACY,
+  );
+  assertEquals(
+    current.scientificKey.digest === legacy.scientificKey.digest,
+    false,
+  );
+  const mixed = {
+    ...currentMethod,
+    solver: {
+      ...currentMethod.solver,
+      operationId: SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_LEGACY,
+    },
+  };
+  await assertRejects(
+    () =>
+      compileSensitivityExperienceTargetWithMethod({
+        studyCase: sealedCase,
+        admission,
+        method: mixed,
+      }),
+    TypeError,
+  );
+});
+
+Deno.test("legacy experience records and receipts stay readable under their original identity", async () => {
+  const sealedCase = await studyCase("project-a", "subject-a", "case-a", 1);
+  const admission = await admittedSource();
+  const current = await compileSensitivityExperienceTarget({
+    studyCase: sealedCase,
+    admission,
+    build123dProfile: profile(),
+    solverRuntime: solverRuntime(DIGEST_B),
+  });
+  const legacyTarget = await compileSensitivityExperienceTargetWithMethod({
+    studyCase: sealedCase,
+    admission,
+    method: {
+      ...current.identity.method,
+      solver: {
+        ...current.identity.method.solver,
+        operationId: SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD.operationId,
+        requestLowerer: SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD.requestLowerer,
+        responseParser: SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD.responseParser,
+        outputValidator: SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD.outputValidator,
+      },
+    },
+  });
+  const capture = await studyCapture(sealedCase);
+  const legacyRecord = await deriveSensitivityExperienceRecord(legacyTarget, capture);
+  const reread = await validateSensitivityExperienceRecord(
+    JSON.parse(JSON.stringify(legacyRecord)),
+  );
+  assertEquals(reread.identity.method.solver.operationId, "calculix_solve_static");
+  assertEquals(reread.scientificKey, legacyRecord.scientificKey);
+
+  const currentReceipt = {
+    schemaVersion: "sensitivity-experience-reuse-receipt/1.0",
+    audience: "installation-private",
+    status: "reused-exact",
+    target: {
+      projectId: "target-project",
+      basis: {
+        kind: "thread-snapshot",
+        snapshotId: "snapshot-target",
+        revision: 1,
+        subjectId: "subject-target",
+      },
+      basisFingerprint: { algorithm: "sha256", digest: DIGEST_A },
+    },
+    scientificKey: current.scientificKey,
+    reviewFingerprint: { algorithm: "sha256", digest: DIGEST_A },
+    recordFingerprint: { algorithm: "sha256", digest: DIGEST_B },
+    originBindingFingerprint: { algorithm: "sha256", digest: DIGEST_C },
+    derivationProfile: { id: "sensitivity-experience-exact-v1", version: "1.0.0" },
+    compatibilityVersion: "1.0.0",
+    sourceHealth: "valid",
+    workAvoided: SENSITIVITY_EXPERIENCE_WORK_AVOIDED,
+    freshExecutionRequired: false,
+    issuedAt: AT,
+  };
+  const currentValidated = validateSensitivityExperienceReuseReceipt(currentReceipt);
+  assertEquals(currentValidated.workAvoided, SENSITIVITY_EXPERIENCE_WORK_AVOIDED);
+  const legacyValidated = validateSensitivityExperienceReuseReceipt({
+    ...currentReceipt,
+    workAvoided: SENSITIVITY_EXPERIENCE_WORK_AVOIDED_LEGACY,
+  });
+  assertEquals(legacyValidated.workAvoided, SENSITIVITY_EXPERIENCE_WORK_AVOIDED_LEGACY);
+  assertEquals(
+    legacyValidated.workAvoided === currentValidated.workAvoided,
     false,
   );
 });

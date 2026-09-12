@@ -82,6 +82,8 @@ const PATH_LANE_BY_OPERATION: Readonly<
   "industrialize.observe-print-estimate@1": fixed("physics"),
   "industrialize.seal-dfm-case@1": fixed("physics"),
   "industrialize.run-dfm-checks@1": fixed("physics"),
+  "buy.capture-configuration-cost@1": fixed("physics"),
+  "buy.seal-configuration-cost@1": fixed("physics"),
   "record.reconcile-uncertain-writer@1": fixed("system-model"),
   "record.seal-requirements-brief-trace@1": fixed("requirements"),
   "record.archive-lineage@1": fixed("system-model"),

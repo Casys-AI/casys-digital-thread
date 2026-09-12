@@ -6,6 +6,9 @@ import type {
   ThreadGraphNode,
   ThreadGraphRef,
   ThreadRef,
+  ThreadRequirement,
+  ThreadRequirementHistoricalChain,
+  ThreadRequirementHistoricalEvaluation,
   ThreadWorkbenchSnapshot,
 } from "./types.ts";
 import {
@@ -13,6 +16,7 @@ import {
   type InspectorRelation,
   resolveRecordInspectorContext,
 } from "./tool-inspector-model.ts";
+import { RequirementHistoricalUnjoinedContext } from "./requirement-historical-unjoined.tsx";
 
 export interface RecordInspectorPanelProps {
   snapshot: ThreadWorkbenchSnapshot;
@@ -74,6 +78,7 @@ export function RecordInspectorPanel({
   });
   const title = node?.label ?? recordTitle(context.record) ??
     "Recorded selection";
+  const historical = historicalUnjoinedOf(context.record?.value);
 
   return (
     <Card>
@@ -102,7 +107,18 @@ export function RecordInspectorPanel({
 
         {context.record && (
           <InspectorSection title="Record fields">
-            <FieldTable value={context.record.value} />
+            <FieldTable
+              value={recordFieldsWithoutHistorical(context.record.value)}
+            />
+          </InspectorSection>
+        )}
+
+        {historical && (
+          <InspectorSection title="Historical unjoined evaluations">
+            <RequirementHistoricalUnjoinedContext
+              value={historical.evaluations}
+              chain={historical.chain}
+            />
           </InspectorSection>
         )}
 
@@ -145,6 +161,50 @@ function InspectorSection({ title, children }: {
       {children}
     </section>
   );
+}
+
+function historicalUnjoinedOf(
+  value: unknown,
+): {
+  readonly evaluations: readonly ThreadRequirementHistoricalEvaluation[];
+  readonly chain?: ThreadRequirementHistoricalChain;
+} | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const requirement = value as Partial<ThreadRequirement>;
+  const evaluations = requirement.historicalEvaluations;
+  const chain = requirement.historicalChain;
+  if (evaluations === undefined && chain === undefined) return undefined;
+  if (
+    (evaluations === undefined || evaluations.length === 0) &&
+    chain?.status !== "partial"
+  ) {
+    return undefined;
+  }
+  if (
+    (evaluations ?? []).some((item) => item.relation !== "historical-unjoined")
+  ) {
+    return undefined;
+  }
+  return {
+    evaluations: evaluations ?? [],
+    ...(chain ? { chain } : {}),
+  };
+}
+
+function recordFieldsWithoutHistorical(value: object): object {
+  if (
+    !("historicalEvaluations" in value) && !("historicalChain" in value)
+  ) {
+    return value;
+  }
+  const {
+    historicalEvaluations: _evaluations,
+    historicalChain: _chain,
+    ...rest
+  } = value as Record<string, unknown>;
+  return rest;
 }
 
 function FieldTable({ value }: { value: object }): JSX.Element {

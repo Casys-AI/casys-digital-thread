@@ -32,8 +32,22 @@ import { FileDfmCheckAttemptStore } from "./file-dfm-check-attempt-store.ts";
 import qualification from "./dfm-mcp-qualification.json" with {
   type: "json",
 };
+import {
+  DFM_RUN_AUTHORITY_DIVERGENT_REASON,
+  DFM_RUN_AUTHORITY_MISSING_REASON,
+} from "../../../domain/make/dfm/dfm-run-authority.ts";
 import { IndustrializeRunDfmChecksRunExecutor } from "./industrialize-run-dfm-checks-run-executor.ts";
 import { McpToolCallError } from "../../shared/mcp/http-mcp-tool-client.ts";
+import { CapabilityRuntimeConnectionError } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import type { CapabilityRuntimeExecutionSession } from "../../../application/control-plane/capability-runtime-execution-session.ts";
+import {
+  passthroughCapabilityRuntimeConnection,
+  recordingCapabilityRuntimeSession,
+  testResolvedCapabilityRuntimeOperation,
+} from "../../../testing/capability-runtime-execution-session-test-support.ts";
+import { firstPartyDfmLaunchGroupReference } from "../../control-plane/first-party-capability-runtime-launch-groups.ts";
+import { MCP_DFM_010_IMAGE_REFERENCE } from "../../control-plane/first-party-capability-runtime-identities.ts";
+import type { CapabilitySessionGeometryExportStagerFactory } from "../../../application/ports/out/make/geometry-export-stager.ts";
 
 const AT = "2026-08-15T00:00:00.000Z";
 const PROJECT_ID = "reviewed-project-v1";
@@ -43,11 +57,12 @@ const WORK_ID = "work.dfm-checks";
 const DECISION_ID = "decision.dfm-checks";
 const APPROVAL_ID = "approval.dfm-checks";
 const COMMAND_ID = "command.dfm-checks";
-const CASE_ARTIFACT_ID = "dfm-case-sealed";
 const GEOMETRY_ID = "geometry-step-support-bracket";
+const CANONICAL_CAPTURE =
+  "b59023102670e06b4e33e534d05008c0fe2440ae91dafbaa9c256c92a4ebe3e8";
 const AGENT = { kind: "agent" as const, actorId: "agent:test" };
 
-function caseJson(sha256: string) {
+function caseJson(sha256: string, artifactId = GEOMETRY_ID) {
   return {
     schemaVersion: DFM_CHECK_CASE_SCHEMA,
     id: "reviewed-dfm-v1",
@@ -57,7 +72,7 @@ function caseJson(sha256: string) {
     project: { id: PROJECT_ID, subjectId: SUBJECT_ID },
     target: {
       componentKey: "support-bracket",
-      artifactUri: `thread-artifact://${PROJECT_ID}/${GEOMETRY_ID}`,
+      artifactUri: `thread-artifact://${PROJECT_ID}/${artifactId}`,
       sha256,
       mediaType: "model/step",
     },
@@ -120,6 +135,10 @@ Deno.test(
         ),
         true,
       );
+      assertEquals(fixture.stager.calls, 1);
+      assertEquals(fixture.stager.paths[0]?.startsWith("/tmp/dfm-"), true);
+      assertEquals(fixture.session.releases, 1);
+      assertEquals(fixture.session.retains, 0);
     } finally {
       await fixture.cleanup();
     }
@@ -156,27 +175,303 @@ Deno.test("run DFM checks refuses an isolated-geometry binding", async () => {
   }
 });
 
+Deno.test(
+  "run DFM checks binds a cad-asset STEP child of design.write-geometry@1",
+  async () => {
+    const fixture = await createFixture({ canonicalChild: true });
+    try {
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      assertEquals(project.agentRuns[0]?.status, "completed");
+      assertEquals(fixture.dfm.names, [
+        "dfm_check_envelope",
+        "dfm_check_min_thickness",
+        "dfm_check_overhangs",
+      ]);
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
 Deno.test("a completed DFM check run replays without a second provider dispatch", async () => {
   const fixture = await createFixture();
   try {
     await fixture.executor.execute(AGENT, fixture.command);
     assertEquals(fixture.dfm.names.length, 3);
+    assertEquals(fixture.session.events, ["begin"]);
+    assertEquals(fixture.session.releases, 1);
     const again = await fixture.executor.execute(AGENT, fixture.command);
     assertEquals(again.agentRuns[0]?.status, "completed");
     assertEquals(fixture.dfm.names.length, 3);
+    assertEquals(fixture.session.events, ["begin"]);
+    assertEquals(fixture.stager.calls, 1);
+    assertEquals(fixture.connection.opens, 1);
   } finally {
     await fixture.cleanup();
   }
 });
 
+Deno.test(
+  "run DFM checks opens JIT, stages owned STEP, then claims before WAL or provider",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      const events: string[] = [];
+      const session = recordingCapabilityRuntimeSession(async (input) => {
+        events.push("begin");
+        await input.recheck();
+        return {
+          lease: { id: "capability-jit-dfm" } as CapabilityRuntimeExecutionSession[
+            "lease"
+          ],
+          releaseTerminal: () => Promise.resolve(),
+          retainForRecovery: () => undefined,
+        };
+      });
+      const connection = passthroughCapabilityRuntimeConnection(fixture.dfm, events);
+      const commands = Object.create(fixture.commands) as typeof fixture.commands;
+      commands.claimRun = (
+        origin: typeof AGENT,
+        command: Parameters<typeof fixture.commands.claimRun>[1],
+      ) => {
+        events.push("claim");
+        return fixture.commands.claimRun(origin, command);
+      };
+      const originalBegin = fixture.attempts.begin.bind(fixture.attempts);
+      fixture.attempts.begin = (input) => {
+        events.push("wal");
+        return originalBegin(input);
+      };
+      const stagerFactory: CapabilitySessionGeometryExportStagerFactory = {
+        forActiveCapabilitySession: () => {
+          events.push("stage");
+          return Promise.resolve(fixture.stager);
+        },
+      };
+      const originalCall = fixture.dfm.callTool.bind(fixture.dfm);
+      fixture.dfm.callTool = (call) => {
+        events.push(`provider:${call.name}`);
+        return originalCall(call);
+      };
+      const executor = new IndustrializeRunDfmChecksRunExecutor({
+        ...executorDeps(fixture),
+        commands,
+        stagerFactory,
+        capabilityRuntimeConnection: connection,
+        capabilityRuntimeSession: session,
+      });
+      await executor.execute(AGENT, fixture.command);
+      assertEquals(events[0], "begin");
+      assertEquals(events.indexOf("begin") < events.indexOf("connect"), true);
+      assertEquals(events.indexOf("connect") < events.indexOf("open"), true);
+      assertEquals(events.indexOf("open") < events.indexOf("stage"), true);
+      assertEquals(events.indexOf("stage") < events.indexOf("claim"), true);
+      assertEquals(events.indexOf("claim") < events.indexOf("wal"), true);
+      assertEquals(
+        events.indexOf("wal") < events.indexOf("provider:dfm_check_envelope"),
+        true,
+      );
+      assertEquals(fixture.dfm.names, [
+        "dfm_check_envelope",
+        "dfm_check_min_thickness",
+        "dfm_check_overhangs",
+      ]);
+      assertEquals(fixture.stager.paths[0]?.startsWith("/tmp/dfm-"), true);
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+Deno.test("JIT unavailability before claim leaves the DFM run queued with no WAL", async () => {
+  const fixture = await createFixture();
+  try {
+    const session = recordingCapabilityRuntimeSession(() =>
+      Promise.reject(new Error("exact mcp-dfm host group unavailable"))
+    );
+    const executor = new IndustrializeRunDfmChecksRunExecutor({
+      ...executorDeps(fixture),
+      capabilityRuntimeSession: session,
+    });
+    await assertRejects(
+      () => executor.execute(AGENT, fixture.command),
+      Error,
+      "host group unavailable",
+    );
+    assertEquals(fixture.dfm.names.length, 0);
+    assertEquals(fixture.stager.calls, 0);
+    assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+    assertEquals(await fixture.attempts.read(PROJECT_ID, RUN_ID), undefined);
+    assertEquals(session.releases, 0);
+    assertEquals(session.retains, 0);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+Deno.test(
+  "a failed runtime connection after JIT begin does not claim or call mcp-dfm",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      const session = recordingCapabilityRuntimeSession();
+      const connection = {
+        ...passthroughCapabilityRuntimeConnection(fixture.dfm),
+        broker: {
+          connect: () =>
+            Promise.reject(
+              new CapabilityRuntimeConnectionError(
+                "exact mcp-dfm publication is unavailable",
+              ),
+            ),
+        },
+      };
+      const executor = new IndustrializeRunDfmChecksRunExecutor({
+        ...executorDeps(fixture),
+        capabilityRuntimeConnection: connection,
+        capabilityRuntimeSession: session,
+      });
+      await assertRejects(
+        () => executor.execute(AGENT, fixture.command),
+        Error,
+        "publication is unavailable",
+      );
+      assertEquals(session.events, ["begin"]);
+      assertEquals(session.releases, 1);
+      assertEquals(session.retains, 0);
+      assertEquals(fixture.dfm.names.length, 0);
+      assertEquals(fixture.stager.calls, 0);
+      assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+      assertEquals(await fixture.attempts.read(PROJECT_ID, RUN_ID), undefined);
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+Deno.test("staging failure before claim leaves the DFM run queued with no WAL", async () => {
+  const fixture = await createFixture();
+  try {
+    const session = recordingCapabilityRuntimeSession();
+    const executor = new IndustrializeRunDfmChecksRunExecutor({
+      ...executorDeps(fixture),
+      capabilityRuntimeSession: session,
+      stagerFactory: {
+        forActiveCapabilitySession: () =>
+          Promise.reject(new Error("owned DFM container is absent")),
+      },
+    });
+    await assertRejects(
+      () => executor.execute(AGENT, fixture.command),
+      Error,
+      "owned DFM container is absent",
+    );
+    assertEquals(session.events, ["begin"]);
+    assertEquals(session.releases, 1);
+    assertEquals(session.retains, 0);
+    assertEquals(fixture.dfm.names.length, 0);
+    assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+    assertEquals(await fixture.attempts.read(PROJECT_ID, RUN_ID), undefined);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+Deno.test(
+  "run DFM checks executes only the exact human-approved Thread basis",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      assertEquals(project.agentRuns[0]?.status, "completed");
+      assertEquals(fixture.dfm.names.length, 3);
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+Deno.test(
+  "run DFM checks refuses a same-subject MRTR on a later Thread revision before claim",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      patchMrtrBaseSnapshot(fixture.project, { revision: 117 });
+      await assertRejectedBeforeDispatch(
+        fixture,
+        DFM_RUN_AUTHORITY_DIVERGENT_REASON,
+      );
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+Deno.test(
+  "run DFM checks refuses an MRTR whose snapshot id is not the run basis before claim",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      patchMrtrBaseSnapshot(fixture.project, {
+        snapshotId: "snapshot.dfm.run.r115",
+      });
+      await assertRejectedBeforeDispatch(
+        fixture,
+        DFM_RUN_AUTHORITY_DIVERGENT_REASON,
+      );
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+Deno.test(
+  "run DFM checks refuses an MRTR whose subject is not the run basis before claim",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      patchMrtrBaseSnapshot(fixture.project, {
+        subjectId: "project:other-subject",
+      });
+      await assertRejectedBeforeDispatch(
+        fixture,
+        DFM_RUN_AUTHORITY_DIVERGENT_REASON,
+      );
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+Deno.test(
+  "run DFM checks refuses a human MRTR that declares no Thread base before claim",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      delete (fixture.project.decisions[0] as { baseSnapshot?: unknown })
+        .baseSnapshot;
+      await assertRejectedBeforeDispatch(fixture);
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
 async function createFixture(options: {
   readonly geometryTool?: string;
   readonly mismatch?: boolean;
+  readonly canonicalChild?: boolean;
+  readonly caseProducerRunId?: string;
+  readonly caseProducerTool?: string;
 } = {}) {
   const geometryBytes = new TextEncoder().encode("ISO-10303-21;END-ISO-10303-21;\n");
   const geometryDigest = await fingerprintResourceBytes(geometryBytes);
-  const dfmCase = validateDfmCheckCase(caseJson(geometryDigest));
+  const stepId = options.canonicalChild
+    ? `cad-asset-${CANONICAL_CAPTURE}-target-0-${geometryDigest}`
+    : GEOMETRY_ID;
+  const dfmCase = validateDfmCheckCase(caseJson(geometryDigest, stepId));
   const caseDigest = (await sha256Fingerprint(dfmCase)).digest;
+  const caseArtifactId = `dfm-case-${caseDigest}`;
   const caseCapture = await validateDfmCaseCapture({
     schemaVersion: DFM_CASE_CAPTURE_SCHEMA,
     operation: { id: "industrialize.seal-dfm-case", version: "1" },
@@ -190,7 +485,7 @@ async function createFixture(options: {
   const assetDir = await Deno.makeTempDir({ prefix: "dfm-assets-" });
   await Deno.writeFile(`${assetDir}/${geometryDigest}.step`, geometryBytes);
   const caseArtifact = {
-    id: CASE_ARTIFACT_ID,
+    id: caseArtifactId,
     name: "DFM case",
     kind: "document" as const,
     version: caseDigest,
@@ -199,14 +494,14 @@ async function createFixture(options: {
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
-      tool: "industrialize.seal-dfm-case@1",
-      runId: "run.seal",
+      tool: options.caseProducerTool ?? "industrialize.seal-dfm-case@1",
+      runId: options.caseProducerRunId ?? "run.seal",
     },
     inputArtifactIds: [],
     freshness: fresh(AT),
   };
   const geometryArtifact = {
-    id: GEOMETRY_ID,
+    id: stepId,
     name: "Canonical STEP",
     kind: "step" as const,
     version: geometryDigest,
@@ -214,8 +509,25 @@ async function createFixture(options: {
     uri: `/api/thread/assets/${geometryDigest}.step`,
     mediaType: "model/step",
     producer: {
+      serverId: options.canonicalChild ? "build123d-sandbox" : "digital-thread",
+      tool: options.geometryTool ??
+        (options.canonicalChild ? "build123d_export" : "design.write-geometry@1"),
+      runId: "run.geometry",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(AT),
+  };
+  const geometryParent = {
+    id: `geometry-${CANONICAL_CAPTURE}`,
+    name: "CameraBoardEnvelope",
+    kind: "cad-model" as const,
+    version: CANONICAL_CAPTURE,
+    fingerprint: { algorithm: "sha256" as const, digest: CANONICAL_CAPTURE },
+    uri: `casys://geometry-capture/sha256/${CANONICAL_CAPTURE}`,
+    mediaType: "application/json",
+    producer: {
       serverId: "digital-thread",
-      tool: options.geometryTool ?? "design.write-geometry@1",
+      tool: "design.write-geometry@1",
       runId: "run.geometry",
     },
     inputArtifactIds: [],
@@ -243,7 +555,7 @@ async function createFixture(options: {
       changes: [{
         id: "change.case",
         kind: "created",
-        target: { kind: "artifact", id: CASE_ARTIFACT_ID },
+        target: { kind: "artifact", id: caseArtifactId },
         summary: "Sealed the DFM case.",
         afterFingerprint: caseFingerprint,
       }],
@@ -265,6 +577,7 @@ async function createFixture(options: {
       },
       caseArtifact,
       geometryArtifact,
+      ...(options.canonicalChild ? [geometryParent] : []),
     ],
     consumptions: [],
     observations: [],
@@ -275,7 +588,7 @@ async function createFixture(options: {
       id: "provenance.change.case",
       relation: "changes",
       from: { kind: "change", id: "change.case" },
-      to: { kind: "artifact", id: CASE_ARTIFACT_ID },
+      to: { kind: "artifact", id: caseArtifactId },
       rationale: "The applied change introduced the sealed case.",
     }],
     proposedActions: [],
@@ -298,7 +611,7 @@ async function createFixture(options: {
             snapshotId: basisSnapshot.id,
             snapshotRevision: 1,
             kind: "artifact" as const,
-            id: CASE_ARTIFACT_ID,
+            id: caseArtifactId,
           },
         },
       },
@@ -310,7 +623,7 @@ async function createFixture(options: {
             snapshotId: basisSnapshot.id,
             snapshotRevision: 1,
             kind: "artifact" as const,
-            id: GEOMETRY_ID,
+            id: stepId,
           },
         },
       },
@@ -417,15 +730,44 @@ async function createFixture(options: {
   await caseCaptures.save(caseFingerprint, deterministicJson(caseCapture));
   const checkCaptures = new MemoryCaptures("casys://dfm-check-capture/sha256/");
   const dfm = new FakeDfm(geometryDigest, options.mismatch === true);
-  const stager = new FakeStager();
+  const stager = new FakeStager(geometryDigest);
   const walDir = await Deno.makeTempDir({ prefix: "dfm-run-wal-" });
   const commands = new MemoryCommands(project);
+  const attempts = new FileDfmCheckAttemptStore(walDir);
   const projects: EngineeringProjectRevisionStore = {
     get: () => Promise.resolve(project as unknown as EngineeringProjectSnapshot),
     getRevision: () =>
       Promise.resolve(project as unknown as EngineeringProjectSnapshot),
     createInitial: () => Promise.reject(new Error("unused")),
     commit: () => Promise.reject(new Error("unused")),
+  };
+  const session = recordingCapabilityRuntimeSession();
+  const connection = passthroughCapabilityRuntimeConnection(dfm);
+  const stagerFactory: CapabilitySessionGeometryExportStagerFactory = {
+    forActiveCapabilitySession: () => Promise.resolve(stager),
+  };
+  const capabilityRuntime = {
+    requireExecution: () => dfmOperationalCapability(PROJECT_ID),
+  };
+  const deps = {
+    projects,
+    commands,
+    snapshots,
+    caseCaptures: caseCaptures as never,
+    checkCaptures: checkCaptures as never,
+    geometryAssets: new FileCanonicalAssetReader({ directory: assetDir }),
+    stagerFactory,
+    capabilityRuntimeConnection: connection,
+    attempts,
+    lease: {
+      withLease: <T>(
+        _projectId: string,
+        _scope: string,
+        operation: () => Promise<T>,
+      ) => operation(),
+    },
+    capabilityRuntime,
+    capabilityRuntimeSession: session,
   };
   return {
     command: {
@@ -436,34 +778,89 @@ async function createFixture(options: {
       runId: RUN_ID,
     },
     dfm,
+    project,
     snapshots,
+    stager,
+    session,
+    connection,
+    attempts,
+    commands,
     cleanup: async () => {
       await Deno.remove(walDir, { recursive: true });
       await Deno.remove(assetDir, { recursive: true });
     },
-    executor: new IndustrializeRunDfmChecksRunExecutor({
-      projects,
-      commands,
-      snapshots,
-      caseCaptures: caseCaptures as never,
-      checkCaptures: checkCaptures as never,
-      geometryAssets: new FileCanonicalAssetReader({ directory: assetDir }),
-      stager,
-      dfm,
-      attempts: new FileDfmCheckAttemptStore(walDir),
-      lease: { withLease: (_projectId, _scope, operation) => operation() },
-    }),
+    executor: new IndustrializeRunDfmChecksRunExecutor(deps),
+    deps,
   };
+}
+
+function executorDeps(fixture: Awaited<ReturnType<typeof createFixture>>) {
+  return fixture.deps;
+}
+
+async function dfmOperationalCapability(projectId: string) {
+  const launchGroup = await firstPartyDfmLaunchGroupReference();
+  const imageDigest = MCP_DFM_010_IMAGE_REFERENCE.slice(
+    MCP_DFM_010_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
+  );
+  return testResolvedCapabilityRuntimeOperation({
+    projectId,
+    operation: { id: "industrialize.run-dfm-checks", version: "1" },
+    capabilityId: "manufacturing.run-dfm-checks",
+    binding: { id: "mcp-dfm-measured-checks", version: "1.0.0" },
+    unitId: "casys.mcp-dfm",
+    materialId: "mcp-dfm-image",
+    imageDigest,
+    launchGroup,
+  });
 }
 
 function fresh(changedAt: string) {
   return { status: "fresh" as const, changedAt, invalidatedByChangeIds: [] };
 }
 
+type MutableSnapshotRef = {
+  snapshotId: string;
+  revision: number;
+  subjectId: string;
+};
+
+function patchMrtrBaseSnapshot(
+  project: MutableProject,
+  patch: Partial<MutableSnapshotRef>,
+): void {
+  const decision = project.decisions[0] as { baseSnapshot: MutableSnapshotRef };
+  const approval = project.approvals[0] as { baseSnapshot: MutableSnapshotRef };
+  decision.baseSnapshot = { ...decision.baseSnapshot, ...patch };
+  approval.baseSnapshot = { ...approval.baseSnapshot, ...patch };
+}
+
+async function assertRejectedBeforeDispatch(
+  fixture: Awaited<ReturnType<typeof createFixture>>,
+  message = DFM_RUN_AUTHORITY_MISSING_REASON,
+): Promise<void> {
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, fixture.command),
+    EngineeringProjectCommandError,
+    message,
+  );
+  assertEquals(fixture.dfm.names.length, 0);
+  assertEquals(fixture.stager.calls, 0);
+  assertEquals(fixture.session.events.length, 0);
+  assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+}
+
 class FakeStager {
+  calls = 0;
+  readonly paths: string[] = [];
+  constructor(private readonly digest: string) {}
   stage(input: { bytes: Uint8Array; digest: string; fileName: string }) {
+    this.calls += 1;
+    const path = `/tmp/dfm-${input.digest}.step`;
+    this.paths.push(path);
+    assertEquals(input.digest, this.digest);
     return Promise.resolve({
-      path: `/exports/${input.fileName}`,
+      path,
       sha256: input.digest,
       byteCount: input.bytes.byteLength,
     });
@@ -604,3 +1001,24 @@ class MemoryCommands {
     return Promise.resolve(this.project);
   }
 }
+
+Deno.test("DFM dispatch refuses a substituted case producer before staging or provider calls", async () => {
+  for (
+    const options of [{ caseProducerRunId: "run.other" }, {
+      caseProducerTool: "design.write-geometry@1",
+    }]
+  ) {
+    const fixture = await createFixture(options);
+    try {
+      await assertRejects(
+        () => fixture.executor.execute(AGENT, fixture.command),
+        TypeError,
+        "artifact producer",
+      );
+      assertEquals(fixture.stager.calls, 0);
+      assertEquals(fixture.dfm.arguments.length, 0);
+    } finally {
+      await fixture.cleanup();
+    }
+  }
+});

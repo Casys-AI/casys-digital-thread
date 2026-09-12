@@ -3,7 +3,9 @@ import {
   type EngineeringProjectFileIo,
   FileEngineeringProjectRevisionStore,
   FileEngineeringProjectStore,
+  selectPhysicalProjectRevisionHead,
 } from "./engineering-project-store.ts";
+import { EngineeringProjectStoreConflictError } from "../../../application/ports/out/engineering-project-revision-store.ts";
 import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import {
@@ -168,6 +170,61 @@ Deno.test("highest claimed corrupt revision fails closed instead of falling back
 
     await assertRejects(() => store.get(initial.project.id), SyntaxError);
   });
+});
+
+Deno.test("unpublished higher claim fails closed instead of selecting an older json", async () => {
+  await withTempDirectory(async (directory) => {
+    const store = new FileEngineeringProjectRevisionStore(directory);
+    const initial = intentProjectFixture();
+    await store.createInitial(initial);
+    await Deno.writeTextFile(
+      `${directory}/${encodeURIComponent(initial.project.id)}/0000000002.claim`,
+      `${initial.id}\n`,
+      { createNew: true },
+    );
+
+    await assertRejects(
+      () => store.get(initial.project.id),
+      EngineeringProjectStoreConflictError,
+      "claimed but not durably published",
+    );
+    assertEquals(
+      (await store.getRevision(initial.project.id, 1))?.id,
+      initial.id,
+    );
+  });
+});
+
+Deno.test("selectPhysicalProjectRevisionHead shares get's unpublished-claim selection", () => {
+  assertEquals(
+    selectPhysicalProjectRevisionHead([
+      { name: "0000000001.json", isFile: true },
+      { name: "0000000001.claim", isFile: true },
+      { name: "notes.txt", isFile: true },
+    ]),
+    {
+      kind: "published-json",
+      revision: 1,
+      filename: "0000000001.json",
+    },
+  );
+  assertEquals(
+    selectPhysicalProjectRevisionHead([
+      { name: "0000000001.json", isFile: true },
+      { name: "0000000002.claim", isFile: true },
+    ]),
+    {
+      kind: "unpublished-claim",
+      claimRevision: 2,
+      claimFilename: "0000000002.claim",
+      jsonRevision: 1,
+      jsonFilename: "0000000001.json",
+    },
+  );
+  assertEquals(
+    selectPhysicalProjectRevisionHead([{ name: "notes.txt", isFile: true }]),
+    { kind: "absent" },
+  );
 });
 
 Deno.test("FileEngineeringProjectRevisionStore accepts a legal project extension", async () => {

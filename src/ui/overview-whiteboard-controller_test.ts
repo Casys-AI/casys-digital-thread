@@ -400,9 +400,7 @@ function seedStorage(
 }
 
 function storageKey(projectId: string): string {
-  return `casys.project-whiteboard.presentation:v4:${
-    encodeURIComponent(projectId)
-  }`;
+  return `casys.project-whiteboard.presentation:v4:${encodeURIComponent(projectId)}`;
 }
 
 function storedPresentation(

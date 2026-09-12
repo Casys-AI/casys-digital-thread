@@ -19,6 +19,7 @@ import {
 } from "./overview-thread-brief-correspondence.ts";
 import {
   isOverviewBriefRecord,
+  isOverviewDfmCaseOrResultArtifact,
   isOverviewRequirementsCapture,
   overviewDisambiguatedRecordLabel,
   overviewDomainGroupCaption,
@@ -288,6 +289,7 @@ export function overviewLaneFor(
   }
   if (/cad|step|geometry|glb/.test(artifactKind)) return "geometry";
   if (artifactKind === "solver-result") return "physics";
+  if (isOverviewDfmCaseOrResultArtifact(artifact)) return "physics";
   return undefined;
 }
 

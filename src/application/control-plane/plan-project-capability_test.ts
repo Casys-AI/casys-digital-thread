@@ -3,6 +3,7 @@ import {
   GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
+  MANUFACTURING_RUN_DFM_CHECKS_CAPABILITY,
   MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
   MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY,
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
@@ -65,6 +66,21 @@ Deno.test("project capability planner selects exact trusted bindings and dedupli
   assertEquals(plan.effects.dockerSocket, false);
   assertEquals(plan.effects.bindMounts, []);
   assertEquals(plan.effects.devices, []);
+});
+
+Deno.test("project capability planner selects the catalogued DFM measured-checks binding", async () => {
+  const catalog = await createFirstPartyCapabilityRuntimeCatalog();
+  const plan = await planProjectCapability(
+    await input(catalog, [
+      requirement(MANUFACTURING_RUN_DFM_CHECKS_CAPABILITY),
+    ]),
+  );
+  assertEquals(plan.status, "ready");
+  assertEquals(plan.activation, "allowed");
+  assertEquals(plan.bindings.map((binding) => binding.binding?.id), [
+    "mcp-dfm-measured-checks",
+  ]);
+  assertEquals(plan.effects.loopbackPorts, [3018]);
 });
 
 Deno.test(
