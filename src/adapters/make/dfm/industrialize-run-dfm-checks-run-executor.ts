@@ -689,6 +689,7 @@ export class IndustrializeRunDfmChecksRunExecutor {
       })).structuredContent,
       geometryDigest,
       dfmCase.maxOverhangAngleDeg.value,
+      dfmCase.buildDirection,
     );
     const recomputed = evaluateCapturedDfmChecks({
       zMinFilter: dfmCase.zMinFilter,

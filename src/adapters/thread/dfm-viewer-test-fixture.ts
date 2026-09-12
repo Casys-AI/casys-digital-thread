@@ -617,6 +617,7 @@ function validCheckCapture() {
     qualification.dfm_check_overhangs,
     DFM_VIEWER_STEP_SHA256,
     45,
+    [0, 0, 1],
   );
   const zMinFilter = {
     enabled: true,

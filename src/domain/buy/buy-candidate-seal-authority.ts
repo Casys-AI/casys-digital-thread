@@ -24,6 +24,7 @@ export interface BuyCandidateCaptureRunAuthority {
   readonly id: string;
   readonly status: string;
   readonly operationId: string;
+  readonly operationVersion: string;
   readonly basis?: EngineeringThreadSnapshotRef;
   readonly resultSnapshot?: EngineeringThreadSnapshotRef;
 }
@@ -49,6 +50,7 @@ export function buyCandidateCaptureRunAuthority(
     id: run.id,
     status: run.status,
     operationId: workItem?.operation?.id ?? "",
+    operationVersion: workItem?.operation?.version ?? "",
     basis: run.basis?.kind === "thread-snapshot" ? run.basis : undefined,
     resultSnapshot: run.resultSnapshot,
   };
@@ -85,7 +87,8 @@ export function recrossBuyCandidateSealAuthority(input: {
     !captureRun ||
     captureRun.id !== input.trustedRunId ||
     captureRun.status !== "completed" ||
-    captureRun.operationId !== BUY_CAPTURE_CONFIGURATION_COST_OPERATION.id
+    captureRun.operationId !== BUY_CAPTURE_CONFIGURATION_COST_OPERATION.id ||
+    captureRun.operationVersion !== BUY_CAPTURE_CONFIGURATION_COST_OPERATION.version
   ) {
     return refused(
       "Buy candidate capture run is not the completed capture recorded on this project.",

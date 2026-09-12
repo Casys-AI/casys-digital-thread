@@ -667,7 +667,6 @@ export function deriveEngineeringPhaseStatus(
     workItems.length > 0 &&
     workItems.every((item) =>
       item.status === "completed" ||
-      item.status === "abandoned" ||
       (item.status === "cancelled" && item.reconciliation !== undefined)
     ) &&
     requiredDecisions.every((decision) =>

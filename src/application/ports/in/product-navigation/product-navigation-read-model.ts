@@ -706,8 +706,8 @@ export function attachmentsForDefinition(
   }
   const historicalById = new Map(
     (requirementScopes ?? []).flatMap((requirement) =>
-      requirement.historicalEvaluations &&
-        requirement.historicalEvaluations.length > 0
+      (requirement.historicalEvaluations?.length ?? 0) > 0 ||
+        requirement.historicalChain?.status === "partial"
         ? [[requirement.requirementId, requirement] as const]
         : []
     ),

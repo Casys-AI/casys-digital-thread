@@ -104,7 +104,22 @@ function captureRun() {
     id: "run.buy-capture",
     status: "completed",
     operationId: BUY_CAPTURE_CONFIGURATION_COST_OPERATION.id,
+    operationVersion: BUY_CAPTURE_CONFIGURATION_COST_OPERATION.version,
     basis: CAPTURE_BASIS,
     resultSnapshot: SEAL_BASIS,
   };
 }
+
+Deno.test("capture authority rejects another or missing operation version", () => {
+  for (const operationVersion of ["", "2"]) {
+    const result = recrossBuyCandidateSealAuthority({
+      projectId: "reviewed-project-v1",
+      sealBasis: SEAL_BASIS,
+      configuration: buyConfigurationFixture(),
+      trustedRunId: "run.buy-capture",
+      producerRunId: "run.buy-capture",
+      captureRun: { ...captureRun(), operationVersion },
+    });
+    assertEquals(result.status, "refused");
+  }
+});

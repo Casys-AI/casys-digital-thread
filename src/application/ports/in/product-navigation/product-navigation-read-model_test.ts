@@ -140,3 +140,38 @@ Deno.test(
     }]);
   },
 );
+
+Deno.test("graph requirement attachment retains a partial chain with no readable evaluations", () => {
+  const historicalChain = {
+    status: "partial" as const,
+    hops: 0,
+    reason: "missing-cas" as const,
+  };
+  const attachments = attachmentsForDefinition(
+    {
+      nodes: [{
+        ref: { kind: "requirement", id: "requirement-graph" },
+        label: "Graph",
+      }],
+      edges: [{
+        relation: "constrained_by",
+        from: { kind: "part-definition", id: "def-rail" },
+        to: { kind: "requirement", id: "requirement-graph" },
+      }],
+    },
+    "def-rail",
+    undefined,
+    [{
+      requirementId: "requirement-graph",
+      name: "Scoped",
+      sourceElementId: "usage",
+      artifactId: "requirements",
+      targetElementId: "def-rail",
+      status: "unresolved",
+      historicalEvaluations: [],
+      historicalChain,
+    }],
+  );
+  assertEquals(attachments.requirements[0]?.historicalChain, historicalChain);
+  assertEquals(attachments.requirements[0]?.historicalEvaluations, []);
+});
