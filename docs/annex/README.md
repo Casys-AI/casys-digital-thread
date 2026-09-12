@@ -10,4 +10,4 @@ Do not start here. Use the living docs index: [docs/README.md](../README.md).
 | Path | Holds |
 | ---- | ----- |
 | [`project-dossiers/`](project-dossiers/README.md) | Dated, non-authoritative project tracking and evidence pointers |
-| [`rfcs/`](rfcs/README.md) | Session briefs and studies; not product contracts. Private design history; excluded from public source exports |
+| `rfcs/` (not linked: private design history, excluded from public source exports) | Session briefs and studies; not product contracts |
