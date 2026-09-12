@@ -1,4 +1,5 @@
 # Reference: Build123d closed subset v1
+> Verified-Against: 66703c1a (2026-09-13).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

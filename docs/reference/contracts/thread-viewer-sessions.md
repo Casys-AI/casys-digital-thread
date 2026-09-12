@@ -1,4 +1,5 @@
 # Thread whole-App viewer sessions
+> Verified-Against: 66703c1a (2026-09-13).
 
 Audience: technical · Diátaxis: reference · Kind: contract
 

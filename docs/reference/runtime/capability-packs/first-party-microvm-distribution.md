@@ -1,4 +1,5 @@
 # Reference: first-party microVM distribution
+> Verified-Against: 66703c1a (2026-09-13).
 
 Audience: maintainer · Diátaxis: reference · Kind: contract
 

@@ -1,4 +1,5 @@
 # Reference: mcp-spice provider surface
+> Verified-Against: 66703c1a (2026-09-13).
 
 Audience: agent · Diátaxis: reference · Kind: provider contract
 
