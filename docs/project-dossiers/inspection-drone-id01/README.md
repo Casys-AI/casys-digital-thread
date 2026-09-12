@@ -8,7 +8,16 @@ decisions. Re-read the control plane before continuing.
 
 ## Current project truth
 
-Latest resumption: project r675 / Thread r93. Project r672 proposed the bounded
+Live reread **2026-09-11**: Thread r98
+`project:inspection-drone-id01:r98:model-write-architecture-1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9`
+(CameraBoardEnvelope hole handles). Last Thread-writing project snapshot r714;
+project r715 has **pending unconfirmed** brief r8 (F22 refusal). Canonical brief
+remains r7. Workspace r128: `id01-camera-board-envelope@2`. Mission shape A is
+recorded; numeric cells stay `unresolved`. F36 closed-in-live; leftover r2 is F45;
+compilation preview after r98 is F46. The 2026-09-08 resumption below (r675 /
+Thread r93, pending brief r5) is historical.
+
+Latest 2026-09-08 resumption: project r675 / Thread r93. Project r672 proposed the bounded
 propulsion/energy priority question, r673 recorded the human-sourced
 `presize-before-simulations` answer, r674 proposed brief r5, and r675 proposed the one
 unanswered mission-shape question `mission-sizing-scenario-shape-r1`. That brief is

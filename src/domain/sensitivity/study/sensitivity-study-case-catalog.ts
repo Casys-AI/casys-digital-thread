@@ -41,13 +41,21 @@ export function selectUniqueCataloguedSensitivityCase(
   };
 }
 
-/** Server-owned append identities compiled from the case id. */
-export function sensitivityStudySealIdentities(caseId: string): {
+/**
+ * Server-owned append identities compiled from the catalog case id and the
+ * admitted cadSource fingerprint. A new admission is a new activity. The
+ * historical unsuffixed `wi-sensitivity-seal-${caseId}` identity is not reused.
+ */
+export function sensitivityStudySealIdentities(
+  caseId: string,
+  cadSourceSha256: string,
+): {
   readonly workItemId: string;
   readonly decisionId: string;
 } {
+  const token = cadSourceSha256.slice(0, 16);
   return {
-    workItemId: `wi-sensitivity-seal-${caseId}`,
-    decisionId: `dec-sensitivity-seal-${caseId}`,
+    workItemId: `wi-sensitivity-seal-${caseId}-${token}`,
+    decisionId: `dec-sensitivity-seal-${caseId}-${token}`,
   };
 }

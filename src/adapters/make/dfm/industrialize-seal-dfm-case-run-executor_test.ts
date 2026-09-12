@@ -32,10 +32,16 @@ const COMMAND_ID = "command.dfm-seal";
 const GEOMETRY_ID = "geometry-step-support-bracket";
 const GEOMETRY_SHA256 =
   "9273149a5203a13ef3b14f7e70062e76ee106eaaf5ba474e98e1cd9116cdc270";
+const CANONICAL_CAPTURE =
+  "b59023102670e06b4e33e534d05008c0fe2440ae91dafbaa9c256c92a4ebe3e8";
+const CANONICAL_STEP =
+  "2572f73de4a8607fbd963642778019cfa742d6e06d9dd01a37294c0d3e7d8b5f";
+const CANONICAL_GEOMETRY_ID = `geometry-${CANONICAL_CAPTURE}`;
+const CANONICAL_STEP_ID = `cad-asset-${CANONICAL_CAPTURE}-target-0-${CANONICAL_STEP}`;
 const AGENT = { kind: "agent" as const, actorId: "agent:test" };
 const HUMAN = { kind: "human" as const, actorId: "human:test" };
 
-function caseJson(sha256 = GEOMETRY_SHA256) {
+function caseJson(sha256 = GEOMETRY_SHA256, artifactId = GEOMETRY_ID) {
   return {
     schemaVersion: DFM_CHECK_CASE_SCHEMA,
     id: "reviewed-dfm-v1",
@@ -45,7 +51,7 @@ function caseJson(sha256 = GEOMETRY_SHA256) {
     project: { id: PROJECT_ID, subjectId: SUBJECT_ID },
     target: {
       componentKey: "support-bracket",
-      artifactUri: `thread-artifact://${PROJECT_ID}/${GEOMETRY_ID}`,
+      artifactUri: `thread-artifact://${PROJECT_ID}/${artifactId}`,
       sha256,
       mediaType: "model/step",
     },
@@ -117,6 +123,34 @@ Deno.test("seal DFM case refuses a missing attested STEP artefact", async () => 
   );
 });
 
+Deno.test(
+  "seal DFM case attests a cad-asset STEP child of design.write-geometry@1",
+  async () => {
+    const fixture = await createFixture({ canonicalChild: true });
+    const project = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(project.agentRuns[0]?.status, "completed");
+    const snapshot = await fixture.snapshots.getFresh(
+      project.agentRuns[0]!.resultSnapshot!.snapshotId,
+    );
+    const sealed = snapshot?.artifacts.filter((item) =>
+      item.producer.tool === "industrialize.seal-dfm-case@1"
+    );
+    assertEquals(sealed?.length, 1);
+  },
+);
+
+Deno.test("seal DFM case refuses a cad-asset STEP without its write-geometry parent", async () => {
+  const fixture = await createFixture({
+    canonicalChild: true,
+    omitGeometryParent: true,
+  });
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, fixture.command),
+    EngineeringProjectCommandError,
+    `parent ${CANONICAL_GEOMETRY_ID} is absent`,
+  );
+});
+
 Deno.test("a human origin is refused before any store access", async () => {
   const executor = new IndustrializeSealDfmCaseRunExecutor({
     projects: { get: () => Promise.reject(new Error("must not read")) } as never,
@@ -143,20 +177,60 @@ async function createFixture(options: {
   readonly signedSha256?: string;
   readonly basisSha256?: string;
   readonly omitGeometry?: boolean;
+  readonly canonicalChild?: boolean;
+  readonly omitGeometryParent?: boolean;
 } = {}) {
-  const signedSha256 = options.signedSha256 ?? GEOMETRY_SHA256;
-  const basisSha256 = options.basisSha256 ?? signedSha256;
-  const dfmCase = validateDfmCheckCase(caseJson(signedSha256));
+  const signedSha256 = options.canonicalChild
+    ? (options.signedSha256 ?? CANONICAL_STEP)
+    : (options.signedSha256 ?? GEOMETRY_SHA256);
+  const basisSha256 = options.canonicalChild
+    ? CANONICAL_STEP
+    : (options.basisSha256 ?? signedSha256);
+  const targetId = options.canonicalChild ? CANONICAL_STEP_ID : GEOMETRY_ID;
+  const dfmCase = validateDfmCheckCase(caseJson(signedSha256, targetId));
   const caseDigest = (await sha256Fingerprint(dfmCase)).digest;
   const parameters = encodeDfmDecisionParameters(caseDigest, dfmCase);
-  const geometryArtifact = {
-    id: GEOMETRY_ID,
-    name: "Canonical STEP",
-    kind: "step" as const,
-    version: basisSha256,
-    fingerprint: { algorithm: "sha256" as const, digest: basisSha256 },
-    uri: `/api/thread/assets/${basisSha256}.step`,
-    mediaType: "model/step",
+  const geometryArtifact = options.canonicalChild
+    ? {
+      id: CANONICAL_STEP_ID,
+      name: "Authoritative STEP: CameraBoardEnvelope",
+      kind: "step" as const,
+      version: basisSha256,
+      fingerprint: { algorithm: "sha256" as const, digest: basisSha256 },
+      uri: `/api/thread/assets/${basisSha256}.step`,
+      mediaType: "model/step",
+      producer: {
+        serverId: "build123d-sandbox",
+        tool: "build123d_export",
+        runId: "run.geometry",
+      },
+      inputArtifactIds: [],
+      freshness: fresh(AT),
+    }
+    : {
+      id: GEOMETRY_ID,
+      name: "Canonical STEP",
+      kind: "step" as const,
+      version: basisSha256,
+      fingerprint: { algorithm: "sha256" as const, digest: basisSha256 },
+      uri: `/api/thread/assets/${basisSha256}.step`,
+      mediaType: "model/step",
+      producer: {
+        serverId: "digital-thread",
+        tool: "design.write-geometry@1",
+        runId: "run.geometry",
+      },
+      inputArtifactIds: [],
+      freshness: fresh(AT),
+    };
+  const geometryParent = {
+    id: CANONICAL_GEOMETRY_ID,
+    name: "CameraBoardEnvelope",
+    kind: "cad-model" as const,
+    version: CANONICAL_CAPTURE,
+    fingerprint: { algorithm: "sha256" as const, digest: CANONICAL_CAPTURE },
+    uri: `casys://geometry-capture/sha256/${CANONICAL_CAPTURE}`,
+    mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
       tool: "design.write-geometry@1",
@@ -181,6 +255,9 @@ async function createFixture(options: {
       freshness: fresh(AT),
     },
     ...(options.omitGeometry ? [] : [geometryArtifact]),
+    ...(options.canonicalChild && !options.omitGeometryParent && !options.omitGeometry
+      ? [geometryParent]
+      : []),
   ];
   const basisSnapshot = validateThreadSnapshot({
     schemaVersion: "1.0",

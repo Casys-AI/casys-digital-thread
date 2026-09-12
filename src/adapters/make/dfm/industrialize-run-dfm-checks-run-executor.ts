@@ -15,7 +15,6 @@ import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
-import { COMPILE_SEAL_ADMISSION_PRODUCER_TOOL } from "../../../domain/compile/admission/technical-compilation-proposal.ts";
 import { fingerprintResourceBytes } from "../../../domain/compile/source/provider-resource-reader.ts";
 import {
   DFM_ENVELOPE_TOOL,
@@ -24,6 +23,7 @@ import {
   DFM_THICKNESS_TOOL,
   type DfmCheckCase,
 } from "../../../domain/make/dfm/dfm-case.ts";
+import { attestCanonicalWriteGeometryStep } from "../../../domain/make/dfm/dfm-canonical-step.ts";
 import {
   INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
   parseDfmRunDecisionParameters,
@@ -92,12 +92,6 @@ import {
 
 export { INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION };
 export { DFM_CHECK_CAPTURE_URI_PREFIX };
-
-const FORBIDDEN_GEOMETRY_TOOLS = [
-  "design.seal-isolated-geometry@1",
-  "design.execute-build123d@1",
-  COMPILE_SEAL_ADMISSION_PRODUCER_TOOL,
-] as const;
 
 export interface DfmRunThreadSnapshotStore extends ThreadSnapshotStore {
   getFresh(snapshotId: string): Promise<ThreadSnapshot | undefined>;
@@ -964,24 +958,17 @@ function requireBoundGeometry(
   snapshot: ThreadSnapshot,
 ): ThreadArtifact {
   const artifact = requireBoundArtifact(project, run, snapshot, "geometry");
-  if (
-    (FORBIDDEN_GEOMETRY_TOOLS as readonly string[]).includes(artifact.producer.tool)
-  ) {
+  const attested = attestCanonicalWriteGeometryStep(snapshot, artifact);
+  if (attested.status !== "attested") {
     throw invalidTransition(
-      `Geometry binding refuses ${artifact.producer.tool}; only design.write-geometry@1 is admitted.`,
+      attested.code === "media-type"
+        ? "Geometry binding must be a model/step write-geometry artifact."
+        : attested.code === "not-canonical" || attested.code === "parent-not-canonical"
+        ? "Geometry binding must be a design.write-geometry@1 canonical artifact."
+        : attested.message,
     );
   }
-  if (artifact.producer.tool !== "design.write-geometry@1") {
-    throw invalidTransition(
-      "Geometry binding must be a design.write-geometry@1 canonical artifact.",
-    );
-  }
-  if (artifact.mediaType !== DFM_TARGET_MEDIA_TYPE) {
-    throw invalidTransition(
-      "Geometry binding must be a model/step write-geometry artifact.",
-    );
-  }
-  return artifact;
+  return attested.step;
 }
 
 function requireShape(
@@ -1035,13 +1022,17 @@ function requireMrtrApproval(
       approval.decidedByOrigin === "human" &&
       fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint)
     );
+    if (approvals.length !== 1) continue;
+    const declared = decision.baseSnapshot;
     if (
-      approvals.length === 1 &&
-      decision.baseSnapshot?.snapshotId === basis.snapshotId &&
-      decision.baseSnapshot.revision === basis.revision
+      declared &&
+      (declared.snapshotId !== basis.snapshotId ||
+        declared.revision !== basis.revision) &&
+      declared.subjectId !== basis.subjectId
     ) {
-      candidates.push({ decision, proposal: decision.proposal });
+      continue;
     }
+    candidates.push({ decision, proposal: decision.proposal });
   }
   if (candidates.length !== 1) {
     throw new EngineeringProjectCommandError(

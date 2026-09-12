@@ -29,8 +29,9 @@ exists.
 | `simulation.run-admitted-modelica@1`                | `openmodelica-admitted-modelica@1.0.0` · execution · unqualified                | `casys.modelica-worker`                  | Admitted method remains literally unqualified. Sharing the reviewed worker image does not qualify this binding                             |
 | `electronics.run-admitted-spice@1`                  | `ngspice-admitted-circuit@1.0.0` · execution · qualified                        | `casys.spice-worker`                     | One exact microVM runtime material. Dockerfile/source provenance stays server-internal bootstrap metadata, never a project or JIT material |
 | `mechanics.observe-prescribed-kinematics@1`         | `chrono-prescribed-kinematics@1` · execution · unqualified                      | `casys.mcp-chrono`                       | Factual prescribed kinematics only; ARM64 use needs the exact emulated host attestation                                                    |
+| `manufacturing.run-dfm-checks@1`                    | `mcp-dfm-measured-checks@1.0.0` · execution · qualified                         | `casys.mcp-dfm`                          | Sealed measured envelope/thickness/overhang on a canonical write-geometry STEP child; not printability, FFF estimate, or a printer SKU     |
 
-The table has fourteen mappings because the current catalogue has three separate SysON
+The table has fifteen mappings because the current catalogue has three separate SysON
 bindings and five separate Build123d bindings. A different provider, profile, adapter,
 unit, material, digest, or host effect is not an equivalent row: it is handled through
 the server-derived proposal/amendment and, where method meaning changes, the existing

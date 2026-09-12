@@ -215,6 +215,7 @@ CalculiX `@3` is not the admitted-source pattern: the agent never writes `.inp`.
 | `industrialize.run-dfm-checks@1`       | Measured mcp-dfm envelope/thickness/overhang verdicts                           | `observe-printability` or a print-time estimate |
 | `printability-check-case/1.0`          | Documentary estimate case; no attested STEP, no Z-min filter                    | `dfm-check-case/1.0`                            |
 | `dfm-check-case/1.0`                   | Sealed measured case: attested STEP, build-volume object, declared Z-min filter | A STL target or a hidden executor heuristic     |
+| Canonical DFM STEP                     | `cad-asset-<capture>-target-<n>-<stepDigest>` child of `geometry-<capture>` (`design.write-geometry@1`) | Same-artefact `model/step`+`write-geometry@1`, isolated CAD, or `build123d_export` without that parent |
 
 ## Other
 

@@ -45,9 +45,11 @@ const APPROVAL_ID = "approval.dfm-checks";
 const COMMAND_ID = "command.dfm-checks";
 const CASE_ARTIFACT_ID = "dfm-case-sealed";
 const GEOMETRY_ID = "geometry-step-support-bracket";
+const CANONICAL_CAPTURE =
+  "b59023102670e06b4e33e534d05008c0fe2440ae91dafbaa9c256c92a4ebe3e8";
 const AGENT = { kind: "agent" as const, actorId: "agent:test" };
 
-function caseJson(sha256: string) {
+function caseJson(sha256: string, artifactId = GEOMETRY_ID) {
   return {
     schemaVersion: DFM_CHECK_CASE_SCHEMA,
     id: "reviewed-dfm-v1",
@@ -57,7 +59,7 @@ function caseJson(sha256: string) {
     project: { id: PROJECT_ID, subjectId: SUBJECT_ID },
     target: {
       componentKey: "support-bracket",
-      artifactUri: `thread-artifact://${PROJECT_ID}/${GEOMETRY_ID}`,
+      artifactUri: `thread-artifact://${PROJECT_ID}/${artifactId}`,
       sha256,
       mediaType: "model/step",
     },
@@ -156,6 +158,24 @@ Deno.test("run DFM checks refuses an isolated-geometry binding", async () => {
   }
 });
 
+Deno.test(
+  "run DFM checks binds a cad-asset STEP child of design.write-geometry@1",
+  async () => {
+    const fixture = await createFixture({ canonicalChild: true });
+    try {
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      assertEquals(project.agentRuns[0]?.status, "completed");
+      assertEquals(fixture.dfm.names, [
+        "dfm_check_envelope",
+        "dfm_check_min_thickness",
+        "dfm_check_overhangs",
+      ]);
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
 Deno.test("a completed DFM check run replays without a second provider dispatch", async () => {
   const fixture = await createFixture();
   try {
@@ -172,10 +192,14 @@ Deno.test("a completed DFM check run replays without a second provider dispatch"
 async function createFixture(options: {
   readonly geometryTool?: string;
   readonly mismatch?: boolean;
+  readonly canonicalChild?: boolean;
 } = {}) {
   const geometryBytes = new TextEncoder().encode("ISO-10303-21;END-ISO-10303-21;\n");
   const geometryDigest = await fingerprintResourceBytes(geometryBytes);
-  const dfmCase = validateDfmCheckCase(caseJson(geometryDigest));
+  const stepId = options.canonicalChild
+    ? `cad-asset-${CANONICAL_CAPTURE}-target-0-${geometryDigest}`
+    : GEOMETRY_ID;
+  const dfmCase = validateDfmCheckCase(caseJson(geometryDigest, stepId));
   const caseDigest = (await sha256Fingerprint(dfmCase)).digest;
   const caseCapture = await validateDfmCaseCapture({
     schemaVersion: DFM_CASE_CAPTURE_SCHEMA,
@@ -206,7 +230,7 @@ async function createFixture(options: {
     freshness: fresh(AT),
   };
   const geometryArtifact = {
-    id: GEOMETRY_ID,
+    id: stepId,
     name: "Canonical STEP",
     kind: "step" as const,
     version: geometryDigest,
@@ -214,8 +238,25 @@ async function createFixture(options: {
     uri: `/api/thread/assets/${geometryDigest}.step`,
     mediaType: "model/step",
     producer: {
+      serverId: options.canonicalChild ? "build123d-sandbox" : "digital-thread",
+      tool: options.geometryTool ??
+        (options.canonicalChild ? "build123d_export" : "design.write-geometry@1"),
+      runId: "run.geometry",
+    },
+    inputArtifactIds: [],
+    freshness: fresh(AT),
+  };
+  const geometryParent = {
+    id: `geometry-${CANONICAL_CAPTURE}`,
+    name: "CameraBoardEnvelope",
+    kind: "cad-model" as const,
+    version: CANONICAL_CAPTURE,
+    fingerprint: { algorithm: "sha256" as const, digest: CANONICAL_CAPTURE },
+    uri: `casys://geometry-capture/sha256/${CANONICAL_CAPTURE}`,
+    mediaType: "application/json",
+    producer: {
       serverId: "digital-thread",
-      tool: options.geometryTool ?? "design.write-geometry@1",
+      tool: "design.write-geometry@1",
       runId: "run.geometry",
     },
     inputArtifactIds: [],
@@ -265,6 +306,7 @@ async function createFixture(options: {
       },
       caseArtifact,
       geometryArtifact,
+      ...(options.canonicalChild ? [geometryParent] : []),
     ],
     consumptions: [],
     observations: [],
@@ -310,7 +352,7 @@ async function createFixture(options: {
             snapshotId: basisSnapshot.id,
             snapshotRevision: 1,
             kind: "artifact" as const,
-            id: GEOMETRY_ID,
+            id: stepId,
           },
         },
       },
