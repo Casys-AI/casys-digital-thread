@@ -90,9 +90,7 @@ Deno.test("idle cables stay grey and inspection paints distinct incoming and out
 
 Deno.test("incoming and outgoing exact chains share one inspection color and still raise the far branch", () => {
   const layout = twoCadFeaLayout();
-  const routeA = layout.routes.find((route) =>
-    route.edgeKey === "trace:a>fea"
-  )!;
+  const routeA = layout.routes.find((route) => route.edgeKey === "trace:a>fea")!;
   const idle = layout.segments.map((segment) =>
     flowSegmentState(segment, undefined, [], layout.routes)
   );

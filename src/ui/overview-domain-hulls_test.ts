@@ -12,6 +12,7 @@ import {
   OVERVIEW_SEMANTIC_GROUP_KEYS,
   overviewGroupCaption,
 } from "./src/project/overview-thread-hero-model.ts";
+import { overviewDfmCaptureViewerAliases } from "./src/project/overview-thread-dfm-viewer-discovery.ts";
 import { overviewRequirementSourceViewerAliases } from "./src/project/overview-thread-viewer-discovery.ts";
 import { buildOverviewHullContents } from "./src/project/overview-thread-hull-content.ts";
 import { overviewThreadD3FlowGroupIdentity as groupId } from "./src/project/overview-thread-d3-flow-layout.ts";
@@ -305,7 +306,8 @@ Deno.test("a new RadialArm write-requirements@2 capture stays in SYSML, not the 
   assertEquals(
     contents.get(sysmlKey)?.records.find((row) =>
       row.nodeKey === requirement.key
-    )?.graphRefs,
+    )
+      ?.graphRefs,
     [requirement.key],
   );
   assertEquals(
@@ -872,6 +874,176 @@ Deno.test("independent FEA results with the same label stay visible and use reco
     }),
     "run:id01-queue-bench-r3-fea-20260907",
   );
+});
+
+Deno.test("ID01-shaped DFM family keeps lanes and captions; STEP stays Geometry", () => {
+  const thread = id01DfmFamilyThread();
+  const before = JSON.stringify(thread);
+  const session = dfmCaptureSession();
+  const hero = buildOverviewThreadHero(thread);
+  const recorded = hero.nodes.filter(isRecordedOverviewHeroNode);
+  const byKey = (key: string) => recorded.find((item) => item.key === key)!;
+  const caseNode = byKey(`artifact:${DFM_CASE_ARTIFACT}`);
+  const capture = byKey(`artifact:${DFM_CAPTURE_ARTIFACT}`);
+  const step = byKey(`artifact:${DFM_STEP_ARTIFACT}`);
+  const sysmlRequirement = byKey("requirement:REQ-MASS");
+  const fea = byKey("artifact:fea-static");
+  const decoy = recorded.find((item) =>
+    item.key === `artifact:${DFM_DECOY_EVIDENCE}`
+  );
+
+  assertEquals(caseNode.lane, "physics");
+  assertEquals(caseNode.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.dfm);
+  assertEquals(capture.lane, "physics");
+  assertEquals(capture.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.dfm);
+  assertEquals(
+    overviewGroupCaption(capture.groupKey, capture.lane),
+    "DFM",
+  );
+  for (const id of DFM_OBSERVATION_IDS) {
+    const observation = byKey(`observation:${id}`);
+    assertEquals(observation.lane, "physics");
+    assertEquals(observation.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.dfm);
+  }
+  for (const id of DFM_REQUIREMENT_IDS) {
+    const requirement = byKey(`requirement:${id}`);
+    assertEquals(requirement.lane, "system-model");
+    assertEquals(requirement.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.dfm);
+    assertEquals(
+      overviewGroupCaption(requirement.groupKey, requirement.lane),
+      "DFM",
+    );
+  }
+  for (const id of DFM_EVALUATION_IDS) {
+    const evaluation = byKey(`evaluation:${id}`);
+    assertEquals(evaluation.lane, "verdicts");
+    assertEquals(evaluation.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.dfm);
+    assertEquals(
+      overviewGroupCaption(evaluation.groupKey, evaluation.lane),
+      "DFM verdict",
+    );
+  }
+  assertEquals(step.lane, "geometry");
+  assertEquals(step.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.geometry);
+  assertEquals(overviewGroupCaption(step.groupKey), "Geometry");
+  assertEquals(sysmlRequirement.lane, "system-model");
+  assertEquals(
+    sysmlRequirement.groupKey,
+    OVERVIEW_DOMAIN_GROUP_KEYS.sysmlModel,
+  );
+  assertEquals(fea.lane, "physics");
+  assertEquals(fea.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.fea);
+  assertEquals(decoy, undefined);
+
+  const aliases = overviewDfmCaptureViewerAliases({
+    records: recorded.map((item) => ({
+      key: item.key,
+      ref: item.node.ref,
+      entityKind: item.node.entityKind,
+      artifactKind: item.node.artifactKind,
+      engineeringCaseRefs: item.node.engineeringCaseRefs,
+    })),
+    artifacts: thread.artifacts,
+    edges: thread.graph.edges,
+    sessions: [session],
+    catalog: thread.engineeringCases,
+  });
+  const captureTarget = [{
+    sessionId: session.id,
+    nodeKey: capture.key,
+  }];
+  assertEquals(aliases.get(capture.key), undefined);
+  assertEquals(aliases.get(caseNode.key), captureTarget);
+  for (const id of DFM_OBSERVATION_IDS) {
+    assertEquals(aliases.get(`observation:${id}`), captureTarget);
+  }
+  for (const id of DFM_EVALUATION_IDS) {
+    assertEquals(aliases.get(`evaluation:${id}`), captureTarget);
+  }
+  for (const id of DFM_REQUIREMENT_IDS) {
+    assertEquals(aliases.get(`requirement:${id}`), captureTarget);
+  }
+  assertEquals(aliases.has("requirement:REQ-MASS"), false);
+  assertEquals(aliases.has(`artifact:${DFM_STEP_ARTIFACT}`), false);
+  assertEquals(JSON.stringify(thread), before);
+});
+
+Deno.test("DFM family identities survive relabeled copy and shuffled order", () => {
+  const thread = id01DfmFamilyThread();
+  for (const artifact of thread.artifacts) {
+    artifact.label = `Renamed ${artifact.label}`;
+    artifact.system = "renamed-provider";
+    if (artifact.producer) {
+      artifact.producer = {
+        ...artifact.producer,
+        serverId: "renamed-server",
+      };
+    }
+  }
+  thread.artifacts.reverse();
+  thread.graph.nodes.reverse();
+  thread.graph.edges.reverse();
+  for (const node of thread.graph.nodes) {
+    node.label = `Shuffled ${node.label}`;
+    node.system = "shuffled-system";
+  }
+  const recorded = buildOverviewThreadHero(thread).nodes.filter(
+    isRecordedOverviewHeroNode,
+  );
+  const byKey = (key: string) => recorded.find((item) => item.key === key)!;
+  assertEquals(
+    byKey(`artifact:${DFM_CAPTURE_ARTIFACT}`).groupKey,
+    OVERVIEW_DOMAIN_GROUP_KEYS.dfm,
+  );
+  assertEquals(byKey(`artifact:${DFM_CAPTURE_ARTIFACT}`).lane, "physics");
+  assertEquals(
+    byKey(`artifact:${DFM_STEP_ARTIFACT}`).groupKey,
+    OVERVIEW_DOMAIN_GROUP_KEYS.geometry,
+  );
+  assertEquals(
+    byKey("requirement:REQ-MASS").groupKey,
+    OVERVIEW_DOMAIN_GROUP_KEYS.sysmlModel,
+  );
+  assertEquals(
+    byKey("artifact:fea-static").groupKey,
+    OVERVIEW_DOMAIN_GROUP_KEYS.fea,
+  );
+  assertEquals(
+    byKey(`requirement:${DFM_REQUIREMENT_IDS[0]}`).groupKey,
+    OVERVIEW_DOMAIN_GROUP_KEYS.dfm,
+  );
+  assertEquals(
+    byKey(`evaluation:${DFM_EVALUATION_IDS[0]}`).groupKey,
+    OVERVIEW_DOMAIN_GROUP_KEYS.dfm,
+  );
+});
+
+Deno.test("a generic evidence artifact is not swept into DFM by name", () => {
+  const thread = domainCoverageThread();
+  const decoy = workbenchArtifact({
+    id: "named-dfm-evidence",
+    label: "Measured DFM checks",
+    kind: "evidence",
+    system: "mcp-dfm",
+    fingerprint: `sha256:${"d".repeat(64)}`,
+    producer: {
+      serverId: "mcp-dfm",
+      tool: "dfm_check_envelope",
+      runId: "run:named-dfm",
+    },
+  });
+  thread.artifacts.push(decoy);
+  thread.graph.nodes.push(
+    graphArtifact(decoy.id, decoy.label, decoy.system, decoy.kind),
+  );
+  const grouped = overviewDomainGroupKeyFor({
+    node: graphArtifact(decoy.id, decoy.label, decoy.system, decoy.kind),
+    artifact: decoy,
+  });
+  assertEquals(grouped === OVERVIEW_DOMAIN_GROUP_KEYS.dfm, false);
+  const hero = buildOverviewThreadHero(thread);
+  const placed = hero.nodes.find((item) => item.key === `artifact:${decoy.id}`);
+  assertEquals(placed, undefined);
 });
 
 const cadRecordIds = new Set([...canonicalIds, ...exportIds]);
@@ -1492,5 +1664,263 @@ function evidencesEdge(
     relation: "evidences",
     rationale: "The immutable SysON envelope is the evaluation evidence.",
     origin: "provenance",
+  };
+}
+
+const DFM_DIGEST = "a".repeat(64);
+const DFM_CASE_KEY = `verification-case:dfm-check:${DFM_DIGEST}`;
+const DFM_CASE_ARTIFACT = "dfm-case-camera-board";
+const DFM_CAPTURE_ARTIFACT = "dfm-check-camera-board";
+const DFM_STEP_ARTIFACT = "geometry-step-camera-board";
+const DFM_DECOY_EVIDENCE = "named-measured-dfm-checks";
+const DFM_OBSERVATION_IDS = [
+  "dfm-obs-min-thickness",
+  "dfm-obs-envelope-x",
+  "dfm-obs-envelope-count",
+  "dfm-obs-overhang-remaining",
+  "dfm-obs-zmin-filtered",
+] as const;
+const DFM_REQUIREMENT_IDS = [
+  "dfm-req-envelope",
+  "dfm-req-thickness",
+  "dfm-req-overhangs",
+] as const;
+const DFM_EVALUATION_IDS = [
+  "dfm-eval-envelope",
+  "dfm-eval-thickness",
+  "dfm-eval-overhangs",
+] as const;
+const DFM_REQUIREMENT_LABELS = [
+  "Envelope must fit the declared build volume",
+  "Minimum thickness must meet the sealed limit",
+  "No overhang zones remain after the declared Z-min filter",
+] as const;
+
+function id01DfmFamilyThread(): ThreadWorkbenchSnapshot {
+  const thread = domainCoverageThread();
+  const caseArtifact = workbenchArtifact({
+    id: DFM_CASE_ARTIFACT,
+    label: "Sealed DFM case",
+    kind: "document",
+    system: "digital-thread",
+    fingerprint: `sha256:${"b".repeat(64)}`,
+    producer: {
+      serverId: "digital-thread",
+      tool: "industrialize.seal-dfm-case@1",
+      runId: "run:dfm-seal",
+    },
+  });
+  const capture = workbenchArtifact({
+    id: DFM_CAPTURE_ARTIFACT,
+    label: "Measured DFM checks",
+    kind: "evidence",
+    system: "digital-thread",
+    fingerprint: `sha256:${DFM_DIGEST}`,
+    producer: {
+      serverId: "digital-thread",
+      tool: "industrialize.run-dfm-checks@1",
+      runId: "run:dfm-checks",
+    },
+  });
+  const step = workbenchArtifact({
+    id: DFM_STEP_ARTIFACT,
+    label: "Camera board STEP",
+    kind: "step",
+    system: "casys-digital-thread",
+    fingerprint: `sha256:${"c".repeat(64)}`,
+    producer: {
+      serverId: "casys-digital-thread",
+      tool: "design.write-geometry@1",
+      runId: "run:geometry",
+    },
+  });
+  const decoy = workbenchArtifact({
+    id: DFM_DECOY_EVIDENCE,
+    label: "Measured DFM checks",
+    kind: "evidence",
+    system: "mcp-dfm",
+    fingerprint: `sha256:${"d".repeat(64)}`,
+    producer: {
+      serverId: "mcp-dfm",
+      tool: "dfm_check_envelope",
+      runId: "run:decoy-dfm",
+    },
+  });
+  const observations: ThreadObservation[] = DFM_OBSERVATION_IDS.map((id) => ({
+    id,
+    label: `Observation ${id}`,
+    value: 1,
+    unit: "mm",
+    display: "1 mm",
+    sourceArtifactId: capture.id,
+    requirementIds: [...DFM_REQUIREMENT_IDS],
+    freshness: "fresh" as const,
+  }));
+  thread.artifacts.push(caseArtifact, capture, step, decoy);
+  thread.observations.push(...observations);
+  thread.graph.nodes.push(
+    dfmMemberNode(
+      graphArtifact(
+        caseArtifact.id,
+        caseArtifact.label,
+        caseArtifact.system,
+        caseArtifact.kind,
+      ),
+    ),
+    dfmMemberNode(
+      graphArtifact(
+        capture.id,
+        capture.label,
+        capture.system,
+        capture.kind,
+      ),
+    ),
+    graphArtifact(step.id, step.label, step.system, step.kind),
+    graphArtifact(decoy.id, decoy.label, decoy.system, decoy.kind),
+    ...observations.map((observation) =>
+      dfmMemberNode({
+        id: `graph:observation:${observation.id}`,
+        ref: { kind: "observation", id: observation.id },
+        entityKind: "observation",
+        label: observation.label,
+        system: "digital-thread",
+        freshness: "fresh",
+        summary: observation.display,
+      })
+    ),
+    ...DFM_REQUIREMENT_IDS.map((id, index) =>
+      dfmMemberNode({
+        id: `graph:requirement:${id}`,
+        ref: { kind: "requirement", id },
+        entityKind: "requirement",
+        label: DFM_REQUIREMENT_LABELS[index]!,
+        system: "digital-thread",
+        freshness: "fresh",
+        summary: id,
+      })
+    ),
+    ...DFM_EVALUATION_IDS.map((id, index) =>
+      dfmMemberNode({
+        id: `graph:evaluation:${id}`,
+        ref: { kind: "evaluation", id },
+        entityKind: "evaluation",
+        label: `${DFM_REQUIREMENT_LABELS[index]!} evaluation`,
+        system: "digital-thread",
+        freshness: "fresh",
+        summary: "pass",
+        selection: {
+          kind: "requirement",
+          id: DFM_REQUIREMENT_IDS[index]!,
+        },
+      })
+    ),
+  );
+  thread.graph.edges.push(
+    {
+      id: `derived:${DFM_CASE_ARTIFACT}:${DFM_CAPTURE_ARTIFACT}`,
+      from: { kind: "artifact", id: DFM_CASE_ARTIFACT },
+      to: { kind: "artifact", id: DFM_CAPTURE_ARTIFACT },
+      relation: "derived_from",
+      rationale: "The measured DFM run reopens the sealed case.",
+      origin: "provenance",
+    },
+    {
+      id: `input:${DFM_CASE_ARTIFACT}:${DFM_CAPTURE_ARTIFACT}`,
+      from: { kind: "artifact", id: DFM_CASE_ARTIFACT },
+      to: { kind: "artifact", id: DFM_CAPTURE_ARTIFACT },
+      relation: "input_to",
+      rationale: "The sealed case is an explicit input of the capture.",
+      origin: "structure",
+    },
+    {
+      id: `input:${DFM_STEP_ARTIFACT}:${DFM_CAPTURE_ARTIFACT}`,
+      from: { kind: "artifact", id: DFM_STEP_ARTIFACT },
+      to: { kind: "artifact", id: DFM_CAPTURE_ARTIFACT },
+      relation: "input_to",
+      rationale: "The canonical STEP is an explicit input of the capture.",
+      origin: "structure",
+    },
+    ...DFM_OBSERVATION_IDS.map((id) => ({
+      id: `source:${DFM_CAPTURE_ARTIFACT}:${id}`,
+      from: { kind: "artifact" as const, id: DFM_CAPTURE_ARTIFACT },
+      to: { kind: "observation" as const, id },
+      relation: "source_of" as const,
+      rationale: "The capture is the explicit observation source.",
+      origin: "structure" as const,
+    })),
+    ...DFM_EVALUATION_IDS.map((id) => ({
+      id: `evidences:${DFM_CAPTURE_ARTIFACT}:${id}`,
+      from: { kind: "artifact" as const, id: DFM_CAPTURE_ARTIFACT },
+      to: { kind: "evaluation" as const, id },
+      relation: "evidences" as const,
+      rationale: "The capture evidences the measured evaluation.",
+      origin: "provenance" as const,
+    })),
+    ...DFM_EVALUATION_IDS.map((id, index) => ({
+      id: `evaluates:${DFM_REQUIREMENT_IDS[index]}:${id}`,
+      from: {
+        kind: "requirement" as const,
+        id: DFM_REQUIREMENT_IDS[index]!,
+      },
+      to: { kind: "evaluation" as const, id },
+      relation: "evaluates" as const,
+      rationale: "The measured check evaluates the sealed DFM requirement.",
+      origin: "provenance" as const,
+    })),
+  );
+  thread.engineeringCases = {
+    schemaVersion: "engineering-cases/1.1",
+    status: "observed",
+    coverage: [{ family: "dfm-check", status: "observed" }],
+    cases: [{
+      key: DFM_CASE_KEY,
+      family: "dfm-check",
+      caseSchemaVersion: "dfm-check-case/1.0",
+      id: "id01-camera-board-dfm",
+      revision: 1,
+      scope: "Measured DFM checks for the camera board.",
+      caseDigest: DFM_DIGEST,
+      authorityArtifactIds: [DFM_CASE_ARTIFACT],
+    }],
+    current: [{
+      family: "dfm-check",
+      id: "id01-camera-board-dfm",
+      currentCaseKey: DFM_CASE_KEY,
+      revision: 1,
+    }],
+    issues: [],
+  };
+  return thread;
+}
+
+function dfmMemberNode(node: ThreadGraphNode): ThreadGraphNode {
+  return { ...node, engineeringCaseRefs: [DFM_CASE_KEY] };
+}
+
+function dfmCaptureSession(): ThreadViewerSession {
+  return {
+    id: "dfm-capture-app",
+    kind: "mcp-app",
+    anchor: { kind: "artifact", id: DFM_CAPTURE_ARTIFACT },
+    app: { id: "io.casys.mcp-dfm.results", version: "1.0.0" },
+    manifest: {
+      uri: "ui://mcp-dfm/manifest",
+      fingerprint: `sha256:${"a".repeat(64)}`,
+    },
+    resource: {
+      uri: "ui://mcp-dfm/results-viewer",
+      fingerprint: `sha256:${"b".repeat(64)}`,
+      ownership: "whole-view",
+      mimeType: "text/html;profile=mcp-app",
+      bytes: 1,
+    },
+    launchUri: "/api/viewer/app",
+    readResources: [],
+    session: {
+      action: "viewer.session.apply",
+      schema: "io.casys.mcp-dfm.recorded-checks-session/1.0",
+      payload: { projection: { status: "available" } },
+      fingerprint: `sha256:${"c".repeat(64)}`,
+    },
   };
 }

@@ -189,6 +189,77 @@ Deno.test("a completed DFM check run replays without a second provider dispatch"
   }
 });
 
+Deno.test(
+  "run DFM checks executes only the exact human-approved Thread basis",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      const project = await fixture.executor.execute(AGENT, fixture.command);
+      assertEquals(project.agentRuns[0]?.status, "completed");
+      assertEquals(fixture.dfm.names.length, 3);
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+Deno.test(
+  "run DFM checks refuses a same-subject MRTR on a later Thread revision before claim",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      patchMrtrBaseSnapshot(fixture.project, { revision: 117 });
+      await assertRejectedBeforeDispatch(fixture);
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+Deno.test(
+  "run DFM checks refuses an MRTR whose snapshot id is not the run basis before claim",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      patchMrtrBaseSnapshot(fixture.project, {
+        snapshotId: "snapshot.dfm.run.r115",
+      });
+      await assertRejectedBeforeDispatch(fixture);
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+Deno.test(
+  "run DFM checks refuses an MRTR whose subject is not the run basis before claim",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      patchMrtrBaseSnapshot(fixture.project, {
+        subjectId: "project:other-subject",
+      });
+      await assertRejectedBeforeDispatch(fixture);
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+Deno.test(
+  "run DFM checks refuses a human MRTR that declares no Thread base before claim",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      delete (fixture.project.decisions[0] as { baseSnapshot?: unknown })
+        .baseSnapshot;
+      await assertRejectedBeforeDispatch(fixture);
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
 async function createFixture(options: {
   readonly geometryTool?: string;
   readonly mismatch?: boolean;
@@ -478,6 +549,7 @@ async function createFixture(options: {
       runId: RUN_ID,
     },
     dfm,
+    project,
     snapshots,
     cleanup: async () => {
       await Deno.remove(walDir, { recursive: true });
@@ -500,6 +572,34 @@ async function createFixture(options: {
 
 function fresh(changedAt: string) {
   return { status: "fresh" as const, changedAt, invalidatedByChangeIds: [] };
+}
+
+type MutableSnapshotRef = {
+  snapshotId: string;
+  revision: number;
+  subjectId: string;
+};
+
+function patchMrtrBaseSnapshot(
+  project: MutableProject,
+  patch: Partial<MutableSnapshotRef>,
+): void {
+  const decision = project.decisions[0] as { baseSnapshot: MutableSnapshotRef };
+  const approval = project.approvals[0] as { baseSnapshot: MutableSnapshotRef };
+  decision.baseSnapshot = { ...decision.baseSnapshot, ...patch };
+  approval.baseSnapshot = { ...approval.baseSnapshot, ...patch };
+}
+
+async function assertRejectedBeforeDispatch(
+  fixture: Awaited<ReturnType<typeof createFixture>>,
+): Promise<void> {
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, fixture.command),
+    EngineeringProjectCommandError,
+    "No exact human-approved DFM-check MRTR decision is bound to this run basis.",
+  );
+  assertEquals(fixture.dfm.names.length, 0);
+  assertEquals(fixture.project.agentRuns[0]?.status, "queued");
 }
 
 class FakeStager {

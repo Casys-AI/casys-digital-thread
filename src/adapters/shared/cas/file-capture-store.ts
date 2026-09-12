@@ -567,6 +567,24 @@ export const DFM_CHECK_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<"dfm-check"> =
   label: "DFM check",
 };
 
+export const BUY_CANDIDATE_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "buy-configuration-cost-candidate"
+> = {
+  kind: "buy-configuration-cost-candidate",
+  directory: "state/local/buy-configuration-cost-candidate-captures",
+  uriNamespace: "buy-configuration-cost-candidate-capture",
+  label: "Buy configuration-cost candidate",
+};
+
+export const BUY_SEAL_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
+  "buy-configuration-cost-seal"
+> = {
+  kind: "buy-configuration-cost-seal",
+  directory: "state/local/buy-configuration-cost-seal-captures",
+  uriNamespace: "buy-configuration-cost-seal-capture",
+  label: "Buy configuration-cost seal",
+};
+
 export const CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR: CaptureStoreDescriptor<
   "correction-proposal"
 > = {

@@ -1020,19 +1020,15 @@ function requireMrtrApproval(
       approval.decisionId === decision.id &&
       approval.status === "approved" &&
       approval.decidedByOrigin === "human" &&
-      fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint)
+      fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint) &&
+      sameSnapshotBasis(approval.baseSnapshot, basis)
     );
-    if (approvals.length !== 1) continue;
-    const declared = decision.baseSnapshot;
     if (
-      declared &&
-      (declared.snapshotId !== basis.snapshotId ||
-        declared.revision !== basis.revision) &&
-      declared.subjectId !== basis.subjectId
+      approvals.length === 1 &&
+      sameSnapshotBasis(decision.baseSnapshot, basis)
     ) {
-      continue;
+      candidates.push({ decision, proposal: decision.proposal });
     }
-    candidates.push({ decision, proposal: decision.proposal });
   }
   if (candidates.length !== 1) {
     throw new EngineeringProjectCommandError(
@@ -1041,6 +1037,22 @@ function requireMrtrApproval(
     );
   }
   return candidates[0]!;
+}
+
+function sameSnapshotBasis(
+  left:
+    | {
+      readonly snapshotId: string;
+      readonly revision: number;
+      readonly subjectId: string;
+    }
+    | undefined,
+  right: EngineeringThreadSnapshotBasis,
+): boolean {
+  return !!left &&
+    left.snapshotId === right.snapshotId &&
+    left.revision === right.revision &&
+    left.subjectId === right.subjectId;
 }
 
 async function exactBasisSnapshot(

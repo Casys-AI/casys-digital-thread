@@ -119,10 +119,12 @@ export function overviewAnalysisBasisGroupKey(
 /**
  * Organize one validated projection once, then reuse it in every presentation.
  * No App, component identity, relation, or current architecture is selected
- * from a label. The structure comes whole from the server's navigation tree;
- * exact artifact anchors only decide which hull can expose it. Brief grouping
- * uses exact snapshot identity already present on source notes. Recorded
- * analysis-node members join that same tree, grouped only by an exact
+ * from a label. The structure comes whole from the server's navigation tree.
+ * Architecture artifacts still select the SysML hull. Geometry may expose the
+ * same tree while CAD joins are absent; exact geometry identities only decide
+ * overlay graphRefs and viewer actions, never whether the tree is visible.
+ * Brief grouping uses exact snapshot identity already present on source notes.
+ * Recorded analysis-node members join that same tree, grouped only by an exact
  * semanticRef domain/kind/basisFingerprint already on the node.
  */
 export function buildOverviewHullContents(
@@ -152,8 +154,9 @@ export function buildOverviewHullContents(
   const result = new Map<string, OverviewHullContent>();
   const current = hierarchy?.status === "available" ? hierarchy : undefined;
   const depthById = new Map<string, number>();
-  // Share the occurrence tree, not its App actions. These default actions
-  // belong only to hulls anchored by the corresponding geometry evidence.
+  // Share the occurrence tree, not its App actions. Viewer actions still
+  // require exact geometry evidence on the occurrence; Geometry may host the
+  // tree while those joins are empty.
   const structureRows: readonly OverviewHullContentRow[] =
     current?.nodes.map((node) => {
       const depth = node.parentId
@@ -207,13 +210,18 @@ export function buildOverviewHullContents(
     const architectureAnchored =
       current?.architectureArtifactId !== undefined &&
       ownArtifactIds.has(current.architectureArtifactId);
-    const anchored = current && (
-      architectureAnchored ||
+    const cadJoined = current !== undefined &&
       current.nodes.some((node) =>
         (node.geometryArtifactId !== undefined &&
           ownArtifactIds.has(node.geometryArtifactId)) ||
         node.artifactIds?.some((id) => ownArtifactIds.has(id))
-      )
+      );
+    const geometryHost = hullHostsGeometryArtifacts(members);
+    const geometryStructureAnchored = geometryHost &&
+      current !== undefined &&
+      current.nodes.length > 0;
+    const anchored = current && (
+      architectureAnchored || cadJoined || geometryStructureAnchored
     );
     const requirementNav = requirementsNavigationRows(
       recordedMembers,
@@ -269,6 +277,8 @@ export function buildOverviewHullContents(
               : {}),
           };
         })
+        : geometryHost
+        ? identified.map(withUnjoinedGeometryOccurrence)
         : identified;
       result.set(
         groupKey,
@@ -607,6 +617,34 @@ function withOccurrenceGraphIdentity(
     graphRefs,
     role: overlay ? "overlay" : "folder",
     selectable: overlay,
+    focusable: true,
+  };
+}
+
+function hullHostsGeometryArtifacts(
+  members: readonly OverviewHeroNode[],
+): boolean {
+  return members.some((member) =>
+    member.kind === "recorded" &&
+    member.node.ref.kind === "artifact" &&
+    member.lane === "geometry"
+  );
+}
+
+function withUnjoinedGeometryOccurrence(
+  row: OverviewHullContentRow,
+): OverviewHullContentRow {
+  if ((row.graphRefs ?? []).length > 0) return row;
+  const { viewerNodeKey: _viewer, ...rest } = row;
+  return {
+    ...rest,
+    detail: "unjoined · pending CAD",
+    availability: "unresolved",
+    graphRefs: [],
+    sessionIds: [],
+    endpoint: false,
+    role: "folder",
+    selectable: false,
     focusable: true,
   };
 }

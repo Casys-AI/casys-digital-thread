@@ -6,6 +6,9 @@ import type {
   ThreadGraphNode,
   ThreadGraphRef,
   ThreadRef,
+  ThreadRequirement,
+  ThreadRequirementHistoricalChain,
+  ThreadRequirementHistoricalEvaluation,
   ThreadWorkbenchSnapshot,
 } from "./types.ts";
 import {
@@ -13,6 +16,7 @@ import {
   type InspectorRelation,
   resolveRecordInspectorContext,
 } from "./tool-inspector-model.ts";
+import { RequirementHistoricalUnjoinedContext } from "./requirement-historical-unjoined.tsx";
 
 export interface RecordInspectorPanelProps {
   snapshot: ThreadWorkbenchSnapshot;
@@ -56,12 +60,11 @@ export function RecordInspectorPanel({
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            Choose a node to inspect its exact identity, stored fields, and
-            recorded relations.
+            Choose a node to inspect its exact identity, stored fields, and recorded
+            relations.
           </p>
           <EmptyNotice>
-            No record is selected. Browsing this inspector never executes an
-            operation.
+            No record is selected. Browsing this inspector never executes an operation.
           </EmptyNotice>
         </CardContent>
       </Card>
@@ -74,6 +77,7 @@ export function RecordInspectorPanel({
   });
   const title = node?.label ?? recordTitle(context.record) ??
     "Recorded selection";
+  const historical = historicalUnjoinedOf(context.record?.value);
 
   return (
     <Card>
@@ -102,7 +106,18 @@ export function RecordInspectorPanel({
 
         {context.record && (
           <InspectorSection title="Record fields">
-            <FieldTable value={context.record.value} />
+            <FieldTable
+              value={recordFieldsWithoutHistorical(context.record.value)}
+            />
+          </InspectorSection>
+        )}
+
+        {historical && (
+          <InspectorSection title="Historical unjoined evaluations">
+            <RequirementHistoricalUnjoinedContext
+              value={historical.evaluations}
+              chain={historical.chain}
+            />
           </InspectorSection>
         )}
 
@@ -126,9 +141,8 @@ export function RecordInspectorPanel({
         />
 
         <Notice title="Read-only projection" tone="info">
-          All values and relations shown here were already loaded with this
-          Workbench snapshot. This inspector cannot call a tool or mutate a
-          record.
+          All values and relations shown here were already loaded with this Workbench
+          snapshot. This inspector cannot call a tool or mutate a record.
         </Notice>
       </CardContent>
     </Card>
@@ -145,6 +159,50 @@ function InspectorSection({ title, children }: {
       {children}
     </section>
   );
+}
+
+function historicalUnjoinedOf(
+  value: unknown,
+): {
+  readonly evaluations: readonly ThreadRequirementHistoricalEvaluation[];
+  readonly chain?: ThreadRequirementHistoricalChain;
+} | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+  const requirement = value as Partial<ThreadRequirement>;
+  const evaluations = requirement.historicalEvaluations;
+  const chain = requirement.historicalChain;
+  if (evaluations === undefined && chain === undefined) return undefined;
+  if (
+    (evaluations === undefined || evaluations.length === 0) &&
+    chain?.status !== "partial"
+  ) {
+    return undefined;
+  }
+  if (
+    (evaluations ?? []).some((item) => item.relation !== "historical-unjoined")
+  ) {
+    return undefined;
+  }
+  return {
+    evaluations: evaluations ?? [],
+    ...(chain ? { chain } : {}),
+  };
+}
+
+function recordFieldsWithoutHistorical(value: object): object {
+  if (
+    !("historicalEvaluations" in value) && !("historicalChain" in value)
+  ) {
+    return value;
+  }
+  const {
+    historicalEvaluations: _evaluations,
+    historicalChain: _chain,
+    ...rest
+  } = value as Record<string, unknown>;
+  return rest;
 }
 
 function FieldTable({ value }: { value: object }): JSX.Element {
@@ -245,8 +303,7 @@ function RelationRow({ relation, onSelect, onSelectGraphNode }: {
         {content}
       </button>
     )
-    : <div className="flex flex-col items-start gap-1 px-3 py-2">{content}
-    </div>;
+    : <div className="flex flex-col items-start gap-1 px-3 py-2">{content}</div>;
 }
 
 function RelatedRecordSummary({

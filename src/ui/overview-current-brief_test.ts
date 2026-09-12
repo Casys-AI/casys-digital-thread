@@ -547,7 +547,7 @@ Deno.test("Current Brief is a registered generic hull adapter, not a hero specia
   });
   assertEquals(
     OVERVIEW_HULL_ADAPTERS.map((adapter) => adapter.id),
-    ["current-brief", "current-engineering-cases"],
+    ["current-brief", "current-engineering-cases", "current-dfm-cases"],
   );
   assertEquals(
     OVERVIEW_HULL_ADAPTERS[0]?.id,

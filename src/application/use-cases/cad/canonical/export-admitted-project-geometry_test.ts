@@ -769,38 +769,38 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   assertEquals(singular.exporter.calls.length, 0);
 
   const ambiguous = await harness();
-  const capture = structuredClone(ambiguous.reopened);
+  const capture = writableClone(ambiguous.reopened);
   const secondId = `technical-unit:${"5".repeat(64)}`;
-  const secondDocumentSource = structuredClone(
+  const secondDocumentSource = writableClone(
     capture.document.inputManifest.sources[0],
-  ) as any;
+  );
   secondDocumentSource.analysis.source.id = secondId;
   secondDocumentSource.effectiveUnit.unitId = secondId;
   secondDocumentSource.effectiveUnit.closureFingerprint.digest = "5".repeat(64);
   secondDocumentSource.analysisFingerprint = await fingerprintSourceAnalysisBundle(
     secondDocumentSource.analysis,
   );
-  (capture.document.inputManifest.sources as unknown[]).push(secondDocumentSource);
-  const secondProjectionSource = structuredClone(
+  capture.document.inputManifest.sources.push(secondDocumentSource);
+  const secondProjectionSource = writableClone(
     capture.document.projections[0]!.sources[0],
-  ) as any;
+  );
   secondProjectionSource.analysis.source.id = secondId;
   secondProjectionSource.effectiveUnit.unitId = secondId;
   secondProjectionSource.effectiveUnit.closureFingerprint.digest = "5".repeat(64);
   secondProjectionSource.analysisFingerprint = await fingerprintSourceAnalysisBundle(
     secondProjectionSource.analysis,
   );
-  secondProjectionSource.bindings = structuredClone(
+  secondProjectionSource.bindings = writableClone(
     capture.document.projections[0]!.sources[0]!.bindings,
-  ) as any;
+  );
   for (const binding of secondProjectionSource.bindings) {
     binding.sourceId = secondId;
     binding.id = `${binding.id}.second`;
     if (binding.relation === "represents") binding.sysmlElementId = "sysml.part.lid";
   }
-  (capture.document.projections[0]!.sources as unknown[]).push(secondProjectionSource);
-  const secondAdmissionSource = structuredClone(capture.admission.sources[0]) as any;
-  (capture.admission.sources[0] as any).attachment.target.elementId = "sysml.part.box";
+  capture.document.projections[0]!.sources.push(secondProjectionSource);
+  const secondAdmissionSource = writableClone(capture.admission.sources[0]);
+  capture.admission.sources[0]!.attachment.target.elementId = "sysml.part.box";
   secondAdmissionSource.id = secondId;
   secondAdmissionSource.effectiveUnit.unitId = secondId;
   secondAdmissionSource.effectiveUnit.closureFingerprint.digest = "5".repeat(64);
@@ -810,27 +810,27 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   secondAdmissionSource.attachment.target.elementId = "sysml.part.lid";
   secondAdmissionSource.sourceClosure.root.fileId = "file.cad.second";
   secondAdmissionSource.analysisFingerprint = secondDocumentSource.analysisFingerprint;
-  (capture.admission.sources as unknown[]).push(secondAdmissionSource);
+  capture.admission.sources.push(secondAdmissionSource);
   const secondBindings = structuredClone(capture.admission.bindings).map((
-    binding: any,
+    binding,
   ) => ({
     ...binding,
     id: `${binding.id}.second`,
     sourceId: secondId,
   }));
-  secondBindings.find((binding: any) => binding.relation === "represents")!
+  secondBindings.find((binding) => binding.relation === "represents")!
     .sysmlElementId = "sysml.part.lid";
-  (capture.admission.bindings as unknown[]).push(...secondBindings);
-  (capture.document.inputManifest.bindings as unknown[]).push(
+  capture.admission.bindings.push(...secondBindings);
+  capture.document.inputManifest.bindings.push(
     ...structuredClone(secondBindings),
   );
-  (capture.admission.compilationProfileRequests[0]!.sourceIds as string[]).push(
+  capture.admission.compilationProfileRequests[0]!.sourceIds.push(
     secondId,
   );
-  (capture.document.inputManifest.profileRequests[0]!.sourceIds as string[]).push(
+  capture.document.inputManifest.profileRequests[0]!.sourceIds.push(
     secondId,
   );
-  const basis = capture.document.basis as any;
+  const basis = capture.document.basis;
   basis.sysmlAnchor.elements.push({
     id: "sysml.part.lid",
     kind: "PartDefinition",
@@ -839,9 +839,10 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   basis.sysmlAnchorFingerprint = await fingerprintTechnicalSysmlAnchor(
     basis.sysmlAnchor,
   );
-  (capture.document as any).basisFingerprint =
-    await fingerprintTechnicalCompilationBasis(basis);
-  (capture.admission.basis as any).fingerprint = capture.document.basisFingerprint;
+  capture.document.basisFingerprint = await fingerprintTechnicalCompilationBasis(
+    basis,
+  );
+  capture.admission.basis.fingerprint = capture.document.basisFingerprint;
   ambiguous.reader.result = capture;
   const childRoute = await new PrepareProjectAdmittedGeometryExportPreflight({
     admissions: ambiguous.reader,
@@ -862,7 +863,7 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
     "unresolved",
   );
   secondAdmissionSource.attachment.target.elementId = "sysml.part.lid";
-  secondBindings.find((binding: any) => binding.relation === "represents")!
+  secondBindings.find((binding) => binding.relation === "represents")!
     .sysmlElementId = "sysml.part.box";
   ambiguous.reader.result = capture;
   assertEquals(
@@ -874,8 +875,8 @@ Deno.test("admitted geometry export preflight is provider-free and preserves sin
   assertEquals(ambiguous.exporter.calls.length, 0);
 
   const corrupted = await harness();
-  const corruptCapture = structuredClone(corrupted.reopened);
-  (corruptCapture.admission.basis as any).fingerprint.digest = "0".repeat(64);
+  const corruptCapture = writableClone(corrupted.reopened);
+  corruptCapture.admission.basis.fingerprint.digest = "0".repeat(64);
   corrupted.reader.result = corruptCapture;
   await assertRejects(
     () =>
@@ -2054,6 +2055,14 @@ async function assertExportError(
   );
   assertEquals(error.code, code);
   return error;
+}
+
+type Writable<T> = T extends readonly (infer Item)[] ? Writable<Item>[]
+  : T extends object ? { -readonly [K in keyof T]: Writable<T[K]> }
+  : T;
+
+function writableClone<T>(value: T): Writable<T> {
+  return structuredClone(value) as Writable<T>;
 }
 
 function recursiveKeys(value: unknown, seen = new Set<unknown>()): Set<string> {

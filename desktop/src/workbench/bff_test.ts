@@ -10,6 +10,80 @@ import {
 } from "./bff.ts";
 import { WORKBENCH_ACCESS_HEADER, WORKBENCH_WORKSPACE_ID } from "./contracts.ts";
 
+Deno.test("packaged Workbench reaches v2 project discovery without changing v1 catalog", async () => {
+  const root = await Deno.makeTempDir({
+    prefix: "casys-packaged-project-discovery-",
+  });
+  try {
+    const projectStore = new FileEngineeringProjectRevisionStore(
+      `${root}/state/local/engineering-projects`,
+    );
+    await projectStore.createInitial(projectFixture());
+    await Deno.mkdir(
+      `${root}/state/local/engineering-projects/legacy-unsupported`,
+    );
+    await Deno.writeTextFile(
+      `${root}/state/local/engineering-projects/legacy-unsupported/0000000001.json`,
+      '{"schemaVersion":"1.0","password":"hunter2-credential"}',
+    );
+
+    const token = "b".repeat(64);
+    const handler = createPackagedWorkbenchBff(token, root);
+    const headers = { [WORKBENCH_ACCESS_HEADER]: token };
+
+    const catalog = await handler(
+      new Request("http://127.0.0.1/api/projects", { headers }),
+    );
+    assertEquals(catalog.status, 503);
+    assertEquals(await catalog.json(), {
+      schemaVersion: "native-workbench-project-catalog/1.0",
+      state: "unavailable",
+      projects: [],
+      reason: "Persisted project revisions could not be reopened exactly.",
+    });
+
+    const discovery = await handler(
+      new Request("http://127.0.0.1/api/project-discovery", { headers }),
+    );
+    assertEquals(discovery.status, 200);
+    const body = await discovery.json();
+    assertEquals(body.schemaVersion, "native-workbench-project-discovery/2.0");
+    assertEquals(body.state, "partial");
+    assertEquals(body.counts, {
+      available: 1,
+      unavailable: 1,
+      candidates: 2,
+    });
+    const available = body.entries.find((entry: { kind: string }) =>
+      entry.kind === "available"
+    );
+    const unavailable = body.entries.find((entry: { kind: string }) =>
+      entry.kind === "unavailable"
+    );
+    assertEquals(available, {
+      kind: "available",
+      id: PROJECT_ID,
+      name: "Packaged viewer project",
+      revision: 1,
+      subjectId: "packaged-viewer-subject",
+    });
+    assertEquals(unavailable?.kind, "unavailable");
+    assertEquals(unavailable?.observedStorageIdentifier, "legacy-unsupported");
+    assertEquals(unavailable?.identityAuthority, "observed-storage");
+    assertEquals(JSON.stringify(body).includes("hunter2-credential"), false);
+
+    const rejected = await handler(
+      new Request("http://127.0.0.1/api/project-discovery", {
+        method: "POST",
+        headers,
+      }),
+    );
+    assertEquals(rejected.status, 405);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 Deno.test("packaged Workbench wires the explicit viewer registry and fails closed when absent", async () => {
   const root = await Deno.makeTempDir({ prefix: "casys-packaged-viewer-apps-" });
   try {

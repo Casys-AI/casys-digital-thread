@@ -881,7 +881,9 @@ Deno.test(
       reason: "capture-invalid",
     }]);
     assertEquals(
-      enriched.graph.nodes.every((node) => node.engineeringCaseRefs === undefined),
+      enriched.graph.nodes.every((node) =>
+        node.engineeringCaseRefs === undefined
+      ),
       true,
     );
   },
@@ -1018,7 +1020,9 @@ Deno.test(
         name: "foreign authority run",
         snapshot: (() => {
           const candidate = workbenchFor([proof]);
-          candidate.artifacts.find((artifact) => artifact.id === proof.artifact.id)!
+          candidate.artifacts.find((artifact) =>
+            artifact.id === proof.artifact.id
+          )!
             .producerRunId = "run.seal.other";
           return candidate;
         })(),
@@ -1111,13 +1115,16 @@ Deno.test(
       snapshot,
       caseReaders({
         printabilityCheck: {
-          read: (fingerprint) => Promise.resolve(captures.get(fingerprint.digest)),
+          read: (fingerprint) =>
+            Promise.resolve(captures.get(fingerprint.digest)),
         },
         printEstimate: {
-          read: (fingerprint) => Promise.resolve(captures.get(fingerprint.digest)),
+          read: (fingerprint) =>
+            Promise.resolve(captures.get(fingerprint.digest)),
         },
         dfmCheck: {
-          read: (fingerprint) => Promise.resolve(captures.get(fingerprint.digest)),
+          read: (fingerprint) =>
+            Promise.resolve(captures.get(fingerprint.digest)),
         },
       }),
       CASE_CONTEXT,
@@ -1146,6 +1153,155 @@ Deno.test(
         "print-estimate",
         "dfm-check",
       ],
+    );
+  },
+);
+
+Deno.test(
+  "engineering case enricher projects DFM case/result/five observations/three requirements/evaluations",
+  async () => {
+    const dfm = await sealedMakeCase({
+      family: "dfm-check",
+      schemaVersion: DFM_CASE_CAPTURE_SCHEMA,
+      operation: INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
+      caseObject: dfmCase(),
+      caseField: "dfmCase",
+      artifactPrefix: "dfm-case",
+      uriPrefix: DFM_CASE_CAPTURE_URI_PREFIX,
+      trustedRunId: "run.dfm.seal",
+    });
+    const observationIds = [
+      "obs-thickness",
+      "obs-envelope-x",
+      "obs-envelope-count",
+      "obs-overhang",
+      "obs-zmin",
+    ];
+    const requirementIds = ["req-envelope", "req-thickness", "req-overhangs"];
+    const evaluationIds = [
+      "eval-envelope",
+      "eval-thickness",
+      "eval-overhangs",
+    ];
+    const snapshot = workbenchFor([]);
+    snapshot.artifacts = [
+      inputArtifact("step", "3"),
+      dfm.artifact,
+      {
+        id: "dfm-result",
+        label: "Result",
+        kind: "evidence",
+        system: "digital-thread",
+        revision: "1",
+        freshness: "fresh",
+        fingerprint: `sha256:${"4".repeat(64)}`,
+        producerRunId: "run.dfm.result",
+        dependsOn: [dfm.artifact.id, "step"],
+      },
+      inputArtifact("unrelated", "5"),
+    ];
+    snapshot.graph.nodes = [
+      ...snapshot.artifacts.map((item) =>
+        graphNode("artifact", item.id, item.label, item.system)
+      ),
+      ...observationIds.map((id) =>
+        graphNode("observation", id, id, "digital-thread")
+      ),
+      ...requirementIds.map((id) =>
+        graphNode("requirement", id, id, "digital-thread")
+      ),
+      ...evaluationIds.map((id) =>
+        graphNode("evaluation", id, id, "digital-thread")
+      ),
+      graphNode("evaluation", "eval-foreign", "eval-foreign", "digital-thread"),
+      graphNode(
+        "requirement",
+        "req-foreign",
+        "req-foreign",
+        "digital-thread",
+      ),
+    ];
+    snapshot.graph.edges = [
+      edge(
+        "derived_from",
+        "artifact",
+        dfm.artifact.id,
+        "artifact",
+        "dfm-result",
+      ),
+      ...observationIds.map((id) =>
+        edge("source_of", "artifact", "dfm-result", "observation", id)
+      ),
+      ...evaluationIds.map((id) =>
+        edge("evidences", "artifact", "dfm-result", "evaluation", id)
+      ),
+      ...evaluationIds.map((id, index) =>
+        edge(
+          "evaluates",
+          "requirement",
+          requirementIds[index]!,
+          "evaluation",
+          id,
+        )
+      ),
+      edge(
+        "evaluates",
+        "requirement",
+        "req-foreign",
+        "evaluation",
+        "eval-foreign",
+      ),
+    ];
+
+    const enriched = await enrichThreadWorkbenchWithEngineeringCases(
+      snapshot,
+      caseReaders({
+        dfmCheck: {
+          read: (fingerprint) =>
+            Promise.resolve(
+              fingerprint.digest === dfm.captureFingerprint
+                ? dfm.captureText
+                : undefined,
+            ),
+        },
+      }),
+      CASE_CONTEXT,
+    );
+
+    assertEquals(enriched.engineeringCases.status, "observed");
+    assertEquals(enriched.engineeringCases.issues, []);
+    assertEquals(enriched.engineeringCases.cases.length, 1);
+    assertEquals(enriched.engineeringCases.cases[0]?.family, "dfm-check");
+    const caseKey = enriched.engineeringCases.cases[0]!.key;
+    const members = [
+      `artifact:${dfm.artifact.id}`,
+      "artifact:dfm-result",
+      ...observationIds.map((id) => `observation:${id}`),
+      ...requirementIds.map((id) => `requirement:${id}`),
+      ...evaluationIds.map((id) => `evaluation:${id}`),
+    ];
+    for (const ref of members) {
+      assertEquals(
+        nodeByRef(enriched, ref)?.engineeringCaseRefs,
+        [caseKey],
+        `${ref} belongs to the exact DFM case`,
+      );
+    }
+    assertEquals(
+      nodeByRef(enriched, "artifact:step")?.engineeringCaseRefs,
+      undefined,
+    );
+    assertEquals(
+      nodeByRef(enriched, "artifact:unrelated")?.engineeringCaseRefs,
+      undefined,
+    );
+    assertEquals(
+      nodeByRef(enriched, "evaluation:eval-foreign")?.engineeringCaseRefs,
+      undefined,
+    );
+    assertEquals(
+      nodeByRef(enriched, "requirement:req-foreign")?.engineeringCaseRefs,
+      undefined,
     );
   },
 );
@@ -1258,7 +1414,9 @@ function workbenchFor(proofs: readonly SealedProof[]): ThreadWorkbenchSnapshot {
   const edges: ThreadGraphEdge[] = [];
   for (const proof of proofs) {
     for (const input of ["geometry", "requirements", "step"]) {
-      edges.push(edge("input_to", "artifact", input, "artifact", proof.artifact.id));
+      edges.push(
+        edge("input_to", "artifact", input, "artifact", proof.artifact.id),
+      );
     }
     edges.push(edge(
       "input_to",
@@ -1531,7 +1689,8 @@ function printEstimateCase() {
     id: "reviewed-fff-estimate-v1",
     revision: 1,
     scope: "FFF print-time-and-material estimate for the isolated component.",
-    evidenceBoundary: "Observations only; not a cost quote, verdict, or certification.",
+    evidenceBoundary:
+      "Observations only; not a cost quote, verdict, or certification.",
     project: {
       id: PROOF_CASE.project.id,
       subjectId: PROOF_CASE.project.subjectId,
@@ -1571,7 +1730,8 @@ function dfmCase() {
     },
     target: {
       componentKey: "support-bracket",
-      artifactUri: "thread-artifact://generic-product-v1/geometry-step-support-bracket",
+      artifactUri:
+        "thread-artifact://generic-product-v1/geometry-step-support-bracket",
       sha256: "a".repeat(64),
       mediaType: "model/step",
     },

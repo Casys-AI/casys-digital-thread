@@ -101,24 +101,16 @@ export class FileEngineeringProjectRevisionStore
       if (isNotFound(error)) return undefined;
       throw error;
     }
-    const revisionEntries = entries.filter((entry) =>
-      entry.isFile && /^\d{10}\.(?:json|claim)$/.test(entry.name)
-    );
-    const highestClaim = highestRevision(revisionEntries, "claim");
-    const highestJson = highestRevision(revisionEntries, "json");
-    if (highestClaim !== undefined && highestClaim > (highestJson ?? 0)) {
+    const head = selectPhysicalProjectRevisionHead(entries);
+    if (head.kind === "unpublished-claim") {
       throw new EngineeringProjectStoreConflictError(
-        `Engineering project ${projectId} revision ${highestClaim} is claimed but not durably published.`,
+        `Engineering project ${projectId} revision ${head.claimRevision} is claimed but not durably published.`,
       );
     }
-    entries = entries.filter((entry) =>
-      entry.isFile && /^\d{10}\.json$/.test(entry.name)
-    ).sort((left, right) => right.name.localeCompare(left.name));
-    const highest = entries[0];
-    if (!highest) return undefined;
+    if (head.kind === "absent") return undefined;
     // The highest claimed revision is authoritative. Corruption or permission
     // errors fail closed instead of presenting an older revision as current.
-    return await this.readRevision(projectId, Number(highest.name.slice(0, 10)));
+    return await this.readRevision(projectId, head.revision);
   }
 
   async getRevision(
@@ -252,6 +244,71 @@ export class FileEngineeringProjectRevisionStore
       await new Promise<void>((resolve) => setTimeout(resolve, 2));
     }
   }
+}
+
+const REVISION_FILE_NAME = /^\d{10}\.(?:json|claim)$/;
+const JSON_REVISION_FILE_NAME = /^\d{10}\.json$/;
+
+/**
+ * Read-only physical head of one project directory.
+ *
+ * This is storage-state inspection, not qualification: a higher unpublished
+ * `.claim` never licenses the previous `.json`. `get` keeps the same fail-closed
+ * selection; discovery may observe the same head without parsing rejected JSON.
+ */
+export type PhysicalProjectRevisionHead =
+  | {
+    readonly kind: "published-json";
+    readonly revision: number;
+    readonly filename: string;
+  }
+  | {
+    readonly kind: "unpublished-claim";
+    readonly claimRevision: number;
+    readonly claimFilename: string;
+    readonly jsonRevision?: number;
+    readonly jsonFilename?: string;
+  }
+  | {
+    readonly kind: "absent";
+  };
+
+export function selectPhysicalProjectRevisionHead(
+  entries: readonly EngineeringProjectRevisionFileEntry[],
+): PhysicalProjectRevisionHead {
+  const revisionEntries = entries.filter((entry) =>
+    entry.isFile && REVISION_FILE_NAME.test(entry.name)
+  );
+  const highestClaim = highestRevision(revisionEntries, "claim");
+  const highestJson = highestRevision(revisionEntries, "json");
+  if (highestClaim !== undefined && highestClaim > (highestJson ?? 0)) {
+    return {
+      kind: "unpublished-claim",
+      claimRevision: highestClaim,
+      claimFilename: paddedRevisionFilename(highestClaim, "claim"),
+      jsonRevision: highestJson,
+      jsonFilename: highestJson === undefined
+        ? undefined
+        : paddedRevisionFilename(highestJson, "json"),
+    };
+  }
+  const jsonEntries = entries.filter((entry) =>
+    entry.isFile && JSON_REVISION_FILE_NAME.test(entry.name)
+  ).sort((left, right) => right.name.localeCompare(left.name));
+  const highest = jsonEntries[0];
+  if (!highest) return { kind: "absent" };
+  return {
+    kind: "published-json",
+    revision: Number(highest.name.slice(0, 10)),
+    filename: highest.name,
+  };
+}
+
+function paddedRevisionFilename(
+  revision: number,
+  extension: "json" | "claim",
+): string {
+  return `${String(revision).padStart(10, "0")}.${extension}`;
 }
 
 function highestRevision(

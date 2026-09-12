@@ -25,6 +25,8 @@ import {
   ASSEMBLY_INTEGRITY_EVALUATION_CAPTURE_DESCRIPTOR,
   ASSEMBLY_INTEGRITY_OBSERVATION_CAPTURE_DESCRIPTOR,
   BRIEF_SOURCE_CAPTURE_DESCRIPTOR,
+  BUY_CANDIDATE_CAPTURE_DESCRIPTOR,
+  BUY_SEAL_CAPTURE_DESCRIPTOR,
   DFM_CASE_CAPTURE_DESCRIPTOR,
   DFM_CHECK_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
@@ -34,6 +36,9 @@ import {
   PRINT_ESTIMATE_OBSERVATION_CAPTURE_DESCRIPTOR,
   PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
   PRINTABILITY_OBSERVATION_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
 } from "./src/adapters/shared/cas/file-capture-store.ts";
@@ -167,6 +172,16 @@ import {
   IndustrializeRunDfmChecksRunExecutor,
 } from "./src/adapters/make/dfm/industrialize-run-dfm-checks-run-executor.ts";
 import { FileDfmCheckAttemptStore } from "./src/adapters/make/dfm/file-dfm-check-attempt-store.ts";
+import {
+  BUY_CAPTURE_CONFIGURATION_COST_OPERATION,
+  BUY_SEAL_CONFIGURATION_COST_OPERATION,
+} from "./src/domain/buy/buy-operations.ts";
+import { BuyCaptureConfigurationCostRunExecutor } from "./src/adapters/buy/buy-capture-configuration-cost-run-executor.ts";
+import { BuySealConfigurationCostRunExecutor } from "./src/adapters/buy/buy-seal-configuration-cost-run-executor.ts";
+import { createBuyErpRuntimeComposition } from "./src/adapters/buy/runtime-composition.ts";
+import { AgentResourceBuyConfigurationReader } from "./src/adapters/buy/agent-resource-buy-configuration-reader.ts";
+import { PrepareProjectBuyConfigurationCostCaptureReview } from "./src/application/use-cases/buy/prepare-project-buy-configuration-cost-capture-review.ts";
+import { PrepareProjectBuyConfigurationCostSealReview } from "./src/application/use-cases/buy/prepare-project-buy-configuration-cost-seal-review.ts";
 import { RegisteredProjectRunExecutor } from "./src/application/use-cases/registered-project-run-executor.ts";
 import { PrepareProjectAssemblyIntegrityReview } from "./src/application/use-cases/cad/assembly-integrity/prepare-project-assembly-integrity-review.ts";
 import { PrepareAssemblyIntegrityEvaluation } from "./src/application/use-cases/cad/assembly-integrity/prepare-assembly-integrity-evaluation.ts";
@@ -207,12 +222,16 @@ import { CapabilityRuntimePreloadScheduler } from "./src/application/control-pla
 import { createLocalCapabilityRuntimeCachePreparationComposition } from "./src/adapters/control-plane/local-capability-runtime-cache-preparation-composition.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "./src/adapters/control-plane/local-capability-runtime-read-composition.ts";
 import { LocalChronoRuntimeSecretResolver } from "./src/adapters/control-plane/local-chrono-runtime-secret-resolver.ts";
+import { overlaySecretInjector } from "./src/adapters/control-plane/local-erpnext-buy-runtime-secret-resolver.ts";
 import { createLocalFixedCapabilityRuntimeConnection } from "./src/adapters/control-plane/local-fixed-capability-runtime-connection.ts";
 import {
   firstPartyBuild123dObservationLaunchGroupReference,
   firstPartySysonLaunchGroupReference,
 } from "./src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
-import type { CapabilityRuntimeLaunchGroup } from "./src/domain/capability/runtime/capability-runtime-launch-group.ts";
+import {
+  type CapabilityRuntimeLaunchGroup,
+  capabilityRuntimeLaunchGroupReference,
+} from "./src/domain/capability/runtime/capability-runtime-launch-group.ts";
 import { briefCapabilityIntentRouteTable } from "./src/orchestration/operations/brief-capability-intent-routes.ts";
 import {
   listRegisteredEngineeringOperations,
@@ -235,6 +254,7 @@ import {
 import { ProjectProductNavigation } from "./src/application/use-cases/product-navigation/project-product-navigation.ts";
 import { CaptureProductStructureTraversal } from "./src/adapters/architecture/renderer/capture-product-structure-traversal.ts";
 import { WorkbenchProductNavigationEvidenceAttachmentReader } from "./src/adapters/thread/product-navigation-workbench.ts";
+import { composeHistoryCaptureReaders } from "./src/adapters/thread/requirements-history-workbench-enricher.ts";
 import { ProjectSourceWorkspaceAuthoringAttachmentReader } from "./src/adapters/project-source-workspace/product-navigation-authoring-attachment-reader.ts";
 import {
   type ProjectBriefToolDependencies,
@@ -390,6 +410,10 @@ const DEFAULT_DFM_CASE_CAPTURE_DIRECTORY = "state/local/dfm-case-captures";
 const DEFAULT_DFM_CHECK_CAPTURE_DIRECTORY = "state/local/dfm-check-captures";
 const DEFAULT_DFM_CHECK_ATTEMPT_DIRECTORY = "state/local/dfm-check-attempts";
 const DEFAULT_DFM_EXPORT_DIRECTORY = "state/local/dfm-exports";
+const DEFAULT_BUY_CANDIDATE_CAPTURE_DIRECTORY =
+  "state/local/buy-configuration-cost-candidate-captures";
+const DEFAULT_BUY_SEAL_CAPTURE_DIRECTORY =
+  "state/local/buy-configuration-cost-seal-captures";
 const DEFAULT_PRINT_ESTIMATE_CASE_CAPTURE_DIRECTORY =
   "state/local/print-estimate-case-captures";
 const DEFAULT_PRINT_ESTIMATE_ATTEMPT_DIRECTORY = "state/local/print-estimate-attempts";
@@ -492,6 +516,12 @@ export interface CreateConsoleServerOptions {
   dfmCaseCaptureDirectory?: string;
   dfmCheckCaptureDirectory?: string;
   dfmCheckAttemptDirectory?: string;
+  buyCandidateCaptureDirectory?: string;
+  buySealCaptureDirectory?: string;
+  /** Trusted local ERP Buy installation profile. Missing is non-qualified absence. */
+  erpnextBuyInstallationProfilePath?: string;
+  /** Trusted local ERP Buy qualification fixture. Missing leaves the binding unqualified. */
+  erpnextBuyQualificationFixturePath?: string;
   /** Canonical factual L3 assembly-integrity observation CAS. */
   assemblyIntegrityObservationCaptureDirectory?: string;
   /** Durable L3 assembly-integrity observation dispatch journal. */
@@ -921,6 +951,8 @@ async function createProjectControl(
         imageDigest: admittedSpiceExecutionProfile.runtimeBackend.imageDigest,
         profileFingerprint: admittedSpiceExecutionProfile.profileFingerprint,
       },
+    erpnextBuyInstallationProfilePath: options.erpnextBuyInstallationProfilePath,
+    erpnextBuyQualificationFixturePath: options.erpnextBuyQualificationFixturePath,
   });
   const capabilityRuntimeLeases = new FileCapabilityRuntimeLeaseStore(
     DEFAULT_CAPABILITY_RUNTIME_LEASE_DIRECTORY,
@@ -934,8 +966,11 @@ async function createProjectControl(
   const capabilityRuntimeHost = createCapabilityRuntimeHostAdapter({
     registry: capabilityRead.launchGroups,
     journal: capabilityRead.journal,
-    secrets: capabilityRuntimeSecrets,
-    secretInjector: capabilityRuntimeSecrets,
+    secrets: capabilityRead.secrets,
+    secretInjector: overlaySecretInjector(
+      capabilityRuntimeSecrets,
+      capabilityRead.erpnextBuy?.secrets,
+    ),
   });
   const capabilityRuntimeGroups = new CapabilityRuntimeLaunchGroupSupervisor({
     groups: capabilityRead.launchGroups,
@@ -943,7 +978,7 @@ async function createProjectControl(
     leases: capabilityRuntimeLeases,
     states: capabilityRead.composeObserver,
     host: capabilityRuntimeHost,
-    secrets: capabilityRuntimeSecrets,
+    secrets: capabilityRead.secrets,
     lock: capabilityRuntimeMutationLock,
   });
   const capabilityRuntime = new CapabilityRuntimeSupervisor({
@@ -1209,6 +1244,7 @@ async function createProjectControl(
     capabilityRuntime,
     capabilityRuntimeSession,
     capabilityRuntimeLaunchGroups: capabilityRead.launchGroups,
+    capabilityRuntimeObserver: capabilityRead.composeObserver,
     sysonMcpUrl,
     sensitivityStepCacheDirectory: DEFAULT_SENSITIVITY_STEP_CACHE_DIRECTORY,
   });
@@ -1443,6 +1479,63 @@ async function createProjectControl(
     captures: dfmCaseCaptures,
     lease,
   });
+  const buyCandidateCaptures = new FileCaptureStore({
+    ...BUY_CANDIDATE_CAPTURE_DESCRIPTOR,
+    directory: options.buyCandidateCaptureDirectory ??
+      DEFAULT_BUY_CANDIDATE_CAPTURE_DIRECTORY,
+  });
+  const buySealCaptures = new FileCaptureStore({
+    ...BUY_SEAL_CAPTURE_DESCRIPTOR,
+    directory: options.buySealCaptureDirectory ??
+      DEFAULT_BUY_SEAL_CAPTURE_DIRECTORY,
+  });
+  const buyErpRuntime = await createBuyErpRuntimeComposition({
+    contribution: capabilityRead.erpnextBuy?.contribution,
+    contexts: capabilityRead.contexts,
+    launchGroups: capabilityRead.launchGroups,
+    leases: capabilityRuntimeLeases,
+    secrets: capabilityRead.erpnextBuy?.secrets,
+  });
+  const buyConfigurationReader = new AgentResourceBuyConfigurationReader(
+    agentResourceIngress.store,
+  );
+  const buyCaptureConfigurationCost = new BuyCaptureConfigurationCostRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    captures: buyCandidateCaptures,
+    configurations: buyConfigurationReader,
+    bindings: buyErpRuntime.bindings,
+    lease,
+    capabilityRuntime,
+    capabilityRuntimeSession,
+    capabilityRuntimeConnection: buyErpRuntime.capabilityRuntimeConnection,
+    erpInstallation: buyErpRuntime.installation,
+    erpLaunchGroup: buyErpRuntime.launchGroup === undefined
+      ? undefined
+      : capabilityRuntimeLaunchGroupReference(buyErpRuntime.launchGroup),
+    capabilityRuntimeSecrets: buyErpRuntime.secrets,
+  });
+  const buySealConfigurationCost = new BuySealConfigurationCostRunExecutor({
+    projects: runtime.projects,
+    commands: runtime.commands,
+    snapshots: activeThreadSnapshots,
+    candidates: buyCandidateCaptures,
+    captures: buySealCaptures,
+    lease,
+  });
+  const buyConfigurationCostCaptureReview =
+    new PrepareProjectBuyConfigurationCostCaptureReview(
+      activeThreadSnapshots,
+      buyConfigurationReader,
+      buyErpRuntime.bindings,
+      runtime.projects,
+    );
+  const buyConfigurationCostSealReview =
+    new PrepareProjectBuyConfigurationCostSealReview(
+      activeThreadSnapshots,
+      buyCandidateCaptures,
+    );
   const industrializeRunDfmChecks = dfmMcpUrl
     ? new IndustrializeRunDfmChecksRunExecutor({
       projects: runtime.projects,
@@ -1661,6 +1754,8 @@ async function createProjectControl(
       sensitivityStudySealReview: sensitivity.sensitivityStudySealReview,
       build123dExecutionReview: build123dCapability.build123dExecutionReview,
       isolatedGeometrySealReview: build123dCapability.isolatedGeometrySealReview,
+      buyConfigurationCostCaptureReview,
+      buyConfigurationCostSealReview,
       vectorCorrectionReview: sensitivity.vectorCorrectionReview,
       sensitivityBaseEvaluationReview: sensitivity.sensitivityBaseEvaluationReview,
       sensitivityEdgesReview: sensitivity.sensitivityEdgesReview,
@@ -1689,6 +1784,11 @@ async function createProjectControl(
           admissions: compilationFoundation.technicalCompilationSeals,
           workspace: sourceWorkspaceStore,
           requirementsCaptures: architectureFoundation.requirementsCaptures,
+          historyEvidenceCaptures: composeHistoryCaptureReaders(
+            new FileCaptureStore(SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR),
+            new FileCaptureStore(SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR),
+            new FileCaptureStore(SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR),
+          ),
           engineeringCases: {
             mechanicalProof: feaFoundation.feaProofCaptures,
             printabilityCheck: printabilityCaseCaptures,
@@ -1950,6 +2050,17 @@ async function createProjectControl(
             unavailableMessage:
               "The server has no trusted industrialize.run-dfm-checks@1 executor " +
               "configured for this run (dfm provider is required).",
+          },
+          {
+            operation: BUY_CAPTURE_CONFIGURATION_COST_OPERATION,
+            executor: buyCaptureConfigurationCost,
+            unavailableMessage:
+              "The server has no qualified ERP Buy read binding for buy.capture-configuration-cost@1. " +
+              "A legacy fleet image tag is not qualification.",
+          },
+          {
+            operation: BUY_SEAL_CONFIGURATION_COST_OPERATION,
+            executor: buySealConfigurationCost,
           },
           {
             operation: VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION,

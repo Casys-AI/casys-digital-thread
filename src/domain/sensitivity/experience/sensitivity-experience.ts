@@ -62,7 +62,60 @@ export const SENSITIVITY_EXPERIENCE_DERIVATION_PROFILE = Object.freeze(
 );
 export const SENSITIVITY_EXPERIENCE_COMPATIBILITY_VERSION = "1.0.0" as const;
 
-export const SENSITIVITY_EXPERIENCE_WORK_AVOIDED = Object.freeze(
+/**
+ * Historical live-MCP solver identity. Immutable persisted records keep this
+ * shape; a current recorded-protocol target never admits or relabels it.
+ */
+export const SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_LEGACY =
+  "calculix_solve_static" as const;
+/** Current recorded-run protocol used by analyze.run-fea-sensitivity@1. */
+export const SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_RECORDED =
+  "calculix_solve_static_recorded" as const;
+
+export const SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD = Object.freeze(
+  {
+    operationId: SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_LEGACY,
+    providerContractVersion: "2.0",
+    requestLowerer: {
+      id: "sensitivity-calculix-static-request-lowerer",
+      version: "1.0.0",
+    },
+    responseParser: {
+      id: "fea-solver-result-capture-parser",
+      version: "1.0.0",
+    },
+    outputValidator: {
+      id: "sensitivity-static-observation-validator",
+      version: "1.0.0",
+    },
+  } as const,
+);
+
+/**
+ * Adapter-owned recorded protocol identities. Versions match the current
+ * mcp-calculix recorded request/result/capture contracts, not a fleet image
+ * tag or an unpublished provider claim.
+ */
+export const SENSITIVITY_EXPERIENCE_RECORDED_SOLVER_METHOD = Object.freeze(
+  {
+    operationId: SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_RECORDED,
+    providerContractVersion: "2.0",
+    requestLowerer: {
+      id: "recorded-calculix-static-request-lowerer",
+      version: "1.0",
+    },
+    responseParser: {
+      id: "recorded-calculix-static-result-parser",
+      version: "1.0",
+    },
+    outputValidator: {
+      id: "mcp-calculix-sensitivity-capture",
+      version: "1.0",
+    },
+  } as const,
+);
+
+export const SENSITIVITY_EXPERIENCE_WORK_AVOIDED_LEGACY = Object.freeze(
   [
     "isolated-build123d.base",
     "isolated-build123d.stepped",
@@ -70,6 +123,23 @@ export const SENSITIVITY_EXPERIENCE_WORK_AVOIDED = Object.freeze(
     "calculix_solve_static.stepped",
   ] as const,
 );
+
+export const SENSITIVITY_EXPERIENCE_WORK_AVOIDED = Object.freeze(
+  [
+    "isolated-build123d.base",
+    "isolated-build123d.stepped",
+    "calculix_solve_static_recorded.base",
+    "calculix_solve_static_recorded.stepped",
+  ] as const,
+);
+
+export type SensitivityExperienceWorkAvoided =
+  | typeof SENSITIVITY_EXPERIENCE_WORK_AVOIDED
+  | typeof SENSITIVITY_EXPERIENCE_WORK_AVOIDED_LEGACY;
+
+export type SensitivityExperienceSolverOperationId =
+  | typeof SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_LEGACY
+  | typeof SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_RECORDED;
 
 export interface SensitivityExperienceSolverRuntimeIdentity {
   readonly imageReference: string;
@@ -138,7 +208,7 @@ export interface SensitivityExperienceMethodIdentity {
   };
   readonly solver: {
     readonly serverId: "calculix";
-    readonly operationId: "calculix_solve_static";
+    readonly operationId: SensitivityExperienceSolverOperationId;
     readonly providerContractVersion: "2.0";
     readonly requestLowerer: { readonly id: string; readonly version: string };
     readonly responseParser: { readonly id: string; readonly version: string };
@@ -280,7 +350,7 @@ export interface SensitivityExperienceReuseReceipt {
   readonly derivationProfile: typeof SENSITIVITY_EXPERIENCE_DERIVATION_PROFILE;
   readonly compatibilityVersion: typeof SENSITIVITY_EXPERIENCE_COMPATIBILITY_VERSION;
   readonly sourceHealth: "valid";
-  readonly workAvoided: typeof SENSITIVITY_EXPERIENCE_WORK_AVOIDED;
+  readonly workAvoided: SensitivityExperienceWorkAvoided;
   readonly freshExecutionRequired: false;
   readonly issuedAt: string;
 }
@@ -356,20 +426,12 @@ export async function compileSensitivityExperienceTarget(
       },
       solver: {
         serverId: "calculix",
-        operationId: "calculix_solve_static",
-        providerContractVersion: "2.0",
-        requestLowerer: {
-          id: "sensitivity-calculix-static-request-lowerer",
-          version: "1.0.0",
-        },
-        responseParser: {
-          id: "fea-solver-result-capture-parser",
-          version: "1.0.0",
-        },
-        outputValidator: {
-          id: "sensitivity-static-observation-validator",
-          version: "1.0.0",
-        },
+        operationId: SENSITIVITY_EXPERIENCE_RECORDED_SOLVER_METHOD.operationId,
+        providerContractVersion:
+          SENSITIVITY_EXPERIENCE_RECORDED_SOLVER_METHOD.providerContractVersion,
+        requestLowerer: SENSITIVITY_EXPERIENCE_RECORDED_SOLVER_METHOD.requestLowerer,
+        responseParser: SENSITIVITY_EXPERIENCE_RECORDED_SOLVER_METHOD.responseParser,
+        outputValidator: SENSITIVITY_EXPERIENCE_RECORDED_SOLVER_METHOD.outputValidator,
         runtime: validateSolverRuntimeIdentity(input.solverRuntime),
       },
     },
@@ -939,12 +1001,10 @@ export function validateSensitivityExperienceReuseReceipt(
     false,
     "$sensitivityExperienceReuseReceipt.freshExecutionRequired",
   );
-  if (
-    deterministicJson(root.workAvoided) !==
-      deterministicJson(SENSITIVITY_EXPERIENCE_WORK_AVOIDED)
-  ) {
-    throw new TypeError("$sensitivityExperienceReuseReceipt.workAvoided is divergent.");
-  }
+  const workAvoided = parseWorkAvoided(
+    root.workAvoided,
+    "$sensitivityExperienceReuseReceipt.workAvoided",
+  );
   return deepFreeze({
     schemaVersion: SENSITIVITY_EXPERIENCE_REUSE_RECEIPT_SCHEMA,
     audience: SENSITIVITY_EXPERIENCE_AUDIENCE,
@@ -975,7 +1035,7 @@ export function validateSensitivityExperienceReuseReceipt(
       "$sensitivityExperienceReuseReceipt.compatibilityVersion",
     ),
     sourceHealth: "valid",
-    workAvoided: SENSITIVITY_EXPERIENCE_WORK_AVOIDED,
+    workAvoided,
     freshExecutionRequired: false,
     issuedAt: isoDate(root.issuedAt, "$sensitivityExperienceReuseReceipt.issuedAt"),
   });
@@ -1352,16 +1412,7 @@ function parseMethodIdentity(value: unknown): SensitivityExperienceMethodIdentit
     "runtime",
   ], "$method.solver");
   literalValue(solver.serverId, "calculix", "$method.solver.serverId");
-  literalValue(
-    solver.operationId,
-    "calculix_solve_static",
-    "$method.solver.operationId",
-  );
-  literalValue(
-    solver.providerContractVersion,
-    "2.0",
-    "$method.solver.providerContractVersion",
-  );
+  const protocol = parseSolverMethodProtocol(solver);
   return deepFreeze({
     operation: { id: "analyze.run-fea-sensitivity", version: "1" },
     finiteDifference: "first-order-forward",
@@ -1410,17 +1461,104 @@ function parseMethodIdentity(value: unknown): SensitivityExperienceMethodIdentit
     },
     solver: {
       serverId: "calculix",
-      operationId: "calculix_solve_static",
-      providerContractVersion: "2.0",
-      requestLowerer: parseRef(solver.requestLowerer, "$method.solver.requestLowerer"),
-      responseParser: parseRef(solver.responseParser, "$method.solver.responseParser"),
-      outputValidator: parseRef(
-        solver.outputValidator,
-        "$method.solver.outputValidator",
-      ),
+      operationId: protocol.operationId,
+      providerContractVersion: protocol.providerContractVersion,
+      requestLowerer: protocol.requestLowerer,
+      responseParser: protocol.responseParser,
+      outputValidator: protocol.outputValidator,
       runtime: validateSolverRuntimeIdentity(solver.runtime),
     },
   });
+}
+
+function parseSolverMethodProtocol(
+  solver: Readonly<Record<string, unknown>>,
+): {
+  readonly operationId: SensitivityExperienceSolverOperationId;
+  readonly providerContractVersion: "2.0";
+  readonly requestLowerer: { readonly id: string; readonly version: string };
+  readonly responseParser: { readonly id: string; readonly version: string };
+  readonly outputValidator: { readonly id: string; readonly version: string };
+} {
+  const operationId = oneOf(
+    solver.operationId,
+    [
+      SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_LEGACY,
+      SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_RECORDED,
+    ] as const,
+    "$method.solver.operationId",
+  );
+  literalValue(
+    solver.providerContractVersion,
+    "2.0",
+    "$method.solver.providerContractVersion",
+  );
+  const protocol = operationId === SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_RECORDED
+    ? SENSITIVITY_EXPERIENCE_RECORDED_SOLVER_METHOD
+    : SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD;
+  const requestLowerer = parseRef(
+    solver.requestLowerer,
+    "$method.solver.requestLowerer",
+  );
+  const responseParser = parseRef(
+    solver.responseParser,
+    "$method.solver.responseParser",
+  );
+  const outputValidator = parseRef(
+    solver.outputValidator,
+    "$method.solver.outputValidator",
+  );
+  literalValue(
+    requestLowerer.id,
+    protocol.requestLowerer.id,
+    "$method.solver.requestLowerer.id",
+  );
+  literalValue(
+    requestLowerer.version,
+    protocol.requestLowerer.version,
+    "$method.solver.requestLowerer.version",
+  );
+  literalValue(
+    responseParser.id,
+    protocol.responseParser.id,
+    "$method.solver.responseParser.id",
+  );
+  literalValue(
+    responseParser.version,
+    protocol.responseParser.version,
+    "$method.solver.responseParser.version",
+  );
+  literalValue(
+    outputValidator.id,
+    protocol.outputValidator.id,
+    "$method.solver.outputValidator.id",
+  );
+  literalValue(
+    outputValidator.version,
+    protocol.outputValidator.version,
+    "$method.solver.outputValidator.version",
+  );
+  return {
+    operationId: protocol.operationId,
+    providerContractVersion: protocol.providerContractVersion,
+    requestLowerer: protocol.requestLowerer,
+    responseParser: protocol.responseParser,
+    outputValidator: protocol.outputValidator,
+  };
+}
+
+function parseWorkAvoided(
+  value: unknown,
+  path: string,
+): SensitivityExperienceWorkAvoided {
+  const encoded = deterministicJson(value);
+  if (encoded === deterministicJson(SENSITIVITY_EXPERIENCE_WORK_AVOIDED)) {
+    return SENSITIVITY_EXPERIENCE_WORK_AVOIDED;
+  }
+  if (encoded === deterministicJson(SENSITIVITY_EXPERIENCE_WORK_AVOIDED_LEGACY)) {
+    return SENSITIVITY_EXPERIENCE_WORK_AVOIDED_LEGACY;
+  }
+  throw new TypeError(`${path} is divergent.`);
 }
 
 function requireSingleAdmittedSource(

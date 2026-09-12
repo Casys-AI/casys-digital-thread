@@ -174,6 +174,8 @@ Deno.test("architecture and geometry hulls share the occurrence tree but never b
       role: _role,
       selectable: _selectable,
       focusable: _focusable,
+      detail: _detail,
+      availability: _availability,
       ...row
     }: (typeof syson.rows)[number],
   ) => row;
@@ -190,6 +192,16 @@ Deno.test("architecture and geometry hulls share the occurrence tree but never b
   assertEquals(overviewHullRowGraphRefs(syson.rows[1]!), []);
   assertEquals(syson.rows[1]!.role, "folder");
   assertEquals(syson.rows[1]!.endpoint, false);
+  assertEquals(syson.rows[1]!.detail, "Arm");
+  assertEquals(syson.rows[1]!.availability, undefined);
+  assertEquals(canonical.rows[1]!.detail, "unjoined · pending CAD");
+  assertEquals(canonical.rows[1]!.availability, "unresolved");
+  assertEquals(canonical.rows[2]!.detail, "unjoined · pending CAD");
+  assertEquals(overviewHullRowGraphRefs(canonical.rows[1]!), []);
+  assertEquals(canonical.rows[1]!.endpoint, false);
+  assertEquals(canonical.rows[1]!.sessionIds, []);
+  assertEquals(canonical.rows[0]!.detail, undefined);
+  assertEquals(canonical.rows[0]!.availability, undefined);
   assertEquals(
     syson.rows.map((row) => [row.key, row.label, row.depth, row.sessionIds]),
     [["root", "Assembly", 0, ["model-app"]], ["left", "Left arm", 1, []], [
@@ -431,9 +443,7 @@ function briefSource(
       kind: "success-criterion",
       statement: extras.statement ?? "Exact approved clause.",
       sourceRefs: [{ kind: "intent", reference: "conversation:fixture" }],
-      ...(extras.dependsOnItemIds
-        ? { dependsOnItemIds: extras.dependsOnItemIds }
-        : {}),
+      ...(extras.dependsOnItemIds ? { dependsOnItemIds: extras.dependsOnItemIds } : {}),
     },
     correspondences: [{
       trace: {
@@ -592,9 +602,7 @@ Deno.test("the same sourceItemId in two snapshots stays distinct and never inven
     ],
   );
   assertEquals(
-    brief.rows.some((row) =>
-      row.parentKey === groupR1 && row.nodeKey === r3.key
-    ),
+    brief.rows.some((row) => row.parentKey === groupR1 && row.nodeKey === r3.key),
     false,
   );
 });
@@ -795,9 +803,7 @@ Deno.test("brief tree overlay keeps exact source endpoints and does not fabricat
     graphNodes.map((node) => node.key).sort(),
   );
   assertEquals(
-    tree.nodes.some((node) =>
-      node.key === overviewBriefSnapshotGroupKey(source.brief)
-    ),
+    tree.nodes.some((node) => node.key === overviewBriefSnapshotGroupKey(source.brief)),
     false,
   );
   assertEquals(tree.unroutedEdgeKeys, []);
@@ -1035,8 +1041,7 @@ Deno.test("distinct analysis bases stay separate and never invent an r1/r3 join"
     "requirements",
     "brief",
   );
-  const otherBasis =
-    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const otherBasis = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const camera = analysisRecord("subsystem-camera", {
     domain: "brief",
     kind: "brief-item",
@@ -1232,9 +1237,7 @@ function sysmlRecord(
     kind: "recorded",
     color: "#2563eb",
     emphasis: false,
-    ...(extras.isRequirementsCapture === true
-      ? { isRequirementsCapture: true }
-      : {}),
+    ...(extras.isRequirementsCapture === true ? { isRequirementsCapture: true } : {}),
     node: {
       id: key,
       ref: { kind, id },
@@ -1251,6 +1254,10 @@ function sysmlRecord(
 const SYSML_HULL = groupId(
   "system-model",
   OVERVIEW_DOMAIN_GROUP_KEYS.sysmlModel,
+);
+const GEOMETRY_HULL = groupId(
+  "geometry",
+  OVERVIEW_DOMAIN_GROUP_KEYS.geometry,
 );
 
 function occurrenceHierarchy(
@@ -1299,9 +1306,7 @@ Deno.test("architecture tree keeps 29 occurrences and appends one root Requireme
       key: node.key,
       groupKey: node.groupKey,
       ref: node.node.ref,
-      ...(node.isRequirementsCapture === true
-        ? { isRequirementsCapture: true }
-        : {}),
+      ...(node.isRequirementsCapture === true ? { isRequirementsCapture: true } : {}),
     })),
     [{
       from: { kind: "artifact", id: "requirements-current" },
@@ -1322,15 +1327,11 @@ Deno.test("architecture tree keeps 29 occurrences and appends one root Requireme
   const section = hull.rows.find((row) =>
     row.kind === "navigation" && row.label === "Requirements"
   )!;
-  const requirementRows = hull.rows.filter((row) =>
-    row.nodeKey === requirement.key
-  );
+  const requirementRows = hull.rows.filter((row) => row.nodeKey === requirement.key);
   const occurrenceRows = hull.rows.filter((row) => row.kind === "navigation");
   assertEquals(hull.mode, "tree");
   assertEquals(
-    hull.rows.filter((row) =>
-      row.kind === "navigation" && row.label !== "Requirements"
-    )
+    hull.rows.filter((row) => row.kind === "navigation" && row.label !== "Requirements")
       .length,
     29,
   );
@@ -1444,4 +1445,337 @@ Deno.test("hull row viewer binding is one non-React helper", async () => {
     helper.includes("export function overviewHullBoundRowViewer("),
     true,
   );
+});
+
+const UNJOINED_GEOMETRY_DETAIL = "unjoined · pending CAD";
+
+const UNJOINED_OCCURRENCE_IDENTITIES: readonly [
+  key: string,
+  parentKey: string | undefined,
+  depth: number,
+  label: string,
+][] = [
+  ["root", undefined, 0, "InspectionDrone"],
+  ["airframe", "root", 1, "airframe"],
+  ["occ-2", "airframe", 2, "CameraMountBracket"],
+  ["occ-3", "airframe", 2, "RadialArm"],
+  ["occ-4", "airframe", 2, "Part 4"],
+  ["occ-5", "airframe", 2, "Part 5"],
+  ["occ-6", "airframe", 2, "Part 6"],
+  ["occ-7", "airframe", 2, "Part 7"],
+  ["occ-8", "airframe", 2, "Part 8"],
+  ["occ-9", "airframe", 2, "Part 9"],
+  ["occ-10", "airframe", 2, "Part 10"],
+  ["occ-11", "airframe", 2, "Part 11"],
+  ["occ-12", "airframe", 2, "Part 12"],
+  ["occ-13", "airframe", 2, "Part 13"],
+  ["occ-14", "airframe", 2, "Part 14"],
+  ["occ-15", "airframe", 2, "Part 15"],
+  ["occ-16", "airframe", 2, "Part 16"],
+  ["occ-17", "airframe", 2, "Part 17"],
+  ["occ-18", "airframe", 2, "Part 18"],
+  ["occ-19", "airframe", 2, "Part 19"],
+  ["occ-20", "airframe", 2, "Part 20"],
+  ["occ-21", "airframe", 2, "Part 21"],
+  ["occ-22", "airframe", 2, "Part 22"],
+  ["occ-23", "airframe", 2, "Part 23"],
+  ["occ-24", "airframe", 2, "Part 24"],
+  ["occ-25", "airframe", 2, "Part 25"],
+  ["occ-26", "airframe", 2, "Part 26"],
+  ["occ-27", "airframe", 2, "Part 27"],
+  ["occ-28", "airframe", 2, "Part 28"],
+];
+
+function unjoinedOccurrenceHierarchy(
+  architectureId: string,
+  extras: {
+    readonly geometryJoinKey?: string;
+    readonly geometryJoinId?: string;
+  } = {},
+): ThreadViewerHierarchyProjection {
+  const nodes = UNJOINED_OCCURRENCE_IDENTITIES.map((
+    [id, parentKey, _depth, label],
+  ) => ({
+    id,
+    ...(parentKey ? { parentId: parentKey } : {}),
+    label,
+    ...(id === "airframe" ? { usageId: "use-airframe", usageLabel: "airframe" } : {}),
+    partDefinitionElementId: `def-${id}`,
+    ...(extras.geometryJoinKey === id && extras.geometryJoinId
+      ? {
+        geometryArtifactId: extras.geometryJoinId,
+        artifactIds: [extras.geometryJoinId],
+        sessionIds: ["cad-current"],
+      }
+      : { sessionIds: [] as string[] }),
+  }));
+  return {
+    schemaVersion: "thread-viewer-hierarchy/1.0",
+    status: "available",
+    architectureArtifactId: architectureId,
+    rootIds: ["root"],
+    nodes,
+  };
+}
+
+function historicalGeometrySession(
+  artifactId: string,
+  sessionId: string,
+): ThreadViewerSession {
+  return {
+    ...session,
+    id: sessionId,
+    anchor: { kind: "artifact", id: artifactId },
+  };
+}
+
+Deno.test("available all-unjoined Geometry keeps the server occurrence tree and pending CAD text", () => {
+  const architecture = record(
+    "architecture-current",
+    "system-model",
+    OVERVIEW_DOMAIN_GROUP_KEYS.sysmlModel,
+  );
+  const historical = record(
+    "geometry-historical",
+    "geometry",
+    OVERVIEW_DOMAIN_GROUP_KEYS.geometry,
+  );
+  const historicalStep = record(
+    "geometry-historical-step",
+    "geometry",
+    OVERVIEW_DOMAIN_GROUP_KEYS.geometry,
+  );
+  const members = [architecture, historical, historicalStep];
+  const hierarchy = unjoinedOccurrenceHierarchy("architecture-current");
+  const stale = historicalGeometrySession("geometry-historical", "app");
+  const before = JSON.stringify({ members, hierarchy });
+  const contents = buildOverviewHullContents(members, [stale, modelSession], hierarchy);
+  const geometry = contents.get(GEOMETRY_HULL)!;
+  const sysml = contents.get(SYSML_HULL)!;
+
+  assertEquals(hierarchy.nodes.length, 29);
+  assertEquals(
+    hierarchy.nodes.filter((node) => node.parentId !== undefined).length,
+    28,
+  );
+  assertEquals(
+    hierarchy.nodes.every((node) => node.geometryArtifactId === undefined),
+    true,
+  );
+  assertEquals(geometry.mode, "tree");
+  assertEquals(
+    geometry.rows.map((row) => [row.key, row.parentKey, row.depth, row.label]),
+    UNJOINED_OCCURRENCE_IDENTITIES.map((
+      [key, parentKey, depth, label],
+    ) => [key, parentKey, depth, label]),
+  );
+  assertEquals(
+    geometry.rows.map((row) => [
+      row.kind,
+      row.detail,
+      row.availability,
+      row.endpoint,
+      row.sessionIds,
+      row.viewerNodeKey,
+      overviewHullRowGraphRefs(row),
+      row.role,
+      row.selectable,
+      overviewHullRowActions(row),
+      overviewHullRowPresentation(row).detail,
+      overviewHullRowPresentation(row).hasViewer,
+    ]),
+    UNJOINED_OCCURRENCE_IDENTITIES.map(() => [
+      "navigation",
+      UNJOINED_GEOMETRY_DETAIL,
+      "unresolved",
+      false,
+      [],
+      undefined,
+      [],
+      "folder",
+      false,
+      [],
+      UNJOINED_GEOMETRY_DETAIL,
+      false,
+    ]),
+  );
+  assertEquals(
+    geometry.records.map((row) => [row.nodeKey, row.endpoint, row.sessionIds]),
+    [
+      [historical.key, true, ["app"]],
+      [historicalStep.key, true, []],
+    ],
+  );
+  assertEquals(
+    geometry.rows.some((row) => row.nodeKey === historical.key),
+    false,
+  );
+  assertEquals(sysml.mode, "tree");
+  assertEquals(
+    sysml.rows.filter((row) => row.kind === "navigation").map((row) => [
+      row.key,
+      row.parentKey,
+      row.depth,
+    ]),
+    UNJOINED_OCCURRENCE_IDENTITIES.map(([key, parentKey, depth]) => [
+      key,
+      parentKey,
+      depth,
+    ]),
+  );
+  assertEquals(sysml.rows[0]!.detail, undefined);
+  assertEquals(sysml.rows[0]!.availability, undefined);
+  assertEquals(overviewHullRowGraphRefs(sysml.rows[0]!), [
+    "artifact:architecture-current",
+  ]);
+  assertEquals(
+    sysml.rows.slice(1).every((row) =>
+      row.detail !== UNJOINED_GEOMETRY_DETAIL && row.availability === undefined
+    ),
+    true,
+  );
+  assertEquals(JSON.stringify({ members, hierarchy }), before);
+});
+
+Deno.test("partial Geometry CAD join overlays the exact occurrence and leaves others unjoined", () => {
+  const architecture = record(
+    "architecture-current",
+    "system-model",
+    OVERVIEW_DOMAIN_GROUP_KEYS.sysmlModel,
+  );
+  const currentCad = record(
+    "geometry-current",
+    "geometry",
+    OVERVIEW_DOMAIN_GROUP_KEYS.geometry,
+  );
+  const historical = record(
+    "geometry-historical",
+    "geometry",
+    OVERVIEW_DOMAIN_GROUP_KEYS.geometry,
+  );
+  const members = [architecture, currentCad, historical];
+  const hierarchy = unjoinedOccurrenceHierarchy("architecture-current", {
+    geometryJoinKey: "airframe",
+    geometryJoinId: "geometry-current",
+  });
+  const currentSession = historicalGeometrySession(
+    "geometry-current",
+    "cad-current",
+  );
+  const stale = historicalGeometrySession("geometry-historical", "app");
+  const contents = buildOverviewHullContents(
+    members,
+    [currentSession, stale],
+    hierarchy,
+  );
+  const geometry = contents.get(GEOMETRY_HULL)!;
+  const airframe = geometry.rows.find((row) => row.key === "airframe")!;
+  const unjoined = geometry.rows.filter((row) => row.key !== "airframe");
+
+  assertEquals(geometry.mode, "tree");
+  assertEquals(
+    geometry.rows.map((row) => [row.key, row.parentKey, row.depth]),
+    UNJOINED_OCCURRENCE_IDENTITIES.map(([key, parentKey, depth]) => [
+      key,
+      parentKey,
+      depth,
+    ]),
+  );
+  assertEquals(airframe, {
+    key: "airframe",
+    kind: "navigation",
+    label: "airframe",
+    depth: 1,
+    parentKey: "root",
+    graphRefs: ["artifact:geometry-current"],
+    viewerNodeKey: "artifact:geometry-current",
+    sessionIds: ["cad-current"],
+    endpoint: false,
+    role: "overlay",
+    selectable: true,
+    focusable: true,
+  });
+  assertEquals(overviewHullRowActions(airframe), [{
+    kind: "open-session",
+    sessionId: "cad-current",
+    nodeKey: "artifact:geometry-current",
+  }]);
+  assertEquals(
+    unjoined.map((row) => [
+      row.key,
+      row.detail,
+      row.availability,
+      row.endpoint,
+      row.sessionIds,
+      overviewHullRowGraphRefs(row),
+      overviewHullRowActions(row),
+    ]),
+    UNJOINED_OCCURRENCE_IDENTITIES.filter(([key]) => key !== "airframe").map((
+      [key],
+    ) => [
+      key,
+      UNJOINED_GEOMETRY_DETAIL,
+      "unresolved",
+      false,
+      [],
+      [],
+      [],
+    ]),
+  );
+  assertEquals(
+    geometry.records.map((row) => [row.nodeKey, row.sessionIds, row.endpoint]),
+    [
+      [currentCad.key, ["cad-current"], true],
+      [historical.key, ["app"], true],
+    ],
+  );
+});
+
+Deno.test("unavailable or absent Geometry hierarchy keeps the factual records fallback", () => {
+  const historical = record(
+    "geometry-historical",
+    "geometry",
+    OVERVIEW_DOMAIN_GROUP_KEYS.geometry,
+  );
+  const historicalStep = record(
+    "geometry-historical-step",
+    "geometry",
+    OVERVIEW_DOMAIN_GROUP_KEYS.geometry,
+  );
+  const members = [historical, historicalStep];
+  const stale = historicalGeometrySession("geometry-historical", "app");
+  const absent = buildOverviewHullContents(members, [stale]);
+  const unavailable = buildOverviewHullContents(members, [stale], {
+    schemaVersion: "thread-viewer-hierarchy/1.0",
+    status: "unavailable",
+    reason: "The current architecture has no viewer hierarchy.",
+    nodes: [],
+    rootIds: [],
+  });
+  const emptyAvailable = buildOverviewHullContents(members, [stale], {
+    schemaVersion: "thread-viewer-hierarchy/1.0",
+    status: "available",
+    architectureArtifactId: "architecture-current",
+    nodes: [],
+    rootIds: [],
+  });
+
+  for (const contents of [absent, unavailable, emptyAvailable]) {
+    const geometry = contents.get(GEOMETRY_HULL)!;
+    assertEquals(geometry.mode, "records");
+    assertEquals(
+      geometry.rows.map((row) => [
+        row.key,
+        row.nodeKey,
+        row.endpoint,
+        row.sessionIds,
+        overviewHullRowGraphRefs(row),
+      ]),
+      [
+        [historical.key, historical.key, true, ["app"], [historical.key]],
+        [historicalStep.key, historicalStep.key, true, [], [historicalStep.key]],
+      ],
+    );
+    assertEquals(geometry.rows, geometry.records);
+  }
 });

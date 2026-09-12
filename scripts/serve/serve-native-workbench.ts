@@ -20,6 +20,8 @@ import {
   PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
   PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
   REQUIREMENTS_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
@@ -109,6 +111,10 @@ import {
   enrichThreadWorkbenchWithRequirementsTargets,
   type RequirementsCaptureReader,
 } from "../../src/adapters/thread/requirements-target-workbench-enricher.ts";
+import {
+  composeHistoryCaptureReaders,
+  enrichThreadWorkbenchWithRequirementsHistory,
+} from "../../src/adapters/thread/requirements-history-workbench-enricher.ts";
 import { CaptureProductStructureTraversal } from "../../src/adapters/architecture/renderer/capture-product-structure-traversal.ts";
 import { ProjectProductNavigation } from "../../src/application/use-cases/product-navigation/project-product-navigation.ts";
 import type { ProductNavigationUseCase } from "../../src/application/ports/in/product-navigation/product-navigation.ts";
@@ -131,6 +137,12 @@ import {
 } from "../../src/domain/architecture/product-structure-ref.ts";
 import { readDeclaredCockpitFleet } from "../../src/adapters/thread/cockpit-fleet-projector.ts";
 import type { CockpitFleetProjection } from "../../src/presentation/workbench/fleet/projection.ts";
+import {
+  type NativeWorkbenchProjectDiscovery,
+  nativeWorkbenchProjectDiscoveryHttpStatus,
+  readNativeWorkbenchProjectDiscovery,
+  renderNativeWorkbenchProjectDiscoveryHtml,
+} from "../../src/adapters/thread/native-workbench-project-discovery.ts";
 import {
   FileLiveThreadUpdateStore,
   type LiveThreadUpdate,
@@ -179,6 +191,11 @@ export interface NativeWorkbenchHandlerOptions {
     ProductNavigationTechnicalAdmissionSourceDependencies["workspace"];
   /** Optional exact CAS reopen of versioned requirements captures. */
   requirementsCaptures?: RequirementsCaptureReader;
+  /**
+   * Optional extra CAS reopen for historical study/case/base-evaluation
+   * captures. Composed with requirementsCaptures only on the history path.
+   */
+  historyEvidenceCaptures?: RequirementsCaptureReader;
   /** Read-only store for independently versioned documentary correspondence claims. */
   requirementsBriefTraceCaptures?: RequirementsCaptureReader;
   /**
@@ -218,6 +235,11 @@ export interface NativeWorkbenchHandlerOptions {
    * This is a read-only navigation projection, never a focus mutation.
    */
   projectCatalog?: () => Promise<NativeWorkbenchProjectCatalog>;
+  /**
+   * Explicit v2 discovery projection. One invalid head stays an unavailable
+   * placeholder instead of hiding the rest of the root. Never a command.
+   */
+  projectDiscovery?: () => Promise<NativeWorkbenchProjectDiscovery>;
   /**
    * Redacted operational-capability projection. The native Workbench may
    * observe it but never creates a runtime plan or host mutation.
@@ -483,6 +505,10 @@ export function createNativeWorkbenchHandler(
     if (url.pathname === "/api/projects") {
       if (request.method !== "GET") return methodNotAllowed();
       return await serveProjectCatalog(options);
+    }
+    if (url.pathname === "/api/project-discovery") {
+      if (request.method !== "GET") return methodNotAllowed();
+      return await serveProjectDiscovery(options);
     }
     if (url.pathname === "/api/project/capabilities") {
       if (request.method !== "GET") return methodNotAllowed();
@@ -1301,13 +1327,23 @@ async function projectThreadSnapshot(
       snapshot,
     )
     : projected;
+  const withRequirementsHistory = options.requirementsCaptures
+    ? await enrichThreadWorkbenchWithRequirementsHistory(
+      withRequirements,
+      composeHistoryCaptureReaders(
+        options.requirementsCaptures,
+        options.historyEvidenceCaptures,
+      ),
+      snapshot,
+    )
+    : withRequirements;
   const withEngineeringCases = options.engineeringCaseCaptures
     ? await enrichThreadWorkbenchWithEngineeringCases(
-      withRequirements,
+      withRequirementsHistory,
       options.engineeringCaseCaptures,
       { projectId },
     )
-    : withRequirements;
+    : withRequirementsHistory;
   const updates = liveUpdates ??
     (await options.liveUpdates?.list(subjectId) ?? []);
   return overlayLiveThreadUpdates(
@@ -1336,6 +1372,7 @@ function composeProductNavigation(
         admissions: options.technicalCompilationAdmissions,
         workspace: options.projectSourceWorkspace,
         requirementsCaptures: options.requirementsCaptures,
+        historyEvidenceCaptures: options.historyEvidenceCaptures,
         engineeringCases: options.engineeringCaseCaptures,
       },
     ),
@@ -1862,6 +1899,11 @@ if (import.meta.main) {
     ),
     dfmCheck: new FileCaptureStore(DFM_CASE_CAPTURE_DESCRIPTOR),
   };
+  const historyEvidenceCaptures = composeHistoryCaptureReaders(
+    new FileCaptureStore(SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR),
+    engineeringCaseCaptures.sensitivityStudy,
+    new FileCaptureStore(SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR),
+  );
   // The paired MCP owns all project commands and initialisation. The cockpit
   // reads existing immutable revisions and never seeds a fallback.
   const projectStore: EngineeringProjectRevisionStore =
@@ -1894,6 +1936,7 @@ if (import.meta.main) {
     technicalCompilationAdmissions,
     projectSourceWorkspace,
     requirementsCaptures,
+    historyEvidenceCaptures,
     requirementsBriefTraceCaptures: createRequirementsBriefTraceStore(
       REQUIREMENTS_CAPTURE_DESCRIPTOR.directory,
     ),
@@ -1910,6 +1953,8 @@ if (import.meta.main) {
       ),
     projectCatalog: () =>
       readPersistedProjectCatalog(projectStore, activeProjectDirectory),
+    projectDiscovery: () =>
+      readNativeWorkbenchProjectDiscovery(projectStore, activeProjectDirectory),
     capabilityWorkbench,
   });
   const workspaceHandler = workspaceId === undefined || !cockpitFocus
@@ -1920,6 +1965,11 @@ if (import.meta.main) {
       native: handler,
       projectCatalog: () =>
         readPersistedProjectCatalog(projectStore, activeProjectDirectory),
+      projectDiscovery: () =>
+        readNativeWorkbenchProjectDiscovery(
+          projectStore,
+          activeProjectDirectory,
+        ),
     });
 
   Deno.serve({
@@ -1961,6 +2011,7 @@ interface FocusedWorkspaceHandlerOptions {
   readonly workspaceId: string;
   readonly native: (request: Request) => Promise<Response>;
   readonly projectCatalog?: () => Promise<NativeWorkbenchProjectCatalog>;
+  readonly projectDiscovery?: () => Promise<NativeWorkbenchProjectDiscovery>;
 }
 
 /**
@@ -1978,12 +2029,16 @@ export function createFocusedWorkspaceHandler(
       return await options.native(request);
     }
     if (url.pathname === "/api/projects") return await options.native(request);
+    if (url.pathname === "/api/project-discovery") {
+      return await options.native(request);
+    }
     const focus = await options.focus.get(options.workspaceId);
     if (!focus) {
       return await cockpitFocusUnavailable(
         options.workspaceId,
         request,
         options.projectCatalog,
+        options.projectDiscovery,
       );
     }
     if (
@@ -2057,6 +2112,31 @@ async function serveProjectCatalog(
   return json(catalog, catalog.state === "available" ? 200 : 503);
 }
 
+async function serveProjectDiscovery(
+  options: NativeWorkbenchHandlerOptions,
+): Promise<Response> {
+  const discovery = options.projectDiscovery
+    ? await options.projectDiscovery()
+    : unconfiguredProjectDiscovery();
+  return json(discovery, nativeWorkbenchProjectDiscoveryHttpStatus(discovery));
+}
+
+function unconfiguredProjectDiscovery(): NativeWorkbenchProjectDiscovery {
+  return Object.freeze({
+    schemaVersion: "native-workbench-project-discovery/2.0",
+    state: "unavailable",
+    reasonCode: "root-unreadable",
+    message: "Configured project root could not be enumerated completely.",
+    counts: Object.freeze({
+      available: 0,
+      unavailable: 0,
+      candidates: 0,
+    }),
+    enumeration: Object.freeze({ complete: false, truncated: false }),
+    entries: Object.freeze([]),
+  });
+}
+
 function json(
   value: unknown,
   status: number,
@@ -2096,6 +2176,7 @@ async function cockpitFocusUnavailable(
   workspaceId: string,
   request: Request,
   projectCatalog?: () => Promise<NativeWorkbenchProjectCatalog>,
+  projectDiscovery?: () => Promise<NativeWorkbenchProjectDiscovery>,
 ): Promise<Response> {
   const url = new URL(request.url);
   if (url.pathname.startsWith("/api/")) {
@@ -2106,24 +2187,18 @@ async function cockpitFocusUnavailable(
         "The paired agent has not selected a durable project for this cockpit workspace yet.",
     }, 409);
   }
-  const catalog = projectCatalog ? await projectCatalog() : {
-    schemaVersion: "native-workbench-project-catalog/1.0" as const,
-    state: "unavailable" as const,
-    projects: [] as const,
-    reason: "Persisted project catalog is unavailable.",
-  };
-  const projects = catalog.state === "available"
-    ? catalog.projects.map((project) =>
-      `<li><strong>${escapeHtml(project.name)}</strong><br><code>${
-        escapeHtml(project.id)
-      }</code> · revision ${project.revision}</li>`
-    ).join("")
-    : `<li><strong>unavailable</strong> — ${escapeHtml(catalog.reason)}</li>`;
-  const empty = catalog.state === "available" && catalog.projects.length === 0
-    ? "<p>No persisted engineering project is available.</p>"
-    : `<ul>${projects}</ul>`;
+  const list = projectDiscovery
+    ? renderNativeWorkbenchProjectDiscoveryHtml(await projectDiscovery())
+    : renderPersistedProjectCatalogHtml(
+      projectCatalog ? await projectCatalog() : {
+        schemaVersion: "native-workbench-project-catalog/1.0" as const,
+        state: "unavailable" as const,
+        projects: [] as const,
+        reason: "Persisted project catalog is unavailable.",
+      },
+    );
   return new Response(
-    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cockpit awaiting project context</title><style>body{font:16px system-ui;max-width:52rem;margin:8vh auto;padding:0 1.5rem;color:#1c2126;background:#f5f2ea}main{padding:2rem;border:1px solid #d4cdc0;background:#fbf8f1}code{overflow-wrap:anywhere}li+li{margin-top:1rem}</style><main><p>Casys Digital Thread</p><h1>Opening project context</h1><p>Your paired agent has not selected a durable project for this workspace. No engineering tool is running.</p><h2>Persisted projects</h2>${empty}<p>Select focus through the paired MCP conversation; this read-only Workbench has no project command.</p></main></html>`,
+    `<!doctype html><html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Cockpit awaiting project context</title><style>body{font:16px system-ui;max-width:52rem;margin:8vh auto;padding:0 1.5rem;color:#1c2126;background:#f5f2ea}main{padding:2rem;border:1px solid #d4cdc0;background:#fbf8f1}code{overflow-wrap:anywhere}li+li{margin-top:1rem}</style><main><p>Casys Digital Thread</p><h1>Opening project context</h1><p>Your paired agent has not selected a durable project for this workspace. No engineering tool is running.</p><h2>Persisted projects</h2>${list}<p>Choose the project from the paired assistant. This read-only Workbench has no project command.</p></main></html>`,
     {
       status: 200,
       headers: workbenchDocumentHeaders({
@@ -2131,6 +2206,21 @@ async function cockpitFocusUnavailable(
       }),
     },
   );
+}
+
+function renderPersistedProjectCatalogHtml(
+  catalog: NativeWorkbenchProjectCatalog,
+): string {
+  const projects = catalog.state === "available"
+    ? catalog.projects.map((project) =>
+      `<li><strong>${escapeHtml(project.name)}</strong><br><code>${
+        escapeHtml(project.id)
+      }</code> · revision ${project.revision}</li>`
+    ).join("")
+    : `<li><strong>unavailable</strong> — ${escapeHtml(catalog.reason)}</li>`;
+  return catalog.state === "available" && catalog.projects.length === 0
+    ? "<p>No persisted engineering project is available.</p>"
+    : `<ul>${projects}</ul>`;
 }
 
 function escapeHtml(value: string): string {

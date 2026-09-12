@@ -913,6 +913,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "console_server_detail",
     "console_snapshot",
     "project_admitted_geometry_export",
+    "project_admitted_geometry_export_preflight",
     "project_admitted_modelica_evaluation_closeout_review",
     "project_admitted_modelica_evaluation_review",
     "project_admitted_spice_evaluation_closeout_review",
@@ -929,6 +930,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_brief_confirm",
     "project_brief_propose",
     "project_brief_requirements_review",
+    "project_buy_configuration_cost_capture_review",
+    "project_buy_configuration_cost_seal_review",
     "project_cad_placement_capture",
     "project_capability_change_review",
     "project_capability_inspect",
@@ -961,6 +964,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_requirements_recapture_review",
     "project_resource_capture",
     "project_sensitivity_base_evaluation_review",
+    "project_sensitivity_edges_review",
     "project_sensitivity_study_seal_review",
     "project_snapshot",
     "project_source_attachment_detach",
@@ -978,6 +982,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_source_workspace_snapshot",
     "project_start",
     "project_technical_compilation_preview",
+    "project_technical_compilation_preview_detail",
     "project_technical_source_capture",
     "project_thermal_method_sheet_seal_review",
     "project_vector_correction_review",
@@ -1012,6 +1017,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "console_server_detail",
       "console_snapshot",
       "project_admitted_geometry_export",
+      "project_admitted_geometry_export_preflight",
       "project_admitted_modelica_evaluation_closeout_review",
       "project_admitted_modelica_evaluation_review",
       "project_admitted_spice_evaluation_closeout_review",
@@ -1028,6 +1034,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_brief_confirm",
       "project_brief_propose",
       "project_brief_requirements_review",
+      "project_buy_configuration_cost_capture_review",
+      "project_buy_configuration_cost_seal_review",
       "project_cad_placement_capture",
       "project_capability_change_review",
       "project_capability_inspect",
@@ -1060,6 +1068,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_requirements_recapture_review",
       "project_resource_capture",
       "project_sensitivity_base_evaluation_review",
+      "project_sensitivity_edges_review",
       "project_sensitivity_study_seal_review",
       "project_snapshot",
       "project_source_attachment_detach",
@@ -1077,6 +1086,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_source_workspace_snapshot",
       "project_start",
       "project_technical_compilation_preview",
+      "project_technical_compilation_preview_detail",
       "project_technical_source_capture",
       "project_thermal_method_sheet_seal_review",
       "project_vector_correction_review",
@@ -1321,6 +1331,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_prescribed_kinematics_method_review" ||
           tool.name === "project_prescribed_kinematics_run_review" ||
           tool.name === "project_isolated_geometry_seal_review" ||
+          tool.name === "project_buy_configuration_cost_capture_review" ||
+          tool.name === "project_buy_configuration_cost_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
           tool.name === "project_evaluation_closeout_review" ||
           tool.name === "project_assembly_integrity_evaluation_closeout_review" ||
@@ -1328,6 +1340,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_fea_isolated_run_review" ||
           tool.name === "project_vector_correction_review" ||
           tool.name === "project_sensitivity_base_evaluation_review" ||
+          tool.name === "project_sensitivity_edges_review" ||
           tool.name === "project_sensitivity_study_seal_review" ||
           tool.name === "project_cross_domain_impact_decision_review" ||
           tool.name === "project_cross_domain_impact_manifest_seal_review" ||
@@ -1340,7 +1353,9 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_admitted_modelica_evaluation_review" ||
           tool.name === "project_admitted_spice_evaluation_closeout_review" ||
           tool.name === "project_admitted_spice_evaluation_review" ||
-          tool.name === "project_electrical_observation_method_sheet_seal_review",
+          tool.name === "project_electrical_observation_method_sheet_seal_review" ||
+          tool.name === "project_admitted_geometry_export_preflight" ||
+          tool.name === "project_technical_compilation_preview_detail",
       );
       assertEquals(
         annotations.idempotentHint,
@@ -1395,6 +1410,8 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_decision_approve" ||
           tool.name === "project_decision_reject" ||
           tool.name === "project_isolated_geometry_seal_review" ||
+          tool.name === "project_buy_configuration_cost_capture_review" ||
+          tool.name === "project_buy_configuration_cost_seal_review" ||
           tool.name === "project_led_driver_source_review" ||
           tool.name === "project_evaluation_closeout_review" ||
           tool.name === "project_assembly_integrity_evaluation_closeout_review" ||
@@ -1402,6 +1419,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_fea_isolated_run_review" ||
           tool.name === "project_vector_correction_review" ||
           tool.name === "project_sensitivity_base_evaluation_review" ||
+          tool.name === "project_sensitivity_edges_review" ||
           tool.name === "project_sensitivity_study_seal_review" ||
           tool.name === "project_cross_domain_impact_decision_review" ||
           tool.name === "project_cross_domain_impact_manifest_seal_review" ||
@@ -1410,7 +1428,9 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_admitted_modelica_evaluation_review" ||
           tool.name === "project_admitted_spice_evaluation_closeout_review" ||
           tool.name === "project_admitted_spice_evaluation_review" ||
-          tool.name === "project_electrical_observation_method_sheet_seal_review",
+          tool.name === "project_electrical_observation_method_sheet_seal_review" ||
+          tool.name === "project_admitted_geometry_export_preflight" ||
+          tool.name === "project_technical_compilation_preview_detail",
       );
     }
     const framingTools = tools.filter((tool) =>

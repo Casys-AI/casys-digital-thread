@@ -464,15 +464,18 @@ export class EngineeringProjectCommandService {
   }
 
   /**
-   * Human-only governed abandonment for work items that never acquired a
-   * provider run and their associated pending or required decisions.
+   * Human-only governed abandonment for work with no execution or evidence,
+   * including human pre-claim cancellations, and pending decisions.
    *
    * Every listed work item must be in `ready` or `waiting-for-decision` with
-   * no associated agent runs and no evidence refs. Every listed decision must
-   * be in `required` or `proposed`. The resulting snapshot marks each target
-   * as `abandoned`, revoking any pending approval for an abandoned proposed
-   * decision. History remains intact; active views derive the exclusion from
-   * the status field.
+   * no evidence refs and no runs except human pre-claim cancellations.
+   * Empty `decisionIds` leaves approved decisions untouched; every listed
+   * decision must be `required` or `proposed`. The resulting snapshot marks
+   * each target as `abandoned`, revoking any pending approval for an
+   * abandoned proposed decision. Runs, receipts, approvals and Thread
+   * history remain intact. Abandoned work is not completed and does not
+   * unlock dependents; active views derive the exclusion from the status
+   * field.
    */
   abandonWorkItems(
     origin: EngineeringProjectCommandOrigin,

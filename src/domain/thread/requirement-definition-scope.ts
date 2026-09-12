@@ -7,6 +7,11 @@
  */
 
 import {
+  sortHistoricalEvaluations,
+  type ThreadRequirementHistoricalChain,
+  type ThreadRequirementHistoricalEvaluation,
+} from "./requirement-historical-evaluation.ts";
+import {
   archivedRefKeys,
   type RequirementEvaluation,
   type ThreadSnapshot,
@@ -32,6 +37,71 @@ export interface ThreadRequirementDefinitionAttachment {
   readonly artifactId: string;
   readonly targetElementId: string;
   readonly status: ThreadRequirementEvidenceStatus;
+  /**
+   * Recorded predecessor evaluations on the exact recapture chain.
+   * Never a current join or verdict.
+   */
+  readonly historicalEvaluations?: readonly ThreadRequirementHistoricalEvaluation[];
+  readonly historicalChain?: ThreadRequirementHistoricalChain;
+}
+
+export interface RequirementHistoricalEvaluationFact {
+  readonly requirementId: string;
+  readonly historicalEvaluations: readonly ThreadRequirementHistoricalEvaluation[];
+  readonly historicalChain?: ThreadRequirementHistoricalChain;
+}
+
+/**
+ * Copy exact server-owned historical-unjoined facts onto definition
+ * attachments. Conflicting facts, duplicate evaluation ids, or mixed
+ * current-requirement identities for one requirement are omitted.
+ */
+export function overlayRequirementHistoricalEvaluations(
+  attachments: readonly ThreadRequirementDefinitionAttachment[],
+  facts: readonly RequirementHistoricalEvaluationFact[] | undefined,
+): readonly ThreadRequirementDefinitionAttachment[] {
+  if (facts === undefined || facts.length === 0) return attachments;
+  const byId = new Map<string, RequirementHistoricalEvaluationFact>();
+  const conflicts = new Set<string>();
+  for (const fact of facts) {
+    if (fact.requirementId.length === 0) continue;
+    if (
+      fact.historicalEvaluations.length === 0 &&
+      fact.historicalChain?.status !== "partial"
+    ) {
+      continue;
+    }
+    if (byId.has(fact.requirementId) || !factIdentitiesAreExact(fact)) {
+      conflicts.add(fact.requirementId);
+      continue;
+    }
+    byId.set(fact.requirementId, {
+      requirementId: fact.requirementId,
+      historicalEvaluations: sortHistoricalEvaluations(fact.historicalEvaluations),
+      ...(fact.historicalChain ? { historicalChain: fact.historicalChain } : {}),
+    });
+  }
+  for (const requirementId of conflicts) byId.delete(requirementId);
+  if (byId.size === 0) return attachments;
+  return attachments.map((attachment) => {
+    const fact = byId.get(attachment.requirementId);
+    if (!fact) return attachment;
+    return {
+      ...attachment,
+      historicalEvaluations: fact.historicalEvaluations,
+      ...(fact.historicalChain ? { historicalChain: fact.historicalChain } : {}),
+    };
+  });
+}
+
+function factIdentitiesAreExact(fact: RequirementHistoricalEvaluationFact): boolean {
+  const seen = new Set<string>();
+  for (const historical of fact.historicalEvaluations) {
+    if (historical.currentRequirementId !== fact.requirementId) return false;
+    if (seen.has(historical.evaluationId)) return false;
+    seen.add(historical.evaluationId);
+  }
+  return true;
 }
 
 /**

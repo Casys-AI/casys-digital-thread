@@ -120,6 +120,18 @@ export const MANUFACTURING_RUN_DFM_CHECKS_CAPABILITY = Object.freeze(
   } as const satisfies CapabilityReference,
 );
 
+/**
+ * Read-only ERPNext Buy source capture. A fleet image tag or source version
+ * is not qualification. Capture stays unresolved until an exact pinned
+ * qualified binding exists.
+ */
+export const COMMERCE_READ_ERPNEXT_BUY_SOURCE_CAPABILITY = Object.freeze(
+  {
+    id: "commerce.read-erpnext-buy-source",
+    version: "1",
+  } as const satisfies CapabilityReference,
+);
+
 export type CapabilityQualification = "compatible" | "qualified";
 export type EngineeringCapabilityUse = "preparation" | "execution";
 

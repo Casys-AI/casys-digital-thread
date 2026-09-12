@@ -19,7 +19,6 @@ import {
   sensitivityPartDefName,
 } from "../../../../domain/sensitivity/edges/sensitivity-edge-from-study.ts";
 import { MODEL_WRITE_SENSITIVITY_EDGES_OPERATION } from "../../../../domain/sensitivity/study/sensitivity-study-proposal.ts";
-import type { EngineeringThreadSnapshotBasis } from "../../../../domain/project/engineering-project.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
 import type {
   FeaReviewProjectReader,

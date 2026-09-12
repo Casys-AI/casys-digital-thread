@@ -87,6 +87,8 @@ import {
   type ThreadArtifact,
   type ThreadObservation,
   type ThreadRequirement,
+  type ThreadRequirementHistoricalChain,
+  type ThreadRequirementHistoricalEvaluation,
   type ThreadViolation,
   type ThreadWorkbenchPreviousSnapshot,
   type ThreadWorkbenchSnapshot,
@@ -106,10 +108,16 @@ export type {
   ThreadArtifact,
   ThreadObservation,
   ThreadRequirement,
+  ThreadRequirementHistoricalChain,
+  ThreadRequirementHistoricalEvaluation,
   ThreadViolation,
   ThreadWorkbenchPreviousSnapshot,
   ThreadWorkbenchSnapshot,
 } from "../../../presentation/workbench/thread/snapshot.ts";
+export type {
+  ThreadRequirementHistoricalMeasuredSensitivity,
+  ThreadRequirementHistoricalSensitivity,
+} from "../../../domain/thread/requirement-historical-evaluation.ts";
 export type {
   EngineeringCase,
   EngineeringCaseCatalog,
@@ -1272,7 +1280,12 @@ function isThreadRequirement(value: unknown): value is ThreadRequirement {
     "rationale",
   ] as const;
   return required.every((key) => Object.hasOwn(value, key)) &&
-    hasAllowedKeys(value, [...required, "targetElementId"]) &&
+    hasAllowedKeys(value, [
+      ...required,
+      "targetElementId",
+      "historicalEvaluations",
+      "historicalChain",
+    ]) &&
     typeof requirement.id === "string" && requirement.id.length > 0 &&
     typeof requirement.label === "string" &&
     typeof requirement.source === "string" &&
@@ -1288,7 +1301,282 @@ function isThreadRequirement(value: unknown): value is ThreadRequirement {
     requirement.observationIds.every((id) => typeof id === "string") &&
     Array.isArray(requirement.violationIds) &&
     requirement.violationIds.every((id) => typeof id === "string") &&
-    typeof requirement.rationale === "string";
+    typeof requirement.rationale === "string" &&
+    isRequirementHistoricalProjection(requirement);
+}
+
+function isRequirementHistoricalProjection(
+  requirement: Partial<ThreadRequirement>,
+): boolean {
+  const evaluations = requirement.historicalEvaluations;
+  const chain = requirement.historicalChain;
+  if (evaluations === undefined) return chain === undefined;
+  if (!Array.isArray(evaluations)) return false;
+  if (evaluations.length === 0) {
+    return isThreadRequirementHistoricalChain(chain) &&
+      chain.status === "partial";
+  }
+  if (
+    !evaluations.every((item) =>
+      isThreadRequirementHistoricalEvaluation(item) &&
+      item.currentRequirementId === requirement.id
+    )
+  ) {
+    return false;
+  }
+  const ids = evaluations.map((item) => item.evaluationId);
+  if (new Set(ids).size !== ids.length) return false;
+  return chain === undefined || isThreadRequirementHistoricalChain(chain);
+}
+
+function isThreadRequirementHistoricalChain(
+  value: unknown,
+): value is ThreadRequirementHistoricalChain {
+  if (
+    !isRecord(value) || typeof value.hops !== "number" ||
+    !Number.isSafeInteger(value.hops) || value.hops < 0
+  ) {
+    return false;
+  }
+  if (value.status === "complete") {
+    return hasExactKeys(value, ["status", "hops"]);
+  }
+  return value.status === "partial" &&
+    hasExactKeys(value, [
+      "status",
+      "hops",
+      "reason",
+      "stoppedAtRequirementId",
+    ]) &&
+    isHistoricalChainReason(value.reason) &&
+    isStableIdentifier(value.stoppedAtRequirementId);
+}
+
+function isHistoricalChainReason(value: unknown): boolean {
+  return value === "ambiguous-supersedes" ||
+    value === "cyclic-supersedes" ||
+    value === "missing-predecessor" ||
+    value === "missing-cas" ||
+    value === "corrupt-cas" ||
+    value === "disconnected-architecture" ||
+    value === "native-identity-mismatch" ||
+    value === "wrong-producer-run" ||
+    value === "duplicate-evaluation-id" ||
+    value === "conflicting-provenance" ||
+    value === "gap";
+}
+
+function isThreadRequirementHistoricalEvaluation(
+  value: unknown,
+): value is ThreadRequirementHistoricalEvaluation {
+  if (
+    !isRecord(value) || !hasAllowedKeys(value, [
+      "relation",
+      "hopIndex",
+      "currentRequirementId",
+      "predecessorRequirementId",
+      "evaluationId",
+      "status",
+      "evaluatedAt",
+      "evaluationFamily",
+      "observations",
+      "evidence",
+      "predecessorCapture",
+      "currentArchitecture",
+      "predecessorArchitecture",
+      "native",
+      "sensitivity",
+    ])
+  ) {
+    return false;
+  }
+  const historical = value as Partial<ThreadRequirementHistoricalEvaluation>;
+  const requiredPresent = [
+    "relation",
+    "hopIndex",
+    "currentRequirementId",
+    "predecessorRequirementId",
+    "evaluationId",
+    "status",
+    "evaluatedAt",
+    "observations",
+    "evidence",
+    "predecessorCapture",
+    "currentArchitecture",
+    "predecessorArchitecture",
+    "native",
+  ].every((key) => Object.hasOwn(value, key));
+  return requiredPresent &&
+    historical.relation === "historical-unjoined" &&
+    typeof historical.hopIndex === "number" &&
+    Number.isSafeInteger(historical.hopIndex) && historical.hopIndex >= 1 &&
+    isStableIdentifier(historical.currentRequirementId) &&
+    isStableIdentifier(historical.predecessorRequirementId) &&
+    isStableIdentifier(historical.evaluationId) &&
+    (historical.status === "pass" || historical.status === "fail" ||
+      historical.status === "unresolved") &&
+    isCanonicalIsoTimestamp(historical.evaluatedAt) &&
+    (historical.evaluationFamily === undefined ||
+      historical.evaluationFamily === "study-base") &&
+    Array.isArray(historical.observations) &&
+    historical.observations.every(
+      isThreadRequirementHistoricalObservationRef,
+    ) &&
+    Array.isArray(historical.evidence) &&
+    historical.evidence.every(isThreadRequirementHistoricalRef) &&
+    isThreadRequirementHistoricalCaptureRef(historical.predecessorCapture) &&
+    isThreadRequirementHistoricalArchitectureBase(
+      historical.currentArchitecture,
+    ) &&
+    isThreadRequirementHistoricalArchitectureBase(
+      historical.predecessorArchitecture,
+    ) &&
+    isThreadRequirementHistoricalNative(historical.native) &&
+    (historical.sensitivity === undefined ||
+      isThreadRequirementHistoricalSensitivity(historical.sensitivity));
+}
+
+function isThreadRequirementHistoricalSensitivity(value: unknown): boolean {
+  if (!isRecord(value) || typeof value.status !== "string") return false;
+  if (value.status === "unavailable") {
+    return hasExactKeys(value, ["status", "reason"]) &&
+      typeof value.reason === "string" && value.reason.length > 0;
+  }
+  if (
+    value.status !== "measured" || !hasExactKeys(value, [
+      "status",
+      "method",
+      "parameter",
+      "measurement",
+      "study",
+      "studyCase",
+      "baseEvaluation",
+      "originalRequirementId",
+      "originalEvaluationId",
+      "predecessorArchitecture",
+    ])
+  ) {
+    return false;
+  }
+  const measured = value as Record<string, unknown>;
+  return measured.method === "forward-finite-difference" &&
+    isHistoricalSensitivityParameter(measured.parameter) &&
+    isHistoricalSensitivityMeasurement(measured.measurement) &&
+    isThreadRequirementHistoricalRef(measured.study) &&
+    isHistoricalStudyCaseRef(measured.studyCase) &&
+    isThreadRequirementHistoricalRef(measured.baseEvaluation) &&
+    isStableIdentifier(measured.originalRequirementId) &&
+    isStableIdentifier(measured.originalEvaluationId) &&
+    isThreadRequirementHistoricalArchitectureBase(
+      measured.predecessorArchitecture,
+    );
+}
+
+function isHistoricalSensitivityParameter(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, ["id", "lower", "upper"]) &&
+    isStableIdentifier(value.id) &&
+    isThreadAnalysisQuantity(value.lower) &&
+    isThreadAnalysisQuantity(value.upper);
+}
+
+function isHistoricalStudyCaseRef(value: unknown): boolean {
+  return isRecord(value) &&
+    hasExactKeys(value, ["id", "fingerprint", "digest"]) &&
+    isStableIdentifier(value.id) &&
+    isProjectedSha256Fingerprint(value.fingerprint) &&
+    typeof value.digest === "string" && /^[0-9a-f]{64}$/.test(value.digest);
+}
+
+function isHistoricalSensitivityMeasurement(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, [
+    "method",
+    "basePoint",
+    "perturbationStep",
+    "responseAtBase",
+    "responseAtPerturbed",
+    "derivative",
+  ]) && value.method === "forward-finite-difference" &&
+    isThreadAnalysisQuantity(value.basePoint) &&
+    isThreadAnalysisQuantity(value.perturbationStep) &&
+    isThreadAnalysisQuantity(value.responseAtBase) &&
+    isThreadAnalysisQuantity(value.responseAtPerturbed) &&
+    isThreadAnalysisQuantity(value.derivative);
+}
+
+function isThreadRequirementHistoricalRef(value: unknown): boolean {
+  return isRecord(value) && hasExactKeys(value, ["id", "fingerprint"]) &&
+    isStableIdentifier(value.id) &&
+    isProjectedSha256Fingerprint(value.fingerprint);
+}
+
+function isThreadRequirementHistoricalObservationRef(
+  value: unknown,
+): boolean {
+  if (
+    !isRecord(value) || !hasExactKeys(value, ["id", "sourceArtifacts"]) ||
+    !isStableIdentifier(value.id) || !Array.isArray(value.sourceArtifacts) ||
+    value.sourceArtifacts.length === 0
+  ) {
+    return false;
+  }
+  const ids = value.sourceArtifacts.map((item) => isRecord(item) ? item.id : undefined);
+  return value.sourceArtifacts.every(isThreadRequirementHistoricalRef) &&
+    ids.every((id) => typeof id === "string") &&
+    new Set(ids).size === ids.length;
+}
+
+function isThreadRequirementHistoricalCaptureRef(value: unknown): boolean {
+  return isRecord(value) &&
+    hasExactKeys(value, ["id", "fingerprint", "producerRunId"]) &&
+    isStableIdentifier(value.id) &&
+    isProjectedSha256Fingerprint(value.fingerprint) &&
+    isStableIdentifier(value.producerRunId);
+}
+
+function isThreadRequirementHistoricalArchitectureBase(
+  value: unknown,
+): boolean {
+  return isRecord(value) &&
+    hasExactKeys(value, ["artifactId", "fingerprint", "producerRunId"]) &&
+    isStableIdentifier(value.artifactId) &&
+    isProjectedSha256Fingerprint(value.fingerprint) &&
+    isStableIdentifier(value.producerRunId);
+}
+
+function isThreadRequirementHistoricalNative(value: unknown): boolean {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, [
+      "targetElementId",
+      "requirementUsageId",
+      "constraintUsageId",
+      "criterion",
+    ]) ||
+    !isStableIdentifier(value.targetElementId) ||
+    !isStableIdentifier(value.requirementUsageId) ||
+    !isStableIdentifier(value.constraintUsageId) ||
+    !isRecord(value.criterion) ||
+    !hasExactKeys(value.criterion, ["metric", "operator", "limit"])
+  ) {
+    return false;
+  }
+  const criterion = value.criterion as Record<string, unknown>;
+  return typeof criterion.metric === "string" &&
+    criterion.metric.length > 0 &&
+    (criterion.operator === "<=" || criterion.operator === ">=" ||
+      criterion.operator === "<" || criterion.operator === ">" ||
+      criterion.operator === "=") &&
+    isRecord(criterion.limit) &&
+    hasExactKeys(criterion.limit, ["value", "unit"]) &&
+    typeof criterion.limit.value === "number" &&
+    Number.isFinite(criterion.limit.value) &&
+    typeof criterion.limit.unit === "string" &&
+    criterion.limit.unit.length > 0;
+}
+
+function isProjectedSha256Fingerprint(value: unknown): value is string {
+  return typeof value === "string" &&
+    /^sha256:[0-9a-f]{64}$/.test(value);
 }
 
 /**
