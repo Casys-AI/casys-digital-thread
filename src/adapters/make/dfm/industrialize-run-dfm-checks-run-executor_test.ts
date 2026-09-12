@@ -38,6 +38,16 @@ import {
 } from "../../../domain/make/dfm/dfm-run-authority.ts";
 import { IndustrializeRunDfmChecksRunExecutor } from "./industrialize-run-dfm-checks-run-executor.ts";
 import { McpToolCallError } from "../../shared/mcp/http-mcp-tool-client.ts";
+import { CapabilityRuntimeConnectionError } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import type { CapabilityRuntimeExecutionSession } from "../../../application/control-plane/capability-runtime-execution-session.ts";
+import {
+  passthroughCapabilityRuntimeConnection,
+  recordingCapabilityRuntimeSession,
+  testResolvedCapabilityRuntimeOperation,
+} from "../../../testing/capability-runtime-execution-session-test-support.ts";
+import { firstPartyDfmLaunchGroupReference } from "../../control-plane/first-party-capability-runtime-launch-groups.ts";
+import { MCP_DFM_010_IMAGE_REFERENCE } from "../../control-plane/first-party-capability-runtime-identities.ts";
+import type { CapabilitySessionGeometryExportStagerFactory } from "../../../application/ports/out/make/geometry-export-stager.ts";
 
 const AT = "2026-08-15T00:00:00.000Z";
 const PROJECT_ID = "reviewed-project-v1";
@@ -126,6 +136,10 @@ Deno.test(
         ),
         true,
       );
+      assertEquals(fixture.stager.calls, 1);
+      assertEquals(fixture.stager.paths[0]?.startsWith("/tmp/dfm-"), true);
+      assertEquals(fixture.session.releases, 1);
+      assertEquals(fixture.session.retains, 0);
     } finally {
       await fixture.cleanup();
     }
@@ -185,9 +199,180 @@ Deno.test("a completed DFM check run replays without a second provider dispatch"
   try {
     await fixture.executor.execute(AGENT, fixture.command);
     assertEquals(fixture.dfm.names.length, 3);
+    assertEquals(fixture.session.events, ["begin"]);
+    assertEquals(fixture.session.releases, 1);
     const again = await fixture.executor.execute(AGENT, fixture.command);
     assertEquals(again.agentRuns[0]?.status, "completed");
     assertEquals(fixture.dfm.names.length, 3);
+    assertEquals(fixture.session.events, ["begin"]);
+    assertEquals(fixture.stager.calls, 1);
+    assertEquals(fixture.connection.opens, 1);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+Deno.test(
+  "run DFM checks opens JIT, stages owned STEP, then claims before WAL or provider",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      const events: string[] = [];
+      const session = recordingCapabilityRuntimeSession(async (input) => {
+        events.push("begin");
+        await input.recheck();
+        return {
+          lease: { id: "capability-jit-dfm" } as CapabilityRuntimeExecutionSession[
+            "lease"
+          ],
+          releaseTerminal: () => Promise.resolve(),
+          retainForRecovery: () => undefined,
+        };
+      });
+      const connection = passthroughCapabilityRuntimeConnection(fixture.dfm, events);
+      const commands = Object.create(fixture.commands) as typeof fixture.commands;
+      commands.claimRun = (
+        origin: typeof AGENT,
+        command: Parameters<typeof fixture.commands.claimRun>[1],
+      ) => {
+        events.push("claim");
+        return fixture.commands.claimRun(origin, command);
+      };
+      const originalBegin = fixture.attempts.begin.bind(fixture.attempts);
+      fixture.attempts.begin = (input) => {
+        events.push("wal");
+        return originalBegin(input);
+      };
+      const stagerFactory: CapabilitySessionGeometryExportStagerFactory = {
+        forActiveCapabilitySession: () => {
+          events.push("stage");
+          return Promise.resolve(fixture.stager);
+        },
+      };
+      const originalCall = fixture.dfm.callTool.bind(fixture.dfm);
+      fixture.dfm.callTool = (call) => {
+        events.push(`provider:${call.name}`);
+        return originalCall(call);
+      };
+      const executor = new IndustrializeRunDfmChecksRunExecutor({
+        ...executorDeps(fixture),
+        commands,
+        stagerFactory,
+        capabilityRuntimeConnection: connection,
+        capabilityRuntimeSession: session,
+      });
+      await executor.execute(AGENT, fixture.command);
+      assertEquals(events[0], "begin");
+      assertEquals(events.indexOf("begin") < events.indexOf("connect"), true);
+      assertEquals(events.indexOf("connect") < events.indexOf("open"), true);
+      assertEquals(events.indexOf("open") < events.indexOf("stage"), true);
+      assertEquals(events.indexOf("stage") < events.indexOf("claim"), true);
+      assertEquals(events.indexOf("claim") < events.indexOf("wal"), true);
+      assertEquals(
+        events.indexOf("wal") < events.indexOf("provider:dfm_check_envelope"),
+        true,
+      );
+      assertEquals(fixture.dfm.names, [
+        "dfm_check_envelope",
+        "dfm_check_min_thickness",
+        "dfm_check_overhangs",
+      ]);
+      assertEquals(fixture.stager.paths[0]?.startsWith("/tmp/dfm-"), true);
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+Deno.test("JIT unavailability before claim leaves the DFM run queued with no WAL", async () => {
+  const fixture = await createFixture();
+  try {
+    const session = recordingCapabilityRuntimeSession(() =>
+      Promise.reject(new Error("exact mcp-dfm host group unavailable"))
+    );
+    const executor = new IndustrializeRunDfmChecksRunExecutor({
+      ...executorDeps(fixture),
+      capabilityRuntimeSession: session,
+    });
+    await assertRejects(
+      () => executor.execute(AGENT, fixture.command),
+      Error,
+      "host group unavailable",
+    );
+    assertEquals(fixture.dfm.names.length, 0);
+    assertEquals(fixture.stager.calls, 0);
+    assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+    assertEquals(await fixture.attempts.read(PROJECT_ID, RUN_ID), undefined);
+    assertEquals(session.releases, 0);
+    assertEquals(session.retains, 0);
+  } finally {
+    await fixture.cleanup();
+  }
+});
+
+Deno.test(
+  "a failed runtime connection after JIT begin does not claim or call mcp-dfm",
+  async () => {
+    const fixture = await createFixture();
+    try {
+      const session = recordingCapabilityRuntimeSession();
+      const connection = {
+        ...passthroughCapabilityRuntimeConnection(fixture.dfm),
+        broker: {
+          connect: () =>
+            Promise.reject(
+              new CapabilityRuntimeConnectionError(
+                "exact mcp-dfm publication is unavailable",
+              ),
+            ),
+        },
+      };
+      const executor = new IndustrializeRunDfmChecksRunExecutor({
+        ...executorDeps(fixture),
+        capabilityRuntimeConnection: connection,
+        capabilityRuntimeSession: session,
+      });
+      await assertRejects(
+        () => executor.execute(AGENT, fixture.command),
+        Error,
+        "publication is unavailable",
+      );
+      assertEquals(session.events, ["begin"]);
+      assertEquals(session.releases, 1);
+      assertEquals(session.retains, 0);
+      assertEquals(fixture.dfm.names.length, 0);
+      assertEquals(fixture.stager.calls, 0);
+      assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+      assertEquals(await fixture.attempts.read(PROJECT_ID, RUN_ID), undefined);
+    } finally {
+      await fixture.cleanup();
+    }
+  },
+);
+
+Deno.test("staging failure before claim leaves the DFM run queued with no WAL", async () => {
+  const fixture = await createFixture();
+  try {
+    const session = recordingCapabilityRuntimeSession();
+    const executor = new IndustrializeRunDfmChecksRunExecutor({
+      ...executorDeps(fixture),
+      capabilityRuntimeSession: session,
+      stagerFactory: {
+        forActiveCapabilitySession: () =>
+          Promise.reject(new Error("owned DFM container is absent")),
+      },
+    });
+    await assertRejects(
+      () => executor.execute(AGENT, fixture.command),
+      Error,
+      "owned DFM container is absent",
+    );
+    assertEquals(session.events, ["begin"]);
+    assertEquals(session.releases, 1);
+    assertEquals(session.retains, 0);
+    assertEquals(fixture.dfm.names.length, 0);
+    assertEquals(fixture.project.agentRuns[0]?.status, "queued");
+    assertEquals(await fixture.attempts.read(PROJECT_ID, RUN_ID), undefined);
   } finally {
     await fixture.cleanup();
   }
@@ -543,15 +728,44 @@ async function createFixture(options: {
   await caseCaptures.save(caseFingerprint, deterministicJson(caseCapture));
   const checkCaptures = new MemoryCaptures("casys://dfm-check-capture/sha256/");
   const dfm = new FakeDfm(geometryDigest, options.mismatch === true);
-  const stager = new FakeStager();
+  const stager = new FakeStager(geometryDigest);
   const walDir = await Deno.makeTempDir({ prefix: "dfm-run-wal-" });
   const commands = new MemoryCommands(project);
+  const attempts = new FileDfmCheckAttemptStore(walDir);
   const projects: EngineeringProjectRevisionStore = {
     get: () => Promise.resolve(project as unknown as EngineeringProjectSnapshot),
     getRevision: () =>
       Promise.resolve(project as unknown as EngineeringProjectSnapshot),
     createInitial: () => Promise.reject(new Error("unused")),
     commit: () => Promise.reject(new Error("unused")),
+  };
+  const session = recordingCapabilityRuntimeSession();
+  const connection = passthroughCapabilityRuntimeConnection(dfm);
+  const stagerFactory: CapabilitySessionGeometryExportStagerFactory = {
+    forActiveCapabilitySession: () => Promise.resolve(stager),
+  };
+  const capabilityRuntime = {
+    requireExecution: () => dfmOperationalCapability(PROJECT_ID),
+  };
+  const deps = {
+    projects,
+    commands,
+    snapshots,
+    caseCaptures: caseCaptures as never,
+    checkCaptures: checkCaptures as never,
+    geometryAssets: new FileCanonicalAssetReader({ directory: assetDir }),
+    stagerFactory,
+    capabilityRuntimeConnection: connection,
+    attempts,
+    lease: {
+      withLease: <T>(
+        _projectId: string,
+        _scope: string,
+        operation: () => Promise<T>,
+      ) => operation(),
+    },
+    capabilityRuntime,
+    capabilityRuntimeSession: session,
   };
   return {
     command: {
@@ -564,23 +778,39 @@ async function createFixture(options: {
     dfm,
     project,
     snapshots,
+    stager,
+    session,
+    connection,
+    attempts,
+    commands,
     cleanup: async () => {
       await Deno.remove(walDir, { recursive: true });
       await Deno.remove(assetDir, { recursive: true });
     },
-    executor: new IndustrializeRunDfmChecksRunExecutor({
-      projects,
-      commands,
-      snapshots,
-      caseCaptures: caseCaptures as never,
-      checkCaptures: checkCaptures as never,
-      geometryAssets: new FileCanonicalAssetReader({ directory: assetDir }),
-      stager,
-      dfm,
-      attempts: new FileDfmCheckAttemptStore(walDir),
-      lease: { withLease: (_projectId, _scope, operation) => operation() },
-    }),
+    executor: new IndustrializeRunDfmChecksRunExecutor(deps),
+    deps,
   };
+}
+
+function executorDeps(fixture: Awaited<ReturnType<typeof createFixture>>) {
+  return fixture.deps;
+}
+
+async function dfmOperationalCapability(projectId: string) {
+  const launchGroup = await firstPartyDfmLaunchGroupReference();
+  const imageDigest = MCP_DFM_010_IMAGE_REFERENCE.slice(
+    MCP_DFM_010_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
+  );
+  return testResolvedCapabilityRuntimeOperation({
+    projectId,
+    operation: { id: "industrialize.run-dfm-checks", version: "1" },
+    capabilityId: "manufacturing.run-dfm-checks",
+    binding: { id: "mcp-dfm-measured-checks", version: "1.0.0" },
+    unitId: "casys.mcp-dfm",
+    materialId: "mcp-dfm-image",
+    imageDigest,
+    launchGroup,
+  });
 }
 
 function fresh(changedAt: string) {
@@ -613,13 +843,22 @@ async function assertRejectedBeforeDispatch(
     message,
   );
   assertEquals(fixture.dfm.names.length, 0);
+  assertEquals(fixture.stager.calls, 0);
+  assertEquals(fixture.session.events.length, 0);
   assertEquals(fixture.project.agentRuns[0]?.status, "queued");
 }
 
 class FakeStager {
+  calls = 0;
+  readonly paths: string[] = [];
+  constructor(private readonly digest: string) {}
   stage(input: { bytes: Uint8Array; digest: string; fileName: string }) {
+    this.calls += 1;
+    const path = `/tmp/dfm-${input.digest}.step`;
+    this.paths.push(path);
+    assertEquals(input.digest, this.digest);
     return Promise.resolve({
-      path: `/exports/${input.fileName}`,
+      path,
       sha256: input.digest,
       byteCount: input.bytes.byteLength,
     });

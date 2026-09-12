@@ -1,16 +1,37 @@
 /**
  * Trusted executor for `industrialize.run-dfm-checks@1`.
  *
- * Calls the three live mcp-dfm tools with expected_step_sha256, applies the
- * declared Z-min filter, and publishes measured observations plus fail-closed
- * named evaluations. A fail is publishable.
+ * After the final MRTR/basis/case/STEP/capability recheck it opens a lease-bound
+ * JIT session, stages the canonical STEP into the owned mcp-dfm container, then
+ * claims and dispatches the three live tools. Session, locator or staging
+ * failure leaves a queued run untouched. A fail is publishable.
  */
 
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
 import type { CanonicalAssetReader } from "../../../application/ports/out/canonical-asset-reader.ts";
 import type { EngineeringProjectRevisionStore } from "../../../application/ports/out/engineering-project-revision-store.ts";
-import type { GeometryExportStager } from "../../../application/ports/out/make/geometry-export-stager.ts";
+import type { CapabilitySessionGeometryExportStagerFactory } from "../../../application/ports/out/make/geometry-export-stager.ts";
 import type { McpToolClient } from "../../../application/ports/out/mcp-tool-client.ts";
+import type { CapabilityRuntimeExecutionEligibility } from "../../../application/ports/out/capability/capability-runtime-supervisor.ts";
+import {
+  beginConfiguredCapabilityRuntimeSession,
+  requireConfiguredOperationalCapability,
+  settleCapabilityRuntimeSession,
+} from "../../../application/control-plane/capability-runtime-execution-admission.ts";
+import {
+  type CapabilityRuntimeExecutionSession,
+  type CapabilityRuntimeExecutionSessionCoordinator,
+  CapabilityRuntimeSessionUnavailableError,
+} from "../../../application/control-plane/capability-runtime-execution-session.ts";
+import {
+  type CapabilityRuntimeBoundMcpClient,
+  CapabilityRuntimeConnectionError,
+} from "../../../application/ports/out/capability/capability-runtime-connection.ts";
+import { openLeaseBoundCapabilityRuntimeMcpClient } from "../../../application/control-plane/capability-runtime-bound-mcp-client.ts";
+import { requiredQualifiedPersistentComposePublication } from "../../../application/control-plane/capability-runtime-persistent-compose-publication.ts";
+import type { ResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../../domain/capability/runtime/capability-runtime-material.ts";
+import { MCP_DFM_010_IMAGE_REFERENCE } from "../../control-plane/first-party-capability-runtime-identities.ts";
 import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
@@ -41,6 +62,7 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
+  EngineeringWorkItem,
 } from "../../../domain/project/engineering-project.ts";
 import type {
   RequirementEvaluation,
@@ -58,7 +80,7 @@ import {
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import type { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
-import { validateDfmCaseCapture } from "./dfm-case-capture.ts";
+import { type DfmCaseCapture, validateDfmCaseCapture } from "./dfm-case-capture.ts";
 import {
   canonicalDfmCheckCaptureText,
   DFM_CHECK_CAPTURE_SCHEMA,
@@ -92,6 +114,18 @@ import {
 export { INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION };
 export { DFM_CHECK_CAPTURE_URI_PREFIX };
 
+interface DfmDocumentaryBasis {
+  readonly basis: EngineeringThreadSnapshotBasis;
+  readonly basisSnapshot: ThreadSnapshot;
+  readonly caseArtifact: ThreadArtifact;
+  readonly caseCapture: DfmCaseCapture;
+  readonly dfmCase: DfmCheckCase;
+  readonly geometryArtifact: ThreadArtifact;
+  readonly geometryBytes: Uint8Array;
+  readonly geometryDigest: string;
+  readonly planDigest: string;
+}
+
 export interface DfmRunThreadSnapshotStore extends ThreadSnapshotStore {
   getFresh(snapshotId: string): Promise<ThreadSnapshot | undefined>;
 }
@@ -109,10 +143,21 @@ export interface IndustrializeRunDfmChecksRunExecutorDependencies {
     "save" | "read" | "uriFor"
   >;
   readonly geometryAssets: CanonicalAssetReader;
-  readonly stager: GeometryExportStager;
-  readonly dfm: McpToolClient;
+  readonly stagerFactory: CapabilitySessionGeometryExportStagerFactory;
+  /**
+   * Lease-bound mcp-dfm publication. The executor never names a URL, host,
+   * port, bearer, provider or tool envelope; composition owns the mapping.
+   */
+  readonly capabilityRuntimeConnection: CapabilityRuntimeBoundMcpClient;
   readonly attempts: FileDfmCheckAttemptStore;
   readonly lease: EngineeringProjectRunLease;
+  readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
+  /** JIT host session. Entered only after the final cold recheck and before
+   * claim, WAL, or mcp-dfm. */
+  readonly capabilityRuntimeSession?: Pick<
+    CapabilityRuntimeExecutionSessionCoordinator,
+    "begin"
+  >;
 }
 
 export class IndustrializeRunDfmChecksRunExecutor {
@@ -125,10 +170,14 @@ export class IndustrializeRunDfmChecksRunExecutor {
     "checkCaptures"
   ];
   readonly #geometryAssets: CanonicalAssetReader;
-  readonly #stager: GeometryExportStager;
-  readonly #dfm: McpToolClient;
+  readonly #stagerFactory: CapabilitySessionGeometryExportStagerFactory;
+  readonly #capabilityRuntimeConnection: CapabilityRuntimeBoundMcpClient;
   readonly #attempts: FileDfmCheckAttemptStore;
   readonly #lease: EngineeringProjectRunLease;
+  readonly #capabilityRuntime: CapabilityRuntimeExecutionEligibility | undefined;
+  readonly #capabilityRuntimeSession:
+    | Pick<CapabilityRuntimeExecutionSessionCoordinator, "begin">
+    | undefined;
 
   constructor(deps: IndustrializeRunDfmChecksRunExecutorDependencies) {
     this.#projects = deps.projects;
@@ -137,10 +186,12 @@ export class IndustrializeRunDfmChecksRunExecutor {
     this.#caseCaptures = deps.caseCaptures;
     this.#checkCaptures = deps.checkCaptures;
     this.#geometryAssets = deps.geometryAssets;
-    this.#stager = deps.stager;
-    this.#dfm = deps.dfm;
+    this.#stagerFactory = deps.stagerFactory;
+    this.#capabilityRuntimeConnection = deps.capabilityRuntimeConnection;
     this.#attempts = deps.attempts;
     this.#lease = deps.lease;
+    this.#capabilityRuntime = deps.capabilityRuntime;
+    this.#capabilityRuntimeSession = deps.capabilityRuntimeSession;
   }
 
   async execute(
@@ -190,188 +241,135 @@ export class IndustrializeRunDfmChecksRunExecutor {
   ): Promise<EngineeringProjectSnapshot> {
     let claimed = false;
     let snapshotSaveMayHaveBeenDispatched = false;
+    let providerOrWalDispatched = false;
+    let capabilitySession: CapabilityRuntimeExecutionSession | undefined;
     try {
       const preClaim = await this.#requiredProject(command.projectId);
-      requireShape(preClaim, requireRun(preClaim, command.runId));
+      const preClaimRun = requireRun(preClaim, command.runId);
+      requireShape(preClaim, preClaimRun);
       const alreadyCompleted = await this.#completedFor(command);
       if (alreadyCompleted) return alreadyCompleted;
-      await assertThreadWriteBasisAvailable(
-        preClaim,
-        requireRun(preClaim, command.runId),
+      await assertThreadWriteBasisAvailable(preClaim, preClaimRun);
+      const documentary = await this.#reopenDocumentaryBasis(preClaim, preClaimRun);
+      const walPeek = await this.#peekWriteAhead(
+        command.projectId,
+        preClaimRun.id,
+        documentary.planDigest,
       );
-      const preClaimRun = requireRun(preClaim, command.runId);
+      let stagedPath: string | undefined;
+      let stagedByteCount: number | undefined;
+      let dfm: McpToolClient | undefined;
+      if (walPeek.kind === "absent") {
+        const operationalCapability = await this.#requireOperationalCapability(
+          preClaim,
+          preClaimRun,
+        );
+        capabilitySession = await beginConfiguredCapabilityRuntimeSession({
+          session: this.#capabilityRuntimeSession!,
+          project: preClaim,
+          runId: command.runId,
+          operationalCapability,
+          recheck: async () => {
+            const fresh = await this.#requiredProject(command.projectId);
+            const run = requireRun(fresh, command.runId);
+            requireShape(fresh, run);
+            await this.#reopenDocumentaryBasis(fresh, run);
+            return await this.#requireOperationalCapability(fresh, run);
+          },
+        });
+        try {
+          dfm = await this.#openBoundDfmClient(
+            capabilitySession,
+            operationalCapability,
+          );
+          const publication = requiredQualifiedPersistentComposePublication(
+            operationalCapability,
+          );
+          const stager = await this.#stagerFactory.forActiveCapabilitySession({
+            lease: capabilitySession.lease,
+            launchGroup: publication.launchGroup,
+            material: exactDfmMaterial(operationalCapability),
+          });
+          const staged = await stager.stage({
+            bytes: documentary.geometryBytes,
+            digest: documentary.geometryDigest,
+            fileName: `dfm-${documentary.geometryDigest}.step`,
+          });
+          if (staged.sha256 !== documentary.geometryDigest) {
+            throw invalidTransition(
+              "Staged geometry sha256 diverges from the artifact.",
+            );
+          }
+          stagedPath = staged.path;
+          stagedByteCount = staged.byteCount;
+        } catch (error) {
+          await settleCapabilityRuntimeSession({
+            session: capabilitySession,
+            policy: { kind: "release" },
+          });
+          capabilitySession = undefined;
+          if (error instanceof CapabilityRuntimeConnectionError) {
+            throw new EngineeringProjectCommandError(
+              "invalid_transition",
+              error.message,
+            );
+          }
+          throw error;
+        }
+      }
       if (
-        preClaimRun.status === "queued" ||
-        preClaimRun.status === "running" ||
-        preClaimRun.status === "publishing"
+        preClaimRun.status !== "queued" &&
+        preClaimRun.status !== "running" &&
+        preClaimRun.status !== "publishing"
       ) {
+        throw unexpectedStatus(
+          preClaimRun,
+          "queued or this agent's running/publishing",
+        );
+      }
+      if (preClaimRun.status === "queued") {
         await this.#commands.claimRun(origin, {
           ...command,
           commandId: commandStep(command.commandId, "claim"),
           summary: "Started the measured DFM check run.",
         });
         claimed = true;
-      } else {
-        throw unexpectedStatus(
-          preClaimRun,
-          "queued or this agent's running/publishing",
-        );
       }
       let project = await this.#requiredProject(command.projectId);
       let run = requireRun(project, command.runId);
       if (run.status === "completed") {
         assertCompleted(project, command);
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "release" },
+        });
         return project;
       }
-      const basis = requireBasis(run);
-      const basisSnapshot = await exactBasisSnapshot(this.#snapshots, basis);
-      await assertThreadSnapshotLineageIntact(basisSnapshot, this.#snapshots);
-      const { proposal } = await requireMrtrApproval(project, run);
-      const runParams = parseDfmRunDecisionParameters(proposal.parameters);
-      const caseArtifact = requireBoundArtifact(project, run, basisSnapshot, "dfmCase");
-      const geometryArtifact = requireBoundGeometry(project, run, basisSnapshot);
-      const caseText = await this.#caseCaptures.read(caseArtifact.fingerprint);
-      if (!caseText) {
-        throw invalidTransition("The sealed DFM case could not be reopened.");
-      }
-      const caseCapture = await validateDfmCaseCapture(JSON.parse(caseText));
-      const dfmCase = caseCapture.dfmCase;
-      verifyDfmRunParametersMatchCase(runParams, dfmCase, caseCapture.caseDigest);
-      const geometryBytes = await this.#geometryAssets.read(
-        geometryArtifact.fingerprint.digest,
-      );
-      const geometryDigest = await fingerprintResourceBytes(geometryBytes);
-      if (geometryDigest !== geometryArtifact.fingerprint.digest) {
-        throw invalidTransition(
-          "Canonical geometry bytes do not match the bound artifact fingerprint.",
-        );
-      }
-      if (geometryDigest !== dfmCase.target.sha256) {
-        throw invalidTransition(
-          `Bound geometry SHA-256 mismatch: expected ${dfmCase.target.sha256}, ` +
-            `observed ${geometryDigest}.`,
-        );
-      }
-      const planDigest = (await sha256Fingerprint({
-        caseDigest: caseCapture.caseDigest,
-        geometryDigest,
-      })).digest;
       const dispatchedAt = requiredStart(run);
       const wal = await this.#attempts.begin({
         projectId: command.projectId,
         runId: run.id,
-        planDigest,
+        planDigest: documentary.planDigest,
         dispatchedAt,
       });
       let checkCapture: DfmCheckCapture;
       if (wal.action === "dispatch") {
-        const staged = await this.#stager.stage({
-          bytes: geometryBytes,
-          digest: geometryDigest,
-          fileName: `${geometryDigest}.step`,
-        });
-        if (staged.sha256 !== geometryDigest) {
-          throw invalidTransition("Staged geometry sha256 diverges from the artifact.");
+        if (
+          stagedPath === undefined || stagedByteCount === undefined ||
+          dfm === undefined
+        ) {
+          throw invalidTransition(
+            "Measured DFM checks cannot dispatch without a lease-bound staged STEP.",
+          );
         }
-        const buildVolumeMm = {
-          x: dfmCase.buildVolumeMm.x.value,
-          y: dfmCase.buildVolumeMm.y.value,
-          z: dfmCase.buildVolumeMm.z.value,
-        };
-        const envelope = parseDfmEnvelopeResult(
-          (await this.#dfm.callTool({
-            name: DFM_ENVELOPE_TOOL,
-            arguments: {
-              step_path: staged.path,
-              expected_step_sha256: geometryDigest,
-              build_volume_mm: buildVolumeMm,
-              mesh_size_mm: dfmCase.meshSizeMm.value,
-            },
-          })).structuredContent,
-          geometryDigest,
-          buildVolumeMm,
-        );
-        const thickness = parseDfmThicknessResult(
-          (await this.#dfm.callTool({
-            name: DFM_THICKNESS_TOOL,
-            arguments: {
-              step_path: staged.path,
-              expected_step_sha256: geometryDigest,
-              min_thickness_mm: dfmCase.minThicknessMm.value,
-              mesh_size_mm: dfmCase.meshSizeMm.value,
-            },
-          })).structuredContent,
-          geometryDigest,
-          dfmCase.minThicknessMm.value,
-        );
-        const overhang = parseDfmOverhangResult(
-          (await this.#dfm.callTool({
-            name: DFM_OVERHANG_TOOL,
-            arguments: {
-              step_path: staged.path,
-              expected_step_sha256: geometryDigest,
-              build_direction: [...dfmCase.buildDirection],
-              max_overhang_deg: dfmCase.maxOverhangAngleDeg.value,
-              mesh_size_mm: dfmCase.meshSizeMm.value,
-            },
-          })).structuredContent,
-          geometryDigest,
-          dfmCase.maxOverhangAngleDeg.value,
-        );
-        const recomputed = evaluateCapturedDfmChecks({
-          zMinFilter: dfmCase.zMinFilter,
-          buildVolumeMm,
-          minThicknessMm: dfmCase.minThicknessMm.value,
-          envelope,
-          thickness,
-          overhang,
-        });
-        checkCapture = validateDfmCheckCapture({
-          schemaVersion: DFM_CHECK_CAPTURE_SCHEMA,
-          operation: INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
-          trustedRunId: run.id,
+        providerOrWalDispatched = true;
+        checkCapture = await this.#dispatchMeasuredChecks({
+          dfm,
+          run,
           dispatchedAt,
-          capturedAt: dispatchedAt,
-          caseDigest: caseCapture.caseDigest,
-          geometry: {
-            artifactId: geometryArtifact.id,
-            sha256: geometryDigest,
-            byteCount: staged.byteCount,
-            mediaType: DFM_TARGET_MEDIA_TYPE,
-            stagedPath: staged.path,
-          },
-          providerCallParams: {
-            expectedStepSha256: geometryDigest,
-            buildVolumeMm,
-            minThicknessMm: dfmCase.minThicknessMm.value,
-            maxOverhangDeg: dfmCase.maxOverhangAngleDeg.value,
-            meshSizeMm: dfmCase.meshSizeMm.value,
-            buildDirection: [...dfmCase.buildDirection],
-          },
-          zMinFilter: persistZMinFilterTrace(recomputed.zMinTrace),
-          envelope: {
-            tool: DFM_ENVELOPE_TOOL,
-            measured: envelope.measured,
-            violations: envelope.violations,
-            notChecked: envelope.notChecked,
-            inputArtifactSha256: envelope.inputArtifactSha256,
-          },
-          thickness: {
-            tool: DFM_THICKNESS_TOOL,
-            measured: thickness.measured,
-            violations: thickness.violations,
-            notChecked: thickness.notChecked,
-            inputArtifactSha256: thickness.inputArtifactSha256,
-          },
-          overhang: {
-            tool: DFM_OVERHANG_TOOL,
-            measured: overhang.measured,
-            violations: overhang.violations,
-            notChecked: overhang.notChecked,
-            inputArtifactSha256: overhang.inputArtifactSha256,
-          },
-          evaluations: recomputed.evaluations,
-          limitations: dfmCase.limitations,
+          documentary,
+          stagedPath,
+          stagedByteCount,
         });
         const captureText = canonicalDfmCheckCaptureText(checkCapture);
         const captureFingerprint = await sha256Fingerprint(checkCapture);
@@ -383,7 +381,7 @@ export class IndustrializeRunDfmChecksRunExecutor {
         await this.#attempts.recordCapture({
           projectId: command.projectId,
           runId: run.id,
-          planDigest,
+          planDigest: documentary.planDigest,
           recordedAt: dispatchedAt,
           captureFingerprint,
           canonicalCaptureText: captureText,
@@ -397,12 +395,12 @@ export class IndustrializeRunDfmChecksRunExecutor {
       }
       const captureFingerprint = await sha256Fingerprint(checkCapture);
       const successor = buildCheckSuccessor({
-        basisSnapshot,
-        basis,
+        basisSnapshot: documentary.basisSnapshot,
+        basis: documentary.basis,
         run,
-        caseArtifact,
-        geometryArtifact,
-        dfmCase,
+        caseArtifact: documentary.caseArtifact,
+        geometryArtifact: documentary.geometryArtifact,
+        dfmCase: documentary.dfmCase,
         capture: checkCapture,
         captureFingerprint,
         captureUri: this.#checkCaptures.uriFor(captureFingerprint),
@@ -419,7 +417,7 @@ export class IndustrializeRunDfmChecksRunExecutor {
       await this.#attempts.complete({
         projectId: command.projectId,
         runId: run.id,
-        planDigest,
+        planDigest: documentary.planDigest,
         completedAt: dispatchedAt,
         captureFingerprint,
       });
@@ -454,12 +452,39 @@ export class IndustrializeRunDfmChecksRunExecutor {
       }
       const complete = await this.#requiredProject(command.projectId);
       assertCompleted(complete, command);
+      await settleCapabilityRuntimeSession({
+        session: capabilitySession,
+        policy: { kind: "release" },
+      });
       return complete;
     } catch (error) {
-      if (error instanceof DfmCheckRunOutcomeUnknownError) throw error;
+      if (error instanceof DfmCheckRunOutcomeUnknownError) {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
+        throw error;
+      }
       if (snapshotSaveMayHaveBeenDispatched) {
         const completed = await this.#completedFor(command);
-        if (completed) return completed;
+        if (completed) {
+          await settleCapabilityRuntimeSession({
+            session: capabilitySession,
+            policy: { kind: "release" },
+          });
+          return completed;
+        }
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
+        throw error;
+      }
+      if (providerOrWalDispatched) {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: { kind: "retain" },
+        });
       }
       if (claimed) {
         try {
@@ -475,7 +500,256 @@ export class IndustrializeRunDfmChecksRunExecutor {
           // Surface the original error.
         }
       }
+      if (!providerOrWalDispatched) {
+        await settleCapabilityRuntimeSession({
+          session: capabilitySession,
+          policy: {
+            kind: "release-if-terminal",
+            run: await this.#currentRun(command.projectId, command.runId),
+          },
+        });
+      }
       throw error;
+    }
+  }
+
+  async #reopenDocumentaryBasis(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ): Promise<DfmDocumentaryBasis> {
+    requireShape(project, run);
+    const { proposal } = await requireMrtrApproval(project, run);
+    const runParams = parseDfmRunDecisionParameters(proposal.parameters);
+    const basis = requireBasis(run);
+    const basisSnapshot = await exactBasisSnapshot(this.#snapshots, basis);
+    await assertThreadSnapshotLineageIntact(basisSnapshot, this.#snapshots);
+    const caseArtifact = requireBoundArtifact(project, run, basisSnapshot, "dfmCase");
+    const geometryArtifact = requireBoundGeometry(project, run, basisSnapshot);
+    const caseText = await this.#caseCaptures.read(caseArtifact.fingerprint);
+    if (!caseText) {
+      throw invalidTransition("The sealed DFM case could not be reopened.");
+    }
+    const caseCapture = await validateDfmCaseCapture(JSON.parse(caseText));
+    const dfmCase = caseCapture.dfmCase;
+    verifyDfmRunParametersMatchCase(runParams, dfmCase, caseCapture.caseDigest);
+    const geometryBytes = await this.#geometryAssets.read(
+      geometryArtifact.fingerprint.digest,
+    );
+    const geometryDigest = await fingerprintResourceBytes(geometryBytes);
+    if (geometryDigest !== geometryArtifact.fingerprint.digest) {
+      throw invalidTransition(
+        "Canonical geometry bytes do not match the bound artifact fingerprint.",
+      );
+    }
+    if (geometryDigest !== dfmCase.target.sha256) {
+      throw invalidTransition(
+        `Bound geometry SHA-256 mismatch: expected ${dfmCase.target.sha256}, ` +
+          `observed ${geometryDigest}.`,
+      );
+    }
+    const planDigest = (await sha256Fingerprint({
+      caseDigest: caseCapture.caseDigest,
+      geometryDigest,
+    })).digest;
+    return {
+      basis,
+      basisSnapshot,
+      caseArtifact,
+      caseCapture,
+      dfmCase,
+      geometryArtifact,
+      geometryBytes,
+      geometryDigest,
+      planDigest,
+    };
+  }
+
+  async #peekWriteAhead(
+    projectId: string,
+    runId: string,
+    planDigest: string,
+  ): Promise<{ readonly kind: "absent" } | { readonly kind: "capture" }> {
+    let current;
+    try {
+      current = await this.#attempts.read(projectId, runId);
+    } catch {
+      throw new DfmCheckRunOutcomeUnknownError();
+    }
+    if (!current) return { kind: "absent" };
+    if (current.planDigest !== planDigest || current.status === "dispatched") {
+      throw new DfmCheckRunOutcomeUnknownError();
+    }
+    return { kind: "capture" };
+  }
+
+  async #requireOperationalCapability(
+    project: EngineeringProjectSnapshot,
+    run: EngineeringAgentRun,
+  ): Promise<ResolvedCapabilityRuntimeOperation> {
+    try {
+      return await requireConfiguredOperationalCapability({
+        runtime: this.#capabilityRuntime,
+        session: this.#capabilityRuntimeSession,
+        project,
+        run,
+        workItem: requireShape(project, run),
+        unavailableMessage:
+          "Measured DFM checks require the configured JIT capability runtime session before a run can be claimed.",
+        missingBindingMessage:
+          "Measured DFM checks require the sealed mcp-dfm-measured-checks operational capability before a run can be claimed.",
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async #openBoundDfmClient(
+    session: CapabilityRuntimeExecutionSession,
+    operationalCapability: ResolvedCapabilityRuntimeOperation,
+  ): Promise<McpToolClient> {
+    try {
+      return await openLeaseBoundCapabilityRuntimeMcpClient({
+        connection: this.#capabilityRuntimeConnection,
+        session,
+        operationalCapability,
+      });
+    } catch (error) {
+      if (error instanceof CapabilityRuntimeSessionUnavailableError) {
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          error.message,
+        );
+      }
+      throw error;
+    }
+  }
+
+  async #dispatchMeasuredChecks(input: {
+    readonly dfm: McpToolClient;
+    readonly run: EngineeringAgentRun;
+    readonly dispatchedAt: string;
+    readonly documentary: DfmDocumentaryBasis;
+    readonly stagedPath: string;
+    readonly stagedByteCount: number;
+  }): Promise<DfmCheckCapture> {
+    const { dfmCase, geometryDigest, geometryArtifact, caseCapture } =
+      input.documentary;
+    const buildVolumeMm = {
+      x: dfmCase.buildVolumeMm.x.value,
+      y: dfmCase.buildVolumeMm.y.value,
+      z: dfmCase.buildVolumeMm.z.value,
+    };
+    const envelope = parseDfmEnvelopeResult(
+      (await input.dfm.callTool({
+        name: DFM_ENVELOPE_TOOL,
+        arguments: {
+          step_path: input.stagedPath,
+          expected_step_sha256: geometryDigest,
+          build_volume_mm: buildVolumeMm,
+          mesh_size_mm: dfmCase.meshSizeMm.value,
+        },
+      })).structuredContent,
+      geometryDigest,
+      buildVolumeMm,
+    );
+    const thickness = parseDfmThicknessResult(
+      (await input.dfm.callTool({
+        name: DFM_THICKNESS_TOOL,
+        arguments: {
+          step_path: input.stagedPath,
+          expected_step_sha256: geometryDigest,
+          min_thickness_mm: dfmCase.minThicknessMm.value,
+          mesh_size_mm: dfmCase.meshSizeMm.value,
+        },
+      })).structuredContent,
+      geometryDigest,
+      dfmCase.minThicknessMm.value,
+    );
+    const overhang = parseDfmOverhangResult(
+      (await input.dfm.callTool({
+        name: DFM_OVERHANG_TOOL,
+        arguments: {
+          step_path: input.stagedPath,
+          expected_step_sha256: geometryDigest,
+          build_direction: [...dfmCase.buildDirection],
+          max_overhang_deg: dfmCase.maxOverhangAngleDeg.value,
+          mesh_size_mm: dfmCase.meshSizeMm.value,
+        },
+      })).structuredContent,
+      geometryDigest,
+      dfmCase.maxOverhangAngleDeg.value,
+    );
+    const recomputed = evaluateCapturedDfmChecks({
+      zMinFilter: dfmCase.zMinFilter,
+      buildVolumeMm,
+      minThicknessMm: dfmCase.minThicknessMm.value,
+      envelope,
+      thickness,
+      overhang,
+    });
+    return validateDfmCheckCapture({
+      schemaVersion: DFM_CHECK_CAPTURE_SCHEMA,
+      operation: INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
+      trustedRunId: input.run.id,
+      dispatchedAt: input.dispatchedAt,
+      capturedAt: input.dispatchedAt,
+      caseDigest: caseCapture.caseDigest,
+      geometry: {
+        artifactId: geometryArtifact.id,
+        sha256: geometryDigest,
+        byteCount: input.stagedByteCount,
+        mediaType: DFM_TARGET_MEDIA_TYPE,
+        stagedPath: input.stagedPath,
+      },
+      providerCallParams: {
+        expectedStepSha256: geometryDigest,
+        buildVolumeMm,
+        minThicknessMm: dfmCase.minThicknessMm.value,
+        maxOverhangDeg: dfmCase.maxOverhangAngleDeg.value,
+        meshSizeMm: dfmCase.meshSizeMm.value,
+        buildDirection: [...dfmCase.buildDirection],
+      },
+      zMinFilter: persistZMinFilterTrace(recomputed.zMinTrace),
+      envelope: {
+        tool: DFM_ENVELOPE_TOOL,
+        measured: envelope.measured,
+        violations: envelope.violations,
+        notChecked: envelope.notChecked,
+        inputArtifactSha256: envelope.inputArtifactSha256,
+      },
+      thickness: {
+        tool: DFM_THICKNESS_TOOL,
+        measured: thickness.measured,
+        violations: thickness.violations,
+        notChecked: thickness.notChecked,
+        inputArtifactSha256: thickness.inputArtifactSha256,
+      },
+      overhang: {
+        tool: DFM_OVERHANG_TOOL,
+        measured: overhang.measured,
+        violations: overhang.violations,
+        notChecked: overhang.notChecked,
+        inputArtifactSha256: overhang.inputArtifactSha256,
+      },
+      evaluations: recomputed.evaluations,
+      limitations: dfmCase.limitations,
+    });
+  }
+
+  async #currentRun(
+    projectId: string,
+    runId: string,
+  ): Promise<EngineeringAgentRun | undefined> {
+    try {
+      return requireRun(await this.#requiredProject(projectId), runId);
+    } catch {
+      return undefined;
     }
   }
 
@@ -973,12 +1247,13 @@ function requireBoundGeometry(
 function requireShape(
   project: EngineeringProjectSnapshot,
   run: EngineeringAgentRun,
-): void {
+): EngineeringWorkItem {
   const workItem = project.workItems.find((item) => item.id === run.workItemId);
   const operation = workItem?.operation;
   const caseBinding = operation?.bindings.find((item) => item.name === "dfmCase");
   const geometryBinding = operation?.bindings.find((item) => item.name === "geometry");
   if (
+    !workItem ||
     project.schemaVersion !== "4.0" ||
     run.basis?.kind !== "thread-snapshot" ||
     operation?.id !== INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION.id ||
@@ -992,6 +1267,40 @@ function requireShape(
       `Run ${run.id} is not bound to industrialize.run-dfm-checks@1.`,
     );
   }
+  return workItem;
+}
+
+function exactDfmMaterial(
+  operationalCapability: ResolvedCapabilityRuntimeOperation,
+): CapabilityRuntimeMaterialIdentity {
+  const publication = requiredQualifiedPersistentComposePublication(
+    operationalCapability,
+  );
+  if (publication.binding.id !== "mcp-dfm-measured-checks") {
+    throw invalidTransition(
+      "Measured DFM checks require the sealed mcp-dfm-measured-checks binding.",
+    );
+  }
+  const binding = operationalCapability.bindings[0];
+  if (!binding || binding.materials.length !== 1) {
+    throw invalidTransition(
+      "Measured DFM checks require exactly one sealed mcp-dfm material.",
+    );
+  }
+  const material = binding.materials[0]!;
+  const expectedDigest = MCP_DFM_010_IMAGE_REFERENCE.slice(
+    MCP_DFM_010_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
+  );
+  if (
+    material.unitId !== "casys.mcp-dfm" ||
+    material.materialId !== "mcp-dfm-image" ||
+    material.imageDigest !== expectedDigest
+  ) {
+    throw invalidTransition(
+      "Measured DFM checks require the exact casys.mcp-dfm@mcp-dfm-image material.",
+    );
+  }
+  return material;
 }
 
 function requireMrtrApproval(

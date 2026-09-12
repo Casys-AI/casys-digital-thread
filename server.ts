@@ -171,6 +171,7 @@ import {
   INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
   IndustrializeRunDfmChecksRunExecutor,
 } from "./src/adapters/make/dfm/industrialize-run-dfm-checks-run-executor.ts";
+import { CapabilityRuntimeDfmGeometryExportStagerFactory } from "./src/adapters/make/dfm/capability-runtime-dfm-geometry-export-stager.ts";
 import { FileDfmCheckAttemptStore } from "./src/adapters/make/dfm/file-dfm-check-attempt-store.ts";
 import {
   BUY_CAPTURE_CONFIGURATION_COST_OPERATION,
@@ -226,6 +227,7 @@ import { overlaySecretInjector } from "./src/adapters/control-plane/local-erpnex
 import { createLocalFixedCapabilityRuntimeConnection } from "./src/adapters/control-plane/local-fixed-capability-runtime-connection.ts";
 import {
   firstPartyBuild123dObservationLaunchGroupReference,
+  firstPartyDfmLaunchGroupReference,
   firstPartySysonLaunchGroupReference,
 } from "./src/adapters/control-plane/first-party-capability-runtime-launch-groups.ts";
 import {
@@ -409,7 +411,7 @@ const DEFAULT_PRINTABILITY_EXPORT_DIRECTORY = "state/local/printability-exports"
 const DEFAULT_DFM_CASE_CAPTURE_DIRECTORY = "state/local/dfm-case-captures";
 const DEFAULT_DFM_CHECK_CAPTURE_DIRECTORY = "state/local/dfm-check-captures";
 const DEFAULT_DFM_CHECK_ATTEMPT_DIRECTORY = "state/local/dfm-check-attempts";
-const DEFAULT_DFM_EXPORT_DIRECTORY = "state/local/dfm-exports";
+const DEFAULT_DFM_INPUT_STAGING_DIRECTORY = "state/local/dfm-check-inputs";
 const DEFAULT_BUY_CANDIDATE_CAPTURE_DIRECTORY =
   "state/local/buy-configuration-cost-candidate-captures";
 const DEFAULT_BUY_SEAL_CAPTURE_DIRECTORY =
@@ -1096,6 +1098,23 @@ async function createProjectControl(
       fleetMcpUrl: sysonMcpUrl,
     })).boundClient()
     : undefined;
+  const dfmLaunchGroup = dfmMcpUrl
+    ? await capabilityRead.launchGroups.require(
+      await firstPartyDfmLaunchGroupReference(),
+    )
+    : undefined;
+  const dfmRuntimeConnection = dfmMcpUrl && dfmLaunchGroup
+    ? (await createLocalFixedCapabilityRuntimeConnection({
+      leases: capabilityRuntimeLeases,
+      binding: requiredCatalogBinding(
+        capabilityRead.catalog,
+        "mcp-dfm-measured-checks",
+      ),
+      launchGroup: dfmLaunchGroup,
+      fleetMcpUrl: dfmMcpUrl,
+      timeoutMs: 120_000,
+    })).boundClient()
+    : undefined;
   const architectureProject = createArchitectureProject({
     projects: runtime.projects,
     commands: runtime.commands,
@@ -1536,7 +1555,7 @@ async function createProjectControl(
       activeThreadSnapshots,
       buyCandidateCaptures,
     );
-  const industrializeRunDfmChecks = dfmMcpUrl
+  const industrializeRunDfmChecks = dfmRuntimeConnection
     ? new IndustrializeRunDfmChecksRunExecutor({
       projects: runtime.projects,
       commands: runtime.commands,
@@ -1546,12 +1565,17 @@ async function createProjectControl(
       geometryAssets: new FileCanonicalAssetReader({
         directory: DEFAULT_CANONICAL_ASSET_DIRECTORY,
       }),
-      stager: new ExportVolumeGeometryStager(DEFAULT_DFM_EXPORT_DIRECTORY),
-      dfm: new HttpMcpToolClient({ mcpUrl: dfmMcpUrl, timeoutMs: 120_000 }),
+      stagerFactory: new CapabilityRuntimeDfmGeometryExportStagerFactory({
+        groups: capabilityRead.launchGroups,
+        hostCacheDirectory: DEFAULT_DFM_INPUT_STAGING_DIRECTORY,
+      }),
+      capabilityRuntimeConnection: dfmRuntimeConnection,
       attempts: new FileDfmCheckAttemptStore(
         options.dfmCheckAttemptDirectory ?? DEFAULT_DFM_CHECK_ATTEMPT_DIRECTORY,
       ),
       lease,
+      capabilityRuntime,
+      capabilityRuntimeSession,
     })
     : undefined;
   const industrializeObservePrintEstimate = prusaslicerMcpUrl
@@ -2049,7 +2073,7 @@ async function createProjectControl(
             executor: industrializeRunDfmChecks,
             unavailableMessage:
               "The server has no trusted industrialize.run-dfm-checks@1 executor " +
-              "configured for this run (dfm provider is required).",
+              "configured for this run (lease-bound mcp-dfm capability runtime is required).",
           },
           {
             operation: BUY_CAPTURE_CONFIGURATION_COST_OPERATION,

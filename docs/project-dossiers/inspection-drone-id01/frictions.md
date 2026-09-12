@@ -757,9 +757,25 @@ Fresh decision `decision-run-dfm-id01-camera-board-envelope-mk4s-r2-authority` i
 proposed on exact Thread r118, with input fingerprint
 `37157a666c6dc99b5ecbdbd3705ce2b8c2b4682dd1f7249eb25f134af7a0db83`. Production readers
 reopened the unchanged sealed case and canonical STEP; the seven run parameters preserve
-the declared Z-min filter. Project r884 records this proposal with a pending approval
-and no new run. F52 authority recovery remains open until a fresh human-signed MRTR and
-registered successor execution publish valid evidence.
+the declared Z-min filter. After explicit user approval “oui oui yolo”, official
+`start:yolo` recorded the human approval on this exact r118 basis and fingerprint
+(Project r885); queue recorded `run:id01-yolo-queue-dfm-r118-authority-20260912` at
+r886. That attempt is `failed` before a durable Thread write: direct HTTP could not
+reach DFM (`fetch failed`). Project r888 and Thread r118 are unchanged after the
+failure. This attempt and its dispatched WAL remain immutable.
+
+**Runtime composition correction accepted 2026-09-12.** Measured DFM now uses the
+existing authorized JIT session and fixed lease-bound MCP publication. It stages exact
+canonical STEP bytes to server-derived `/tmp/dfm-<sha256>.step` in the unique owned
+exact-image container, independently checking SHA-256 and byte count before claim and
+dispatch WAL. The sealed `/exports` volume stays read-only, with no image or
+launch-group change. The shared container ownership/staging primitive is extracted from
+CalculiX; each factory keeps its own literal topology. 61 retained targeted tests and 9
+architecture-boundary tests pass; changed-source fmt/lint/typecheck and server
+composition pass. Two new source-string snapshot tests are excluded from the delivery;
+composition is reviewed directly and dependency boundaries use the existing scanner. The
+authorized r118 calculation remains to be completed through a fresh queue of the same
+work/approval; historical evidence is never repaired retroactively.
 
 Recorded checks (sampling / screening, printer not selected): envelope 25 × 24 × 11.5 mm
 `pass`; sampled minimum thickness 0.9149495583883871 mm against 0.8 mm `pass`; overhang
