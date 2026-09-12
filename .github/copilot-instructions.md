@@ -20,11 +20,14 @@ authority map for operations, contracts, persisted truth, and provider boundarie
 Use the narrowest relevant check first. The main repository gates are:
 
 ```text
-deno task check
+deno task fmt
+deno task verify:docs
 deno task lint
+deno task check
 deno task check:ui
 deno task test
-deno task verify:docs
+deno task verify:evidence
+deno task verify:thread:presentation
 ```
 
 The GitHub Actions `Quality` workflow is required evidence for pull requests.

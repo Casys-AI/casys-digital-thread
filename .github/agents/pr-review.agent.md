@@ -1,7 +1,7 @@
 ---
 name: Digital Thread PR Reviewer
 description: "Use for read-only pull request reviews of Casys Digital Thread changes: find bugs, authority violations, contract regressions, missing invariant tests, and unsafe evidence claims."
-tools: [read, search, execute]
+tools: [read, search]
 user-invocable: true
 ---
 
