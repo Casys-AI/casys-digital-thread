@@ -80,7 +80,11 @@ import {
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import type { FileCaptureStore } from "../../shared/cas/file-capture-store.ts";
-import { type DfmCaseCapture, validateDfmCaseCapture } from "./dfm-case-capture.ts";
+import {
+  assertDfmCaseArtifactCapture,
+  type DfmCaseCapture,
+  validateDfmCaseCapture,
+} from "./dfm-case-capture.ts";
 import {
   canonicalDfmCheckCaptureText,
   DFM_CHECK_CAPTURE_SCHEMA,
@@ -530,6 +534,7 @@ export class IndustrializeRunDfmChecksRunExecutor {
       throw invalidTransition("The sealed DFM case could not be reopened.");
     }
     const caseCapture = await validateDfmCaseCapture(JSON.parse(caseText));
+    await assertDfmCaseArtifactCapture(caseArtifact, caseCapture, caseText);
     const dfmCase = caseCapture.dfmCase;
     verifyDfmRunParametersMatchCase(runParams, dfmCase, caseCapture.caseDigest);
     const geometryBytes = await this.#geometryAssets.read(

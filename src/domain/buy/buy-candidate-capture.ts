@@ -5,6 +5,7 @@
  * current cost claim. Seal reopens these exact bytes.
  */
 
+import { assertBuySourceLineage } from "./buy-source-lineage.ts";
 import { BUY_CAPTURE_CONFIGURATION_COST_OPERATION } from "./buy-operations.ts";
 import {
   BUY_CONFIGURATION_SCHEMA,
@@ -121,6 +122,12 @@ export async function validateBuyCandidateCapture(
       "Candidate bundle configurationRef does not match the configuration.",
     );
   }
+  const sourceCaptures = arrayOf(
+    root.sourceCaptures,
+    "$buyCandidateCapture.sourceCaptures",
+  )
+    .map((item) => validateBuySourceCaptureEnvelope(item));
+  await assertBuySourceLineage(bundle, sourceCaptures);
   return {
     schemaVersion: BUY_CANDIDATE_CAPTURE_SCHEMA,
     kind: "buy.configuration-cost-candidate",
@@ -134,10 +141,7 @@ export async function validateBuyCandidateCapture(
     bundleDigest,
     configuration,
     bundle,
-    sourceCaptures: arrayOf(
-      root.sourceCaptures,
-      "$buyCandidateCapture.sourceCaptures",
-    ).map((item) => validateBuySourceCaptureEnvelope(item)),
+    sourceCaptures,
     capturedAt: nonEmptyText(
       root.capturedAt,
       "$buyCandidateCapture.capturedAt",

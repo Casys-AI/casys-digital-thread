@@ -57,7 +57,6 @@ const WORK_ID = "work.dfm-checks";
 const DECISION_ID = "decision.dfm-checks";
 const APPROVAL_ID = "approval.dfm-checks";
 const COMMAND_ID = "command.dfm-checks";
-const CASE_ARTIFACT_ID = "dfm-case-sealed";
 const GEOMETRY_ID = "geometry-step-support-bracket";
 const CANONICAL_CAPTURE =
   "b59023102670e06b4e33e534d05008c0fe2440ae91dafbaa9c256c92a4ebe3e8";
@@ -462,6 +461,8 @@ async function createFixture(options: {
   readonly geometryTool?: string;
   readonly mismatch?: boolean;
   readonly canonicalChild?: boolean;
+  readonly caseProducerRunId?: string;
+  readonly caseProducerTool?: string;
 } = {}) {
   const geometryBytes = new TextEncoder().encode("ISO-10303-21;END-ISO-10303-21;\n");
   const geometryDigest = await fingerprintResourceBytes(geometryBytes);
@@ -470,6 +471,7 @@ async function createFixture(options: {
     : GEOMETRY_ID;
   const dfmCase = validateDfmCheckCase(caseJson(geometryDigest, stepId));
   const caseDigest = (await sha256Fingerprint(dfmCase)).digest;
+  const caseArtifactId = `dfm-case-${caseDigest}`;
   const caseCapture = await validateDfmCaseCapture({
     schemaVersion: DFM_CASE_CAPTURE_SCHEMA,
     operation: { id: "industrialize.seal-dfm-case", version: "1" },
@@ -483,7 +485,7 @@ async function createFixture(options: {
   const assetDir = await Deno.makeTempDir({ prefix: "dfm-assets-" });
   await Deno.writeFile(`${assetDir}/${geometryDigest}.step`, geometryBytes);
   const caseArtifact = {
-    id: CASE_ARTIFACT_ID,
+    id: caseArtifactId,
     name: "DFM case",
     kind: "document" as const,
     version: caseDigest,
@@ -492,8 +494,8 @@ async function createFixture(options: {
     mediaType: "application/json",
     producer: {
       serverId: "digital-thread",
-      tool: "industrialize.seal-dfm-case@1",
-      runId: "run.seal",
+      tool: options.caseProducerTool ?? "industrialize.seal-dfm-case@1",
+      runId: options.caseProducerRunId ?? "run.seal",
     },
     inputArtifactIds: [],
     freshness: fresh(AT),
@@ -553,7 +555,7 @@ async function createFixture(options: {
       changes: [{
         id: "change.case",
         kind: "created",
-        target: { kind: "artifact", id: CASE_ARTIFACT_ID },
+        target: { kind: "artifact", id: caseArtifactId },
         summary: "Sealed the DFM case.",
         afterFingerprint: caseFingerprint,
       }],
@@ -586,7 +588,7 @@ async function createFixture(options: {
       id: "provenance.change.case",
       relation: "changes",
       from: { kind: "change", id: "change.case" },
-      to: { kind: "artifact", id: CASE_ARTIFACT_ID },
+      to: { kind: "artifact", id: caseArtifactId },
       rationale: "The applied change introduced the sealed case.",
     }],
     proposedActions: [],
@@ -609,7 +611,7 @@ async function createFixture(options: {
             snapshotId: basisSnapshot.id,
             snapshotRevision: 1,
             kind: "artifact" as const,
-            id: CASE_ARTIFACT_ID,
+            id: caseArtifactId,
           },
         },
       },
@@ -999,3 +1001,24 @@ class MemoryCommands {
     return Promise.resolve(this.project);
   }
 }
+
+Deno.test("DFM dispatch refuses a substituted case producer before staging or provider calls", async () => {
+  for (
+    const options of [{ caseProducerRunId: "run.other" }, {
+      caseProducerTool: "design.write-geometry@1",
+    }]
+  ) {
+    const fixture = await createFixture(options);
+    try {
+      await assertRejects(
+        () => fixture.executor.execute(AGENT, fixture.command),
+        TypeError,
+        "artifact producer",
+      );
+      assertEquals(fixture.stager.calls, 0);
+      assertEquals(fixture.dfm.arguments.length, 0);
+    } finally {
+      await fixture.cleanup();
+    }
+  }
+});

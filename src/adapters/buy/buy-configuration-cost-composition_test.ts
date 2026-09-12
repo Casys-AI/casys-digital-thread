@@ -492,6 +492,58 @@ Deno.test("seal refuses a candidate configuration from another project", async (
   }
 });
 
+Deno.test("seal refuses signed source counts or digests that differ from the candidate", async () => {
+  for (const signedSourceDigests of [[], ["9".repeat(64)]]) {
+    const root = await Deno.makeTempDir({ prefix: "buy-seal-foreign-" });
+    try {
+      const wrapper = await loadProducerWrapper();
+      const captureFixture = await createCaptureFixture({
+        mcp: {
+          callTool() {
+            return Promise.resolve({
+              structuredContent: wrapper,
+              text: "",
+            });
+          },
+          callToolTextResult() {
+            return Promise.reject(new Error("unused"));
+          },
+        },
+        candidateDirectory: `${root}/candidates`,
+        snapshotDirectory: `${root}/snapshots`,
+      });
+      const captured = await captureFixture.executor.execute(
+        AGENT,
+        captureFixture.command,
+      );
+      const candidateSnapshot = await captureFixture.snapshots.getFresh(
+        captured.agentRuns[0]!.resultSnapshot!.snapshotId,
+      );
+      const candidateArtifact = candidateSnapshot?.artifacts.find((item) =>
+        item.producer.tool === BUY_CAPTURE_CONFIGURATION_COST_TOOL
+      );
+      const sealFixture = await createSealFixture({
+        project: captured,
+        snapshots: captureFixture.snapshots,
+        candidateDirectory: `${root}/candidates`,
+        sealDirectory: `${root}/seals`,
+        candidateArtifact: candidateArtifact!,
+        signedSourceDigests,
+      });
+      await assertRejects(
+        () =>
+          sealFixture.executor.execute(AGENT, {
+            ...sealFixture.command,
+          }),
+        EngineeringProjectCommandError,
+        "source captures",
+      );
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  }
+});
+
 Deno.test("capture refuses a spoofed sourceInstance from the provider", async () => {
   const body = buyCaptureBodyFixture({
     sourceInstance: {
@@ -1234,6 +1286,7 @@ async function createSealFixture(options: {
   readonly candidateDirectory: string;
   readonly sealDirectory: string;
   readonly candidateArtifact: ThreadArtifact;
+  readonly signedSourceDigests?: readonly string[];
 }) {
   const candidateText = await Deno.readTextFile(
     `${options.candidateDirectory}/${options.candidateArtifact.fingerprint.digest}.json`,
@@ -1257,10 +1310,10 @@ async function createSealFixture(options: {
     configurationDigest: candidate.configurationDigest,
     stepFingerprint: candidate.configuration.geometry.stepFingerprint,
     coverageStatus: candidate.bundle.coverage.status,
-    sourceCaptureCount: candidate.sourceCaptures.length,
-    sourceCaptureDigests: candidate.sourceCaptures.map((item) =>
-      item.fingerprint.replace(/^sha256:/, "")
-    ),
+    sourceCaptureCount: options.signedSourceDigests?.length ??
+      candidate.sourceCaptures.length,
+    sourceCaptureDigests: options.signedSourceDigests ??
+      candidate.sourceCaptures.map((item) => item.fingerprint.replace(/^sha256:/, "")),
   });
   const { project } = await projectFixture({
     runId: "run.buy-seal",

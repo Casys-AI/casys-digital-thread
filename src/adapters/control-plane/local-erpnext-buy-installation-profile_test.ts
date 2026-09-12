@@ -1,4 +1,4 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
 import { createFirstPartyCapabilityRuntimeLaunchGroups } from "./first-party-capability-runtime-launch-groups.ts";
 import {
@@ -173,6 +173,15 @@ Deno.test("an exact valid ERP Buy profile contributes unqualified catalog materi
   assertEquals(candidate.installedSourceInstance.siteId, BUY_FIXTURE_SITE);
   assertEquals(candidate.fixture.documents[0]?.name, "ITEM-SYNTHETIC-QUAL-001");
   assertEquals(spec.candidate.id, candidate.id);
+  for (
+    const invalid of [[], [candidate, candidate]]
+  ) {
+    await assertRejects(
+      () => createErpnextBuyRuntimeQualificationSpecifications(invalid),
+      TypeError,
+      "exactly once",
+    );
+  }
 });
 
 Deno.test("future ERP Buy profile values are accepted without editing parser logic", () => {

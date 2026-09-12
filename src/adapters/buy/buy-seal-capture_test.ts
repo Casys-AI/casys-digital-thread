@@ -1,3 +1,8 @@
+import {
+  BUY_CANDIDATE_CAPTURE_SCHEMA,
+  validateBuyCandidateCapture,
+} from "../../domain/buy/buy-candidate-capture.ts";
+import { BUY_CAPTURE_CONFIGURATION_COST_OPERATION } from "../../domain/buy/buy-operations.ts";
 import { assertEquals, assertRejects } from "@std/assert";
 import { validateBuyConfiguration } from "../../domain/buy/buy-configuration.ts";
 import { computeBuyCostCandidate } from "../../domain/buy/buy-cost-bundle.ts";
@@ -101,3 +106,109 @@ async function validSealCapture() {
     sealedAt: AT,
   };
 }
+
+Deno.test("candidate and seal reject retained-source and citation substitutions", async () => {
+  const original = await validSealCapture();
+  const foreign = `sha256:${"9".repeat(64)}`;
+  const firstLine = original.bundle.lines.findIndex((line) =>
+    line.citation?.kind === "erp-attested"
+  );
+  assertEquals(firstLine >= 0, true);
+  const mutations = [
+    { ...original, sourceCaptures: [] },
+    {
+      ...original,
+      sourceCaptures: [...original.sourceCaptures, ...original.sourceCaptures],
+    },
+    {
+      ...original,
+      bundle: {
+        ...original.bundle,
+        sourceCaptures: original.bundle.sourceCaptures.map((ref) => ({
+          ...ref,
+          capturedAt: "2026-08-16T00:00:00.000Z",
+        })),
+      },
+    },
+    {
+      ...original,
+      bundle: {
+        ...original.bundle,
+        lines: original.bundle.lines.map((line, i) =>
+          i === firstLine
+            ? { ...line, citation: { ...line.citation!, captureFingerprint: foreign } }
+            : line
+        ),
+      },
+    },
+    {
+      ...original,
+      bundle: {
+        ...original.bundle,
+        lines: original.bundle.lines.map((line, i) =>
+          i === firstLine
+            ? { ...line, citation: { ...line.citation!, documentFingerprint: foreign } }
+            : line
+        ),
+      },
+    },
+    {
+      ...original,
+      bundle: {
+        ...original.bundle,
+        lines: original.bundle.lines.map((line, i) =>
+          i === firstLine
+            ? { ...line, citation: { ...line.citation!, rowName: "unretained-row" } }
+            : line
+        ),
+      },
+    },
+  ];
+  for (const mutation of mutations) {
+    const capture = {
+      ...mutation,
+      bundleDigest: (await sha256Fingerprint(mutation.bundle)).digest,
+    };
+    await assertRejects(() => validateBuySealCapture(capture), TypeError, "retained");
+    const {
+      candidateDigest: _candidate,
+      coverageStatus: _coverage,
+      reviewStatus: _review,
+      sealedAt,
+      ...shared
+    } = capture;
+    await assertRejects(
+      () =>
+        validateBuyCandidateCapture({
+          ...shared,
+          schemaVersion: BUY_CANDIDATE_CAPTURE_SCHEMA,
+          kind: "buy.configuration-cost-candidate",
+          operation: BUY_CAPTURE_CONFIGURATION_COST_OPERATION,
+          capturedAt: sealedAt,
+        }),
+      TypeError,
+      "retained",
+    );
+  }
+});
+
+Deno.test("sealed unresolved coverage cannot advertise complete review", async () => {
+  const capture = await validSealCapture();
+  const bundle = {
+    ...capture.bundle,
+    coverage: { ...capture.bundle.coverage, status: "unresolved" },
+  };
+  const changed = {
+    ...capture,
+    bundle,
+    bundleDigest: (await sha256Fingerprint(bundle)).digest,
+    coverageStatus: "unresolved",
+    reviewStatus: "complete",
+  };
+  await assertRejects(() => validateBuySealCapture(changed), TypeError, "reviewStatus");
+  assertEquals(
+    (await validateBuySealCapture({ ...changed, reviewStatus: "documentary" }))
+      .reviewStatus,
+    "documentary",
+  );
+});

@@ -4,6 +4,7 @@
  * The sealed bundle bytes are the candidate bundle bytes. No ERP refresh.
  */
 
+import { assertBuySourceLineage } from "../../domain/buy/buy-source-lineage.ts";
 import {
   BUY_SEAL_CONFIGURATION_COST_OPERATION,
 } from "../../domain/buy/buy-operations.ts";
@@ -129,6 +130,17 @@ export async function validateBuySealCapture(
   if (coverageStatus !== bundle.coverage.status) {
     throw new TypeError("$buySealCapture.coverageStatus does not match the bundle.");
   }
+  const reviewStatus = oneOf(
+    root.reviewStatus,
+    BUY_REVIEW_STATUSES,
+    "$buySealCapture.reviewStatus",
+  );
+  if (reviewStatus !== buyReviewStatusFor(coverageStatus)) {
+    throw new TypeError("$buySealCapture.reviewStatus does not match coverageStatus.");
+  }
+  const sourceCaptures = arrayOf(root.sourceCaptures, "$buySealCapture.sourceCaptures")
+    .map((item) => validateBuySourceCaptureEnvelope(item));
+  await assertBuySourceLineage(bundle, sourceCaptures);
   return {
     schemaVersion: BUY_SEAL_CAPTURE_SCHEMA,
     kind: "buy.configuration-cost-sealed",
@@ -140,14 +152,9 @@ export async function validateBuySealCapture(
     configurationDigest,
     configuration,
     bundle,
-    sourceCaptures: arrayOf(root.sourceCaptures, "$buySealCapture.sourceCaptures")
-      .map((item) => validateBuySourceCaptureEnvelope(item)),
+    sourceCaptures,
     coverageStatus,
-    reviewStatus: oneOf(
-      root.reviewStatus,
-      BUY_REVIEW_STATUSES,
-      "$buySealCapture.reviewStatus",
-    ),
+    reviewStatus,
     sealedAt: nonEmptyText(root.sealedAt, "$buySealCapture.sealedAt"),
   };
 }
@@ -160,6 +167,10 @@ export async function fingerprintBuySealCapture(
 
 export function canonicalBuySealCaptureText(capture: BuySealCapture): string {
   return deterministicJson(capture);
+}
+
+export function buyReviewStatusFor(coverage: BuyCoverageStatus): BuyReviewStatus {
+  return coverage === "unresolved" ? "documentary" : coverage;
 }
 
 function sha256(value: unknown, path: string): string {

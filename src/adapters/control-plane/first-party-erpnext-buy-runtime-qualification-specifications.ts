@@ -21,7 +21,8 @@ export async function createErpnextBuyRuntimeQualificationSpecifications(
 ): Promise<readonly CapabilityRuntimeQualificationSpecification[]> {
   const candidate = candidates[0];
   if (
-    !candidate || candidate.id !== ERPNEXT_BUY_RUNTIME_QUALIFICATION_CANDIDATE_ID
+    candidates.length !== 1 || !candidate ||
+    candidate.id !== ERPNEXT_BUY_RUNTIME_QUALIFICATION_CANDIDATE_ID
   ) {
     throw new TypeError("ERP Buy qualification candidate must resolve exactly once.");
   }

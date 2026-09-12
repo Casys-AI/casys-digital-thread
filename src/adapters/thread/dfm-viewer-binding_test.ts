@@ -586,3 +586,24 @@ Deno.test("DFM viewer binding keeps missing or ambiguous human approval as unava
     }
   }
 });
+
+Deno.test("DFM viewer refuses a sealed-case capture attributed to another producer run", async () => {
+  const fixture = await createDfmViewerFixture();
+  try {
+    fixture.thread = {
+      ...fixture.thread,
+      artifacts: fixture.thread.artifacts.map((artifact) =>
+        artifact.id.startsWith("dfm-case-")
+          ? { ...artifact, producer: { ...artifact.producer, runId: "run.other" } }
+          : artifact
+      ),
+    };
+    await assertRejects(
+      () => buildDfmViewerBinding(fixture),
+      TypeError,
+      "artifact producer",
+    );
+  } finally {
+    await Deno.remove(fixture.root, { recursive: true });
+  }
+});

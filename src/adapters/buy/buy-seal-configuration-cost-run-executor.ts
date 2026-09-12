@@ -65,7 +65,7 @@ import {
 } from "../../domain/buy/buy-candidate-capture.ts";
 import {
   BUY_SEAL_CAPTURE_SCHEMA,
-  type BuyReviewStatus,
+  buyReviewStatusFor,
   type BuySealCapture,
   canonicalBuySealCaptureText,
   validateBuySealCapture,
@@ -239,7 +239,7 @@ export class BuySealConfigurationCostRunExecutor {
             : applicability.reason,
         );
       }
-      const reviewStatus = reviewStatusFor(candidate.bundle.coverage.status);
+      const reviewStatus = buyReviewStatusFor(candidate.bundle.coverage.status);
       const sealedAt = requiredStart(run);
       const capture: BuySealCapture = {
         schemaVersion: BUY_SEAL_CAPTURE_SCHEMA,
@@ -434,6 +434,20 @@ export class BuySealConfigurationCostRunExecutor {
         "Candidate coverage status diverged from the signed seal parameters.",
       );
     }
+    const sourceDigests = candidate.sourceCaptures.map((item) =>
+      item.fingerprint.slice("sha256:".length)
+    );
+    if (
+      decisionParams.sourceCaptureCount !== sourceDigests.length ||
+      decisionParams.sourceCaptureDigests.some((digest, i) =>
+        digest !== sourceDigests[i]
+      )
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "Candidate source captures diverged from the signed seal parameters.",
+      );
+    }
     const authority = recrossBuyCandidateSealAuthority({
       projectId,
       sealBasis: basis,
@@ -478,14 +492,6 @@ export class BuySealConfigurationCostRunExecutor {
     }
     return undefined;
   }
-}
-
-function reviewStatusFor(
-  coverage: BuySealCapture["coverageStatus"],
-): BuyReviewStatus {
-  if (coverage === "complete") return "complete";
-  if (coverage === "partial") return "partial";
-  return "documentary";
 }
 
 function buildSealSuccessor(input: {

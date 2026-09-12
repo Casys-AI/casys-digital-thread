@@ -22,7 +22,6 @@ import {
 import {
   type DfmCheckCase,
   INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
-  INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
   parseDfmTargetArtifactUri,
 } from "../../domain/make/dfm/dfm-case.ts";
 import {
@@ -36,8 +35,8 @@ import {
   type ThreadSnapshot,
 } from "../../domain/thread/thread-snapshot.ts";
 import {
-  DFM_CASE_CAPTURE_URI_PREFIX,
-  fingerprintDfmCaseCapture,
+  assertDfmCaseArtifactCapture,
+  isExactDfmCaseArtifact,
   validateDfmCaseCapture,
 } from "../make/dfm/dfm-case-capture.ts";
 import {
@@ -65,8 +64,6 @@ export const DFM_VIEWER_AUTHORITY_AMBIGUOUS_REASON = DFM_RUN_AUTHORITY_AMBIGUOUS
 const DFM_RECORDED_CHECKS_SCHEMA = "io.casys.mcp-dfm.recorded-checks/1.0";
 const DFM_OPERATION =
   `${INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION.id}@${INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION.version}`;
-const DFM_SEAL_OPERATION =
-  `${INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION.id}@${INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION.version}`;
 
 export interface DfmCaptureReader {
   read(
@@ -255,13 +252,7 @@ async function reopenDfmCaseCapture(
     throw new TypeError("The DFM case capture is not JSON.");
   }
   const capture = await validateDfmCaseCapture(value);
-  if (deterministicJson(capture) !== text) {
-    throw new TypeError("The DFM case capture bytes are not canonical.");
-  }
-  const fingerprint = await fingerprintDfmCaseCapture(capture);
-  if (fingerprint.digest !== artifact.fingerprint.digest) {
-    throw new TypeError("The DFM case capture fingerprint is not canonical.");
-  }
+  await assertDfmCaseArtifactCapture(artifact, capture, text);
   if (capture.caseDigest !== check.caseDigest) {
     throw new TypeError(
       "The sealed DFM case digest does not match the recorded check.",
@@ -276,19 +267,6 @@ async function reopenDfmCaseCapture(
     );
   }
   return capture;
-}
-
-function isExactDfmCaseArtifact(
-  artifact: ThreadArtifact,
-  caseDigest: string,
-): boolean {
-  return artifact.id === `dfm-case-${caseDigest}` &&
-    artifact.kind === "document" &&
-    artifact.version === caseDigest &&
-    artifact.mediaType === "application/json" &&
-    artifact.uri === `${DFM_CASE_CAPTURE_URI_PREFIX}${artifact.fingerprint.digest}` &&
-    artifact.producer.serverId === "digital-thread" &&
-    artifact.producer.tool === DFM_SEAL_OPERATION;
 }
 
 function exactCompletedDfmRun(
