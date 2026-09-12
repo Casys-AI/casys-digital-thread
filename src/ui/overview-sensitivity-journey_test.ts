@@ -170,9 +170,7 @@ Deno.test("Overview omits an ungrounded or ambiguous sensitivity verdict attachm
   assertEquals(buildOverviewSensitivityVerdictBindings(ungrounded), []);
 
   const ambiguous = sensitivityThreadWithMechanicalVerdict();
-  const duplicateCaseKey = `verification-case:mechanical-proof:${
-    "d".repeat(64)
-  }`;
+  const duplicateCaseKey = `verification-case:mechanical-proof:${"d".repeat(64)}`;
   ambiguous.engineeringCases!.cases.push({
     key: duplicateCaseKey,
     id: "other-current-proof",

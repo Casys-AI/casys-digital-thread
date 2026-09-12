@@ -431,9 +431,7 @@ function briefSource(
       kind: "success-criterion",
       statement: extras.statement ?? "Exact approved clause.",
       sourceRefs: [{ kind: "intent", reference: "conversation:fixture" }],
-      ...(extras.dependsOnItemIds
-        ? { dependsOnItemIds: extras.dependsOnItemIds }
-        : {}),
+      ...(extras.dependsOnItemIds ? { dependsOnItemIds: extras.dependsOnItemIds } : {}),
     },
     correspondences: [{
       trace: {
@@ -592,9 +590,7 @@ Deno.test("the same sourceItemId in two snapshots stays distinct and never inven
     ],
   );
   assertEquals(
-    brief.rows.some((row) =>
-      row.parentKey === groupR1 && row.nodeKey === r3.key
-    ),
+    brief.rows.some((row) => row.parentKey === groupR1 && row.nodeKey === r3.key),
     false,
   );
 });
@@ -795,9 +791,7 @@ Deno.test("brief tree overlay keeps exact source endpoints and does not fabricat
     graphNodes.map((node) => node.key).sort(),
   );
   assertEquals(
-    tree.nodes.some((node) =>
-      node.key === overviewBriefSnapshotGroupKey(source.brief)
-    ),
+    tree.nodes.some((node) => node.key === overviewBriefSnapshotGroupKey(source.brief)),
     false,
   );
   assertEquals(tree.unroutedEdgeKeys, []);
@@ -1035,8 +1029,7 @@ Deno.test("distinct analysis bases stay separate and never invent an r1/r3 join"
     "requirements",
     "brief",
   );
-  const otherBasis =
-    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+  const otherBasis = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
   const camera = analysisRecord("subsystem-camera", {
     domain: "brief",
     kind: "brief-item",
@@ -1232,9 +1225,7 @@ function sysmlRecord(
     kind: "recorded",
     color: "#2563eb",
     emphasis: false,
-    ...(extras.isRequirementsCapture === true
-      ? { isRequirementsCapture: true }
-      : {}),
+    ...(extras.isRequirementsCapture === true ? { isRequirementsCapture: true } : {}),
     node: {
       id: key,
       ref: { kind, id },
@@ -1299,9 +1290,7 @@ Deno.test("architecture tree keeps 29 occurrences and appends one root Requireme
       key: node.key,
       groupKey: node.groupKey,
       ref: node.node.ref,
-      ...(node.isRequirementsCapture === true
-        ? { isRequirementsCapture: true }
-        : {}),
+      ...(node.isRequirementsCapture === true ? { isRequirementsCapture: true } : {}),
     })),
     [{
       from: { kind: "artifact", id: "requirements-current" },
@@ -1322,15 +1311,11 @@ Deno.test("architecture tree keeps 29 occurrences and appends one root Requireme
   const section = hull.rows.find((row) =>
     row.kind === "navigation" && row.label === "Requirements"
   )!;
-  const requirementRows = hull.rows.filter((row) =>
-    row.nodeKey === requirement.key
-  );
+  const requirementRows = hull.rows.filter((row) => row.nodeKey === requirement.key);
   const occurrenceRows = hull.rows.filter((row) => row.kind === "navigation");
   assertEquals(hull.mode, "tree");
   assertEquals(
-    hull.rows.filter((row) =>
-      row.kind === "navigation" && row.label !== "Requirements"
-    )
+    hull.rows.filter((row) => row.kind === "navigation" && row.label !== "Requirements")
       .length,
     29,
   );

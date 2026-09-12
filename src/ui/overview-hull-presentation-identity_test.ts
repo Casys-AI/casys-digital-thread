@@ -379,9 +379,7 @@ Deno.test("raw and hierarchy projections retarget the same graph ref through gra
   );
   const raw = buildOverviewHullContents([geometry], []);
   const rawRows = raw.get(GEOMETRY_HULL)!.rows;
-  const rawRow = rawRows.find((row) =>
-    row.key === `artifact:${GEOMETRY_ROOT_ID}`
-  )!;
+  const rawRow = rawRows.find((row) => row.key === `artifact:${GEOMETRY_ROOT_ID}`)!;
   assertEquals(overviewHullRowGraphRefs(rawRow), [
     `artifact:${GEOMETRY_ROOT_ID}`,
   ]);
