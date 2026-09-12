@@ -20,7 +20,7 @@ import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot
 import {
   canonicalBuyCandidateCaptureText,
   validateBuyCandidateCapture,
-} from "../../../adapters/buy/buy-candidate-capture.ts";
+} from "../../../domain/buy/buy-candidate-capture.ts";
 
 export interface BuyCandidateCaptureReader {
   read(
@@ -35,7 +35,9 @@ export class PrepareProjectBuyConfigurationCostSealReview
     private readonly candidates: BuyCandidateCaptureReader,
   ) {}
 
-  async execute(value: unknown): Promise<ProjectBuyConfigurationCostSealReviewResult> {
+  async execute(
+    value: unknown,
+  ): Promise<ProjectBuyConfigurationCostSealReviewResult> {
     const command = parseCommand(value);
     const snapshot = await this.snapshots.get(command.basis.snapshotId);
     if (
@@ -52,7 +54,8 @@ export class PrepareProjectBuyConfigurationCostSealReview
       item.id === command.candidateArtifactId
     );
     if (
-      !artifact || artifact.fingerprint.digest !== command.candidateFingerprint.digest
+      !artifact ||
+      artifact.fingerprint.digest !== command.candidateFingerprint.digest
     ) {
       return {
         status: "unresolved",
@@ -73,13 +76,19 @@ export class PrepareProjectBuyConfigurationCostSealReview
         reason: "The Buy candidate capture bytes are not canonical.",
       };
     }
-    if ((await sha256Fingerprint(candidate)).digest !== artifact.fingerprint.digest) {
+    if (
+      (await sha256Fingerprint(candidate)).digest !==
+        artifact.fingerprint.digest
+    ) {
       return {
         status: "unavailable",
         reason: "The Buy candidate capture fingerprint is not canonical.",
       };
     }
-    const applicability = buyGeometryApplicability(snapshot, candidate.configuration);
+    const applicability = buyGeometryApplicability(
+      snapshot,
+      candidate.configuration,
+    );
     if (applicability.status !== "current") {
       return {
         status: "unresolved",
@@ -108,7 +117,9 @@ export class PrepareProjectBuyConfigurationCostSealReview
   }
 }
 
-function parseCommand(value: unknown): ProjectBuyConfigurationCostSealReviewCommand {
+function parseCommand(
+  value: unknown,
+): ProjectBuyConfigurationCostSealReviewCommand {
   const root = exactRecord(value, [
     "projectId",
     "basis",

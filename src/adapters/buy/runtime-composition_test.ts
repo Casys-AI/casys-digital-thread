@@ -2,7 +2,7 @@ import { assertEquals, assertRejects } from "@std/assert";
 import { createBuyErpRuntimeComposition } from "./runtime-composition.ts";
 import { ErpnextBuyCaptureClient } from "./erpnext-buy-capture-client.ts";
 import { BuyCaptureConfigurationCostRunExecutor } from "./buy-capture-configuration-cost-run-executor.ts";
-import { BUY_CANDIDATE_CAPTURE_URI_PREFIX } from "./buy-candidate-capture.ts";
+import { BUY_CANDIDATE_CAPTURE_URI_PREFIX } from "../../domain/buy/buy-candidate-capture.ts";
 import { parseLocalErpnextBuyInstallationProfile } from "../control-plane/local-erpnext-buy-installation-profile.ts";
 import {
   ERPNEXT_BUY_RUNTIME_ADAPTER_SOURCE,
@@ -96,7 +96,9 @@ Deno.test("missing ERP Buy installation yields unresolved and zero MCP calls", a
     now: () => NOW,
   });
   const resolution = await composition.bindings.resolve({
-    project: { project: { id: "project-synthetic-erp" } } as EngineeringProjectSnapshot,
+    project: {
+      project: { id: "project-synthetic-erp" },
+    } as EngineeringProjectSnapshot,
   });
   assertEquals(resolution.status, "unresolved");
   assertEquals(composition.capabilityRuntimeConnection, undefined);
@@ -206,7 +208,9 @@ Deno.test("JIT Buy capture with a synthetic secret slot dispatches locked erpnex
   });
   assertEquals(fixture.host.secretSnapshots.length, 1);
   assertEquals(
-    JSON.stringify(fixture.host.secretSnapshots[0]).includes(SYNTHETIC_SLOT_VALUE),
+    JSON.stringify(fixture.host.secretSnapshots[0]).includes(
+      SYNTHETIC_SLOT_VALUE,
+    ),
     false,
   );
   assertEquals(fixture.captures.size, 1);
@@ -284,7 +288,10 @@ async function compositionFixture(
   const fetchImpl: typeof fetch = (input, init) => {
     const body = JSON.parse(String(init?.body)) as {
       readonly method?: string;
-      readonly params?: { readonly name?: string; readonly arguments?: unknown };
+      readonly params?: {
+        readonly name?: string;
+        readonly arguments?: unknown;
+      };
     };
     calls.push({
       url: String(input),
@@ -307,7 +314,9 @@ async function compositionFixture(
     binding,
     launchGroup,
     calls,
-    project: { project: { id: "project-synthetic-erp" } } as EngineeringProjectSnapshot,
+    project: {
+      project: { id: "project-synthetic-erp" },
+    } as EngineeringProjectSnapshot,
     options: {
       contribution,
       contexts: fakeContexts({ contribution }, {
@@ -333,7 +342,9 @@ function fakeContexts(
   },
   flags: { readonly authorized: boolean; readonly qualified: boolean },
 ): {
-  read(project: EngineeringProjectSnapshot): Promise<ProjectCapabilityRuntimeContext>;
+  read(
+    project: EngineeringProjectSnapshot,
+  ): Promise<ProjectCapabilityRuntimeContext>;
 } {
   const binding = {
     ...fixture.contribution.binding,
@@ -445,7 +456,9 @@ function syntheticProfile(
   };
 }
 
-async function captureWrapper(siteId: string): Promise<Record<string, unknown>> {
+async function captureWrapper(
+  siteId: string,
+): Promise<Record<string, unknown>> {
   const text = await Deno.readTextFile(
     new URL("./fixtures/buy-source-capture.wrapper.json", import.meta.url),
   );
@@ -532,7 +545,10 @@ async function jitExecutorFixture(
     secrets,
     fetch: ((input, init) => {
       const body = JSON.parse(String(init?.body)) as {
-        readonly params?: { readonly name?: string; readonly arguments?: unknown };
+        readonly params?: {
+          readonly name?: string;
+          readonly arguments?: unknown;
+        };
       };
       calls.push({
         url: String(input),
@@ -658,7 +674,9 @@ function operationalCapability(
 
 class SyntheticErpHost {
   readonly secretSnapshots: CapabilityRuntimeSecretSnapshot[] = [];
-  constructor(private readonly states: InMemoryCapabilityRuntimeStateObserver) {}
+  constructor(
+    private readonly states: InMemoryCapabilityRuntimeStateObserver,
+  ) {}
 
   mutate(input: {
     readonly authorization: { readonly entry: CapabilityRuntimeJournalEntry };
@@ -719,7 +737,11 @@ async function buyCaptureProject(authorizedSite: string) {
         runId: "run.brief",
       },
       inputArtifactIds: [],
-      freshness: { status: "fresh", changedAt: NOW, invalidatedByChangeIds: [] },
+      freshness: {
+        status: "fresh",
+        changedAt: NOW,
+        invalidatedByChangeIds: [],
+      },
     },
     {
       id: `geometry-${BUY_FIXTURE_PARENT}`,
@@ -735,7 +757,11 @@ async function buyCaptureProject(authorizedSite: string) {
         runId: "run.geometry",
       },
       inputArtifactIds: [],
-      freshness: { status: "fresh", changedAt: NOW, invalidatedByChangeIds: [] },
+      freshness: {
+        status: "fresh",
+        changedAt: NOW,
+        invalidatedByChangeIds: [],
+      },
     },
     {
       id: `cad-asset-${BUY_FIXTURE_PARENT}-target-0-${BUY_FIXTURE_STEP}`,
@@ -751,7 +777,11 @@ async function buyCaptureProject(authorizedSite: string) {
         runId: "run.geometry",
       },
       inputArtifactIds: [],
-      freshness: { status: "fresh", changedAt: NOW, invalidatedByChangeIds: [] },
+      freshness: {
+        status: "fresh",
+        changedAt: NOW,
+        invalidatedByChangeIds: [],
+      },
     },
   ];
   const basisSnapshot = validateThreadSnapshot({

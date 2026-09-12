@@ -90,11 +90,15 @@ export class FileEngineeringProjectRevisionStore
     private readonly io: EngineeringProjectRevisionFileIo = DENO_REVISION_FILE_IO,
   ) {}
 
-  async get(projectId: string): Promise<EngineeringProjectSnapshot | undefined> {
+  async get(
+    projectId: string,
+  ): Promise<EngineeringProjectSnapshot | undefined> {
     validateProjectId(projectId);
-    let entries: EngineeringProjectRevisionFileEntry[] = [];
+    const entries: EngineeringProjectRevisionFileEntry[] = [];
     try {
-      for await (const entry of this.io.readDir(this.projectDirectory(projectId))) {
+      for await (
+        const entry of this.io.readDir(this.projectDirectory(projectId))
+      ) {
         entries.push(entry);
       }
     } catch (error) {
@@ -177,7 +181,9 @@ export class FileEngineeringProjectRevisionStore
   ): Promise<EngineeringProjectSnapshot | undefined> {
     try {
       const snapshot = validateEngineeringProjectSnapshot(
-        JSON.parse(await this.io.readTextFile(this.revisionPath(projectId, revision))),
+        JSON.parse(
+          await this.io.readTextFile(this.revisionPath(projectId, revision)),
+        ),
       );
       if (snapshot.project.id !== projectId || snapshot.revision !== revision) {
         throw new Error(
@@ -191,7 +197,9 @@ export class FileEngineeringProjectRevisionStore
     }
   }
 
-  private async writeExclusive(snapshot: EngineeringProjectSnapshot): Promise<void> {
+  private async writeExclusive(
+    snapshot: EngineeringProjectSnapshot,
+  ): Promise<void> {
     validateProjectId(snapshot.project.id);
     const projectDirectory = this.projectDirectory(snapshot.project.id);
     await this.io.mkdir(projectDirectory);
@@ -208,7 +216,10 @@ export class FileEngineeringProjectRevisionStore
         `Engineering project ${snapshot.project.id} revision ${snapshot.revision} is already claimed by another process.`,
       );
     }
-    const revisionPath = this.revisionPath(snapshot.project.id, snapshot.revision);
+    const revisionPath = this.revisionPath(
+      snapshot.project.id,
+      snapshot.revision,
+    );
     const pendingPath = `${revisionPath}.pending-${crypto.randomUUID()}`;
     await this.io.writeTextFileCreateNew(
       pendingPath,
@@ -321,7 +332,9 @@ function highestRevision(
 }
 
 function validateProjectId(projectId: string): void {
-  if (!projectId.trim()) throw new TypeError("Engineering project id cannot be empty.");
+  if (!projectId.trim()) {
+    throw new TypeError("Engineering project id cannot be empty.");
+  }
   if (!/^[A-Za-z0-9]/.test(projectId)) {
     throw new TypeError(
       "Engineering project id must begin with an ASCII alphanumeric character.",
@@ -334,7 +347,9 @@ function validateProjectId(projectId: string): void {
 
 function validateRevision(revision: number): void {
   if (!Number.isInteger(revision) || revision < 1) {
-    throw new TypeError("Engineering project revision must be a positive integer.");
+    throw new TypeError(
+      "Engineering project revision must be a positive integer.",
+    );
   }
 }
 
@@ -345,5 +360,6 @@ function joinPath(directory: string, name: string): string {
 function isAlreadyExists(error: unknown): boolean {
   return error instanceof Deno.errors.AlreadyExists ||
     (error instanceof Error &&
-      (error.name === "AlreadyExists" || /already exists/i.test(error.message)));
+      (error.name === "AlreadyExists" ||
+        /already exists/i.test(error.message)));
 }

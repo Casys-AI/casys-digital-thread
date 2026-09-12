@@ -26,7 +26,6 @@ import {
 } from "../../domain/kernel/deterministic-json.ts";
 import type {
   EngineeringAgentRun,
-  EngineeringDecision,
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotBasis,
 } from "../../domain/project/engineering-project.ts";
@@ -59,7 +58,7 @@ import {
   type BuyCandidateCapture,
   canonicalBuyCandidateCaptureText,
   validateBuyCandidateCapture,
-} from "./buy-candidate-capture.ts";
+} from "../../domain/buy/buy-candidate-capture.ts";
 import {
   BUY_SEAL_CAPTURE_SCHEMA,
   type BuyReviewStatus,
@@ -200,12 +199,27 @@ export class BuySealConfigurationCostRunExecutor {
         assertBuyCompleted(project, command);
         return project;
       }
-      const { decision, proposal } = requireBuyMrtrApproval(project, run, "Buy seal");
-      const decisionParams = parseBuySealDecisionParameters(proposal.parameters);
+      const { decision, proposal } = requireBuyMrtrApproval(
+        project,
+        run,
+        "Buy seal",
+      );
+      const decisionParams = parseBuySealDecisionParameters(
+        proposal.parameters,
+      );
       const basis = requireBasis(run);
-      const basisSnapshot = await exactBuyBasisSnapshot(this.deps.snapshots, basis);
-      await assertThreadSnapshotLineageIntact(basisSnapshot, this.deps.snapshots);
-      const candidate = await this.#reopenCandidate(decisionParams, basisSnapshot);
+      const basisSnapshot = await exactBuyBasisSnapshot(
+        this.deps.snapshots,
+        basis,
+      );
+      await assertThreadSnapshotLineageIntact(
+        basisSnapshot,
+        this.deps.snapshots,
+      );
+      const candidate = await this.#reopenCandidate(
+        decisionParams,
+        basisSnapshot,
+      );
       const applicability = buyGeometryApplicability(
         basisSnapshot,
         candidate.configuration,
@@ -248,7 +262,9 @@ export class BuySealConfigurationCostRunExecutor {
       await this.deps.captures.save(captureFingerprint, captureText);
       const readBack = await this.deps.captures.read(captureFingerprint);
       if (readBack !== captureText) {
-        throw new Error("Buy seal capture was not durably readable after save.");
+        throw new Error(
+          "Buy seal capture was not durably readable after save.",
+        );
       }
       const successor = buildSealSuccessor({
         basisSnapshot,
@@ -266,9 +282,12 @@ export class BuySealConfigurationCostRunExecutor {
       );
       if (
         !snapshotReadback ||
-        deterministicJson(snapshotReadback) !== deterministicJson(successor.snapshot)
+        deterministicJson(snapshotReadback) !==
+          deterministicJson(successor.snapshot)
       ) {
-        throw new Error("Buy seal ThreadSnapshot was not durably readable after save.");
+        throw new Error(
+          "Buy seal ThreadSnapshot was not durably readable after save.",
+        );
       }
       project = await this.#requiredProject(command.projectId);
       run = requireRun(project, command.runId);
@@ -408,7 +427,9 @@ export class BuySealConfigurationCostRunExecutor {
     return candidate;
   }
 
-  async #requiredProject(projectId: string): Promise<EngineeringProjectSnapshot> {
+  async #requiredProject(
+    projectId: string,
+  ): Promise<EngineeringProjectSnapshot> {
     const project = await this.deps.projects.get(projectId);
     if (!project) {
       throw new EngineeringProjectCommandError(
@@ -468,7 +489,11 @@ function buildSealSuccessor(input: {
       runId: input.run.id,
     },
     inputArtifactIds: [],
-    freshness: { status: "fresh", changedAt: sealedAt, invalidatedByChangeIds: [] },
+    freshness: {
+      status: "fresh",
+      changedAt: sealedAt,
+      invalidatedByChangeIds: [],
+    },
   };
   const extension: ThreadSnapshotExtension = {
     id: `buy-seal-configuration-cost-${input.run.id}`,

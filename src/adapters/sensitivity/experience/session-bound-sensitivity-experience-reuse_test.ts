@@ -35,7 +35,6 @@ import type {
   EngineeringProjectSnapshot,
 } from "../../../domain/project/engineering-project.ts";
 import type { EngineeringProjectCommandOrigin } from "../../../application/ports/in/engineering-project-command-origin.ts";
-import type { ThreadSnapshot } from "../../../domain/thread/thread-snapshot.ts";
 import { validateThreadSnapshot } from "../../../domain/thread/thread-snapshot-validation.ts";
 import { AnalyzeRunFeaSensitivityRunExecutor } from "../live-fea/analyze-run-fea-sensitivity-run-executor.ts";
 import { FileFeaSensitivityAttemptStore } from "../live-fea/file-fea-sensitivity-attempt-store.ts";
@@ -211,7 +210,9 @@ Deno.test("recorded interproject reuse hits from a cold admitted run without CAD
     );
     assertEquals(reuseArtifact !== undefined, true);
     const resultText = await studyCaptures.read(reuseArtifact!.fingerprint);
-    const result = await validateSensitivityStudyResult(JSON.parse(resultText!));
+    const result = await validateSensitivityStudyResult(
+      JSON.parse(resultText!),
+    );
     assertEquals("cad" in result, false);
     assertEquals(result.studyCase.project.id, "target-project");
 
@@ -224,7 +225,9 @@ Deno.test("recorded interproject reuse hits from a cold admitted run without CAD
     const reconstructedReuse = new FileSensitivityExperienceReuseAttemptStore(
       `${root}/experience/reuse-attempts`,
     );
-    const reconstructedSnapshots = new FileThreadSnapshotStore(`${root}/snapshots`);
+    const reconstructedSnapshots = new FileThreadSnapshotStore(
+      `${root}/snapshots`,
+    );
     const reconstructedExperience = createSensitivityExperienceExecutorBinding({
       repository: reconstructedRepository,
       projects: {
@@ -284,11 +287,15 @@ function makeExecutor(input: {
     "sensitivity-runtime-provenance"
   >;
   readonly attempts: FileFeaSensitivityAttemptStore;
-  readonly experience: ReturnType<typeof createSensitivityExperienceExecutorBinding>;
+  readonly experience: ReturnType<
+    typeof createSensitivityExperienceExecutorBinding
+  >;
   readonly runner: FakeRunner;
   readonly solver: FakeSolver;
   readonly profile: Build123dExecutionProfile;
-  readonly launchGroup: ReturnType<typeof capabilityRuntimeLaunchGroupReference>;
+  readonly launchGroup: ReturnType<
+    typeof capabilityRuntimeLaunchGroupReference
+  >;
   readonly material: {
     readonly unitId: string;
     readonly materialId: string;
@@ -397,7 +404,10 @@ async function seedProject(input: {
     sealedAt: AT,
   };
   const caseFingerprint = await sha256Fingerprint(caseCapture);
-  await input.caseCaptures.save(caseFingerprint, deterministicJson(caseCapture));
+  await input.caseCaptures.save(
+    caseFingerprint,
+    deterministicJson(caseCapture),
+  );
   const caseArtifact = {
     id: `case-${input.projectId}`,
     name: "Sealed sensitivity case",
@@ -746,9 +756,15 @@ function sensitivityRuntimeOperation(
     schemaVersion: "resolved-capability-runtime-operation/2.0" as const,
     projectId: "source-project",
     operation: { id: "analyze.run-fea-sensitivity", version: "1" },
-    authorizationFingerprint: { algorithm: "sha256" as const, digest: "1".repeat(64) },
+    authorizationFingerprint: {
+      algorithm: "sha256" as const,
+      digest: "1".repeat(64),
+    },
     demandFingerprint: { algorithm: "sha256" as const, digest: "2".repeat(64) },
-    registryFingerprint: { algorithm: "sha256" as const, digest: "3".repeat(64) },
+    registryFingerprint: {
+      algorithm: "sha256" as const,
+      digest: "3".repeat(64),
+    },
     bindings: [{
       capability: {
         id: "geometry.execute-admitted-source",
@@ -788,7 +804,11 @@ function sensitivityRuntimeOperation(
       },
       binding: { id: "calculix-static-sensitivity", version: "1" },
       effectiveQualification: "qualified" as const,
-      adapter: { id: "casys.mcp-calculix", version: "0.8.2", source: "fixture" },
+      adapter: {
+        id: "casys.mcp-calculix",
+        version: "0.8.2",
+        source: "fixture",
+      },
       profile: null,
       materials: [material],
       runtimeModes: [{
@@ -826,7 +846,11 @@ function resetRunToRunning(project: MutableProject) {
 }
 
 function fresh() {
-  return { status: "fresh" as const, changedAt: AT, invalidatedByChangeIds: [] };
+  return {
+    status: "fresh" as const,
+    changedAt: AT,
+    invalidatedByChangeIds: [],
+  };
 }
 
 type MutableProject = EngineeringProjectSnapshot & {
@@ -840,7 +864,7 @@ type MutableRun = {
 
 class ProjectMapCommands {
   constructor(private readonly projects: Map<string, MutableProject>) {}
-  async claimRun(origin: EngineeringProjectCommandOrigin, command: RunCommand) {
+  claimRun(origin: EngineeringProjectCommandOrigin, command: RunCommand) {
     const project = this.projects.get(command.projectId)!;
     const run = project.agentRuns[0] as MutableRun;
     if (run.status === "queued") {
@@ -851,7 +875,7 @@ class ProjectMapCommands {
       run.summary = command.summary;
       project.revision += 1;
     }
-    return project;
+    return Promise.resolve(project);
   }
   publishRun(_origin: typeof AGENT, command: RunCommand) {
     const project = this.projects.get(command.projectId)!;
@@ -956,7 +980,9 @@ class FakeSolver {
     });
   }
 
-  dispatch(plan: { readonly requestId: string; readonly phase: "base" | "stepped" }) {
+  dispatch(
+    plan: { readonly requestId: string; readonly phase: "base" | "stepped" },
+  ) {
     this.calls += 1;
     return Promise.resolve({
       requestId: plan.requestId,
@@ -1005,7 +1031,9 @@ class FakeSolver {
 
   reopenReadback(text: string) {
     const readback = this.#readbacks.get(text);
-    if (!readback) return Promise.reject(new Error("fixture readback is absent"));
+    if (!readback) {
+      return Promise.reject(new Error("fixture readback is absent"));
+    }
     return Promise.resolve(readback);
   }
 
@@ -1021,7 +1049,10 @@ class FakeSolver {
     const stress = stepped ? 8 : 10;
     const result = {
       inputAttestation: {
-        fingerprint: { algorithm: "sha256" as const, digest: readback.stepSha256 },
+        fingerprint: {
+          algorithm: "sha256" as const,
+          digest: readback.stepSha256,
+        },
         byteCount: readback.stepBytes,
       },
       boundaryConditions: { supports: [], loads: [] },
@@ -1037,7 +1068,10 @@ class FakeSolver {
       },
     };
     const providerCapture = {
-      manifestFingerprint: { algorithm: "sha256" as const, digest: "8".repeat(64) },
+      manifestFingerprint: {
+        algorithm: "sha256" as const,
+        digest: "8".repeat(64),
+      },
       manifestUri: "casys://fixture-calculix-manifest/sha256/" + "8".repeat(64),
       artifactSequenceFingerprint: {
         algorithm: "sha256" as const,

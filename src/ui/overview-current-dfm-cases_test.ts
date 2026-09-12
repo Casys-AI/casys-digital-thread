@@ -23,7 +23,6 @@ import type { ThreadViewerSession } from "./src/thread/viewer-sessions-client.ts
 import type { ThreadArtifact, ThreadGraphEdge } from "./src/thread/types.ts";
 
 const CAMERA_ID = "id01-camera-board-dfm";
-const RADIAL_ID = "id01-radial-arm-dfm";
 const CAMERA_DIGEST = "a".repeat(64);
 const RADIAL_DIGEST = "b".repeat(64);
 const CAMERA_KEY = verificationCaseKey("dfm-check", CAMERA_DIGEST);
@@ -312,8 +311,7 @@ Deno.test("an unavailable DFM MRTR session stays bound without unlocking a paylo
       payload: {
         projection: {
           status: "unavailable",
-          reason:
-            "The signed DFM-check approval basis differs from this run basis.",
+          reason: "The signed DFM-check approval basis differs from this run basis.",
         },
       },
     },

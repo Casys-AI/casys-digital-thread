@@ -21,7 +21,6 @@ import {
   SENSITIVITY_RESPONSE_BASE,
   SENSITIVITY_RESPONSE_STEPPED,
   SENSITIVITY_STEP,
-  SOLVER_DIGEST,
 } from "../../testing/workbench/requirements-history-unjoined-fixture.ts";
 import { projectThreadWorkbenchSnapshot } from "./thread-workbench-projector.ts";
 import { enrichThreadWorkbenchWithRequirementsHistory } from "./requirements-history-workbench-enricher.ts";
@@ -65,7 +64,8 @@ Deno.test(
     ]);
     assertEquals(requirement?.historicalChain, { status: "complete", hops: 1 });
     assertEquals(
-      requirement?.historicalEvaluations?.[0]?.currentArchitecture.artifactId !==
+      requirement?.historicalEvaluations?.[0]?.currentArchitecture
+        .artifactId !==
         requirement?.historicalEvaluations?.[0]?.predecessorArchitecture
           .artifactId,
       true,
@@ -524,7 +524,10 @@ Deno.test(
       throw new Error("expected measured historical sensitivity");
     }
     assertEquals(studyBase.sensitivity.method, "forward-finite-difference");
-    assertEquals(studyBase.sensitivity.measurement.basePoint, SENSITIVITY_BASE_VALUE);
+    assertEquals(
+      studyBase.sensitivity.measurement.basePoint,
+      SENSITIVITY_BASE_VALUE,
+    );
     assertEquals(
       studyBase.sensitivity.measurement.perturbationStep,
       SENSITIVITY_STEP,
@@ -542,7 +545,10 @@ Deno.test(
       unit: "Pa/mm",
     });
     assertEquals(studyBase.sensitivity.study.id, fixture.studyArtifactId);
-    assertEquals(studyBase.sensitivity.studyCase.id, fixture.studyCaseArtifactId);
+    assertEquals(
+      studyBase.sensitivity.studyCase.id,
+      fixture.studyCaseArtifactId,
+    );
     assertEquals(studyBase.sensitivity.studyCase.digest, fixture.caseDigest);
     assertEquals(
       studyBase.sensitivity.baseEvaluation.id,
@@ -552,7 +558,10 @@ Deno.test(
       studyBase.sensitivity.originalRequirementId,
       fixture.predecessorRequirementId,
     );
-    assertEquals(studyBase.sensitivity.originalEvaluationId, studyBase.evaluationId);
+    assertEquals(
+      studyBase.sensitivity.originalEvaluationId,
+      studyBase.evaluationId,
+    );
     assertEquals(
       studyBase.sensitivity.predecessorArchitecture.artifactId,
       fixture.predecessorArchitectureId,
@@ -751,7 +760,9 @@ function expectedMechanicalHistory(
 
 function stripHistory(
   requirement: ThreadRequirement | undefined,
-): Omit<ThreadRequirement, "historicalEvaluations" | "historicalChain"> | undefined {
+):
+  | Omit<ThreadRequirement, "historicalEvaluations" | "historicalChain">
+  | undefined {
   if (!requirement) return undefined;
   const { historicalEvaluations: _history, historicalChain: _chain, ...rest } =
     requirement;

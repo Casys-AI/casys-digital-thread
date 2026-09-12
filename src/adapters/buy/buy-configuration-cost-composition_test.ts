@@ -68,7 +68,7 @@ import {
 import { FileThreadSnapshotStore } from "../shared/stores/file-thread-snapshot-store.ts";
 import { FileEngineeringProjectRunLease } from "../shared/stores/file-engineering-project-run-lease.ts";
 import { buildBuyViewerBinding } from "../thread/buy-viewer-binding.ts";
-import { BUY_CANDIDATE_CAPTURE_URI_PREFIX } from "./buy-candidate-capture.ts";
+import { BUY_CANDIDATE_CAPTURE_URI_PREFIX } from "../../domain/buy/buy-candidate-capture.ts";
 import { BUY_SEAL_CAPTURE_URI_PREFIX } from "./buy-seal-capture.ts";
 import {
   BUY_VIEWER_APP_ID,
@@ -150,7 +150,9 @@ function extendSnapshotWithGeometry(
   const result = applyThreadSnapshotExtensionIfNew(base, extension, {
     appliedAt: BUY_COMMAND_AT,
   });
-  if (!result.applied) throw new Error("Geometry extension was already present.");
+  if (!result.applied) {
+    throw new Error("Geometry extension was already present.");
+  }
   return result.snapshot;
 }
 
@@ -253,20 +255,27 @@ Deno.test(
         sealDirectory: `${root}/seals`,
         candidateArtifact: candidateArtifact!,
       });
-      const sealed = await sealFixture.executor.execute(AGENT, sealFixture.command);
+      const sealed = await sealFixture.executor.execute(
+        AGENT,
+        sealFixture.command,
+      );
       assertEquals(
         sealed.agentRuns.find((run) => run.id === "run.buy-seal")?.status,
         "completed",
       );
       const sealedSnapshot = await sealFixture.snapshots.getFresh(
-        sealed.agentRuns.find((run) => run.id === "run.buy-seal")!.resultSnapshot!
+        sealed.agentRuns.find((run) => run.id === "run.buy-seal")!
+          .resultSnapshot!
           .snapshotId,
       );
       const sealedArtifact = sealedSnapshot?.artifacts.find((item) =>
         item.producer.tool === BUY_SEAL_CONFIGURATION_COST_TOOL
       );
       assertEquals(sealedArtifact?.kind, "document");
-      assertEquals(sealedArtifact?.uri?.startsWith(BUY_SEAL_CAPTURE_URI_PREFIX), true);
+      assertEquals(
+        sealedArtifact?.uri?.startsWith(BUY_SEAL_CAPTURE_URI_PREFIX),
+        true,
+      );
 
       const viewerProject = await viewerProjectFor(
         root,
@@ -303,14 +312,20 @@ Deno.test(
         };
         readonly provenance: {
           readonly operation: string;
-          readonly bundleRef: { readonly uri: string; readonly fingerprint: string };
+          readonly bundleRef: {
+            readonly uri: string;
+            readonly fingerprint: string;
+          };
         };
       };
       assertEquals(payload.kind, "buy.configuration-cost");
       assertEquals(payload.projection.status, "available");
       assertEquals(payload.anchor.kind, "document");
       assertEquals(payload.anchor.id, sealedArtifact!.id);
-      assertEquals(payload.anchor.uri.startsWith(BUY_SEAL_CAPTURE_URI_PREFIX), true);
+      assertEquals(
+        payload.anchor.uri.startsWith(BUY_SEAL_CAPTURE_URI_PREFIX),
+        true,
+      );
       assertEquals(payload.anchor.uri, payload.provenance.bundleRef.uri);
       assertEquals(
         payload.anchor.fingerprint,
@@ -378,7 +393,9 @@ Deno.test(
       const mcpCalls: string[] = [];
       const wrapper = await loadProducerWrapper();
       const now = monotoneClock("2026-08-09T10:00:00.000Z");
-      const projects = new FileEngineeringProjectRevisionStore(`${root}/projects`);
+      const projects = new FileEngineeringProjectRevisionStore(
+        `${root}/projects`,
+      );
       const snapshots = new FileThreadSnapshotStore(`${root}/snapshots`);
       const baselineCaptures = new FileCaptureStore({
         ...APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
@@ -408,17 +425,26 @@ Deno.test(
           id: "objective",
           kind: "objective",
           statement: "Capture and seal dated Buy costs.",
-          sourceRefs: [{ kind: "intent", reference: "conversation:buy-command" }],
+          sourceRefs: [{
+            kind: "intent",
+            reference: "conversation:buy-command",
+          }],
         }, {
           id: "mission",
           kind: "mission-scenario",
           statement: "Keep capture documentary until a signed seal.",
-          sourceRefs: [{ kind: "intent", reference: "conversation:buy-command" }],
+          sourceRefs: [{
+            kind: "intent",
+            reference: "conversation:buy-command",
+          }],
         }, {
           id: "success",
           kind: "success-criterion",
           statement: "Persist completed capture and seal through the command service.",
-          sourceRefs: [{ kind: "intent", reference: "conversation:buy-command" }],
+          sourceRefs: [{
+            kind: "intent",
+            reference: "conversation:buy-command",
+          }],
           dependsOnItemIds: [],
         }],
       });
@@ -489,7 +515,9 @@ Deno.test(
       });
       const r1Ref = baselined.threadSnapshots[0]!;
       const r1Snapshot = await snapshots.get(r1Ref.snapshotId);
-      if (!r1Snapshot) throw new Error("r1 snapshot missing in Buy command path");
+      if (!r1Snapshot) {
+        throw new Error("r1 snapshot missing in Buy command path");
+      }
       const geometry = writeGeometryPrimary();
       const r2Snapshot = extendSnapshotWithGeometry(r1Snapshot, [
         geometry,
@@ -516,7 +544,11 @@ Deno.test(
           owner: "agent",
           dependsOnWorkItemIds: [],
           decisionIds: [],
-          operation: { id: "fixture.artifacts-stub", version: "1", bindings: [] },
+          operation: {
+            id: "fixture.artifacts-stub",
+            version: "1",
+            bindings: [],
+          },
         }],
         requiredDecisions: [],
       });
@@ -710,18 +742,26 @@ Deno.test(
         captureRun.resultSnapshot!.snapshotId,
       );
       if (!candidateSnapshot) {
-        throw new Error("capture result snapshot missing after real command path");
+        throw new Error(
+          "capture result snapshot missing after real command path",
+        );
       }
       validateThreadSnapshot(candidateSnapshot);
       const candidateArtifact = candidateSnapshot.artifacts.find((item) =>
         item.producer.tool === BUY_CAPTURE_CONFIGURATION_COST_TOOL
       );
       if (!candidateArtifact) {
-        throw new Error("Buy candidate artifact missing after real command path");
+        throw new Error(
+          "Buy candidate artifact missing after real command path",
+        );
       }
-      const candidateText = await candidateCaptures.read(candidateArtifact.fingerprint);
+      const candidateText = await candidateCaptures.read(
+        candidateArtifact.fingerprint,
+      );
       if (candidateText === undefined) {
-        throw new Error("Buy candidate capture bytes missing after real command path");
+        throw new Error(
+          "Buy candidate capture bytes missing after real command path",
+        );
       }
       const candidate = JSON.parse(candidateText) as {
         readonly bundleDigest: string;
@@ -730,9 +770,13 @@ Deno.test(
           readonly geometry: { readonly stepFingerprint: string };
         };
         readonly bundle: {
-          readonly coverage: { readonly status: "complete" | "partial" | "unresolved" };
+          readonly coverage: {
+            readonly status: "complete" | "partial" | "unresolved";
+          };
         };
-        readonly sourceCaptures: ReadonlyArray<{ readonly fingerprint: string }>;
+        readonly sourceCaptures: ReadonlyArray<
+          { readonly fingerprint: string }
+        >;
       };
       const candidateRef = {
         snapshotId: candidateSnapshot.id,
@@ -840,7 +884,10 @@ Deno.test(
       const sealCompleted = reopened.agentRuns.find((run) => run.id === "run.buy-seal");
       assertEquals(captureCompleted?.status, "completed");
       assertEquals(sealCompleted?.status, "completed");
-      assertEquals(captureCompleted?.resultSnapshot?.snapshotId, candidateSnapshot.id);
+      assertEquals(
+        captureCompleted?.resultSnapshot?.snapshotId,
+        candidateSnapshot.id,
+      );
       assertEquals(
         captureCompleted?.evidenceRefs[0]?.id,
         candidateArtifact.id,
@@ -907,7 +954,10 @@ Deno.test(
           readonly fingerprint: string;
         };
         readonly provenance: {
-          readonly bundleRef: { readonly uri: string; readonly fingerprint: string };
+          readonly bundleRef: {
+            readonly uri: string;
+            readonly fingerprint: string;
+          };
         };
       };
       assertEquals(payload.kind, "buy.configuration-cost");
@@ -1005,7 +1055,10 @@ async function createCaptureFixture(options: {
               kind: BUY_SOURCE_INSTANCE_KIND,
               siteId: BUY_FIXTURE_SITE,
             },
-            adapter: { id: "erpnext-buy-capture-fixture", version: "0.0.0-fixture" },
+            adapter: {
+              id: "erpnext-buy-capture-fixture",
+              version: "0.0.0-fixture",
+            },
           },
         }),
     },
@@ -1044,9 +1097,13 @@ async function createSealFixture(options: {
   const candidate = JSON.parse(candidateText) as {
     readonly bundleDigest: string;
     readonly configurationDigest: string;
-    readonly configuration: { readonly geometry: { readonly stepFingerprint: string } };
+    readonly configuration: {
+      readonly geometry: { readonly stepFingerprint: string };
+    };
     readonly bundle: {
-      readonly coverage: { readonly status: "complete" | "partial" | "unresolved" };
+      readonly coverage: {
+        readonly status: "complete" | "partial" | "unresolved";
+      };
     };
     readonly sourceCaptures: ReadonlyArray<{ readonly fingerprint: string }>;
   };
@@ -1074,9 +1131,11 @@ async function createSealFixture(options: {
     extraApprovals: options.project.approvals,
     extraWorkItems: options.project.workItems,
     snapshotId: options.candidateArtifact
-      ? options.project.agentRuns[0]?.resultSnapshot?.snapshotId ?? "snapshot.buy.r1"
+      ? options.project.agentRuns[0]?.resultSnapshot?.snapshotId ??
+        "snapshot.buy.r1"
       : "snapshot.buy.r1",
-    snapshotRevision: options.project.agentRuns[0]?.resultSnapshot?.revision ?? 1,
+    snapshotRevision: options.project.agentRuns[0]?.resultSnapshot?.revision ??
+      1,
   });
   const sealStore = new FileCaptureStore({
     ...BUY_SEAL_CAPTURE_DESCRIPTOR,
@@ -1131,7 +1190,10 @@ async function viewerProjectFor(
   const decisionFingerprint = await sha256Fingerprint({
     baseSnapshot: threadRef,
     inputEvidenceRefs: [],
-    proposal: { summary: "Seal Buy costs.", parameters: sealFixture.parameters },
+    proposal: {
+      summary: "Seal Buy costs.",
+      parameters: sealFixture.parameters,
+    },
   });
   return validateEngineeringProjectSnapshot({
     ...seeded,
@@ -1336,7 +1398,10 @@ async function projectFixture(options: {
   const operation = {
     id: options.operationId,
     version: "1",
-    bindings: [{ name: "approvedBrief", source: { kind: "approved-brief" as const } }],
+    bindings: [{
+      name: "approvedBrief",
+      source: { kind: "approved-brief" as const },
+    }],
   };
   const decisionFingerprint = await sha256Fingerprint({
     baseSnapshot: reviewBasis,

@@ -881,9 +881,7 @@ Deno.test(
       reason: "capture-invalid",
     }]);
     assertEquals(
-      enriched.graph.nodes.every((node) =>
-        node.engineeringCaseRefs === undefined
-      ),
+      enriched.graph.nodes.every((node) => node.engineeringCaseRefs === undefined),
       true,
     );
   },
@@ -1020,9 +1018,7 @@ Deno.test(
         name: "foreign authority run",
         snapshot: (() => {
           const candidate = workbenchFor([proof]);
-          candidate.artifacts.find((artifact) =>
-            artifact.id === proof.artifact.id
-          )!
+          candidate.artifacts.find((artifact) => artifact.id === proof.artifact.id)!
             .producerRunId = "run.seal.other";
           return candidate;
         })(),
@@ -1115,16 +1111,13 @@ Deno.test(
       snapshot,
       caseReaders({
         printabilityCheck: {
-          read: (fingerprint) =>
-            Promise.resolve(captures.get(fingerprint.digest)),
+          read: (fingerprint) => Promise.resolve(captures.get(fingerprint.digest)),
         },
         printEstimate: {
-          read: (fingerprint) =>
-            Promise.resolve(captures.get(fingerprint.digest)),
+          read: (fingerprint) => Promise.resolve(captures.get(fingerprint.digest)),
         },
         dfmCheck: {
-          read: (fingerprint) =>
-            Promise.resolve(captures.get(fingerprint.digest)),
+          read: (fingerprint) => Promise.resolve(captures.get(fingerprint.digest)),
         },
       }),
       CASE_CONTEXT,
@@ -1204,15 +1197,9 @@ Deno.test(
       ...snapshot.artifacts.map((item) =>
         graphNode("artifact", item.id, item.label, item.system)
       ),
-      ...observationIds.map((id) =>
-        graphNode("observation", id, id, "digital-thread")
-      ),
-      ...requirementIds.map((id) =>
-        graphNode("requirement", id, id, "digital-thread")
-      ),
-      ...evaluationIds.map((id) =>
-        graphNode("evaluation", id, id, "digital-thread")
-      ),
+      ...observationIds.map((id) => graphNode("observation", id, id, "digital-thread")),
+      ...requirementIds.map((id) => graphNode("requirement", id, id, "digital-thread")),
+      ...evaluationIds.map((id) => graphNode("evaluation", id, id, "digital-thread")),
       graphNode("evaluation", "eval-foreign", "eval-foreign", "digital-thread"),
       graphNode(
         "requirement",
@@ -1689,8 +1676,7 @@ function printEstimateCase() {
     id: "reviewed-fff-estimate-v1",
     revision: 1,
     scope: "FFF print-time-and-material estimate for the isolated component.",
-    evidenceBoundary:
-      "Observations only; not a cost quote, verdict, or certification.",
+    evidenceBoundary: "Observations only; not a cost quote, verdict, or certification.",
     project: {
       id: PROOF_CASE.project.id,
       subjectId: PROOF_CASE.project.subjectId,
@@ -1730,8 +1716,7 @@ function dfmCase() {
     },
     target: {
       componentKey: "support-bracket",
-      artifactUri:
-        "thread-artifact://generic-product-v1/geometry-step-support-bracket",
+      artifactUri: "thread-artifact://generic-product-v1/geometry-step-support-bracket",
       sha256: "a".repeat(64),
       mediaType: "model/step",
     },

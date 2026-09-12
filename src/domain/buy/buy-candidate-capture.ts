@@ -5,35 +5,30 @@
  * current cost claim. Seal reopens these exact bytes.
  */
 
-import {
-  BUY_CAPTURE_CONFIGURATION_COST_OPERATION,
-} from "../../domain/buy/buy-operations.ts";
+import { BUY_CAPTURE_CONFIGURATION_COST_OPERATION } from "./buy-operations.ts";
 import {
   BUY_CONFIGURATION_SCHEMA,
   type BuyConfiguration,
   validateBuyConfiguration,
-} from "../../domain/buy/buy-configuration.ts";
+} from "./buy-configuration.ts";
 import {
   BUY_COST_BUNDLE_SCHEMA,
   type BuyCostBundle,
   validateBuyCostBundle,
-} from "../../domain/buy/buy-cost-bundle.ts";
+} from "./buy-cost-bundle.ts";
 import {
   type BuySourceCaptureEnvelope,
   validateBuySourceCaptureEnvelope,
-} from "../../domain/buy/buy-source-capture.ts";
+} from "./buy-source-capture.ts";
 import {
   arrayOf,
   exactRecord,
   literalValue,
   nonEmptyText,
   safeId,
-} from "../../domain/kernel/case-validation.ts";
-import {
-  deterministicJson,
-  sha256Fingerprint,
-} from "../../domain/kernel/deterministic-json.ts";
-import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
+} from "../kernel/case-validation.ts";
+import { deterministicJson, sha256Fingerprint } from "../kernel/deterministic-json.ts";
+import type { ContentFingerprint } from "../kernel/primitives.ts";
 
 export const BUY_CANDIDATE_CAPTURE_SCHEMA =
   "buy-configuration-cost-candidate-capture/1.0" as const;
@@ -97,7 +92,9 @@ export async function validateBuyCandidateCapture(
   );
   const configuration = validateBuyConfiguration(root.configuration);
   if (configuration.schemaVersion !== BUY_CONFIGURATION_SCHEMA) {
-    throw new TypeError("$buyCandidateCapture.configuration schema is divergent.");
+    throw new TypeError(
+      "$buyCandidateCapture.configuration schema is divergent.",
+    );
   }
   const bundle = validateBuyCostBundle(root.bundle);
   if (bundle.schemaVersion !== BUY_COST_BUNDLE_SCHEMA) {
@@ -112,7 +109,9 @@ export async function validateBuyCandidateCapture(
     "$buyCandidateCapture.bundleDigest",
   );
   if (configurationDigest !== (await sha256Fingerprint(configuration)).digest) {
-    throw new TypeError("$buyCandidateCapture.configurationDigest does not match.");
+    throw new TypeError(
+      "$buyCandidateCapture.configurationDigest does not match.",
+    );
   }
   if (bundleDigest !== (await sha256Fingerprint(bundle)).digest) {
     throw new TypeError("$buyCandidateCapture.bundleDigest does not match.");
@@ -126,7 +125,10 @@ export async function validateBuyCandidateCapture(
     schemaVersion: BUY_CANDIDATE_CAPTURE_SCHEMA,
     kind: "buy.configuration-cost-candidate",
     operation: BUY_CAPTURE_CONFIGURATION_COST_OPERATION,
-    trustedRunId: safeId(root.trustedRunId, "$buyCandidateCapture.trustedRunId"),
+    trustedRunId: safeId(
+      root.trustedRunId,
+      "$buyCandidateCapture.trustedRunId",
+    ),
     decisionId: safeId(root.decisionId, "$buyCandidateCapture.decisionId"),
     configurationDigest,
     bundleDigest,
@@ -136,7 +138,10 @@ export async function validateBuyCandidateCapture(
       root.sourceCaptures,
       "$buyCandidateCapture.sourceCaptures",
     ).map((item) => validateBuySourceCaptureEnvelope(item)),
-    capturedAt: nonEmptyText(root.capturedAt, "$buyCandidateCapture.capturedAt"),
+    capturedAt: nonEmptyText(
+      root.capturedAt,
+      "$buyCandidateCapture.capturedAt",
+    ),
   };
 }
 

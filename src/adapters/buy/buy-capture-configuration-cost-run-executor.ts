@@ -93,7 +93,7 @@ import {
   type BuyCandidateCapture,
   canonicalBuyCandidateCaptureText,
   validateBuyCandidateCapture,
-} from "./buy-candidate-capture.ts";
+} from "../../domain/buy/buy-candidate-capture.ts";
 import {
   assertBuyCompleted,
   buyCommandStep,
@@ -260,8 +260,14 @@ export class BuyCaptureConfigurationCostRunExecutor {
       }
       const { decision } = requireBuyMrtrApproval(project, run, "Buy capture");
       const basis = requireBasis(run);
-      const basisSnapshot = await exactBuyBasisSnapshot(this.deps.snapshots, basis);
-      await assertThreadSnapshotLineageIntact(basisSnapshot, this.deps.snapshots);
+      const basisSnapshot = await exactBuyBasisSnapshot(
+        this.deps.snapshots,
+        basis,
+      );
+      await assertThreadSnapshotLineageIntact(
+        basisSnapshot,
+        this.deps.snapshots,
+      );
       const configuration = await this.#reopenConfiguration(decisionParams);
       requireCurrentGeometry(basisSnapshot, configuration);
       const binding = await this.deps.bindings.resolve({ project });
@@ -321,7 +327,9 @@ export class BuyCaptureConfigurationCostRunExecutor {
       await this.deps.captures.save(captureFingerprint, captureText);
       const readBack = await this.deps.captures.read(captureFingerprint);
       if (readBack !== captureText) {
-        throw new Error("Buy candidate capture was not durably readable after save.");
+        throw new Error(
+          "Buy candidate capture was not durably readable after save.",
+        );
       }
       const successor = buildCandidateSuccessor({
         basisSnapshot,
@@ -338,7 +346,8 @@ export class BuyCaptureConfigurationCostRunExecutor {
       );
       if (
         !snapshotReadback ||
-        deterministicJson(snapshotReadback) !== deterministicJson(successor.snapshot)
+        deterministicJson(snapshotReadback) !==
+          deterministicJson(successor.snapshot)
       ) {
         throw new Error(
           "Buy candidate ThreadSnapshot was not durably readable after save.",
@@ -509,11 +518,12 @@ export class BuyCaptureConfigurationCostRunExecutor {
         },
         ...(secretSnapshot === undefined ? {} : { secretSnapshot }),
       });
-      const handle = await this.deps.capabilityRuntimeConnection!.broker.connect({
-        lease: capabilitySession.lease,
-        binding: publication.binding,
-        launchGroup: publication.launchGroup,
-      });
+      const handle = await this.deps.capabilityRuntimeConnection!.broker
+        .connect({
+          lease: capabilitySession.lease,
+          binding: publication.binding,
+          launchGroup: publication.launchGroup,
+        });
       const client = await this.deps.capabilityRuntimeConnection!.openMcpClient(
         handle,
       );
@@ -536,7 +546,10 @@ export class BuyCaptureConfigurationCostRunExecutor {
         error instanceof CapabilityRuntimeConnectionError ||
         error instanceof CapabilityRuntimeLaunchGroupSafetyError
       ) {
-        throw new EngineeringProjectCommandError("invalid_transition", error.message);
+        throw new EngineeringProjectCommandError(
+          "invalid_transition",
+          error.message,
+        );
       }
       throw error;
     }
@@ -606,7 +619,9 @@ export class BuyCaptureConfigurationCostRunExecutor {
     return configuration;
   }
 
-  async #requiredProject(projectId: string): Promise<EngineeringProjectSnapshot> {
+  async #requiredProject(
+    projectId: string,
+  ): Promise<EngineeringProjectSnapshot> {
     const project = await this.deps.projects.get(projectId);
     if (!project) {
       throw new EngineeringProjectCommandError(
@@ -636,7 +651,10 @@ function requireCurrentGeometry(
 ): void {
   const applicability = buyGeometryApplicability(snapshot, configuration);
   if (applicability.status === "refused") {
-    throw new EngineeringProjectCommandError("invalid_input", applicability.reason);
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      applicability.reason,
+    );
   }
   if (applicability.status === "historical") {
     throw new EngineeringProjectCommandError(
@@ -673,7 +691,11 @@ function buildCandidateSuccessor(input: {
       runId: input.run.id,
     },
     inputArtifactIds: [],
-    freshness: { status: "fresh", changedAt: capturedAt, invalidatedByChangeIds: [] },
+    freshness: {
+      status: "fresh",
+      changedAt: capturedAt,
+      invalidatedByChangeIds: [],
+    },
   };
   const extension: ThreadSnapshotExtension = {
     id: `buy-capture-configuration-cost-${input.run.id}`,

@@ -248,15 +248,11 @@ Deno.test("a new RadialArm write-requirements@2 capture stays in SYSML, not the 
 
   const hero = buildOverviewThreadHero(thread, activities);
   const recorded = hero.nodes.filter(isRecordedOverviewHeroNode);
-  const captureNode = recorded.find((item) =>
-    item.key === `artifact:${captureId}`
-  )!;
+  const captureNode = recorded.find((item) => item.key === `artifact:${captureId}`)!;
   const requirement = recorded.find((item) =>
     item.key === `requirement:${requirementId}`
   )!;
-  const architecture = recorded.find((item) =>
-    item.key === "artifact:sysml-current"
-  )!;
+  const architecture = recorded.find((item) => item.key === "artifact:sysml-current")!;
   const contents = buildOverviewHullContents(recorded, [session], undefined);
   const sysmlKey = groupId(
     "system-model",
@@ -271,9 +267,7 @@ Deno.test("a new RadialArm write-requirements@2 capture stays in SYSML, not the 
       key: item.key,
       groupKey: item.groupKey,
       ref: item.node.ref,
-      ...(item.isRequirementsCapture === true
-        ? { isRequirementsCapture: true }
-        : {}),
+      ...(item.isRequirementsCapture === true ? { isRequirementsCapture: true } : {}),
     })),
     thread.graph.edges,
     [session],
@@ -292,21 +286,15 @@ Deno.test("a new RadialArm write-requirements@2 capture stays in SYSML, not the 
   );
   assertEquals(contents.has(activitySysmlKey), false);
   assertEquals(
-    contents.get(sysmlKey)?.records.some((row) =>
-      row.nodeKey === captureNode.key
-    ),
+    contents.get(sysmlKey)?.records.some((row) => row.nodeKey === captureNode.key),
     true,
   );
   assertEquals(
-    contents.get(sysmlKey)?.records.some((row) =>
-      row.nodeKey === requirement.key
-    ),
+    contents.get(sysmlKey)?.records.some((row) => row.nodeKey === requirement.key),
     true,
   );
   assertEquals(
-    contents.get(sysmlKey)?.records.find((row) =>
-      row.nodeKey === requirement.key
-    )
+    contents.get(sysmlKey)?.records.find((row) => row.nodeKey === requirement.key)
       ?.graphRefs,
     [requirement.key],
   );
@@ -382,16 +370,12 @@ Deno.test("canonical geometry and exported STEP/GLB share one Geometry hull and 
     ]),
   );
   for (const id of canonicalIds.slice(0, CAD_SESSION_COUNT)) {
-    const record = hull.records.find((row) =>
-      row.nodeKey === `artifact:${id}`
-    )!;
+    const record = hull.records.find((row) => row.nodeKey === `artifact:${id}`)!;
     assertEquals(record.sessionIds, [`cad-session:${id}`]);
     assertEquals(record.label, `Housing ${id}`);
   }
   for (const id of exportIds) {
-    const record = hull.records.find((row) =>
-      row.nodeKey === `artifact:${id}`
-    )!;
+    const record = hull.records.find((row) => row.nodeKey === `artifact:${id}`)!;
     assertEquals(record.sessionIds, []);
   }
   assertEquals(
@@ -474,8 +458,7 @@ Deno.test("typed SysML, Requirements, Brief, FEA, and Simulation stay fail-close
   const contents = buildOverviewHullContents(hero.nodes, [], undefined);
 
   const recorded = hero.nodes.filter(isRecordedOverviewHeroNode);
-  const byId = (id: string) =>
-    recorded.find((item) => item.node.ref.id === id)!;
+  const byId = (id: string) => recorded.find((item) => item.node.ref.id === id)!;
 
   assertEquals(
     byId("sysml-current").groupKey,
@@ -588,9 +571,7 @@ Deno.test("typed SysML, Requirements, Brief, FEA, and Simulation stay fail-close
   );
   assertEquals(
     recorded.every((item) =>
-      thread.graph.nodes.some((node) =>
-        `${node.ref.kind}:${node.ref.id}` === item.key
-      )
+      thread.graph.nodes.some((node) => `${node.ref.kind}:${node.ref.id}` === item.key)
     ),
     true,
   );
@@ -888,9 +869,7 @@ Deno.test("ID01-shaped DFM family keeps lanes and captions; STEP stays Geometry"
   const step = byKey(`artifact:${DFM_STEP_ARTIFACT}`);
   const sysmlRequirement = byKey("requirement:REQ-MASS");
   const fea = byKey("artifact:fea-static");
-  const decoy = recorded.find((item) =>
-    item.key === `artifact:${DFM_DECOY_EVIDENCE}`
-  );
+  const decoy = recorded.find((item) => item.key === `artifact:${DFM_DECOY_EVIDENCE}`);
 
   assertEquals(caseNode.lane, "physics");
   assertEquals(caseNode.groupKey, OVERVIEW_DOMAIN_GROUP_KEYS.dfm);
@@ -1436,8 +1415,7 @@ function unique(values: readonly string[]): readonly string[] {
   return [...new Set(values)];
 }
 
-const CAMERA_BRACKET_EVALUATION_ID =
-  "requirement-camera-bracket-bench-evaluation-r3";
+const CAMERA_BRACKET_EVALUATION_ID = "requirement-camera-bracket-bench-evaluation-r3";
 
 function pathActivity(spec: {
   id: string;
