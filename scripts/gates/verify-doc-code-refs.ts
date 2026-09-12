@@ -72,7 +72,7 @@ const ILLUSTRATIVE_SHELL_FENCE_LANGUAGES = new Set([
 ]);
 
 const CODE_REF_PATTERN =
-  /(?<![A-Za-z0-9._/-])((?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+\.ts):(\d+(?:\s*-\s*\d+)?(?:\s*,\s*\d+(?:\s*-\s*\d+)?)*)/gu;
+  /(?<![A-Za-z0-9._/-])([/]?(?:[A-Za-z0-9_.-]+\/)*[A-Za-z0-9_.-]+\.ts):(\d+(?:\s*-\s*\d+)?(?:\s*,\s*\d+(?:\s*-\s*\d+)?)*)/gu;
 
 const mode = parseMode(Deno.args);
 const repositoryPaths = await existingPaths(await gitCandidatePaths());
@@ -227,7 +227,7 @@ function markdownCodeRefs(body: string): readonly CodeRef[] {
   let skipFence = false;
 
   for (const [index, line] of body.split("\n").entries()) {
-    const fence = line.match(/^\s*(```|~~~)(.*)$/u);
+    const fence = line.match(/^\s*(`{3,}|~{3,})(.*)$/u);
     if (fence) {
       if (!fenced) {
         fenced = true;
