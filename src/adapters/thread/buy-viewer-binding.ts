@@ -150,6 +150,9 @@ export async function buildBuyViewerBinding(request: {
       "Buy viewer requires one exact unarchived buy-cost-bundle evidence artifact.",
     );
   }
+  if (resultArtifact.freshness.status !== "fresh") {
+    throw new TypeError("The sealed Buy evidence artifact is not fresh.");
+  }
   const installed = installedViewerResource(
     request.packages,
     BUY_VIEWER_APP_ID,

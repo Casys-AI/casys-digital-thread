@@ -6,6 +6,11 @@
  * editing this factory.
  */
 
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import {
+  sameAuthorizedBindingIdentity,
+  sameMaterialSet,
+} from "../../application/control-plane/capability-runtime-binding-identity.ts";
 import type { BuyQualifiedErpBindingResolver } from "../../application/ports/out/buy/buy-qualified-erp-binding.ts";
 import type {
   BuyQualifiedErpBindingResolution,
@@ -114,6 +119,29 @@ export class CapabilityRuntimeBuyQualifiedErpBindingResolver
       return this.options.fallback.resolve();
     }
     const catalogBinding = matches[0]!;
+    const expected = this.options.contribution.binding;
+    const expectedUnit = this.options.contribution.unit;
+    const units = context.catalog.units.filter((unit) => unit.id === expectedUnit.id);
+    if (
+      catalogBinding.id !== expected.id ||
+      catalogBinding.version !== expected.version ||
+      deterministicJson(catalogBinding.adapter) !==
+        deterministicJson(expected.adapter) ||
+      deterministicJson(catalogBinding.profile) !==
+        deterministicJson(expected.profile) ||
+      deterministicJson([...catalogBinding.unitIds].sort()) !==
+        deterministicJson([...expected.unitIds].sort()) ||
+      units.length !== 1 || units[0]!.version !== expectedUnit.version ||
+      deterministicJson(units[0]!.manifestFingerprint) !==
+        deterministicJson(expectedUnit.manifestFingerprint)
+    ) {
+      return {
+        status: "unresolved",
+        reason:
+          "The qualified ERP Buy catalog binding does not match the exact installed contribution.",
+      };
+    }
+
     if (catalogBinding.qualification !== "qualified") {
       return {
         status: "unresolved",
@@ -122,26 +150,67 @@ export class CapabilityRuntimeBuyQualifiedErpBindingResolver
           "A legacy fleet image tag or source version is not qualification. Capture remains unresolved and will not dispatch.",
       };
     }
-    if (context.authorization?.status !== "authorized") {
+    if (
+      context.authorization?.status !== "authorized" ||
+      context.authorization.projectId !== input.project.project.id
+    ) {
       return {
         status: "unresolved",
         reason:
           "The current project is not authorized for the qualified ERP Buy runtime binding.",
       };
     }
-    const allowed = context.authorization.allowedBindings.filter((binding) =>
-      binding.binding.id === catalogBinding.id &&
-      binding.binding.version === catalogBinding.version &&
-      binding.capability.id === COMMERCE_READ_ERPNEXT_BUY_SOURCE_CAPABILITY.id &&
-      binding.capability.version ===
-        COMMERCE_READ_ERPNEXT_BUY_SOURCE_CAPABILITY.version &&
-      binding.capability.use === "execution"
+    const capabilities = context.authorization.allowedCapabilities.filter((
+      capability,
+    ) =>
+      capability.id === catalogBinding.capability.id &&
+      capability.version === catalogBinding.capability.version &&
+      capability.use === catalogBinding.use
     );
-    if (allowed.length !== 1) {
+    if (capabilities.length !== 1 || capabilities[0]!.qualification !== "qualified") {
       return {
         status: "unresolved",
         reason:
-          "The current project authorization does not include the exact qualified ERP Buy binding.",
+          "The project capability authorization does not cover qualified ERP Buy execution.",
+      };
+    }
+    const allowed = context.authorization.allowedBindings.filter((binding) =>
+      binding.capability.id === catalogBinding.capability.id &&
+      binding.capability.version === catalogBinding.capability.version &&
+      binding.capability.use === catalogBinding.use
+    );
+    const authorizedUnits = context.authorization.allowedUnits.filter((unit) =>
+      unit.id === expectedUnit.id
+    );
+    if (
+      allowed.length !== 1 ||
+      !sameAuthorizedBindingIdentity(allowed[0]!, {
+        capability: {
+          ...catalogBinding.capability,
+          use: catalogBinding.use,
+          minimumQualification: "qualified",
+        },
+        binding: { id: catalogBinding.id, version: catalogBinding.version },
+        adapter: catalogBinding.adapter,
+        profile: catalogBinding.profile,
+      }) ||
+      deterministicJson([...allowed[0]!.unitIds].sort()) !==
+        deterministicJson([...expected.unitIds].sort()) ||
+      !sameMaterialSet(
+        allowed[0]!.materials,
+        this.options.contribution.launchGroup.materials.map((member) =>
+          member.material
+        ),
+      ) ||
+      authorizedUnits.length !== 1 ||
+      authorizedUnits[0]!.version !== expectedUnit.version ||
+      deterministicJson(authorizedUnits[0]!.manifestFingerprint) !==
+        deterministicJson(expectedUnit.manifestFingerprint)
+    ) {
+      return {
+        status: "unresolved",
+        reason:
+          "The current project authorization does not include the exact qualified ERP Buy binding, units and material digests.",
       };
     }
     return {

@@ -61,6 +61,7 @@ import {
 import {
   type BuyCandidateCapture,
   canonicalBuyCandidateCaptureText,
+  resolveExactBuyCandidateArtifact,
   validateBuyCandidateCapture,
 } from "../../domain/buy/buy-candidate-capture.ts";
 import {
@@ -368,13 +369,14 @@ export class BuySealConfigurationCostRunExecutor {
     projectId: string,
     basis: EngineeringThreadSnapshotBasis,
   ): Promise<BuyCandidateCapture> {
-    const artifact = snapshot.artifacts.find((item) =>
-      item.fingerprint.digest === decisionParams.candidateDigest
+    const artifact = resolveExactBuyCandidateArtifact(
+      snapshot,
+      decisionParams.candidateDigest,
     );
     if (!artifact) {
       throw new EngineeringProjectCommandError(
         "invalid_input",
-        "Signed Buy candidate is absent from the basis snapshot.",
+        "The exact fresh signed Buy candidate artifact is absent from the basis snapshot.",
       );
     }
     const text = await this.deps.candidates.read(artifact.fingerprint);
@@ -521,7 +523,7 @@ function buildSealSuccessor(input: {
       tool: BUY_SEAL_CONFIGURATION_COST_TOOL,
       runId: input.run.id,
     },
-    inputArtifactIds: [],
+    inputArtifactIds: [`buy-cost-candidate-${input.capture.candidateDigest}`],
     freshness: {
       status: "fresh",
       changedAt: sealedAt,
@@ -534,12 +536,45 @@ function buildSealSuccessor(input: {
     subjectId: input.basis.subjectId,
     capturedAt: sealedAt,
     artifacts: [artifact],
-    consumptions: [],
+    consumptions: [{
+      id: `buy-seal-consumes-candidate-${input.captureFingerprint.digest}`,
+      artifactId: `buy-cost-candidate-${input.capture.candidateDigest}`,
+      consumer: artifact.producer,
+      observedFingerprint: {
+        algorithm: "sha256",
+        digest: input.capture.candidateDigest,
+      },
+      verifiedAt: sealedAt,
+      status: "verified",
+    }],
     observations: [],
     requirements: [],
     evaluations: [],
     violations: [],
-    provenance: [],
+    provenance: [{
+      id: `buy-seal-uses-candidate-${input.captureFingerprint.digest}`,
+      relation: "uses",
+      from: {
+        kind: "consumption",
+        id: `buy-seal-consumes-candidate-${input.captureFingerprint.digest}`,
+      },
+      to: {
+        kind: "artifact",
+        id: `buy-cost-candidate-${input.capture.candidateDigest}`,
+      },
+      rationale:
+        "The seal reopened and verified the candidate CAS bytes before publication.",
+    }, {
+      id: `buy-seal-derived-from-candidate-${input.captureFingerprint.digest}`,
+      relation: "derived_from",
+      from: { kind: "artifact", id: artifactId },
+      to: {
+        kind: "artifact",
+        id: `buy-cost-candidate-${input.capture.candidateDigest}`,
+      },
+      rationale:
+        "The seal retains the exact reviewed candidate bundle and source captures without ERP refresh.",
+    }],
     proposedActions: [],
   };
   const applied = applyThreadSnapshotExtensionIfNew(

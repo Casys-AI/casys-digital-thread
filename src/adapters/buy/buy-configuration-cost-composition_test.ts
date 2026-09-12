@@ -340,6 +340,14 @@ Deno.test(
         snapshotId: candidateSnapshot!.id,
         revision: candidateSnapshot!.revision,
       });
+      assertEquals(sealedArtifact?.inputArtifactIds, [candidateArtifact!.id]);
+      assertEquals(
+        sealedSnapshot?.provenance.some((link) =>
+          link.relation === "derived_from" && link.from.id === sealedArtifact!.id &&
+          link.to.id === candidateArtifact!.id
+        ),
+        true,
+      );
       const sealedText = await sealFixture.sealStore.read(
         sealedArtifact!.fingerprint,
       );
@@ -489,6 +497,105 @@ Deno.test("seal refuses a candidate configuration from another project", async (
     );
   } finally {
     await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("seal refuses malformed, ambiguous, archived or stale candidates on its exact basis", async () => {
+  for (const mode of ["malformed", "ambiguous", "archived", "stale"] as const) {
+    const root = await Deno.makeTempDir({ prefix: "buy-seal-foreign-" });
+    try {
+      const wrapper = await loadProducerWrapper();
+      const captureFixture = await createCaptureFixture({
+        mcp: {
+          callTool() {
+            return Promise.resolve({
+              structuredContent: wrapper,
+              text: "",
+            });
+          },
+          callToolTextResult() {
+            return Promise.reject(new Error("unused"));
+          },
+        },
+        candidateDirectory: `${root}/candidates`,
+        snapshotDirectory: `${root}/snapshots`,
+      });
+      const captured = await captureFixture.executor.execute(
+        AGENT,
+        captureFixture.command,
+      );
+      const candidateSnapshot = await captureFixture.snapshots.getFresh(
+        captured.agentRuns[0]!.resultSnapshot!.snapshotId,
+      );
+      const candidateArtifact = candidateSnapshot?.artifacts.find((item) =>
+        item.producer.tool === BUY_CAPTURE_CONFIGURATION_COST_TOOL
+      );
+      const sealFixture = await createSealFixture({
+        project: captured,
+        snapshots: {
+          getFresh: (id) => captureFixture.snapshots.getFresh(id),
+          save: (snapshot) => captureFixture.snapshots.save(snapshot),
+          latest: (subjectId) => captureFixture.snapshots.latest(subjectId),
+          get: async (id) => {
+            const snapshot = await captureFixture.snapshots.get(id);
+            if (snapshot?.id !== candidateSnapshot!.id) return snapshot;
+            return snapshot &&
+              {
+                ...snapshot,
+                artifacts: mode === "ambiguous"
+                  ? [...snapshot.artifacts, {
+                    ...candidateArtifact!,
+                    id: "foreign-candidate",
+                  }]
+                  : mode === "malformed"
+                  ? snapshot.artifacts.map((artifact) =>
+                    artifact.id === candidateArtifact!.id
+                      ? { ...artifact, mediaType: "text/plain" }
+                      : artifact
+                  )
+                  : mode === "stale"
+                  ? snapshot.artifacts.map((artifact) =>
+                    artifact.id === candidateArtifact!.id
+                      ? {
+                        ...artifact,
+                        freshness: {
+                          ...artifact.freshness,
+                          status: "stale" as const,
+                          reason: "fixture-invalidated",
+                        },
+                      }
+                      : artifact
+                  )
+                  : snapshot.artifacts,
+                changeSet: mode === "archived"
+                  ? {
+                    ...snapshot.changeSet,
+                    changes: [...snapshot.changeSet.changes, {
+                      id: "archive-buy-candidate",
+                      kind: "archived" as const,
+                      target: { kind: "artifact" as const, id: candidateArtifact!.id },
+                      summary: "Retired candidate",
+                    }],
+                  }
+                  : snapshot.changeSet,
+              };
+          },
+        },
+        candidateDirectory: `${root}/candidates`,
+        sealDirectory: `${root}/seals`,
+        candidateArtifact: candidateArtifact!,
+      });
+      await assertRejects(
+        () =>
+          sealFixture.executor.execute(AGENT, {
+            ...sealFixture.command,
+          }),
+        EngineeringProjectCommandError,
+        "candidate artifact",
+      );
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
   }
 });
 

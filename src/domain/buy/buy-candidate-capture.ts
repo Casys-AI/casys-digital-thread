@@ -6,6 +6,12 @@
  */
 
 import { assertBuySourceLineage } from "./buy-source-lineage.ts";
+import {
+  archivedRefKeys,
+  type ThreadArtifact,
+  type ThreadSnapshot,
+} from "../thread/thread-snapshot.ts";
+import { BUY_CAPTURE_CONFIGURATION_COST_TOOL } from "./buy-operations.ts";
 import { BUY_CAPTURE_CONFIGURATION_COST_OPERATION } from "./buy-operations.ts";
 import {
   BUY_CONFIGURATION_SCHEMA,
@@ -159,4 +165,30 @@ export function canonicalBuyCandidateCaptureText(
   capture: BuyCandidateCapture,
 ): string {
   return deterministicJson(capture);
+}
+
+/** One active candidate on the exact basis, shared by review and dispatch. */
+export function resolveExactBuyCandidateArtifact(
+  snapshot: ThreadSnapshot,
+  digest: string,
+): ThreadArtifact | undefined {
+  const candidates = snapshot.artifacts.filter((artifact) =>
+    artifact.fingerprint.digest === digest
+  );
+  const artifact = candidates[0];
+  return candidates.length === 1 && artifact && isExactBuyCandidateArtifact(artifact) &&
+      !archivedRefKeys(snapshot).has(`artifact:${artifact.id}`)
+    ? artifact
+    : undefined;
+}
+
+function isExactBuyCandidateArtifact(artifact: ThreadArtifact): boolean {
+  const digest = artifact.fingerprint.digest;
+  return artifact.id === `buy-cost-candidate-${digest}` &&
+    artifact.kind === "document" &&
+    artifact.version === digest && artifact.mediaType === "application/json" &&
+    artifact.uri === `${BUY_CANDIDATE_CAPTURE_URI_PREFIX}${digest}` &&
+    artifact.producer.serverId === "digital-thread" &&
+    artifact.producer.tool === BUY_CAPTURE_CONFIGURATION_COST_TOOL &&
+    artifact.freshness.status === "fresh";
 }

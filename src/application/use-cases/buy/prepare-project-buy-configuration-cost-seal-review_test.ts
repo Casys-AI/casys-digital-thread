@@ -335,3 +335,59 @@ function artifact(
     freshness: { status: "fresh", changedAt: AT, invalidatedByChangeIds: [] },
   };
 }
+
+Deno.test("seal review refuses ambiguous, archived or stale candidates before reopening CAS", async () => {
+  const fixture = await sealReviewFixture();
+  const candidate = fixture.thread.artifacts.find((item) =>
+    item.id === fixture.command.candidateArtifactId
+  )!;
+  const snapshots: ThreadSnapshot[] = [
+    {
+      ...fixture.thread,
+      artifacts: fixture.thread.artifacts.map((artifact) =>
+        artifact.id === candidate.id
+          ? {
+            ...artifact,
+            freshness: {
+              ...artifact.freshness,
+              status: "stale" as const,
+              reason: "fixture-invalidated",
+            },
+          }
+          : artifact
+      ),
+    },
+
+    {
+      ...fixture.thread,
+      artifacts: [...fixture.thread.artifacts, {
+        ...candidate,
+        id: "foreign-candidate",
+      }],
+    },
+    {
+      ...fixture.thread,
+      changeSet: {
+        ...fixture.thread.changeSet,
+        changes: [...fixture.thread.changeSet.changes, {
+          id: "archive-buy-candidate",
+          kind: "archived",
+          target: { kind: "artifact", id: candidate.id },
+          summary: "Retired candidate",
+        }],
+      },
+    },
+  ];
+  for (const snapshot of snapshots) {
+    const review = new PrepareProjectBuyConfigurationCostSealReview(
+      {
+        get: () => Promise.resolve(snapshot),
+        latest: () => Promise.resolve(snapshot),
+        save: () => Promise.reject(new Error("must not save")),
+      },
+      { read: () => Promise.reject(new Error("must not reopen refused candidate")) },
+      fixture.projects,
+    );
+    assertEquals((await review.execute(fixture.command)).status, "unresolved");
+  }
+});

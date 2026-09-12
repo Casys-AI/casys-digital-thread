@@ -685,3 +685,34 @@ Deno.test("Buy viewer refuses an artifact bundle identity that contradicts the r
     "bundle digest",
   );
 });
+
+Deno.test("Buy viewer refuses an invalidated seal even when current geometry still matches", async () => {
+  const fixture = await createBuyViewerFixture();
+  const thread = {
+    ...fixture.thread,
+    freshness: {
+      ...fixture.thread.freshness,
+      status: "stale" as const,
+      reason: "fixture-invalidated",
+      invalidatedByChangeIds: [],
+    },
+    artifacts: fixture.thread.artifacts.map((artifact) =>
+      artifact.id === fixture.artifactId
+        ? {
+          ...artifact,
+          freshness: {
+            ...artifact.freshness,
+            status: "stale" as const,
+            reason: "fixture-invalidated",
+            invalidatedByChangeIds: [],
+          },
+        }
+        : artifact
+    ),
+  };
+  await assertRejects(
+    () => buildBuyViewerBinding({ ...fixture, thread }),
+    TypeError,
+    "not fresh",
+  );
+});
