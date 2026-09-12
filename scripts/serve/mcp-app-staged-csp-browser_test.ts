@@ -1,3 +1,4 @@
+import { waitForChromeDebuggerAddress } from "../../src/testing/headless-chrome.ts";
 import { assertEquals, assertRejects } from "@std/assert";
 import {
   materializeMcpAppDocument,
@@ -67,7 +68,7 @@ Deno.test({
       }).spawn();
       chromeStatus = chrome.status;
 
-      const debuggerAddress = await waitForDebuggerAddress(profile);
+      const debuggerAddress = await waitForChromeDebuggerAddress(profile);
       const target = await createDebuggerTarget(debuggerAddress, origin);
       devTools = await connectDevTools(target.webSocketDebuggerUrl);
       await devTools.send("Runtime.enable");
@@ -282,23 +283,6 @@ class DevToolsClient {
   close(): void {
     this.#socket.close();
   }
-}
-
-async function waitForDebuggerAddress(profile: string): Promise<string> {
-  const activePortPath = `${profile}/DevToolsActivePort`;
-  const deadline = Date.now() + 8_000;
-  while (Date.now() < deadline) {
-    try {
-      const [port] = (await Deno.readTextFile(activePortPath)).trim().split("\n");
-      if (port && /^(?:[1-9][0-9]{0,4})$/.test(port)) {
-        return `http://127.0.0.1:${port}`;
-      }
-    } catch (error) {
-      if (!(error instanceof Deno.errors.NotFound)) throw error;
-    }
-    await delay(25);
-  }
-  throw new Error("Chrome did not publish its DevTools endpoint.");
 }
 
 async function createDebuggerTarget(
