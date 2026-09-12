@@ -1,3 +1,4 @@
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 /**
  * Production Buy ERP runtime composition.
  *
@@ -114,6 +115,29 @@ export class CapabilityRuntimeBuyQualifiedErpBindingResolver
       return this.options.fallback.resolve();
     }
     const catalogBinding = matches[0]!;
+    const expected = this.options.contribution.binding;
+    const expectedUnit = this.options.contribution.unit;
+    const units = context.catalog.units.filter((unit) => unit.id === expectedUnit.id);
+    if (
+      catalogBinding.id !== expected.id ||
+      catalogBinding.version !== expected.version ||
+      deterministicJson(catalogBinding.adapter) !==
+        deterministicJson(expected.adapter) ||
+      deterministicJson(catalogBinding.profile) !==
+        deterministicJson(expected.profile) ||
+      deterministicJson([...catalogBinding.unitIds].sort()) !==
+        deterministicJson([...expected.unitIds].sort()) ||
+      units.length !== 1 || units[0]!.version !== expectedUnit.version ||
+      deterministicJson(units[0]!.manifestFingerprint) !==
+        deterministicJson(expectedUnit.manifestFingerprint)
+    ) {
+      return {
+        status: "unresolved",
+        reason:
+          "The qualified ERP Buy catalog binding does not match the exact installed contribution.",
+      };
+    }
+
     if (catalogBinding.qualification !== "qualified") {
       return {
         status: "unresolved",

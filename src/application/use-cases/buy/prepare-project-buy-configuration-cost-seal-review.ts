@@ -24,6 +24,7 @@ import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot
 import type { EngineeringProjectRevisionStore } from "../../ports/out/engineering-project-revision-store.ts";
 import {
   canonicalBuyCandidateCaptureText,
+  isExactBuyCandidateArtifact,
   validateBuyCandidateCapture,
 } from "../../../domain/buy/buy-candidate-capture.ts";
 
@@ -61,7 +62,7 @@ export class PrepareProjectBuyConfigurationCostSealReview
       item.id === command.candidateArtifactId
     );
     if (
-      !artifact ||
+      !artifact || !isExactBuyCandidateArtifact(artifact) ||
       artifact.fingerprint.digest !== command.candidateFingerprint.digest
     ) {
       return {

@@ -1058,3 +1058,34 @@ class MemoryCommands {
     return Promise.resolve(this.project);
   }
 }
+
+Deno.test("qualified ERP catalog cannot substitute the installed binding, adapter or units", async () => {
+  const fixture = await compositionFixture();
+  const context = await fakeContexts(fixture, { authorized: true, qualified: true })
+    .read(fixture.project);
+  const binding = context.catalog.bindings[0]!;
+  const mutations = [
+    { ...binding, version: "foreign-version" },
+    { ...binding, adapter: { ...binding.adapter, id: "foreign-adapter" } },
+    { ...binding, adapter: { ...binding.adapter, version: "foreign-version" } },
+    { ...binding, adapter: { ...binding.adapter, source: "foreign-source" } },
+    { ...binding, unitIds: [...binding.unitIds, "foreign-unit"] },
+  ];
+  for (const changed of mutations) {
+    const composition = await createBuyErpRuntimeComposition({
+      ...fixture.options,
+      contexts: {
+        read: () =>
+          Promise.resolve({
+            ...context,
+            catalog: { ...context.catalog, bindings: [changed] },
+          }),
+      },
+    });
+    assertEquals(
+      (await composition.bindings.resolve({ project: fixture.project })).status,
+      "unresolved",
+    );
+  }
+  assertEquals(fixture.calls, []);
+});
