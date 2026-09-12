@@ -20,7 +20,7 @@ coverage](../../reference/domains/sysml/coverage.md), and [Modelica
 coverage](../../reference/domains/modelica/coverage.md). The separate [Mechanism
 coverage](../../reference/domains/mechanism/coverage.md) implements one bounded
 prescribed-kinematics L1–L5 route. The [CL01 capability-lamp
-dossier](../../project-dossiers/capability-lamp-cl01/README.md) now records that route
+dossier](../../annex/project-dossiers/capability-lamp-cl01/README.md) now records that route
 through a live local Chrono run and an exact human closeout. Host runtime qualification
 remains a separate operational authority, and the dossier does not prove external image
 distribution.
@@ -37,7 +37,7 @@ A separate local observation, not a replacement of that CA02 horizon, is
 distinct mechanical, thermal, and electrical L3–L5 records plus one reviewed impact
 recross. G6 is a proposed shared coupling input for a future re-run, not a thermal
 result. X10 stays `unavailable`. Tracking:
-[AL01 status](../../project-dossiers/articulated-led-desk-lamp/status.md). That walk is not
+[AL01 status](../../annex/project-dossiers/articulated-led-desk-lamp/status.md). That walk is not
 physical safety, compliance, lifetime, brightness, manufacturing, or vendor validity.
 
 Before using CA02 as the reference, a human must confirm that this isolated-part scope,

@@ -84,7 +84,7 @@ It cannot substitute the active-pin authority, does not write
 ## Authority limit
 
 The dated
-[ID01 canary](../../../project-dossiers/inspection-drone-id01/nested-root-canary-20260907.md)
+[ID01 canary](../../../annex/project-dossiers/inspection-drone-id01/nested-root-canary-20260907.md)
 qualifies manual two-level composition: immediate child captures can themselves be
 canonical modules, whose exact assembly STEP bytes are imported without reopening or
 flattening descendant manifests. It changes no schema, operation, unit, placement

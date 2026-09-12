@@ -100,7 +100,7 @@ Deno.test("public archives omit private development aides while retaining portab
         public: false,
       },
       {
-        path: "docs/rfcs/private-session-brief.md",
+        path: "docs/annex/rfcs/private-session-brief.md",
         public: false,
       },
       {
@@ -146,7 +146,7 @@ Deno.test("public archives omit private development aides while retaining portab
       "The private asset workspace directory must not enter the public archive.",
     );
     assert(
-      !archivePaths.includes("docs/rfcs/"),
+      !archivePaths.includes("docs/annex/rfcs/"),
       "The private planning-history directory must not enter the public archive.",
     );
     for (const fixture of fixtures) {

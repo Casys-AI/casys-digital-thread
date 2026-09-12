@@ -142,7 +142,7 @@ walk ([run admitted SPICE](../run/run-admitted-spice.md)). It is not mcp-spice a
 the LED-driver fiche.
 
 A local AL01 walk of those optional verticals is tracking evidence, not this from-zero
-script: [AL01 status](../../project-dossiers/articulated-led-desk-lamp/status.md). Do
+script: [AL01 status](../../annex/project-dossiers/articulated-led-desk-lamp/status.md). Do
 not clone AL01.
 
 If a later geometry **replaces** an earlier one, the writer emits `supersedes` (exact

@@ -129,7 +129,7 @@ publishes no Thread evidence.
 ## 5. Method sheet, L4, and L5 (generic capability)
 
 This section is the generic walk. Exact AL01 identities live on
-[AL01 runtime evidence](../../project-dossiers/articulated-led-desk-lamp/runtime-evidence.md);
+[AL01 runtime evidence](../../annex/project-dossiers/articulated-led-desk-lamp/runtime-evidence.md);
 this page does not substitute for them.
 
 After the completed L3 run, call

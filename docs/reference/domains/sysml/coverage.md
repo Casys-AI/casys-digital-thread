@@ -56,7 +56,7 @@ surface.
 Named runtime proof: MCS-02 used `architecture-capture/4.0` to navigate eight separate
 product definitions, attach exact CAD/Modelica/SPICE sources to three of them, and write
 system plus RailFrame scalar requirements. See
-[MCS-02 SysML](../../../project-dossiers/motorized-camera-slider-mcs02/domains/sysml.md).
+[MCS-02 SysML](../../../annex/project-dossiers/motorized-camera-slider-mcs02/domains/sysml.md).
 This does not add placements, ports, flows or behavioral SysML to the covered grammar.
 
 PS-01 added a second runtime proof on 2026-08-25. SysON accepted the package and six

@@ -101,7 +101,7 @@ CentralDeck source revision 2, attachment revision 5 at workspace 116, then comp
 without gaps and was admitted at Thread r72. This closes the previously observed
 requirements-basis refusal; it does not claim a subsequent CAD export succeeded. Exact
 identities are in the
-[ID01 recapture ledger](../../project-dossiers/inspection-drone-id01/requirements-recapture-20260907.md).
+[ID01 recapture ledger](../../annex/project-dossiers/inspection-drone-id01/requirements-recapture-20260907.md).
 
 This qualification proves current unchanged requirements and their exact basis, not
 mechanical resistance, a new solver result, compliance or fitness for flight. A physical
