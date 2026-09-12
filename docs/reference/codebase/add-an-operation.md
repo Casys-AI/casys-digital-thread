@@ -1,0 +1,331 @@
+# Reference: add a registered operation
+
+Audience: agent · Diátaxis: reference · Kind: contract
+
+Ordered mechanical wiring for one new **registered** engineering operation. File
+locations and line numbers were traced from `record.archive-lineage@1`
+(`ARCHIVE_LINEAGE_OPERATION`). This page is not an authority-extension runbook.
+
+Index: [workspace source map](../codebase/codebase-map.md). Placement rules:
+[agent workspace §8](../agent/agent-workspace.md#8-where-to-put-code). Planning
+catalogue: [registered operations](../agent/agent-workspace.md#5-registered-operations).
+
+## Not the authority runbook
+
+A new CAD, admitted Modelica, FEA, or generic SysML **construct or physics** is a
+bounded capability extension. Route that work through
+[extend an engineering capability](../../../.agents/skills/extend-engineering-capability/SKILL.md)
+and the selected row of
+[capability routes](../../../.agents/skills/extend-engineering-capability/references/capability-routes.md).
+The skill points at the living how-tos under
+[extend a reviewed engineering surface](../../how-to/extend/README.md). Do not copy those
+runbooks here. Do not invent an operation identity as a substitute for a missing
+construct.
+
+This page covers only the control-plane wiring that makes an already-specified
+operation planable, queueable, executable, and projectable.
+
+## Explicit refusals
+
+- Do not plan, queue, execute, or document an operation the live registry does not
+  know. Unknown `id@version` is indistinguishable from absent
+  ([`registry.ts:1808`](../../../src/orchestration/operations/registry.ts)).
+- Do not add a caller-selected provider, tool, argument set, image, endpoint, or
+  runtime. The registry is a planning boundary only
+  ([`registry.ts:155`](../../../src/orchestration/operations/registry.ts)).
+- Do not register a Workbench command. Workbench is `GET` + SSE
+  ([`AGENTS.md`](../../../AGENTS.md)).
+- Do not treat `prerequisiteOnly` as plan/queue work
+  ([`registry.ts:1893`](../../../src/orchestration/operations/registry.ts)).
+- Do not re-open `retiredForPlanning` identities for new work
+  ([`registry.ts:1903`](../../../src/orchestration/operations/registry.ts)).
+- Do not teach a skill or how-to an identifier the registry will refuse. Path
+  documents are pinned to the live keys
+  ([`operation-reference-docs_test.ts:61`](../../../src/orchestration/operations/operation-reference-docs_test.ts)).
+- Do not assume registry membership alone wires execution or Workbench
+  persistence ordering. Those lists are explicit.
+
+## Ordered checklist
+
+Every new caller-visible operation must pass these steps. Conditional steps say
+when they apply. Citations are the `record.archive-lineage@1` sites unless noted.
+
+1. **Own the identity in domain.** Export `{ id, version }` next to the domain
+   math or proposal grammar. The tracer lives at
+   [`src/domain/thread/thread-retirement.ts:299`](../../../src/domain/thread/thread-retirement.ts)
+   (`id: "record.archive-lineage"`, `version: "1"`). Cascade math for that
+   identity is
+   [`computeArchiveCascade`](../../../src/domain/thread/thread-retirement.ts)
+   at line 83. Other operations typically colocate a closed parameter parser in
+   a `*-proposal.ts` module; this tracer does not.
+
+2. **Add one descriptor to the code-owned registry.** Append a
+   `RegisteredEngineeringOperation` object to `OPERATIONS` in
+   [`src/orchestration/operations/registry.ts`](../../../src/orchestration/operations/registry.ts).
+   The tracer is
+   [`registry.ts:1742`](../../../src/orchestration/operations/registry.ts)
+   (`decisionEvidenceScope: "thread-entity-bindings"`,
+   `runtimeDemand: none`, bindings `approvedBrief` + `archiveTarget`). Prefer
+   `id: THE_OPERATION.id` like neighbouring entries; the tracer currently repeats
+   the literal string. Descriptor shape:
+   [`engineering-operation-registry.ts:52`](../../../src/application/control-plane/engineering-operation-registry.ts).
+   Planning and queue both call
+   [`validateRegisteredEngineeringOperationInput`](../../../src/orchestration/operations/registry.ts)
+   at line 1869 via
+   [`REGISTERED_ENGINEERING_OPERATION_REGISTRY`](../../../src/orchestration/operations/registry.ts)
+   at line 2284.
+
+3. **Classify the project-path lane.** Every caller-visible operation needs one
+   entry in
+   [`PATH_LANE_BY_OPERATION`](../../../src/orchestration/operations/path-lanes.ts)
+   ([`path-lanes.ts:26`](../../../src/orchestration/operations/path-lanes.ts)).
+   The tracer is `"record.archive-lineage@1": fixed("system-model")` at
+   [`path-lanes.ts:87`](../../../src/orchestration/operations/path-lanes.ts).
+   Totality:
+   [`path-lanes_test.ts:13`](../../../src/orchestration/operations/path-lanes_test.ts).
+   `prerequisiteOnly` operations must stay off this map
+   ([`path-lanes_test.ts:30`](../../../src/orchestration/operations/path-lanes_test.ts)).
+
+4. **Declare runtime demand.** `none` or one explicit required-capability list.
+   The tracer is `NO_RUNTIME_DEMAND`. Adding any entry changes the trusted
+   demand fingerprint
+   ([`registry.ts:1843`](../../../src/orchestration/operations/registry.ts))
+   and the exhaustive projection
+   [`runtime-demand-registry_test.ts:101`](../../../src/orchestration/operations/runtime-demand-registry_test.ts)
+   (pinned `operations.length` and `noneCount`). Capability queue eligibility
+   uses `operations.require`
+   ([`capability-runtime-supervisor.ts:182`](../../../src/application/control-plane/capability-runtime-supervisor.ts));
+   `runtimeDemand.kind === "none"` returns no runtime
+   ([`capability-runtime-supervisor.ts:184`](../../../src/application/control-plane/capability-runtime-supervisor.ts)).
+
+5. **Gate the MRTR grammar at proposal time when the operation has one.**
+   [`PROPOSAL_VALIDATORS`](../../../src/orchestration/operations/proposal-validation.ts)
+   at
+   [`proposal-validation.ts:186`](../../../src/orchestration/operations/proposal-validation.ts)
+   is keyed by `id@version`. An absent key is left untouched
+   ([`proposal-validation.ts:451`](../../../src/orchestration/operations/proposal-validation.ts)).
+   `project_decision_propose` always calls
+   [`assertProposalMatchesOperationGrammar`](../../../src/orchestration/operations/proposal-validation.ts)
+   ([`project-control.ts:417`](../../../src/tools/project-control.ts)).
+   This tracer has **no** map entry; the executor still requires
+   `archiveAction=retire-lineage`, `archiveOperation=record.archive-lineage@1`,
+   and `archiveTargetCount`
+   ([`archive-lineage-run-executor.ts:674`](../../../src/adapters/record/archive-lineage-run-executor.ts)).
+   Pin that choice with a test
+   ([`proposal-validation_test.ts:510`](../../../src/orchestration/operations/proposal-validation_test.ts)).
+   Prefer a closed parser in the map for a new consequential grammar.
+
+6. **Implement a trusted executor.** One adapter class that structurally
+   satisfies
+   [`ProjectRunExecutor`](../../../src/application/ports/in/project-run-executor.ts)
+   ([`project-run-executor.ts:18`](../../../src/application/ports/in/project-run-executor.ts)).
+   The tracer is
+   [`ArchiveLineageRunExecutor`](../../../src/adapters/record/archive-lineage-run-executor.ts)
+   ([`archive-lineage-run-executor.ts:126`](../../../src/adapters/record/archive-lineage-run-executor.ts)):
+   agent-only origin
+   ([`archive-lineage-run-executor.ts:148`](../../../src/adapters/record/archive-lineage-run-executor.ts)),
+   `requireShape` against the exact identity
+   ([`archive-lineage-run-executor.ts:500`](../../../src/adapters/record/archive-lineage-run-executor.ts)),
+   human MRTR + exact target evidence
+   ([`archive-lineage-run-executor.ts:571`](../../../src/adapters/record/archive-lineage-run-executor.ts)),
+   domain cascade +
+   [`applyThreadSnapshotExtension`](../../../src/domain/thread/thread-snapshot-extension.ts)
+   ([`archive-lineage-run-executor.ts:465`](../../../src/adapters/record/archive-lineage-run-executor.ts);
+   extension helper
+   [`thread-snapshot-extension.ts:110`](../../../src/domain/thread/thread-snapshot-extension.ts)),
+   CAS readback, `publishRun`, `completeRun`. Re-export the domain identity so
+   composition cannot drift
+   ([`archive-lineage-run-executor.ts:92`](../../../src/adapters/record/archive-lineage-run-executor.ts)).
+   Hexagonal placement: `src/adapters/<authority>/`, never `src/infrastructure/`.
+
+7. **Join shared Thread-write guards when the executor appends a snapshot.**
+   Add `id@version` to `THREAD_WRITE_OPERATIONS`
+   ([`thread-write-basis-guard.ts:71`](../../../src/adapters/shared/thread-write-basis-guard.ts);
+   tracer at
+   [`thread-write-basis-guard.ts:95`](../../../src/adapters/shared/thread-write-basis-guard.ts)).
+   Claim injection:
+   [`assertThreadWriteClaimAllowed`](../../../src/adapters/shared/thread-write-basis-guard.ts)
+   ([`thread-write-basis-guard.ts:275`](../../../src/adapters/shared/thread-write-basis-guard.ts)) from
+   [`engineering-project-command-runtime.ts:110`](../../../src/adapters/project/engineering-project-command-runtime.ts).
+   The tracer also calls
+   [`assertThreadWriteBasisAvailable`](../../../src/adapters/shared/thread-write-basis-guard.ts)
+   ([`archive-lineage-run-executor.ts:185`](../../../src/adapters/record/archive-lineage-run-executor.ts)).
+   Skip this step only when the operation does not write Thread.
+
+8. **Wire the composition root.** In
+   [`server.ts`](../../../server.ts): construct the executor
+   ([`server.ts:1341`](../../../server.ts)), then register it on
+   [`RegisteredProjectRunExecutor.additional`](../../../src/application/use-cases/registered-project-run-executor.ts)
+   ([`server.ts:1719`](../../../server.ts), tracer at
+   [`server.ts:1875`](../../../server.ts)). A registered plan identity with no
+   dispatch entry fails at execute:
+   [`registered-project-run-executor.ts:114`](../../../src/application/use-cases/registered-project-run-executor.ts)
+   (`"not backed by a trusted registered executor"`). Inject the same registry
+   into project planning
+   ([`server.ts:959`](../../../server.ts)). `project_plan_publish` /
+   `project_change_append` /
+   `project_agent_run_queue` already validate through that registry
+   ([`project-planning-transitions.ts:725`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts),
+   [`engineering-run-transitions.ts:406`](../../../src/application/use-cases/project/commands/engineering-run-transitions.ts)).
+   Do not add a new MCP tool for the operation.
+   `project_agent_run_execute` dispatches only by queued run id
+   ([`project-control.ts:744`](../../../src/tools/project-control.ts)).
+
+9. **Set registry flags that planning actually enforces.**
+   - `requiresAdditiveChange` — refused in the initial plan
+     ([`project-planning-transitions.ts:86`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts)).
+     The tracer does **not** set this flag.
+   - `decisionEvidenceScope: "thread-entity-bindings"` — copies thread-entity
+     bindings into decision `inputEvidenceRefs`
+     ([`project-planning-transitions.ts:799`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts)).
+     The tracer sets it
+     ([`registry.ts:1755`](../../../src/orchestration/operations/registry.ts)).
+     Human approval elicitation then renders those refs as canonical JSON
+     ([`project-control.ts:1288`](../../../src/tools/project-control.ts)).
+   - `threadEntityBindingsMustMatchBasis` — queue/append must name the current
+     basis
+     ([`engineering-run-transitions.ts:316`](../../../src/application/use-cases/project/commands/engineering-run-transitions.ts)).
+     The tracer does **not** set this flag; the executor still checks target
+     snapshot identity
+     ([`archive-lineage-run-executor.ts:542`](../../../src/adapters/record/archive-lineage-run-executor.ts)).
+   - `mustOrigin: "human"` — run lifecycle and
+     `project_agent_run_execute` elicitation
+     ([`engineering-project-command-policy.ts:82`](../../../src/application/use-cases/project/commands/engineering-project-command-policy.ts),
+     [`project-control.ts:1112`](../../../src/tools/project-control.ts)).
+     The tracer is agent-dispatched after a human MRTR; it is not
+     `mustOrigin: "human"`.
+
+10. **Name Workbench persistence ordering when the executor saves Thread before
+    `completeRun`.** Membership in the registry does not do this. Add the
+    identity to `DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS`
+    ([`serve-native-workbench.ts:1219`](../../../scripts/serve/serve-native-workbench.ts);
+    tracer at
+    [`serve-native-workbench.ts:1236`](../../../scripts/serve/serve-native-workbench.ts)).
+    While such a run is still attaching, the browser keeps the declared project
+    head
+    ([`serve-native-workbench.ts:1198`](../../../scripts/serve/serve-native-workbench.ts)).
+    Pin it
+    ([`serve-native-workbench_test.ts:1396`](../../../scripts/serve/serve-native-workbench_test.ts)).
+    Archived-entity hiding uses generic
+    [`archivedRefKeys`](../../../src/domain/thread/thread-snapshot.ts)
+    ([`thread-snapshot.ts:271`](../../../src/domain/thread/thread-snapshot.ts));
+    do not add an operation-specific projector for retirement.
+
+11. **Cover the material risk with colocated tests.** Minimum for a Thread
+    writer like the tracer:
+    - executor refusals and one successful publish
+      ([`archive-lineage-run-executor_test.ts`](../../../src/adapters/record/archive-lineage-run-executor_test.ts));
+    - domain cascade
+      ([`thread-retirement_test.ts`](../../../src/domain/thread/thread-retirement_test.ts));
+    - Thread-write sibling exclusion
+      ([`thread-write-basis-guard_test.ts:625`](../../../src/adapters/shared/thread-write-basis-guard_test.ts));
+    - Workbench durable-writer classification
+      ([`serve-native-workbench_test.ts:1396`](../../../scripts/serve/serve-native-workbench_test.ts));
+    - update
+      [`runtime-demand-registry_test.ts`](../../../src/orchestration/operations/runtime-demand-registry_test.ts)
+      counts;
+    - path-lane totality (automatic once step 3 is done);
+    - registry contract tests when bindings, flags, or `mustOrigin` are new.
+    Unknown ids already fail closed
+    ([`registry_test.ts:105`](../../../src/orchestration/operations/registry_test.ts),
+    code `unknown_operation`). A work-item whose operation is not in the
+    registry compiles as `unresolved / operation-unregistered`
+    ([`compile-project-capability-demand.ts:170`](../../../src/application/control-plane/compile-project-capability-demand.ts)).
+
+12. **Update living catalogues that name operations, then stop.** Add the row to
+    [agent workspace §5](../agent/agent-workspace.md#5-registered-operations)
+    (tracer at
+    [`agent-workspace.md:501`](../agent/agent-workspace.md)). If the operation
+    is part of the public project contract, name it in
+    [engineering project](../contracts/engineering-project.md)
+    (tracer at
+    [`engineering-project.md:159`](../contracts/engineering-project.md)). Cite
+    it from a path skill only when that skill actually teaches it; those
+    citations are then pinned by
+    [`operation-reference-docs_test.ts:13`](../../../src/orchestration/operations/operation-reference-docs_test.ts).
+    File census of the owning authority stays on the matching page under
+    [codebase map](../codebase/codebase-map.md)
+    (tracer executor already listed in
+    [project, Thread, and record](../codebase/project-thread-record.md)
+    at
+    [`project-thread-record.md:222`](../codebase/project-thread-record.md)).
+    Queueing sequence for any trusted consequential op remains
+    `project_change_append` → `project_decision_propose` →
+    `project_decision_approve` → `project_agent_run_queue` →
+    `project_agent_run_execute`
+    ([`agent-workspace.md:522`](../agent/agent-workspace.md)).
+
+## Tracer inventory (`ARCHIVE_LINEAGE_OPERATION`)
+
+Verified 2026-09-12 against this worktree. Every `file:line` was read in source.
+
+| Layer | Role | Citation |
+| ----- | ---- | -------- |
+| Domain identity | `{ id, version }` constant | [`src/domain/thread/thread-retirement.ts:299`](../../../src/domain/thread/thread-retirement.ts) |
+| Domain cascade | Downward production closure; never `traces_to` | [`src/domain/thread/thread-retirement.ts:83`](../../../src/domain/thread/thread-retirement.ts) |
+| Domain snapshot | `archived` change keys used for idempotence | [`src/domain/thread/thread-snapshot.ts:271`](../../../src/domain/thread/thread-snapshot.ts) |
+| Domain extension | Successor snapshot write | [`src/domain/thread/thread-snapshot-extension.ts:110`](../../../src/domain/thread/thread-snapshot-extension.ts) |
+| Registry contract | Descriptor type | [`src/application/control-plane/engineering-operation-registry.ts:52`](../../../src/application/control-plane/engineering-operation-registry.ts) |
+| Registry entry | Planning descriptor (literal id, not the constant) | [`src/orchestration/operations/registry.ts:1742`](../../../src/orchestration/operations/registry.ts) |
+| Registry lookup | `unknown_operation` fail-closed | [`src/orchestration/operations/registry.ts:1808`](../../../src/orchestration/operations/registry.ts) |
+| Registry list | Keys for doc-pinning tests | [`src/orchestration/operations/registry.ts:1821`](../../../src/orchestration/operations/registry.ts) |
+| Registry validate | Plan + queue input | [`src/orchestration/operations/registry.ts:1869`](../../../src/orchestration/operations/registry.ts) |
+| Registry instance | Code-owned `get` / `require` / `list` / `validate` | [`src/orchestration/operations/registry.ts:1932`](../../../src/orchestration/operations/registry.ts) |
+| Registry inject | Planning validation boundary | [`src/orchestration/operations/registry.ts:2284`](../../../src/orchestration/operations/registry.ts) |
+| Path lane | `system-model` | [`src/orchestration/operations/path-lanes.ts:87`](../../../src/orchestration/operations/path-lanes.ts) |
+| Proposal map | **No** grammar entry; free-form until executor | [`src/orchestration/operations/proposal-validation.ts:186`](../../../src/orchestration/operations/proposal-validation.ts) |
+| Proposal MCP | Gate at `project_decision_propose` | [`src/tools/project-control.ts:417`](../../../src/tools/project-control.ts) |
+| Executor | Trusted generic writer, no provider | [`src/adapters/record/archive-lineage-run-executor.ts:126`](../../../src/adapters/record/archive-lineage-run-executor.ts) |
+| Executor identity export | Same object `server.ts` registers | [`src/adapters/record/archive-lineage-run-executor.ts:92`](../../../src/adapters/record/archive-lineage-run-executor.ts) |
+| Executor origin | Agent only | [`src/adapters/record/archive-lineage-run-executor.ts:148`](../../../src/adapters/record/archive-lineage-run-executor.ts) |
+| Executor MRTR | Human approval + exact targets | [`src/adapters/record/archive-lineage-run-executor.ts:571`](../../../src/adapters/record/archive-lineage-run-executor.ts) |
+| Executor grammar | `isArchiveProposal` | [`src/adapters/record/archive-lineage-run-executor.ts:674`](../../../src/adapters/record/archive-lineage-run-executor.ts) |
+| Thread-write set | Shared basis exclusion | [`src/adapters/shared/thread-write-basis-guard.ts:95`](../../../src/adapters/shared/thread-write-basis-guard.ts) |
+| Claim hook | Command runtime | [`src/adapters/project/engineering-project-command-runtime.ts:110`](../../../src/adapters/project/engineering-project-command-runtime.ts) |
+| Compose construct | Always-on, no provider | [`server.ts:1341`](../../../server.ts) |
+| Compose dispatch | `additional[]` registration | [`server.ts:1875`](../../../server.ts) |
+| Compose planning | Registry injected | [`server.ts:959`](../../../server.ts) |
+| Dispatch miss | Unwired registered op | [`src/application/use-cases/registered-project-run-executor.ts:114`](../../../src/application/use-cases/registered-project-run-executor.ts) |
+| Plan validate | `stage: "planning"` | [`src/application/use-cases/project/commands/project-planning-transitions.ts:725`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts) |
+| Evidence scope | Bindings → decision refs | [`src/application/use-cases/project/commands/project-planning-transitions.ts:799`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts) |
+| Queue validate | `stage: "queue"` | [`src/application/use-cases/project/commands/engineering-run-transitions.ts:406`](../../../src/application/use-cases/project/commands/engineering-run-transitions.ts) |
+| MCP append | `project_change_append` | [`src/tools/project-control.ts:574`](../../../src/tools/project-control.ts) |
+| MCP queue | `project_agent_run_queue` | [`src/tools/project-control.ts:700`](../../../src/tools/project-control.ts) |
+| MCP execute | `project_agent_run_execute` | [`src/tools/project-control.ts:744`](../../../src/tools/project-control.ts) |
+| MCP elicitation | Exact evidence JSON | [`src/tools/project-control.ts:1288`](../../../src/tools/project-control.ts) |
+| Workbench allowlist | Durable-before-attachment | [`scripts/serve/serve-native-workbench.ts:1236`](../../../scripts/serve/serve-native-workbench.ts) |
+| Workbench hold | Keep declared head | [`scripts/serve/serve-native-workbench.ts:1198`](../../../scripts/serve/serve-native-workbench.ts) |
+| Capability demand | Unregistered → unresolved | [`src/application/control-plane/compile-project-capability-demand.ts:170`](../../../src/application/control-plane/compile-project-capability-demand.ts) |
+| Capability runtime | `none` demand skips host | [`src/application/control-plane/capability-runtime-supervisor.ts:184`](../../../src/application/control-plane/capability-runtime-supervisor.ts) |
+
+### Tracer tests
+
+| Suite | What it pins | Citation |
+| ----- | ------------ | -------- |
+| Domain cascade | Closure, unknown target, idempotence | [`src/domain/thread/thread-retirement_test.ts:1`](../../../src/domain/thread/thread-retirement_test.ts) |
+| Executor | Origin, shape, MRTR, publish, recovery, redundant cascade | [`src/adapters/record/archive-lineage-run-executor_test.ts:1`](../../../src/adapters/record/archive-lineage-run-executor_test.ts) |
+| Thread-write guard | Shares basis exclusion with compilation | [`src/adapters/shared/thread-write-basis-guard_test.ts:625`](../../../src/adapters/shared/thread-write-basis-guard_test.ts) |
+| Workbench | Durable-writer classification includes the tracer | [`scripts/serve/serve-native-workbench_test.ts:1396`](../../../scripts/serve/serve-native-workbench_test.ts) |
+| Proposal | Ungated grammar; shared decision still gated by the other op | [`src/orchestration/operations/proposal-validation_test.ts:510`](../../../src/orchestration/operations/proposal-validation_test.ts) |
+| Path lanes | Totality over caller-visible registry keys | [`src/orchestration/operations/path-lanes_test.ts:13`](../../../src/orchestration/operations/path-lanes_test.ts) |
+| Runtime demand | Exhaustive `none` vs required counts | [`src/orchestration/operations/runtime-demand-registry_test.ts:101`](../../../src/orchestration/operations/runtime-demand-registry_test.ts) |
+| Registry unknown | `unknown_operation`, no tool/args leak | [`src/orchestration/operations/registry_test.ts:105`](../../../src/orchestration/operations/registry_test.ts) |
+| Doc pin | Cited path-document ids must exist | [`src/orchestration/operations/operation-reference-docs_test.ts:61`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
+
+### Tracer-only, not a general wiring step
+
+These files mention `record.archive-lineage` as a fixture, probe, or narrative. Copying
+them is not how a new operation is added.
+
+| File | Why it is not a wiring step |
+| ---- | --------------------------- |
+| [`src/adapters/shared/stores/engineering-project-store_test.ts:629`](../../../src/adapters/shared/stores/engineering-project-store_test.ts) | Store fixture work-item id |
+| [`src/domain/project/engineering-project-extension_test.ts:373`](../../../src/domain/project/engineering-project-extension_test.ts) | Extension fixture work-item id |
+| [`scripts/probes/probe-archive-cascade.ts:1`](../../../scripts/probes/probe-archive-cascade.ts) | Diagnostic cascade probe; no project command |
+| [`docs/reference/contracts/engineering-project.md:299`](../contracts/engineering-project.md) | Contract narrative of this operation |
+| [`docs/reference/pipeline/analysis-authority-pipeline.md:426`](../pipeline/analysis-authority-pipeline.md) | Provenance-retirement narrative |
+| [`docs/reference/codebase/project-thread-record.md:40`](../codebase/project-thread-record.md) | File census of the record adapters |
+
+`computeArchiveCascade` is also imported by other Thread writers (requirements,
+geometry, compilation tests). That reuse is cascade math, not operation
+registration.
