@@ -39,9 +39,16 @@ operation planable, queueable, executable, and projectable.
   ([`registry.ts:1893`](../../../src/orchestration/operations/registry.ts)).
 - Do not re-open `retiredForPlanning` identities for new work
   ([`registry.ts:1903`](../../../src/orchestration/operations/registry.ts)).
-- Do not teach a skill or how-to an identifier the registry will refuse. Path
-  documents are pinned to the live keys
-  ([`operation-reference-docs_test.ts:61`](../../../src/orchestration/operations/operation-reference-docs_test.ts)).
+- Do not teach a skill or how-to an identifier the registry will refuse.
+  [`operation-reference-docs_test.ts`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
+  watches exactly the documents in `OPERATION_CITING_DOCUMENTS`
+  ([`operation-reference-docs_test.ts:14`](../../../src/orchestration/operations/operation-reference-docs_test.ts)),
+  currently
+  [`.agents/skills/guide-industrial-project/SKILL.md`](../../../.agents/skills/guide-industrial-project/SKILL.md).
+  It does not pin every skill or how-to. A new
+  path document that cites operations must join that list, or the pin at
+  [`operation-reference-docs_test.ts:61`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
+  will not see it.
 - Do not assume registry membership alone wires execution or Workbench
   persistence ordering. Those lists are explicit.
 
@@ -98,7 +105,54 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
    `runtimeDemand.kind === "none"` returns no runtime
    ([`capability-runtime-supervisor.ts:184`](../../../src/application/control-plane/capability-runtime-supervisor.ts)).
 
-5. **Gate the MRTR grammar at proposal time when the operation has one.**
+5. **Declare `runtimePreparationPrerequisites` when the execution
+   operation needs a separate preparation capability.** This is a
+   registry demand-closure edge, never an agent-plan or queue
+   dependency
+   ([`engineering-operation-registry.ts:77`](../../../src/application/control-plane/engineering-operation-registry.ts)).
+   Every target must be `planning-only` and `prerequisiteOnly` with
+   exactly one `use: "preparation"` capability
+   ([`runtime-preparation-prerequisite-closure.ts:211`](../../../src/application/control-plane/runtime-preparation-prerequisite-closure.ts)).
+   The graph is canonicalized once
+   ([`runtime-preparation-prerequisite-closure.ts:59`](../../../src/application/control-plane/runtime-preparation-prerequisite-closure.ts))
+   and expands demand for planned work items
+   ([`compile-project-capability-demand.ts:290`](../../../src/application/control-plane/compile-project-capability-demand.ts))
+   and Brief intent
+   ([`compile-project-capability-intent.ts:75`](../../../src/application/control-plane/compile-project-capability-intent.ts)).
+   Edges participate in the trusted demand fingerprint
+   ([`registry.ts:1846`](../../../src/orchestration/operations/registry.ts)).
+   The tracer has **no** such edge. The live example is
+   `verify.observe-assembly-integrity@1` →
+   `design.prepare-geometry-module@1`
+   ([`registry.ts:587`](../../../src/orchestration/operations/registry.ts);
+   pinned at
+   [`runtime-demand-registry_test.ts:150`](../../../src/orchestration/operations/runtime-demand-registry_test.ts)).
+   Skip this step when the operation does not need a separate
+   planning-only preparation prerequisite. Declaring
+   `use: "preparation"` on the operation's own `runtimeDemand` does
+   not by itself require this edge.
+
+6. **Add the operation to `BRIEF_CAPABILITY_INTENT_ROUTES` when a
+   Brief verification authority must forecast it.** The table names
+   registered operations that may carry a runtime demand; it never
+   restates a capability or selects a provider
+   ([`brief-capability-intent-routes.ts:67`](../../../src/orchestration/operations/brief-capability-intent-routes.ts),
+   table at
+   [`brief-capability-intent-routes.ts:72`](../../../src/orchestration/operations/brief-capability-intent-routes.ts)).
+   `compileProjectCapabilityIntent` reads only
+   `verification-activity.verificationAuthority`, looks up the route,
+   then resolves those operations through the preparation-prerequisite
+   closure
+   ([`compile-project-capability-intent.ts:45`](../../../src/application/control-plane/compile-project-capability-intent.ts)).
+   Prerequisite-only operations cannot be route roots
+   ([`runtime-preparation-prerequisite-closure.ts:84`](../../../src/application/control-plane/runtime-preparation-prerequisite-closure.ts)).
+   The table is injected at
+   [`server.ts:998`](../../../server.ts).
+   The tracer is **not** on any route. Skip this step unless the
+   operation must appear in a Brief capability-intent ceiling.
+   Runtime demand alone does not put an operation on this table.
+
+7. **Gate the MRTR grammar at proposal time when the operation has one.**
    [`PROPOSAL_VALIDATORS`](../../../src/orchestration/operations/proposal-validation.ts)
    at
    [`proposal-validation.ts:186`](../../../src/orchestration/operations/proposal-validation.ts)
@@ -115,7 +169,7 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
    ([`proposal-validation_test.ts:510`](../../../src/orchestration/operations/proposal-validation_test.ts)).
    Prefer a closed parser in the map for a new consequential grammar.
 
-6. **Implement a trusted executor.** One adapter class that structurally
+8. **Implement a trusted executor.** One adapter class that structurally
    satisfies
    [`ProjectRunExecutor`](../../../src/application/ports/in/project-run-executor.ts)
    ([`project-run-executor.ts:18`](../../../src/application/ports/in/project-run-executor.ts)).
@@ -138,7 +192,7 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
    ([`archive-lineage-run-executor.ts:92`](../../../src/adapters/record/archive-lineage-run-executor.ts)).
    Hexagonal placement: `src/adapters/<authority>/`, never `src/infrastructure/`.
 
-7. **Join shared Thread-write guards when the executor appends a snapshot.**
+9. **Join shared Thread-write guards when the executor appends a snapshot.**
    Add `id@version` to `THREAD_WRITE_OPERATIONS`
    ([`thread-write-basis-guard.ts:71`](../../../src/adapters/shared/thread-write-basis-guard.ts);
    tracer at
@@ -152,7 +206,7 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
    ([`archive-lineage-run-executor.ts:185`](../../../src/adapters/record/archive-lineage-run-executor.ts)).
    Skip this step only when the operation does not write Thread.
 
-8. **Wire the composition root.** In
+10. **Wire the composition root.** In
    [`server.ts`](../../../server.ts): construct the executor
    ([`server.ts:1341`](../../../server.ts)), then register it on
    [`RegisteredProjectRunExecutor.additional`](../../../src/application/use-cases/registered-project-run-executor.ts)
@@ -171,10 +225,25 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
    `project_agent_run_execute` dispatches only by queued run id
    ([`project-control.ts:744`](../../../src/tools/project-control.ts)).
 
-9. **Set registry flags that planning actually enforces.**
+11. **Set registry flags that planning actually enforces.**
    - `requiresAdditiveChange` — refused in the initial plan
      ([`project-planning-transitions.ts:86`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts)).
      The tracer does **not** set this flag.
+   - `requiresDependsOnOperation` — every work item must `dependsOn`
+     exactly one current leaf revision of that named registered
+     operation. Superseded revisions do not make the leaf ambiguous.
+     Enforced only at `project_change_append`, before MRTR or queue
+     ([`project-planning-transitions.ts:279`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts),
+     wrapper
+     [`project-planning-transitions.ts:625`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts),
+     domain
+     [`required-depends-on-operation.ts:54`](../../../src/domain/project/required-depends-on-operation.ts)).
+     Initial plan publication does not run this check. The tracer does
+     **not** set this flag. Live example:
+     `architecture.seed-syson-model@2` depends on
+     `baseline.from-approved-brief@1`
+     ([`registry.ts:208`](../../../src/orchestration/operations/registry.ts)).
+     Skip unless planning must enforce that predecessor.
    - `decisionEvidenceScope: "thread-entity-bindings"` — copies thread-entity
      bindings into decision `inputEvidenceRefs`
      ([`project-planning-transitions.ts:799`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts)).
@@ -195,7 +264,33 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
      The tracer is agent-dispatched after a human MRTR; it is not
      `mustOrigin: "human"`.
 
-10. **Name Workbench persistence ordering when the executor saves Thread before
+12. **Set `resolvedOperationPlan: "2.0"` and add a resolver branch
+    when the operation needs a sealed dispatch plan.** Descriptor
+    field
+    ([`engineering-operation-registry.ts:81`](../../../src/application/control-plane/engineering-operation-registry.ts)).
+    Queueing calls the configured sealer when the marker is set
+    ([`engineering-run-transitions.ts:346`](../../../src/application/use-cases/project/commands/engineering-run-transitions.ts)).
+    `ResolvedOperationPlanResolver.resolve` currently branches
+    CalculiX, prescribed kinematics, admitted Modelica, and admitted
+    SPICE, then fails closed
+    ([`resolved-operation-plan-resolver.ts:176`](../../../src/adapters/compile/plans/resolved-operation-plan-resolver.ts);
+    first branch
+    [`resolved-operation-plan-resolver.ts:231`](../../../src/adapters/compile/plans/resolved-operation-plan-resolver.ts),
+    unknown identity
+    [`resolved-operation-plan-resolver.ts:252`](../../../src/adapters/compile/plans/resolved-operation-plan-resolver.ts)).
+    A new plan-bearing operation must add a branch or queueing throws
+    `"resolved-operation-plan/2.0 is not defined for this operation."`.
+    The tracer has **no** marker. Live descriptors include
+    `verify.run-prescribed-kinematics@1`
+    ([`registry.ts:664`](../../../src/orchestration/operations/registry.ts))
+    and `verify.run-fea-static-proof@3`
+    ([`fea-isolated-static-proof.ts:55`](../../../src/orchestration/operations/fea-isolated-static-proof.ts)).
+    Registry marker / persisted-receipt identity parity is pinned
+    ([`registry_test.ts:304`](../../../src/orchestration/operations/registry_test.ts)).
+    Skip this step when the operation does not need a sealed dispatch
+    plan.
+
+13. **Name Workbench persistence ordering when the executor saves Thread before
     `completeRun`.** Membership in the registry does not do this. Add the
     identity to `DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS`
     ([`serve-native-workbench.ts:1219`](../../../scripts/serve/serve-native-workbench.ts);
@@ -211,7 +306,7 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
     ([`thread-snapshot.ts:271`](../../../src/domain/thread/thread-snapshot.ts));
     do not add an operation-specific projector for retirement.
 
-11. **Cover the material risk with colocated tests.** Minimum for a Thread
+14. **Cover the material risk with colocated tests.** Minimum for a Thread
     writer like the tracer:
     - executor refusals and one successful publish
       ([`archive-lineage-run-executor_test.ts`](../../../src/adapters/record/archive-lineage-run-executor_test.ts));
@@ -225,14 +320,16 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
       [`runtime-demand-registry_test.ts`](../../../src/orchestration/operations/runtime-demand-registry_test.ts)
       counts;
     - path-lane totality (automatic once step 3 is done);
-    - registry contract tests when bindings, flags, or `mustOrigin` are new.
+    - registry contract tests when bindings, flags, `mustOrigin`,
+      `runtimePreparationPrerequisites`, `requiresDependsOnOperation`, or
+      `resolvedOperationPlan` are new.
     Unknown ids already fail closed
     ([`registry_test.ts:105`](../../../src/orchestration/operations/registry_test.ts),
     code `unknown_operation`). A work-item whose operation is not in the
     registry compiles as `unresolved / operation-unregistered`
     ([`compile-project-capability-demand.ts:170`](../../../src/application/control-plane/compile-project-capability-demand.ts)).
 
-12. **Update living catalogues that name operations, then stop.** Add the row to
+15. **Update living catalogues that name operations, then stop.** Add the row to
     [agent workspace §5](../agent/agent-workspace.md#5-registered-operations)
     (tracer at
     [`agent-workspace.md:501`](../agent/agent-workspace.md)). If the operation
@@ -240,9 +337,16 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
     [engineering project](../contracts/engineering-project.md)
     (tracer at
     [`engineering-project.md:159`](../contracts/engineering-project.md)). Cite
-    it from a path skill only when that skill actually teaches it; those
-    citations are then pinned by
-    [`operation-reference-docs_test.ts:13`](../../../src/orchestration/operations/operation-reference-docs_test.ts).
+    it from a path skill only when that skill actually teaches it. Those
+    citations are pinned only if the document is listed in
+    `OPERATION_CITING_DOCUMENTS`
+    ([`operation-reference-docs_test.ts:14`](../../../src/orchestration/operations/operation-reference-docs_test.ts));
+    today that list is
+    [`.agents/skills/guide-industrial-project/SKILL.md`](../../../.agents/skills/guide-industrial-project/SKILL.md).
+    Add any new
+    operation-citing path document to that array, or
+    [`operation-reference-docs_test.ts:61`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
+    will not see it.
     File census of the owning authority stays on the matching page under
     [codebase map](../codebase/codebase-map.md)
     (tracer executor already listed in
@@ -257,7 +361,8 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
 
 ## Tracer inventory (`ARCHIVE_LINEAGE_OPERATION`)
 
-Verified 2026-09-12 against this worktree. Every `file:line` was read in source.
+Verified 2026-09-12 against this worktree; conditional wiring rows verified
+2026-09-13. Every `file:line` was read in source.
 
 | Layer | Role | Citation |
 | ----- | ---- | -------- |
@@ -297,6 +402,17 @@ Verified 2026-09-12 against this worktree. Every `file:line` was read in source.
 | Workbench hold | Keep declared head | [`scripts/serve/serve-native-workbench.ts:1198`](../../../scripts/serve/serve-native-workbench.ts) |
 | Capability demand | Unregistered → unresolved | [`src/application/control-plane/compile-project-capability-demand.ts:170`](../../../src/application/control-plane/compile-project-capability-demand.ts) |
 | Capability runtime | `none` demand skips host | [`src/application/control-plane/capability-runtime-supervisor.ts:184`](../../../src/application/control-plane/capability-runtime-supervisor.ts) |
+| Prep-prerequisite field | Optional demand-closure edges; tracer has **none** | [`src/application/control-plane/engineering-operation-registry.ts:77`](../../../src/application/control-plane/engineering-operation-registry.ts) |
+| Prep-prerequisite graph | Canonicalize; preparation-only targets | [`src/application/control-plane/runtime-preparation-prerequisite-closure.ts:59`](../../../src/application/control-plane/runtime-preparation-prerequisite-closure.ts) |
+| Prep-prerequisite live | `verify.observe-assembly-integrity@1` → prepare-geometry-module | [`src/orchestration/operations/registry.ts:587`](../../../src/orchestration/operations/registry.ts) |
+| Depends-on field | Optional planning predecessor; tracer has **none** | [`src/application/control-plane/engineering-operation-registry.ts:96`](../../../src/application/control-plane/engineering-operation-registry.ts) |
+| Depends-on append | `assertRequiredDependsOnOperation` at `project_change_append` | [`src/application/use-cases/project/commands/project-planning-transitions.ts:279`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts) |
+| Depends-on domain | Exact current leaf of the named operation | [`src/domain/project/required-depends-on-operation.ts:54`](../../../src/domain/project/required-depends-on-operation.ts) |
+| ROP2 field | `resolvedOperationPlan: "2.0"`; tracer has **none** | [`src/application/control-plane/engineering-operation-registry.ts:81`](../../../src/application/control-plane/engineering-operation-registry.ts) |
+| ROP2 queue seal | Sealer required when the marker is set | [`src/application/use-cases/project/commands/engineering-run-transitions.ts:346`](../../../src/application/use-cases/project/commands/engineering-run-transitions.ts) |
+| ROP2 resolver | Identity branches, else fail closed | [`src/adapters/compile/plans/resolved-operation-plan-resolver.ts:176`](../../../src/adapters/compile/plans/resolved-operation-plan-resolver.ts) |
+| Brief intent routes | `BRIEF_CAPABILITY_INTENT_ROUTES`; tracer **not** listed | [`src/orchestration/operations/brief-capability-intent-routes.ts:72`](../../../src/orchestration/operations/brief-capability-intent-routes.ts) |
+| Brief intent compile | Authority → route operations → demand closure | [`src/application/control-plane/compile-project-capability-intent.ts:45`](../../../src/application/control-plane/compile-project-capability-intent.ts) |
 
 ### Tracer tests
 
@@ -310,7 +426,8 @@ Verified 2026-09-12 against this worktree. Every `file:line` was read in source.
 | Path lanes | Totality over caller-visible registry keys | [`src/orchestration/operations/path-lanes_test.ts:13`](../../../src/orchestration/operations/path-lanes_test.ts) |
 | Runtime demand | Exhaustive `none` vs required counts | [`src/orchestration/operations/runtime-demand-registry_test.ts:101`](../../../src/orchestration/operations/runtime-demand-registry_test.ts) |
 | Registry unknown | `unknown_operation`, no tool/args leak | [`src/orchestration/operations/registry_test.ts:105`](../../../src/orchestration/operations/registry_test.ts) |
-| Doc pin | Cited path-document ids must exist | [`src/orchestration/operations/operation-reference-docs_test.ts:61`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
+| Doc watch list | Exact documents the pin suite reads (`OPERATION_CITING_DOCUMENTS`, currently one skill) | [`src/orchestration/operations/operation-reference-docs_test.ts:14`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
+| Doc pin | Cited ids in those watched documents must exist | [`src/orchestration/operations/operation-reference-docs_test.ts:61`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
 
 ### Tracer-only, not a general wiring step
 
