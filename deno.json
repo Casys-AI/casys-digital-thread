@@ -77,6 +77,7 @@
     "test": "deno test --no-prompt --frozen --node-modules-dir=auto --allow-ffi=node_modules --allow-read --allow-write --allow-run --allow-net=127.0.0.1,localhost --allow-env src experiments/thread-workflow && deno test --no-prompt --frozen --node-modules-dir=auto --allow-ffi=node_modules --allow-read --allow-write --allow-run --allow-net=127.0.0.1,localhost --allow-env --ignore=./scripts/release/source-alpha-inventory_test.ts --ignore=./scripts/release/source-alpha/source-archive_test.ts scripts && deno task test:source-alpha-inventory && deno task test:capability-runtime-qualification-os-lock",
     "check:ui": "npm --prefix src/ui run check",
     "verify:docs": "deno run --no-prompt --frozen --allow-read --allow-run=git scripts/gates/verify-doc-links.ts",
+    "verify:doc-code-refs": "deno run --no-prompt --frozen --allow-read --allow-run=git scripts/gates/verify-doc-code-refs.ts --mode=warn",
     "verify:evidence": "deno run --allow-read scripts/gates/verify-console-evidence.ts",
     "fmt": "deno fmt --check deno.json server.ts scripts src/adapters src/application src/domain src/orchestration src/presentation src/testing src/tools experiments/thread-workflow experiments/admission-compiler-spike src/ui/*_test.ts && deno fmt --check src/ui/src",
     "lint": "deno lint server.ts scripts src experiments/admission-compiler-spike"

@@ -43,6 +43,9 @@ jobs:
       - name: Verify documentation links
         run: deno task verify:docs
 
+      - name: Verify documentation code references
+        run: deno task verify:doc-code-refs
+
       - name: Lint
         run: deno task lint
 
