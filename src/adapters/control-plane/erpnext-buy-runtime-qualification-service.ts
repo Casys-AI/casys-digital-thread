@@ -19,9 +19,12 @@ import {
   type CapabilityRuntimeQualificationAttempt,
   type CapabilityRuntimeQualificationAttemptIdentity,
   createCapabilityRuntimeQualificationAttemptOutcome,
+  fingerprintCapabilityRuntimeQualificationAttempt,
+  qualificationAttemptIdentityOf,
   qualificationAttemptKeyFor,
 } from "../../domain/capability/runtime/capability-runtime-qualification-attempt.ts";
 import { fingerprintCapabilityRuntimeObservedHost } from "../../domain/capability/runtime/capability-runtime-binding-qualification-attestation.ts";
+import { CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA } from "../../domain/capability/runtime/capability-runtime-qualification-host-proof.ts";
 import {
   CAPABILITY_RUNTIME_QUALIFICATION_SYSTEM_PROJECT_ID,
   type CapabilityRuntimeLease,
@@ -56,6 +59,7 @@ import type { LocalErpnextBuyQualificationFixture } from "./local-erpnext-buy-qu
 import type { LocalErpnextBuyRuntimeSecretResolver } from "./local-erpnext-buy-runtime-secret-resolver.ts";
 
 const LEASE_TTL_MS = 6 * 60 * 60 * 1000;
+const DISPATCH_DEADLINE_MS = 5 * 60 * 1000;
 
 export class ErpnextBuyRuntimeQualificationError extends Error {
   constructor(message: string) {
@@ -241,13 +245,201 @@ export class ErpnextBuyRuntimeQualificationService {
     }
     const candidate = this.#candidate(candidateId);
     const spec = this.#spec(candidate);
-    const fixture = this.options.fixture;
-    if (!fixture) {
-      throw unavailable("ERP Buy qualification fixture is absent.");
+    return await this.#continue(
+      candidate,
+      await this.#identity(candidate, review, spec),
+      { allowStart: true, allowDispatch: true, review },
+    );
+  }
+
+  async recover(candidateId: string): Promise<CapabilityRuntimeQualificationAttempt> {
+    // Recovery reconstructs identity from the WAL. Re-composing a review here
+    // would let a later policy/lock/attestation change strand a started host
+    // before recorded evidence can be sealed and the lease released.
+    const candidate = this.#candidate(candidateId);
+    validateErpnextBuyRuntimeQualificationCandidate(candidate, candidate);
+    const spec = this.#spec(candidate);
+    const host = await this.options.host.read();
+    if (host.platform !== candidate.observedHostPlatform) {
+      throw unavailable(
+        "ERP Buy qualification recovery requires the candidate host platform.",
+      );
     }
-    const identity = await this.#identity(candidate, review, spec);
-    const at = this.#now();
-    const lease = qualificationLease(candidate, at);
+    const observedHost = {
+      platform: candidate.observedHostPlatform,
+      identityFingerprint: host.identityFingerprint,
+      fingerprint: await fingerprintCapabilityRuntimeObservedHost(
+        candidate.observedHostPlatform,
+        host.identityFingerprint,
+      ),
+    };
+    const current = await this.options.attempts.read({
+      candidateId: candidate.id,
+      candidateFingerprint: candidate.fingerprint,
+      observedHostFingerprint: observedHost.fingerprint,
+      qualificationSpecFingerprint: spec.fingerprint,
+    });
+    if (!current) {
+      throw unavailable("ERP Buy qualification recovery requires a recorded attempt.");
+    }
+    return await this.#continue(
+      candidate,
+      await qualificationAttemptIdentityOf(current),
+      {
+        allowStart: false,
+        allowDispatch: current.phase === "prepared" || current.phase === "active" ||
+          current.phase === "case-submitted",
+      },
+    );
+  }
+
+  async #continue(
+    candidate: ErpnextBuyRuntimeQualificationCandidate,
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+    options: {
+      readonly allowStart: boolean;
+      readonly allowDispatch: boolean;
+      readonly review?: ErpnextBuyRuntimeQualificationReview;
+    },
+  ): Promise<CapabilityRuntimeQualificationAttempt> {
+    await this.#assertHostMatchesIdentity(identity);
+    let attempt = await this.options.attempts.read(
+      qualificationAttemptKeyFor(identity),
+    );
+    const revoked = await this.#hasExactRevocation(candidate, identity);
+    if (revoked && !attempt) {
+      throw unavailable("ERP Buy qualification is revoked.");
+    }
+    const existingAttestation = await this.#matchingQualifiedAttestation(
+      candidate,
+      identity,
+      attempt,
+    );
+    if (existingAttestation) {
+      if (attempt?.phase === "attested") {
+        if (revoked) throw unavailable("ERP Buy qualification is revoked.");
+        await this.#assertStoredAttestation(candidate, attempt);
+        return attempt;
+      }
+      if (
+        !(
+          attempt &&
+          attempt.phase === "stopped" &&
+          attempt.outcome.status === "qualified" &&
+          attempt.outcome.basis === "recorded"
+        )
+      ) {
+        throw unavailable(
+          "ERP Buy qualification attestation already exists for this host without a matching attested WAL.",
+        );
+      }
+    }
+    if (attempt?.phase === "attested") {
+      if (revoked) throw unavailable("ERP Buy qualification is revoked.");
+      await this.#assertStoredAttestation(candidate, attempt);
+      return attempt;
+    }
+    if (attempt?.phase === "stopped") {
+      await this.#verifyStopped(candidate, identity, attempt);
+    }
+    if (!attempt || attempt.phase === "prepared") {
+      attempt = await this.#activatePrepared(candidate, identity, options);
+    }
+    if (attempt.phase === "prepared") {
+      if (revoked) throw unavailable("ERP Buy qualification is revoked.");
+      return attempt;
+    }
+    if (attempt.phase !== "attested" && attempt.phase !== "stopped") {
+      await this.options.groups.requireQualificationMutationTip({
+        group: candidate.launchGroup,
+        expectedMaterials: [candidate.material],
+        qualificationStartAuthority: startAuthority(identity),
+        kind: attempt.phase === "outcome" ? "stop" : "start",
+        startProofFingerprint: "runtimeStartFingerprint" in attempt
+          ? attempt.runtimeStartFingerprint
+          : undefined,
+      });
+      await this.#reacquire(candidate);
+    }
+    if (attempt.phase === "active") {
+      if (revoked) {
+        attempt = await this.#preDispatchUnavailable(identity, attempt);
+      } else {
+        attempt = await this.#submitCase(candidate, identity);
+      }
+    }
+    if (attempt.phase === "case-submitted") {
+      if (revoked) {
+        attempt = await this.#preDispatchUnavailable(identity, attempt);
+      } else if (!options.allowDispatch) {
+        return attempt;
+      } else {
+        attempt = await this.#claimAndCapture(candidate, identity);
+      }
+    }
+    if (attempt.phase === "dispatching" || attempt.phase === "quarantined") {
+      // Capture is read-only, but a claimed dispatch may still be executing.
+      // Never recapture. After the durable deadline, seal unavailable and stop.
+      if (this.#now() < attempt.deadlineAt) {
+        throw unavailable(
+          "ERP Buy qualification recovery refuses an ambiguous active dispatch.",
+        );
+      }
+      attempt = await this.options.attempts.sealDispatchDeadline(identity);
+    }
+    if (attempt.phase === "recorded") {
+      attempt = await this.#outcomeFromRecorded(identity, attempt);
+    }
+    if (attempt.phase === "outcome") {
+      attempt = await this.#stop(candidate, identity, attempt);
+    }
+    if (attempt.phase === "stopped") {
+      await this.#verifyStopped(candidate, identity, attempt);
+    }
+    if (revoked) {
+      throw unavailable("ERP Buy qualification is revoked.");
+    }
+    if (attempt.phase === "stopped" && attempt.outcome.status === "qualified") {
+      attempt = await this.#attest(candidate, identity, attempt);
+    }
+    return attempt;
+  }
+
+  async #activatePrepared(
+    candidate: ErpnextBuyRuntimeQualificationCandidate,
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+    options: {
+      readonly allowStart: boolean;
+      readonly review?: ErpnextBuyRuntimeQualificationReview;
+    },
+  ): Promise<CapabilityRuntimeQualificationAttempt> {
+    const current = await this.options.attempts.read(
+      qualificationAttemptKeyFor(identity),
+    );
+    if (current && current.phase !== "prepared") return current;
+    const authority = startAuthority(identity);
+    if (!options.allowStart) {
+      const proof = await this.options.groups.readQualificationStartProof({
+        group: candidate.launchGroup,
+        expectedMaterials: [candidate.material],
+        qualificationStartAuthority: authority,
+      });
+      if (!proof) {
+        if (current) return current;
+        throw unavailable(
+          "ERP Buy qualification recovery requires a recorded attempt.",
+        );
+      }
+      await this.#reacquire(candidate);
+      return await this.options.attempts.markActive(identity, {
+        runtimeStartFingerprint: proof.fingerprint,
+      });
+    }
+    if (!options.review) {
+      throw unavailable(
+        "ERP Buy qualification start requires the exact confirmed review.",
+      );
+    }
     const secretSnapshot = candidate.launchGroup &&
         this.options.profile.launchGroup.secretSlots.length > 0
       ? await this.options.secrets?.beginSnapshot({
@@ -261,19 +453,20 @@ export class ErpnextBuyRuntimeQualificationService {
     ) {
       throw unavailable("ERP Buy qualification secret snapshot is unavailable.");
     }
+    const at = this.#now();
     const started = await this.options.groups.ensureQualificationActive({
       group: candidate.launchGroup,
       expectedMaterials: [candidate.material],
-      qualificationStartAuthority: startAuthority(identity),
-      lease,
+      qualificationStartAuthority: authority,
+      lease: qualificationLease(candidate, at),
       at,
       reuseExistingLease: "allow",
       ...(secretSnapshot ? { secretSnapshot } : {}),
       guard: async () => {
-        const current = await this.review(candidate.id);
+        const currentReview = await this.review(candidate.id);
         return fingerprintsEqual(
-          current.reviewFingerprint,
-          review.reviewFingerprint,
+          currentReview.reviewFingerprint,
+          options.review!.reviewFingerprint,
         );
       },
       prepareAfterAuthorization: async () => {
@@ -283,22 +476,41 @@ export class ErpnextBuyRuntimeQualificationService {
     if (!started.qualificationStart) {
       throw unavailable("ERP Buy qualification start proof is absent.");
     }
-    await this.options.attempts.markActive(identity, {
+    return await this.options.attempts.markActive(identity, {
       runtimeStartFingerprint: started.qualificationStart.fingerprint,
     });
-    await this.options.attempts.markCaseSubmitted(identity, {
+  }
+
+  async #submitCase(
+    candidate: ErpnextBuyRuntimeQualificationCandidate,
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+  ): Promise<CapabilityRuntimeQualificationAttempt> {
+    const spec = this.#spec(candidate);
+    return await this.options.attempts.markCaseSubmitted(identity, {
       caseSha256: spec.caseFingerprint.digest,
       caseUri: `erpnext-buy-qualification-case:sha256:${spec.caseFingerprint.digest}`,
     });
+  }
+
+  async #claimAndCapture(
+    candidate: ErpnextBuyRuntimeQualificationCandidate,
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+  ): Promise<CapabilityRuntimeQualificationAttempt> {
+    const fixture = this.options.fixture;
+    if (!fixture) {
+      throw unavailable("ERP Buy qualification fixture is absent.");
+    }
     const claimedAt = this.#now();
     const claim = await this.options.attempts.claimDispatching(identity, {
       claimedAt,
-      deadlineAt: new Date(Date.parse(claimedAt) + 5 * 60 * 1000).toISOString(),
+      deadlineAt: new Date(Date.parse(claimedAt) + DISPATCH_DEADLINE_MS).toISOString(),
     });
     if (!claim.dispatchNow) {
-      throw unavailable("ERP Buy qualification dispatch is not available.");
+      return claim.attempt;
     }
-    const storedLease = await this.options.leases.read(lease.id);
+    const storedLease = await this.options.leases.read(
+      qualificationLease(candidate, claimedAt).id,
+    );
     if (!storedLease) {
       throw unavailable("ERP Buy qualification lease is not active.");
     }
@@ -325,36 +537,120 @@ export class ErpnextBuyRuntimeQualificationService {
       envelope,
     });
     const receipt = await sha256Fingerprint(envelope);
-    await this.options.attempts.markRecorded(identity, {
+    return await this.options.attempts.markRecorded(identity, {
       receiptSha256: receipt.digest,
       receiptFingerprint: receipt,
     });
-    await this.options.attempts.markOutcome(
+  }
+
+  async #outcomeFromRecorded(
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+    attempt: Extract<
+      CapabilityRuntimeQualificationAttempt,
+      { readonly phase: "recorded" }
+    >,
+  ): Promise<CapabilityRuntimeQualificationAttempt> {
+    return await this.options.attempts.markOutcome(
       identity,
       await createCapabilityRuntimeQualificationAttemptOutcome({
         schemaVersion: "capability-runtime-qualification-attempt-outcome/1.0",
         status: "qualified",
         basis: "recorded",
         recordedAt: this.#now(),
-        basisFingerprint: receipt,
+        basisFingerprint: attempt.receiptFingerprint,
       }),
     );
-    const stopProof = await this.options.groups.releaseQualificationTerminal({
+  }
+
+  async #preDispatchUnavailable(
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+    attempt: CapabilityRuntimeQualificationAttempt,
+  ): Promise<CapabilityRuntimeQualificationAttempt> {
+    return await this.options.attempts.markOutcome(
+      identity,
+      await createCapabilityRuntimeQualificationAttemptOutcome({
+        schemaVersion: "capability-runtime-qualification-attempt-outcome/1.0",
+        status: "unavailable",
+        basis: "pre-dispatch",
+        recordedAt: this.#now(),
+        basisFingerprint: await fingerprintCapabilityRuntimeQualificationAttempt(
+          attempt,
+        ),
+      }),
+    );
+  }
+
+  async #stop(
+    candidate: ErpnextBuyRuntimeQualificationCandidate,
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+    attempt: Extract<
+      CapabilityRuntimeQualificationAttempt,
+      { readonly phase: "outcome" }
+    >,
+  ): Promise<CapabilityRuntimeQualificationAttempt> {
+    const at = this.#now();
+    const proof = await this.options.groups.releaseQualificationTerminal({
       group: candidate.launchGroup,
       expectedMaterials: [candidate.material],
       qualificationStartAuthority: startAuthority(identity),
-      startProofFingerprint: started.qualificationStart.fingerprint,
-      lease: storedLease,
-      at: this.#now(),
+      startProofFingerprint: attempt.runtimeStartFingerprint,
+      lease: qualificationLease(candidate, at),
+      at,
+    });
+    await this.options.groups.verifyQualificationStopProof({
+      group: candidate.launchGroup,
+      expectedMaterials: [candidate.material],
+      qualificationStartAuthority: startAuthority(identity),
+      proof,
     });
     const stopped = await this.options.attempts.markStopped(identity, {
-      runtimeStopProof: stopProof,
+      runtimeStopProof: proof,
     });
     if (stopped.phase !== "stopped") {
       throw unavailable("ERP Buy qualification stop did not record a host stop proof.");
     }
+    return stopped;
+  }
+
+  async #verifyStopped(
+    candidate: ErpnextBuyRuntimeQualificationCandidate,
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+    attempt: Extract<
+      CapabilityRuntimeQualificationAttempt,
+      { readonly phase: "stopped" }
+    >,
+  ): Promise<CapabilityRuntimeQualificationAttempt> {
+    if (
+      attempt.runtimeStopProof.schemaVersion !==
+        CAPABILITY_RUNTIME_QUALIFICATION_HOST_STOP_PROOF_SCHEMA
+    ) {
+      throw unavailable("ERP Buy qualification requires a host stop proof.");
+    }
+    await this.options.groups.verifyQualificationStopProof({
+      group: candidate.launchGroup,
+      expectedMaterials: [candidate.material],
+      qualificationStartAuthority: startAuthority(identity),
+      proof: attempt.runtimeStopProof,
+    });
+    return attempt;
+  }
+
+  async #attest(
+    candidate: ErpnextBuyRuntimeQualificationCandidate,
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+    attempt: Extract<
+      CapabilityRuntimeQualificationAttempt,
+      { readonly phase: "stopped" }
+    >,
+  ): Promise<CapabilityRuntimeQualificationAttempt> {
+    await this.#verifyStopped(candidate, identity, attempt);
+    await this.#assertHostMatchesIdentity(identity);
+    if (await this.#hasExactRevocation(candidate, identity)) {
+      throw unavailable("ERP Buy qualification is revoked.");
+    }
+    const spec = this.#spec(candidate);
     const attestation = await createCapabilityRuntimeQualificationAttestation({
-      attempt: stoppedQualificationAttemptFrom(stopped),
+      attempt,
       candidate,
       spec,
     });
@@ -368,23 +664,111 @@ export class ErpnextBuyRuntimeQualificationService {
     if (!stored || !fingerprintsEqual(stored.fingerprint, attestation.fingerprint)) {
       throw unavailable("ERP Buy qualification attestation was not readable.");
     }
+    if (await this.#hasExactRevocation(candidate, identity)) {
+      throw unavailable("ERP Buy qualification is revoked.");
+    }
+    await this.#verifyStopped(candidate, identity, attempt);
     return await this.options.attempts.markAttested(identity, {
       attestationFingerprint: stored.fingerprint,
     });
   }
 
-  async recover(candidateId: string): Promise<CapabilityRuntimeQualificationAttempt> {
-    const candidate = this.#candidate(candidateId);
-    const spec = this.#spec(candidate);
-    const review = await this.review(candidateId);
-    const identity = await this.#identity(candidate, review, spec);
-    const attempt = await this.options.attempts.read(
-      qualificationAttemptKeyFor(identity),
-    );
-    if (!attempt) {
-      throw unavailable("ERP Buy qualification recovery requires a recorded attempt.");
+  async #matchingQualifiedAttestation(
+    candidate: ErpnextBuyRuntimeQualificationCandidate,
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+    attempt: CapabilityRuntimeQualificationAttempt | undefined,
+  ) {
+    if (
+      !attempt ||
+      (attempt.phase !== "stopped" && attempt.phase !== "attested") ||
+      attempt.outcome.status !== "qualified" ||
+      attempt.outcome.basis !== "recorded"
+    ) {
+      return undefined;
     }
-    return attempt;
+    const spec = this.#spec(candidate);
+    const expected = await createCapabilityRuntimeQualificationAttestation({
+      attempt: stoppedQualificationAttemptFrom(attempt),
+      candidate,
+      spec,
+    });
+    const matching = (await this.options.attestations.list()).filter((event) =>
+      event.state === "qualified" &&
+      matchesCapabilityRuntimeQualificationCandidate(
+        event,
+        candidate,
+        identity.observedHost,
+        spec,
+      ) &&
+      fingerprintsEqual(event.fingerprint, expected.fingerprint)
+    );
+    if (matching.length > 1) {
+      throw unavailable("Multiple live ERP Buy qualification attestations exist.");
+    }
+    return matching[0];
+  }
+
+  async #assertStoredAttestation(
+    candidate: ErpnextBuyRuntimeQualificationCandidate,
+    attempt: Extract<
+      CapabilityRuntimeQualificationAttempt,
+      { readonly phase: "attested" }
+    >,
+  ): Promise<void> {
+    const expected = await createCapabilityRuntimeQualificationAttestation({
+      attempt: stoppedQualificationAttemptFrom(attempt),
+      candidate,
+      spec: this.#spec(candidate),
+    });
+    const stored = await this.options.attestations.read(attempt.attestationFingerprint);
+    if (
+      !stored ||
+      !fingerprintsEqual(stored.fingerprint, expected.fingerprint) ||
+      !fingerprintsEqual(attempt.attestationFingerprint, expected.fingerprint)
+    ) {
+      throw unavailable("ERP Buy attested WAL does not match the stored event.");
+    }
+  }
+
+  async #hasExactRevocation(
+    candidate: ErpnextBuyRuntimeQualificationCandidate,
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+  ): Promise<boolean> {
+    return (await this.options.attestations.list()).some((event) =>
+      event.state === "revoked" &&
+      matchesCapabilityRuntimeQualificationCandidate(
+        event,
+        candidate,
+        identity.observedHost,
+      )
+    );
+  }
+
+  async #assertHostMatchesIdentity(
+    identity: CapabilityRuntimeQualificationAttemptIdentity,
+  ): Promise<void> {
+    const host = await this.options.host.read();
+    if (
+      host.platform !== identity.observedHost.platform ||
+      !fingerprintsEqual(
+        host.identityFingerprint,
+        identity.observedHost.identityFingerprint,
+      )
+    ) {
+      throw unavailable("ERP Buy qualification host identity drifted.");
+    }
+  }
+
+  async #reacquire(
+    candidate: ErpnextBuyRuntimeQualificationCandidate,
+  ): Promise<CapabilityRuntimeLease> {
+    const at = this.#now();
+    return await this.options.groups.reacquireQualificationLease({
+      group: candidate.launchGroup,
+      expectedMaterials: [candidate.material],
+      lease: qualificationLease(candidate, at),
+      at,
+    });
   }
 
   #candidate(candidateId: string): ErpnextBuyRuntimeQualificationCandidate {

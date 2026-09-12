@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 import { validateBuyConfiguration } from "../../domain/buy/buy-configuration.ts";
@@ -235,8 +235,10 @@ Deno.test("Buy viewer binding keeps ambiguous human approvals as unavailable", a
   assertEquals(projection.reason, BUY_VIEWER_AUTHORITY_AMBIGUOUS_REASON);
 });
 
-async function createBuyViewerFixture() {
-  const sealed = await createSealedBuyArtifact();
+async function createBuyViewerFixture(
+  configurationOverrides: Parameters<typeof buyConfigurationFixture>[0] = {},
+) {
+  const sealed = await createSealedBuyArtifact(configurationOverrides);
   const briefs = new ProjectBriefCommandService(
     new FileEngineeringProjectRevisionStore(
       await Deno.makeTempDir({ prefix: "buy-viewer-binding-" }),
@@ -358,14 +360,18 @@ async function createBuyViewerFixture() {
   };
 }
 
-async function createSealedBuyArtifact() {
+async function createSealedBuyArtifact(
+  configurationOverrides: Parameters<typeof buyConfigurationFixture>[0] = {},
+) {
   const wrapperText = await Deno.readTextFile(
     new URL("../buy/fixtures/buy-source-capture.wrapper.json", import.meta.url),
   );
   const envelope = validateBuySourceCaptureEnvelope(
     JSON.parse(wrapperText.endsWith("\n") ? wrapperText.slice(0, -1) : wrapperText),
   );
-  const configuration = validateBuyConfiguration(buyConfigurationFixture());
+  const configuration = validateBuyConfiguration(
+    buyConfigurationFixture(configurationOverrides),
+  );
   const configurationDigest = (await sha256Fingerprint(configuration)).digest;
   const bundle = computeBuyCostCandidate({
     configuration,
@@ -639,3 +645,43 @@ function cadAssetStep(): ThreadArtifact {
     freshness: { status: "fresh", changedAt: AT, invalidatedByChangeIds: [] },
   };
 }
+
+Deno.test("Buy viewer refuses a sealed configuration from another project or subject", async () => {
+  for (
+    const overrides of [
+      { projectId: "foreign-project" },
+      {
+        subjectId: "project:foreign",
+        basis: { ...buyConfigurationFixture().basis, subjectId: "project:foreign" },
+      },
+    ]
+  ) {
+    const fixture = await createBuyViewerFixture(overrides);
+    await assertRejects(
+      () => buildBuyViewerBinding(fixture),
+      TypeError,
+      "project or subject",
+    );
+  }
+});
+
+Deno.test("Buy viewer refuses an artifact bundle identity that contradicts the reopened capture", async () => {
+  const fixture = await createBuyViewerFixture();
+  const digest = "0".repeat(64);
+  const artifact = {
+    ...fixture.artifact,
+    id: `buy-cost-bundle-${digest}`,
+    version: digest,
+  };
+  const thread = {
+    ...fixture.thread,
+    artifacts: fixture.thread.artifacts.map((item) =>
+      item.id === fixture.artifactId ? artifact : item
+    ),
+  };
+  await assertRejects(
+    () => buildBuyViewerBinding({ ...fixture, thread, artifactId: artifact.id }),
+    TypeError,
+    "bundle digest",
+  );
+});

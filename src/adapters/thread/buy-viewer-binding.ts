@@ -158,6 +158,20 @@ export async function buildBuyViewerBinding(request: {
   );
   if (!installed) return undefined;
   const capture = await reopenBuySealCapture(request.seals, resultArtifact);
+  if (capture.bundleDigest !== resultArtifact.version) {
+    throw new TypeError(
+      "The Buy seal capture bundle digest does not match the Thread artifact version.",
+    );
+  }
+  if (
+    capture.configuration.projectId !== basis.projectId ||
+    capture.configuration.subjectId !== basis.subjectId ||
+    capture.configuration.basis.subjectId !== basis.subjectId
+  ) {
+    throw new TypeError(
+      "The Buy seal configuration project or subject does not match the viewer basis.",
+    );
+  }
   if (capture.trustedRunId !== resultArtifact.producer.runId) {
     throw new TypeError(
       "The Buy seal capture trusted run does not match its Thread producer.",
