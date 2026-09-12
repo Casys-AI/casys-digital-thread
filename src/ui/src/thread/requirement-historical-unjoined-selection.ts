@@ -11,7 +11,8 @@ import type {
   ThreadWorkbenchSnapshot,
 } from "./types.ts";
 
-export const HISTORICAL_UNJOINED_SELECTION_KIND = "historical-unjoined" as const;
+export const HISTORICAL_UNJOINED_SELECTION_KIND =
+  "historical-unjoined" as const;
 
 export interface OverviewHistoricalUnjoinedSelection {
   readonly kind: typeof HISTORICAL_UNJOINED_SELECTION_KIND;
@@ -26,7 +27,9 @@ export function selectOverviewHistoricalUnjoined(
 ): OverviewHistoricalUnjoinedSelection | undefined {
   const requirementId = requirementIdForHistoricalLookup(thread, reference);
   if (!requirementId) return undefined;
-  const requirement = thread.requirements.find((item) => item.id === requirementId);
+  const requirement = thread.requirements.find((item) =>
+    item.id === requirementId
+  );
   if (!requirement) return undefined;
   const evaluations = requirement.historicalEvaluations;
   const chain = requirement.historicalChain;

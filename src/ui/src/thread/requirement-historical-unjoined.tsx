@@ -96,7 +96,8 @@ function HistoricalEvaluationItem({
         Current architecture <code>{value.currentArchitecture.artifactId}</code>
       </p>
       <p>
-        Predecessor architecture <code>{value.predecessorArchitecture.artifactId}</code>
+        Predecessor architecture{" "}
+        <code>{value.predecessorArchitecture.artifactId}</code>
       </p>
       <p>
         Native target <code>{value.native.targetElementId}</code>
@@ -156,7 +157,8 @@ function HistoricalEvidenceLinks({
               <button
                 type="button"
                 className="font-mono underline-offset-2 hover:underline"
-                onClick={() => onFollowEvidence({ kind: "artifact", id: item.id })}
+                onClick={() =>
+                  onFollowEvidence({ kind: "artifact", id: item.id })}
               >
                 {item.id}
               </button>

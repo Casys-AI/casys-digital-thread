@@ -60,11 +60,12 @@ export function RecordInspectorPanel({
         </CardHeader>
         <CardContent className="flex flex-col gap-4">
           <p className="text-sm text-muted-foreground">
-            Choose a node to inspect its exact identity, stored fields, and recorded
-            relations.
+            Choose a node to inspect its exact identity, stored fields, and
+            recorded relations.
           </p>
           <EmptyNotice>
-            No record is selected. Browsing this inspector never executes an operation.
+            No record is selected. Browsing this inspector never executes an
+            operation.
           </EmptyNotice>
         </CardContent>
       </Card>
@@ -141,8 +142,9 @@ export function RecordInspectorPanel({
         />
 
         <Notice title="Read-only projection" tone="info">
-          All values and relations shown here were already loaded with this Workbench
-          snapshot. This inspector cannot call a tool or mutate a record.
+          All values and relations shown here were already loaded with this
+          Workbench snapshot. This inspector cannot call a tool or mutate a
+          record.
         </Notice>
       </CardContent>
     </Card>
@@ -303,7 +305,8 @@ function RelationRow({ relation, onSelect, onSelectGraphNode }: {
         {content}
       </button>
     )
-    : <div className="flex flex-col items-start gap-1 px-3 py-2">{content}</div>;
+    : <div className="flex flex-col items-start gap-1 px-3 py-2">{content}
+    </div>;
 }
 
 function RelatedRecordSummary({
