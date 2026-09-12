@@ -288,7 +288,13 @@ export function parseBuyCaptureDecisionParameters(
     }
     requiredDimensions.push(dimension as BuyCostDimension);
   }
-  const roundingScale = posInt("buy.capture.pricing.rounding.scale");
+  const roundingScale = nonNegInt("buy.capture.pricing.rounding.scale");
+  if (roundingScale > 12) {
+    invalid(
+      "invalid_format",
+      "Buy capture parameter buy.capture.pricing.rounding.scale must be an integer 0..12.",
+    );
+  }
   const roundingMode = str("buy.capture.pricing.rounding.mode");
   if (roundingMode !== "half-up") {
     invalid("invalid_format", "Buy rounding mode must be half-up.");

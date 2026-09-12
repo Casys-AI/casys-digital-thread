@@ -1,7 +1,10 @@
 import { assertEquals } from "@std/assert";
 import type { ThreadArtifact, ThreadSnapshot } from "../thread/thread-snapshot.ts";
 import { DESIGN_WRITE_GEOMETRY_TOOL } from "../cad/canonical/canonical-write-geometry-step.ts";
-import { buyGeometryApplicability } from "./buy-applicability.ts";
+import {
+  buyGeometryApplicability,
+  recrossBuyConfigurationThreadBasis,
+} from "./buy-applicability.ts";
 import {
   BUY_FIXTURE_PARENT,
   BUY_FIXTURE_STEP,
@@ -54,6 +57,56 @@ Deno.test("wrong STEP identity is refused, not guessed", () => {
   const configuration = buyConfigurationFixture();
   const result = buyGeometryApplicability(snapshot([]), configuration);
   assertEquals(result.status, "refused");
+});
+
+Deno.test("configuration basis and subject must match the exact Thread basis", () => {
+  const snapshotBasis = snapshot([writeGeometryPrimary(), cadAssetStep()]);
+  const matching = recrossBuyConfigurationThreadBasis(
+    buyConfigurationFixture(),
+    {
+      snapshotId: snapshotBasis.id,
+      revision: snapshotBasis.revision,
+      subjectId: snapshotBasis.subject.id,
+    },
+  );
+  assertEquals(matching.status, "current");
+  assertEquals(
+    buyGeometryApplicability(snapshotBasis, buyConfigurationFixture()).status,
+    "current",
+  );
+
+  const stale = recrossBuyConfigurationThreadBasis(
+    buyConfigurationFixture({
+      basis: {
+        snapshotId: "snapshot.buy.prior",
+        revision: 1,
+        subjectId: "project:reviewed-project-v1",
+      },
+    }),
+    {
+      snapshotId: snapshotBasis.id,
+      revision: snapshotBasis.revision,
+      subjectId: snapshotBasis.subject.id,
+    },
+  );
+  assertEquals(stale.status, "refused");
+
+  const foreign = recrossBuyConfigurationThreadBasis(
+    buyConfigurationFixture({
+      subjectId: "project:other-subject",
+      basis: {
+        snapshotId: snapshotBasis.id,
+        revision: snapshotBasis.revision,
+        subjectId: "project:other-subject",
+      },
+    }),
+    {
+      snapshotId: snapshotBasis.id,
+      revision: snapshotBasis.revision,
+      subjectId: snapshotBasis.subject.id,
+    },
+  );
+  assertEquals(foreign.status, "refused");
 });
 
 function cadAssetStep(): ThreadArtifact {

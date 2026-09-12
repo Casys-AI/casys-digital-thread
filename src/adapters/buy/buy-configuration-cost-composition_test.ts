@@ -200,6 +200,67 @@ Deno.test("missing qualified binding blocks before any ERP dispatch", async () =
   assertEquals(calls, []);
 });
 
+Deno.test("stale configuration basis is refused before ERP dispatch", async () => {
+  const calls: string[] = [];
+  const fixture = await createCaptureFixture({
+    configuration: buyConfigurationFixture({
+      basis: {
+        snapshotId: "snapshot.buy.prior",
+        revision: 1,
+        subjectId: SUBJECT_ID,
+      },
+    }),
+    mcp: {
+      callTool(call) {
+        calls.push(call.name);
+        return Promise.reject(new Error("must not call"));
+      },
+      callToolTextResult() {
+        return Promise.reject(new Error("must not call"));
+      },
+    },
+  });
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, fixture.command),
+    EngineeringProjectCommandError,
+    "Thread basis",
+  );
+  assertEquals(calls, []);
+});
+
+Deno.test(
+  "foreign-subject human approval is refused before ERP dispatch",
+  async () => {
+    const calls: string[] = [];
+    const fixture = await createCaptureFixture({
+      mcp: {
+        callTool(call) {
+          calls.push(call.name);
+          return Promise.reject(new Error("must not call"));
+        },
+        callToolTextResult() {
+          return Promise.reject(new Error("must not call"));
+        },
+      },
+    });
+    const foreign = {
+      snapshotId: "snapshot.buy.r1",
+      revision: 1,
+      subjectId: "project:foreign-subject",
+    };
+    const decision = fixture.project.decisions[0]!;
+    (decision as { baseSnapshot: typeof foreign }).baseSnapshot = foreign;
+    const approval = fixture.project.approvals[0]!;
+    (approval as { baseSnapshot: typeof foreign }).baseSnapshot = foreign;
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "human-approved",
+    );
+    assertEquals(calls, []);
+  },
+);
+
 Deno.test(
   "capture then signed seal traverse registry, executor and CAS and build a viewer session",
   async () => {
@@ -271,6 +332,31 @@ Deno.test(
       const sealedArtifact = sealedSnapshot?.artifacts.find((item) =>
         item.producer.tool === BUY_SEAL_CONFIGURATION_COST_TOOL
       );
+      assertEquals(candidateSnapshot?.previous, {
+        snapshotId: "snapshot.buy.r1",
+        revision: 1,
+      });
+      assertEquals(sealedSnapshot?.previous, {
+        snapshotId: candidateSnapshot!.id,
+        revision: candidateSnapshot!.revision,
+      });
+      const sealedText = await sealFixture.sealStore.read(
+        sealedArtifact!.fingerprint,
+      );
+      const sealedCapture = JSON.parse(sealedText ?? "{}") as {
+        readonly configuration: {
+          readonly basis: {
+            readonly snapshotId: string;
+            readonly revision: number;
+            readonly subjectId: string;
+          };
+        };
+      };
+      assertEquals(sealedCapture.configuration.basis, {
+        snapshotId: "snapshot.buy.r1",
+        revision: 1,
+        subjectId: SUBJECT_ID,
+      });
       assertEquals(sealedArtifact?.kind, "document");
       assertEquals(
         sealedArtifact?.uri?.startsWith(BUY_SEAL_CAPTURE_URI_PREFIX),
@@ -355,6 +441,56 @@ async function loadProducerWrapper(): Promise<Record<string, unknown>> {
   );
   return JSON.parse(text.endsWith("\n") ? text.slice(0, -1) : text);
 }
+
+Deno.test("seal refuses a candidate configuration from another project", async () => {
+  const root = await Deno.makeTempDir({ prefix: "buy-seal-foreign-" });
+  try {
+    const wrapper = await loadProducerWrapper();
+    const captureFixture = await createCaptureFixture({
+      mcp: {
+        callTool() {
+          return Promise.resolve({
+            structuredContent: wrapper,
+            text: "",
+          });
+        },
+        callToolTextResult() {
+          return Promise.reject(new Error("unused"));
+        },
+      },
+      candidateDirectory: `${root}/candidates`,
+      snapshotDirectory: `${root}/snapshots`,
+    });
+    const captured = await captureFixture.executor.execute(
+      AGENT,
+      captureFixture.command,
+    );
+    const candidateSnapshot = await captureFixture.snapshots.getFresh(
+      captured.agentRuns[0]!.resultSnapshot!.snapshotId,
+    );
+    const candidateArtifact = candidateSnapshot?.artifacts.find((item) =>
+      item.producer.tool === BUY_CAPTURE_CONFIGURATION_COST_TOOL
+    );
+    const sealFixture = await createSealFixture({
+      project: captured,
+      snapshots: captureFixture.snapshots,
+      candidateDirectory: `${root}/candidates`,
+      sealDirectory: `${root}/seals`,
+      candidateArtifact: candidateArtifact!,
+    });
+    await assertRejects(
+      () =>
+        sealFixture.executor.execute(AGENT, {
+          ...sealFixture.command,
+          projectId: "other-project-v1",
+        }),
+      EngineeringProjectCommandError,
+      "projectId",
+    );
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
 
 Deno.test("capture refuses a spoofed sourceInstance from the provider", async () => {
   const body = buyCaptureBodyFixture({
@@ -998,8 +1134,11 @@ async function createCaptureFixture(options: {
   readonly mcp: ConstructorParameters<typeof ErpnextBuyCaptureClient>[0];
   readonly candidateDirectory?: string;
   readonly snapshotDirectory?: string;
+  readonly configuration?: ReturnType<typeof buyConfigurationFixture>;
 }) {
-  const configuration = validateBuyConfiguration(buyConfigurationFixture());
+  const configuration = validateBuyConfiguration(
+    options.configuration ?? buyConfigurationFixture(),
+  );
   const configurationDigest = (await sha256Fingerprint(configuration)).digest;
   const configurationText = deterministicJson(configuration);
   const parameters = encodeBuyCaptureDecisionParameters({

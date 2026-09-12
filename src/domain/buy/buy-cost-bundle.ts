@@ -19,6 +19,7 @@ import {
 import {
   addBuyDecimals,
   type BuyDecimalRounding,
+  isPositiveBuyDecimal,
   multiplyBuyDecimals,
   parseBuyDecimal,
   roundBuyDecimal,
@@ -494,6 +495,7 @@ function priceLine(input: {
       lineId: input.configurationLine.id,
     });
   }
+  let fxRate: string | undefined;
   if (currency && currency !== input.pricingContext.currency) {
     const fx = input.captures.flatMap((item) => item.capture.documents).find(
       (item) =>
@@ -502,7 +504,8 @@ function priceLine(input: {
         item.fields.to_currency === input.pricingContext.currency &&
         item.fields.exchange_rate !== undefined,
     );
-    if (!fx) {
+    fxRate = projectedPositiveDecimal(fx?.fields.exchange_rate);
+    if (!fxRate) {
       dimensions.fx = "unknown";
       dimensions.currency = "unknown";
       gaps.push({
@@ -547,6 +550,7 @@ function priceLine(input: {
   }
   let unitPrice: string | undefined;
   let amount: string | undefined;
+  let lineCurrency = currency;
   if (
     rate &&
     dimensions["unit-price"] === "established" &&
@@ -557,9 +561,11 @@ function priceLine(input: {
       gap.code === "uom-unresolved"
     )
   ) {
-    unitPrice = rate;
+    const pricedRate = fxRate ? multiplyBuyDecimals(rate, fxRate) : rate;
+    unitPrice = pricedRate;
+    lineCurrency = fxRate ? input.pricingContext.currency : currency;
     amount = roundBuyDecimal(
-      multiplyBuyDecimals(input.configurationLine.quantity, rate),
+      multiplyBuyDecimals(input.configurationLine.quantity, pricedRate),
       input.pricingContext.rounding,
     );
   } else if (!rate) {
@@ -576,7 +582,7 @@ function priceLine(input: {
     asOf,
     citation,
     unitPrice,
-    currency,
+    lineCurrency,
     amount,
     envelope.capture.capturedAt,
     Object.keys(sourceValidity).length === 0 ? undefined : sourceValidity,
@@ -693,6 +699,16 @@ function projectedDecimal(value: unknown): string | undefined {
     return parseBuyDecimal(JSON.stringify(value), "$rate");
   }
   return undefined;
+}
+
+function projectedPositiveDecimal(value: unknown): string | undefined {
+  try {
+    const parsed = projectedDecimal(value);
+    if (parsed === undefined || !isPositiveBuyDecimal(parsed)) return undefined;
+    return parsed;
+  } catch {
+    return undefined;
+  }
 }
 
 function parseCaptureRef(value: unknown, path: string): BuySourceCaptureRef {

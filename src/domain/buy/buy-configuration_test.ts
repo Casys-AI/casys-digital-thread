@@ -52,6 +52,51 @@ Deno.test("catalogue erpnext:item is declared, not a mapping proof", () => {
   );
 });
 
+Deno.test("negative line or occurrence quantities are refused", () => {
+  assertThrows(
+    () =>
+      validateBuyConfiguration(buyConfigurationFixture({
+        lines: [{
+          ...buyConfigurationFixture().lines[0]!,
+          quantity: "-1",
+        }],
+      })),
+    TypeError,
+    "non-negative",
+  );
+  assertThrows(
+    () =>
+      validateBuyConfiguration(buyConfigurationFixture({
+        lines: [{
+          ...buyConfigurationFixture().lines[0]!,
+          occurrences: [{
+            elementId: "occ.fastener.1",
+            quantity: "-4",
+            uom: "Nos",
+          }],
+        }],
+      })),
+    TypeError,
+    "non-negative",
+  );
+});
+
+Deno.test("zero configuration quantities remain accepted", () => {
+  const configuration = validateBuyConfiguration(buyConfigurationFixture({
+    lines: [{
+      ...buyConfigurationFixture().lines[0]!,
+      quantity: "0",
+      occurrences: [{
+        elementId: "occ.fastener.1",
+        quantity: "0",
+        uom: "Nos",
+      }],
+    }],
+  }));
+  assertEquals(configuration.lines[0]?.quantity, "0");
+  assertEquals(configuration.lines[0]?.occurrences[0]?.quantity, "0");
+});
+
 Deno.test("missing occurrence identity is an explicit gap, not a guessed line", () => {
   const configuration = validateBuyConfiguration(buyConfigurationFixture({
     lines: [{

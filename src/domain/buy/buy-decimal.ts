@@ -36,6 +36,19 @@ export function parseBuyDecimal(value: unknown, path: string): string {
   return formatParts(parseParts(text));
 }
 
+export function parseNonNegativeBuyDecimal(value: unknown, path: string): string {
+  const text = parseBuyDecimal(value, path);
+  if (text.startsWith("-")) {
+    throw new TypeError(`${path} must be a non-negative decimal.`);
+  }
+  return text;
+}
+
+export function isPositiveBuyDecimal(value: string): boolean {
+  const parts = parseParts(value);
+  return !parts.negative && parts.unscaled > 0n;
+}
+
 export function addBuyDecimals(left: string, right: string): string {
   const a = parseParts(left);
   const b = parseParts(right);

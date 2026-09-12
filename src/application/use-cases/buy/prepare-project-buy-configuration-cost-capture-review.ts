@@ -10,7 +10,10 @@ import type {
 import type { BuyConfigurationSourceReader } from "../../ports/out/buy/buy-configuration-source-reader.ts";
 import type { BuyQualifiedErpBindingResolver } from "../../ports/out/buy/buy-qualified-erp-binding.ts";
 import type { EngineeringProjectRevisionStore } from "../../ports/out/engineering-project-revision-store.ts";
-import { buyGeometryApplicability } from "../../../domain/buy/buy-applicability.ts";
+import {
+  buyGeometryApplicability,
+  recrossBuyConfigurationThreadBasis,
+} from "../../../domain/buy/buy-applicability.ts";
 import {
   BUY_CONFIGURATION_SCHEMA,
   validateBuyConfiguration,
@@ -93,6 +96,31 @@ export class PrepareProjectBuyConfigurationCostCaptureReview
     const configuration = validateBuyConfiguration(parsed);
     if (configuration.schemaVersion !== BUY_CONFIGURATION_SCHEMA) {
       return { status: "unresolved", reason: "Buy configuration schema is divergent." };
+    }
+    const basisRecross = recrossBuyConfigurationThreadBasis(configuration, {
+      snapshotId: snapshot.id,
+      revision: snapshot.revision,
+      subjectId: snapshot.subject.id,
+    });
+    if (basisRecross.status !== "current") {
+      return { status: "unresolved", reason: basisRecross.reason };
+    }
+    if (configuration.projectId !== command.projectId) {
+      return {
+        status: "unresolved",
+        reason: "Buy configuration projectId does not match the requested project.",
+      };
+    }
+    if (
+      command.geometryArtifactId !== configuration.geometry.parentArtifactId ||
+      command.geometryArtifactFingerprint !==
+        configuration.geometry.parentFingerprint
+    ) {
+      return {
+        status: "unresolved",
+        reason:
+          "Supplied parent geometry does not match the reopened Buy configuration.",
+      };
     }
     const applicability = buyGeometryApplicability(snapshot, configuration);
     if (applicability.status !== "current") {

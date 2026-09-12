@@ -1554,6 +1554,7 @@ async function createProjectControl(
     new PrepareProjectBuyConfigurationCostSealReview(
       activeThreadSnapshots,
       buyCandidateCaptures,
+      runtime.projects,
     );
   const industrializeRunDfmChecks = dfmRuntimeConnection
     ? new IndustrializeRunDfmChecksRunExecutor({

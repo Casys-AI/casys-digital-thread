@@ -13,6 +13,10 @@ import {
 } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import { buyGeometryApplicability } from "../../domain/buy/buy-applicability.ts";
 import {
+  recrossBuyCandidateSealAuthority,
+  resolveBuyCandidateCaptureRun,
+} from "../../domain/buy/buy-candidate-seal-authority.ts";
+import {
   BUY_SEAL_CONFIGURATION_COST_OPERATION,
   BUY_SEAL_CONFIGURATION_COST_TOOL,
 } from "../../domain/buy/buy-operations.ts";
@@ -219,6 +223,9 @@ export class BuySealConfigurationCostRunExecutor {
       const candidate = await this.#reopenCandidate(
         decisionParams,
         basisSnapshot,
+        project,
+        command.projectId,
+        basis,
       );
       const applicability = buyGeometryApplicability(
         basisSnapshot,
@@ -357,6 +364,9 @@ export class BuySealConfigurationCostRunExecutor {
   async #reopenCandidate(
     decisionParams: BuySealDecisionParameters,
     snapshot: ThreadSnapshot,
+    project: EngineeringProjectSnapshot,
+    projectId: string,
+    basis: EngineeringThreadSnapshotBasis,
   ): Promise<BuyCandidateCapture> {
     const artifact = snapshot.artifacts.find((item) =>
       item.fingerprint.digest === decisionParams.candidateDigest
@@ -422,6 +432,23 @@ export class BuySealConfigurationCostRunExecutor {
       throw new EngineeringProjectCommandError(
         "invalid_input",
         "Candidate coverage status diverged from the signed seal parameters.",
+      );
+    }
+    const authority = recrossBuyCandidateSealAuthority({
+      projectId,
+      sealBasis: basis,
+      configuration: candidate.configuration,
+      trustedRunId: candidate.trustedRunId,
+      producerRunId: artifact.producer.runId,
+      captureRun: resolveBuyCandidateCaptureRun(
+        project,
+        candidate.trustedRunId,
+      ),
+    });
+    if (authority.status !== "current") {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        authority.reason,
       );
     }
     return candidate;

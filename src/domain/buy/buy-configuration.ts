@@ -17,7 +17,7 @@ import {
   rejectDuplicates,
   safeId,
 } from "../kernel/case-validation.ts";
-import { parseBuyDecimal } from "./buy-decimal.ts";
+import { parseNonNegativeBuyDecimal } from "./buy-decimal.ts";
 import { DESIGN_WRITE_GEOMETRY_TOOL } from "../cad/canonical/canonical-write-geometry-step.ts";
 import { CANONICAL_STEP_MEDIA_TYPE } from "../cad/canonical/canonical-write-geometry-step.ts";
 
@@ -278,7 +278,7 @@ function parseLine(value: unknown, path: string): BuyConfigurationLine {
     BUY_LINE_SOURCING,
     `${path}.sourcing`,
   );
-  const quantity = parseBuyDecimal(input.quantity, `${path}.quantity`);
+  const quantity = parseNonNegativeBuyDecimal(input.quantity, `${path}.quantity`);
   const uom = uomToken(input.uom, `${path}.uom`);
   const gaps = arrayOf(input.gaps, `${path}.gaps`).map((gap, i) =>
     parseGap(gap, `${path}.gaps[${i}]`)
@@ -323,7 +323,7 @@ function parseOccurrence(value: unknown, path: string): BuyOccurrence {
   const input = exactRecord(value, ["elementId", "quantity", "uom"], path);
   return {
     elementId: safeId(input.elementId, `${path}.elementId`),
-    quantity: parseBuyDecimal(input.quantity, `${path}.quantity`),
+    quantity: parseNonNegativeBuyDecimal(input.quantity, `${path}.quantity`),
     uom: uomToken(input.uom, `${path}.uom`),
   };
 }

@@ -8,6 +8,10 @@ import type {
   ProjectBuyConfigurationCostSealReviewUseCase,
 } from "../../ports/in/buy/project-buy-configuration-cost-seal-review.ts";
 import { buyGeometryApplicability } from "../../../domain/buy/buy-applicability.ts";
+import {
+  recrossBuyCandidateSealAuthority,
+  resolveBuyCandidateCaptureRun,
+} from "../../../domain/buy/buy-candidate-seal-authority.ts";
 import { encodeBuySealDecisionParameters } from "../../../domain/buy/buy-proposal.ts";
 import {
   exactRecord,
@@ -17,6 +21,7 @@ import {
 import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
 import { parseExactThreadSnapshotBasis } from "../../../domain/project/thread-tip.ts";
 import type { ThreadSnapshotStore } from "../../../domain/thread/thread-snapshot-store.ts";
+import type { EngineeringProjectRevisionStore } from "../../ports/out/engineering-project-revision-store.ts";
 import {
   canonicalBuyCandidateCaptureText,
   validateBuyCandidateCapture,
@@ -33,6 +38,7 @@ export class PrepareProjectBuyConfigurationCostSealReview
   constructor(
     private readonly snapshots: ThreadSnapshotStore,
     private readonly candidates: BuyCandidateCaptureReader,
+    private readonly projects: EngineeringProjectRevisionStore,
   ) {}
 
   async execute(
@@ -43,7 +49,8 @@ export class PrepareProjectBuyConfigurationCostSealReview
     if (
       !snapshot ||
       snapshot.id !== command.basis.snapshotId ||
-      snapshot.revision !== command.basis.revision
+      snapshot.revision !== command.basis.revision ||
+      snapshot.subject.id !== command.basis.subjectId
     ) {
       return {
         status: "unresolved",
@@ -84,6 +91,27 @@ export class PrepareProjectBuyConfigurationCostSealReview
         status: "unavailable",
         reason: "The Buy candidate capture fingerprint is not canonical.",
       };
+    }
+    const project = await this.projects.get(command.projectId);
+    if (!project) {
+      return {
+        status: "unresolved",
+        reason: "The engineering project could not be reopened.",
+      };
+    }
+    const authority = recrossBuyCandidateSealAuthority({
+      projectId: command.projectId,
+      sealBasis: command.basis,
+      configuration: candidate.configuration,
+      trustedRunId: candidate.trustedRunId,
+      producerRunId: artifact.producer.runId,
+      captureRun: resolveBuyCandidateCaptureRun(
+        project,
+        candidate.trustedRunId,
+      ),
+    });
+    if (authority.status !== "current") {
+      return { status: "unresolved", reason: authority.reason };
     }
     const applicability = buyGeometryApplicability(
       snapshot,

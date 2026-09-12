@@ -105,9 +105,21 @@ export async function validateBuySealCapture(
   );
   const configuration = validateBuyConfiguration(root.configuration);
   const bundle = validateBuyCostBundle(root.bundle);
+  const configurationDigest = sha256(
+    root.configurationDigest,
+    "$buySealCapture.configurationDigest",
+  );
   const bundleDigest = nonEmptyText(root.bundleDigest, "$buySealCapture.bundleDigest");
+  if (configurationDigest !== (await sha256Fingerprint(configuration)).digest) {
+    throw new TypeError("$buySealCapture.configurationDigest does not match.");
+  }
   if (bundleDigest !== (await sha256Fingerprint(bundle)).digest) {
     throw new TypeError("$buySealCapture.bundleDigest does not match.");
+  }
+  if (bundle.configurationRef.digest !== configurationDigest) {
+    throw new TypeError(
+      "Sealed bundle configurationRef does not match the configuration.",
+    );
   }
   const coverageStatus = oneOf(
     root.coverageStatus,
@@ -125,10 +137,7 @@ export async function validateBuySealCapture(
     decisionId: safeId(root.decisionId, "$buySealCapture.decisionId"),
     candidateDigest: sha256(root.candidateDigest, "$buySealCapture.candidateDigest"),
     bundleDigest,
-    configurationDigest: sha256(
-      root.configurationDigest,
-      "$buySealCapture.configurationDigest",
-    ),
+    configurationDigest,
     configuration,
     bundle,
     sourceCaptures: arrayOf(root.sourceCaptures, "$buySealCapture.sourceCaptures")

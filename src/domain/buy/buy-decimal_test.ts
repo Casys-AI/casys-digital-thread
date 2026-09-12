@@ -2,8 +2,10 @@ import { assertEquals, assertThrows } from "@std/assert";
 import {
   addBuyDecimals,
   BUY_DECIMAL_SCHEMA,
+  isPositiveBuyDecimal,
   multiplyBuyDecimals,
   parseBuyDecimal,
+  parseNonNegativeBuyDecimal,
   roundBuyDecimal,
 } from "./buy-decimal.ts";
 
@@ -22,6 +24,24 @@ Deno.test("adds and multiplies without binary floats", () => {
   assertEquals(addBuyDecimals("12.50", "12.50"), "25.00");
   assertEquals(multiplyBuyDecimals("2", "12.50"), "25.00");
   assertEquals(multiplyBuyDecimals("3", "0.10"), "0.30");
+});
+
+Deno.test("non-negative parser keeps zero and refuses a minus sign", () => {
+  assertEquals(parseNonNegativeBuyDecimal("0", "$"), "0");
+  assertEquals(parseNonNegativeBuyDecimal("0.00", "$"), "0.00");
+  assertEquals(parseNonNegativeBuyDecimal("4", "$"), "4");
+  assertThrows(
+    () => parseNonNegativeBuyDecimal("-1", "$"),
+    TypeError,
+    "non-negative",
+  );
+});
+
+Deno.test("positive decimal excludes zero and negatives", () => {
+  assertEquals(isPositiveBuyDecimal("0.90"), true);
+  assertEquals(isPositiveBuyDecimal("0"), false);
+  assertEquals(isPositiveBuyDecimal("0.00"), false);
+  assertEquals(isPositiveBuyDecimal("-0.90"), false);
 });
 
 Deno.test("rounds half-up at a versioned scale", () => {

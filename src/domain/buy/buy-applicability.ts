@@ -26,6 +26,48 @@ export type BuyApplicability =
     readonly reason: string;
   };
 
+/**
+ * Recross a configuration's embedded basis and subject against an exact
+ * Thread snapshot identity. Geometry currentness is a separate check:
+ * a still-current STEP does not make a foreign or predecessor
+ * configuration admissible for a new capture.
+ */
+export function recrossBuyConfigurationThreadBasis(
+  configuration: BuyConfiguration,
+  basis: {
+    readonly snapshotId: string;
+    readonly revision: number;
+    readonly subjectId: string;
+  },
+): { readonly status: "current" } | {
+  readonly status: "refused";
+  readonly reason: string;
+} {
+  if (configuration.subjectId !== basis.subjectId) {
+    return {
+      status: "refused",
+      reason: "Buy configuration subjectId does not match the exact Thread basis.",
+    };
+  }
+  if (configuration.basis.subjectId !== basis.subjectId) {
+    return {
+      status: "refused",
+      reason:
+        "Buy configuration basis.subjectId does not match the exact Thread basis.",
+    };
+  }
+  if (
+    configuration.basis.snapshotId !== basis.snapshotId ||
+    configuration.basis.revision !== basis.revision
+  ) {
+    return {
+      status: "refused",
+      reason: "Buy configuration basis does not match the exact Thread basis.",
+    };
+  }
+  return { status: "current" };
+}
+
 export function buyGeometryApplicability(
   snapshot: ThreadSnapshot,
   configuration: BuyConfiguration,

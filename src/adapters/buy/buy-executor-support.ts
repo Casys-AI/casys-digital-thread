@@ -9,6 +9,7 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotBasis,
 } from "../../domain/project/engineering-project.ts";
+import { sameSnapshotRef } from "../../domain/project/validation/engineering-project-invariant-values.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
 import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import {
@@ -48,12 +49,14 @@ export function requireBuyMrtrApproval(
       approval.decisionId === decision.id &&
       approval.status === "approved" &&
       approval.decidedByOrigin === "human" &&
-      sameSnapshotBasis(approval.baseSnapshot, basis) &&
+      approval.baseSnapshot !== undefined &&
+      sameSnapshotRef(approval.baseSnapshot, basis) &&
       fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint)
     );
     if (
       exactHumanApprovals.length === 1 &&
-      sameSnapshotBasis(decision.baseSnapshot, basis) &&
+      decision.baseSnapshot !== undefined &&
+      sameSnapshotRef(decision.baseSnapshot, basis) &&
       decision.inputFingerprint
     ) {
       candidates.push({ decision, proposal: decision.proposal });
@@ -105,13 +108,6 @@ export function buyCommandStep(commandId: string, step: string): string {
 
 export function buyErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-export function sameSnapshotBasis(
-  left: { readonly snapshotId: string; readonly revision: number } | undefined,
-  right: EngineeringThreadSnapshotBasis,
-): boolean {
-  return left?.snapshotId === right.snapshotId && left.revision === right.revision;
 }
 
 export function requireBuyOperationShape(

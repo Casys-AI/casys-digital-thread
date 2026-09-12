@@ -13,7 +13,10 @@ import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
 } from "../../application/use-cases/project/engineering-project-command-service.ts";
-import { buyGeometryApplicability } from "../../domain/buy/buy-applicability.ts";
+import {
+  buyGeometryApplicability,
+  recrossBuyConfigurationThreadBasis,
+} from "../../domain/buy/buy-applicability.ts";
 import {
   type BuyConfiguration,
   validateBuyConfiguration,
@@ -269,6 +272,7 @@ export class BuyCaptureConfigurationCostRunExecutor {
         this.deps.snapshots,
       );
       const configuration = await this.#reopenConfiguration(decisionParams);
+      requireMatchingConfigurationBasis(basis, configuration);
       requireCurrentGeometry(basisSnapshot, configuration);
       const binding = await this.deps.bindings.resolve({ project });
       if (binding.status !== "qualified") {
@@ -642,6 +646,19 @@ export class BuyCaptureConfigurationCostRunExecutor {
       return project;
     }
     return undefined;
+  }
+}
+
+function requireMatchingConfigurationBasis(
+  basis: EngineeringThreadSnapshotBasis,
+  configuration: BuyConfiguration,
+): void {
+  const recross = recrossBuyConfigurationThreadBasis(configuration, basis);
+  if (recross.status !== "current") {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      recross.reason,
+    );
   }
 }
 

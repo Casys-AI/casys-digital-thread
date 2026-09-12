@@ -73,6 +73,170 @@ Deno.test("missing tax/transport required dimensions cannot default to zero", as
   assertEquals(bundle.coverage.unknownDimensions.includes("transport"), true);
 });
 
+Deno.test("captured directed FX is applied before totaling in the pricing currency", async () => {
+  const configuration = validateBuyConfiguration(buyConfigurationFixture());
+  const price = buyCaptureBodyFixture().documents[0]!;
+  const body = buyCaptureBodyFixture({
+    documents: [
+      {
+        ...price,
+        fields: {
+          ...price.fields,
+          currency: "USD",
+        },
+      },
+      {
+        doctype: "Currency Exchange",
+        name: "USD-EUR-SYNTHETIC",
+        modified: "2026-09-01 08:00:00.000000",
+        sourceCategory: "currency-exchange",
+        fingerprint:
+          "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        fields: {
+          from_currency: "USD",
+          to_currency: "EUR",
+          exchange_rate: "0.90",
+        },
+      },
+    ],
+  });
+  const envelope = await captureEnvelope(body);
+  const bundle = computeBuyCostCandidate({
+    configuration,
+    configurationDigest: "1".repeat(64),
+    captures: [envelope],
+    authorizedSiteId: BUY_FIXTURE_SITE,
+    pricingContext: buyPricingContext(),
+    selections: [buyPricedSelection(envelope.fingerprint)],
+  });
+  // Independent: 4 × 1.25 × 0.90 = 4.50 EUR. Not a USD total labelled EUR.
+  assertEquals(bundle.lines[0]?.dimensions.fx, "established");
+  assertEquals(bundle.lines[0]?.currency, "EUR");
+  assertEquals(bundle.lines[0]?.amount, "4.50");
+  assertEquals(bundle.totals[0]?.currency, "EUR");
+  assertEquals(bundle.totals[0]?.amount, "4.50");
+  assertEquals(bundle.coverage.status, "complete");
+  assertEquals(bundle.totals.some((total) => total.kind === "total-complete"), true);
+});
+
+Deno.test("zero, negative, inverse or unparsable FX stays unresolved", async () => {
+  const configuration = validateBuyConfiguration(buyConfigurationFixture());
+  const price = buyCaptureBodyFixture().documents[0]!;
+  const usdPrice = {
+    ...price,
+    fields: {
+      ...price.fields,
+      currency: "USD",
+    },
+  };
+  const cases: Array<{
+    readonly name: string;
+    readonly documents: ReturnType<typeof buyCaptureBodyFixture>["documents"];
+  }> = [
+    {
+      name: "missing",
+      documents: [usdPrice],
+    },
+    {
+      name: "zero",
+      documents: [
+        usdPrice,
+        {
+          doctype: "Currency Exchange",
+          name: "USD-EUR-ZERO",
+          modified: "2026-09-01 08:00:00.000000",
+          sourceCategory: "currency-exchange",
+          fingerprint:
+            "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+          fields: {
+            from_currency: "USD",
+            to_currency: "EUR",
+            exchange_rate: "0",
+          },
+        },
+      ],
+    },
+    {
+      name: "negative",
+      documents: [
+        usdPrice,
+        {
+          doctype: "Currency Exchange",
+          name: "USD-EUR-NEG",
+          modified: "2026-09-01 08:00:00.000000",
+          sourceCategory: "currency-exchange",
+          fingerprint:
+            "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+          fields: {
+            from_currency: "USD",
+            to_currency: "EUR",
+            exchange_rate: "-0.90",
+          },
+        },
+      ],
+    },
+    {
+      name: "inverse",
+      documents: [
+        usdPrice,
+        {
+          doctype: "Currency Exchange",
+          name: "EUR-USD",
+          modified: "2026-09-01 08:00:00.000000",
+          sourceCategory: "currency-exchange",
+          fingerprint:
+            "sha256:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          fields: {
+            from_currency: "EUR",
+            to_currency: "USD",
+            exchange_rate: "0.90",
+          },
+        },
+      ],
+    },
+    {
+      name: "unparsable",
+      documents: [
+        usdPrice,
+        {
+          doctype: "Currency Exchange",
+          name: "USD-EUR-SCI",
+          modified: "2026-09-01 08:00:00.000000",
+          sourceCategory: "currency-exchange",
+          fingerprint:
+            "sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff",
+          fields: {
+            from_currency: "USD",
+            to_currency: "EUR",
+            exchange_rate: "1e-1",
+          },
+        },
+      ],
+    },
+  ];
+  for (const item of cases) {
+    const envelope = await captureEnvelope(buyCaptureBodyFixture({
+      documents: item.documents,
+    }));
+    const bundle = computeBuyCostCandidate({
+      configuration,
+      configurationDigest: "1".repeat(64),
+      captures: [envelope],
+      authorizedSiteId: BUY_FIXTURE_SITE,
+      pricingContext: buyPricingContext(),
+      selections: [buyPricedSelection(envelope.fingerprint)],
+    });
+    assertEquals(
+      bundle.lines[0]?.gaps.some((gap) => gap.code === "fx-unresolved"),
+      true,
+      item.name,
+    );
+    assertEquals(bundle.lines[0]?.dimensions.fx, "unknown", item.name);
+    assertEquals(bundle.lines[0]?.amount, undefined, item.name);
+    assertEquals(bundle.coverage.status !== "complete", true, item.name);
+  }
+});
+
 Deno.test("unknown UOM or FX is a gap", async () => {
   const configuration = validateBuyConfiguration(buyConfigurationFixture());
   const body = buyCaptureBodyFixture({
