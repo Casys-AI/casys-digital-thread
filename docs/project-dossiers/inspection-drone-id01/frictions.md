@@ -1,15 +1,26 @@
 # ID01 — remaining agent-path frictions
 
 Fact-checked on **2026-09-09** by six Terra reviewers, with final source and runtime
-readback checks by Codex. **27 confirmed-fixed entries have been removed.** Saved-state
-reread **2026-09-12** of persisted latest
+readback checks by Codex. **27 confirmed-fixed entries have been removed.** Initial
+saved-state reread **2026-09-12** for the source audit used
 `inspection-drone-id01:project:r882:2de1e90b38a35b6b`, Thread r118
 `project:inspection-drone-id01:r118:industrialize-run-dfm-checks-run:id01-queue-dfm-run-board-r1-f52c-20260912`.
-This is a documentation read of saved state, not a server restart or live `GET` today.
+That initial r882 reference is historical after the authorized local adoption below.
 Canonical brief r7, pending r8 unconfirmed (F22), leftover r2 `ready` (F45). Preferred
 HOLD screening lead F1404+GF3016 recorded, SKU not selected. Measured DFM run recorded
 Thread r118; sensitivity **case** sealed Thread r117 (F51). Original observations remain
 in Git history.
+
+**Latest authorized live DFM readback 2026-09-12:** Project r892, Thread r119
+`project:inspection-drone-id01:r119:industrialize-run-dfm-checks-run:id01-yolo-queue-dfm-r118-authority-retry-jit-20260912`.
+After explicit user approval “oui oui yolo”, one registered measured DFM calculation
+completed on the exact human-approved r118 basis. Its new capture
+`dfm-check-8ceb2ffb9a7a5a920213252607f5d8849c6c02727e957bacbd01313ab79e0f44` is
+authority-available; the real local viewer opens it and shows the three recorded
+screening checks. Historical r115/r117 capture remains authority-`unavailable`. Current
+hulls are preserved. The exact admitted DFM group/image is unchanged and its container
+stopped through terminal session release. No manufacture, purchase or flight is
+authorized by the screening verdict. See F52 for exact commands and proof limits.
 
 Status groups below replace a duplicated opening total. Source-tested worktree
 candidates are not runtime adoption. Tests and runtime evidence support only their
@@ -45,16 +56,18 @@ inside retained entries describe the historical trigger, not the current project
 | -------- | ---------------------------------------------------------------------------------------------------------------------- |
 | F45      | Orphan `wi-proof-seal-id01-camera-bracket-bench-r2` remains `ready`. Source abandon path is a candidate, not executed. |
 
-## Source-tested candidates (not runtime-adopted)
+## Source-tested corrections and local adoption
 
-Isolated-worktree source. Not an active Workbench or provider proof.
+Tested source deltas were adopted reversibly into the original checkouts after explicit
+user authorization. Each entry retains its narrower runtime and human-action limits;
+local source adoption does not imply provider publication or qualification.
 
-| Friction | Note                                                                                                                                                                                                                                                                                                                             |
-| -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F15      | Discoverability v2 source accepted (47 targeted tests). Offline candidate projection is `partial` on the original 10 heads; the candidate route is not runtime-adopted and v1 `/api/projects` stays 503. Historical-head reopen as current remains deferred ([#15](https://github.com/Casys-AI/casys-digital-thread/issues/15)). |
-| F45      | Abandon transition reuses snapshot-validator cancellation constraints; 43 service tests and 2 MCP tests. ID01 orphan still `ready`.                                                                                                                                                                                              |
-| F47      | Overview hull keeps an available nonempty occurrence tree with 0 CAD joins; 37 focused tests. DFM hulls: 53 UI + 1 membership. Not runtime adoption.                                                                                                                                                                             |
-| F49      | Camera bracket 2 hops / 2 historical `PASS`; RadialArm 1 hop / 2 historical `PASS`; `historicalEvaluations` + `sourceArtifacts[]`. Current r882 bench rows stay `pass`; historical evaluations do not authorize them.                                                                                                            |
+| Friction | Note                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F15      | Discoverability v2 source accepted (47 targeted tests). Offline candidate projection is `partial` on the original 10 heads; the v2 route source is adopted locally, while its live discovery behavior is not verified by the focused DFM browser check; v1 `/api/projects` was 503 at the original audit. Historical-head reopen as current remains deferred ([#15](https://github.com/Casys-AI/casys-digital-thread/issues/15)). |
+| F45      | Abandon transition reuses snapshot-validator cancellation constraints; 43 service tests and 2 MCP tests. ID01 orphan still `ready`.                                                                                                                                                                                                                                                                                               |
+| F47      | Overview hull keeps an available nonempty occurrence tree with 0 CAD joins; 37 focused tests. DFM hulls: 53 UI + 1 membership. Local hull source is adopted; the real DFM viewer opens, while the zero-CAD condition retains its targeted source proof.                                                                                                                                                                           |
+| F49      | Camera bracket 2 hops / 2 historical `PASS`; RadialArm 1 hop / 2 historical `PASS`; `historicalEvaluations` + `sourceArtifacts[]`. The historical source-audit baseline r882 bench rows were `pass`; historical evaluations do not authorize them.                                                                                                                                                                                |
 
 ## Closed-in-live on this atelier
 
@@ -69,11 +82,11 @@ workarounds, not generic parser or architecture-guard fixes.
 | F50      | Canonical STEP attestation accepted after focused tests; CameraBoardEnvelope DFM case sealed Thread r115.                          |
 | F51      | Case identity includes cadSource digest; case sealed Thread r117. No new study execution, reuse or speedup.                        |
 
-## Recorded result with remaining authority limitation
+## Recovered DFM authority with retained historical refusal
 
-| Friction | Note                                                                                                                                                       |
-| -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| F52      | Capture `dfm-check-a023abdc…` recorded Thread r118. Trusted-binding / planner-sort hole was historically corrected. MRTR basis r115 executed against r117. |
+| Friction | Note                                                                                                                                                                            |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F52      | Fresh human-approved r118 measured run completed at Thread r119, capture `dfm-check-8ceb2ffb…`, viewer available. Historical r115/r117 capture remains authority-`unavailable`. |
 
 F14, F28 and F29 remain `unverified`; no issue was created for them. Their historical
 incidents have neither been disproved nor confirmed as current failures.
@@ -713,16 +726,16 @@ against admission `technical-compilation-admission-b0e5ba4d…`. Work item
 Consumer run/eval is a later hop (HTTP CalculiX remains unqualified). F27 remains the
 production-reuse boundary.
 
-## F52 — measured DFM run recorded; exact MRTR basis still an authority limitation
+## F52 — exact DFM authority recovered through a valid successor; historical refusal retained
 
 **Observed 2026-09-11.** Queue refused: no trusted binding for
 `manufacturing.run-dfm-checks@1/execution`.
 
-**Recorded 2026-09-12, not unqualified closed-in-live.** The trusted-binding and
-planner-sort subproblem was corrected historically: catalogue unit
-`casys.mcp-dfm@0.1.0`, H1 group `casys-mcp-dfm@1.0.0`, binding `mcp-dfm-measured-checks`
-`qualified`. Planner sorts semantic requirements, bindings and host-effect lists the
-same way amendment reconstruct does, so YOLO amend of the ID01 ceiling succeeds.
+**Historical record 2026-09-12, kept unavailable.** The trusted-binding and planner-sort
+subproblem was corrected historically: catalogue unit `casys.mcp-dfm@0.1.0`, H1 group
+`casys-mcp-dfm@1.0.0`, binding `mcp-dfm-measured-checks` `qualified`. Planner sorts
+semantic requirements, bindings and host-effect lists the same way amendment reconstruct
+does, so YOLO amend of the ID01 ceiling succeeds.
 
 The recorded capture remains readable and is not erased or upgraded to a valid exact
 approval. Decision `decision-run-dfm-id01-camera-board-envelope-mk4s-r1` and approval
@@ -773,15 +786,45 @@ launch-group change. The shared container ownership/staging primitive is extract
 CalculiX; each factory keeps its own literal topology. 61 retained targeted tests and 9
 architecture-boundary tests pass; changed-source fmt/lint/typecheck and server
 composition pass. Two new source-string snapshot tests are excluded from the delivery;
-composition is reviewed directly and dependency boundaries use the existing scanner. The
-authorized r118 calculation remains to be completed through a fresh queue of the same
-work/approval; historical evidence is never repaired retroactively.
+composition is reviewed directly and dependency boundaries use the existing scanner.
+**Authorized runtime successor verified 2026-09-12.** The tested 10-path source
+successor `1ee3741763632575cbb869c8e13fd9bb6e196152` was adopted into the original
+checkout with backups, unchanged HEAD/index, 213 unrelated dirty paths preserved, and 17
+hull source files plus viewer packages unchanged. Original server/BFF typecheck passed.
+Owned MCP (`start:yolo`) and Workbench (`preview:thread`) were restarted.
+`project_agent_run_queue` recorded
+`run:id01-yolo-queue-dfm-r118-authority-retry-jit-20260912` at Project r889, using the
+same work and unchanged human approval r118. `project_agent_run_execute` completed at
+Project r892 and published Thread r119 artifact
+`dfm-check-8ceb2ffb9a7a5a920213252607f5d8849c6c02727e957bacbd01313ab79e0f44`. The first
+failed attempt and old invalid completed run remain byte-identical in their project
+records; the signed decision is unchanged. Production readers reopened and validated the
+new capture/fingerprint and exact canonical STEP (30011 bytes); all three provider
+receipts attest its SHA-256. Actual sole `dfm-exports` mount is read-only, with the
+exact admitted image, `cap_drop: ALL`, `no-new-privileges`; the owned DFM container is
+`exited` after terminal release. No manual provider start, topology change or image
+rebuild was performed.
 
-Recorded checks (sampling / screening, printer not selected): envelope 25 × 24 × 11.5 mm
-`pass`; sampled minimum thickness 0.9149495583883871 mm against 0.8 mm `pass`; overhang
-bed-contact centroids z = 0 excluded by declared 0.2 mm Z-min filter, 0 remaining,
-`pass`. Not a printer SKU. No flight, strength or manufacturing authorization. Root
-Compose on 3018 collides with the H1 group.
+**Real viewer acceptance.** Session
+`mcp-app:db10414028aa02c42c005e7e2689c938edbf52b6c36c20f50170a1bbb658c03f` is exactly
+anchored on that new artifact/run and `available`. Its actual iframe shows Envelope,
+Minimum thickness and Overhangs, with recorded measurements and the declared Z-min
+filter; the unavailable message is absent. The historical unavailable session remains
+distinct. No page runtime error or HTTP 4xx/5xx was observed; Workbench API requests are
+GET only. The strict global browser harness is not claimed green: six CSP/font
+diagnostics (unsupported `webrtc`, blocked embedded data fonts) and one cancelled
+resource GET remain recorded. They do not replace or invalidate the exact DFM
+capture/visible measurements. Audit JSON and PNG are in
+`/Volumes/DEV/Projects/cdt-frictions-20260912-audit/dfm-jit-real-viewer-acceptance.json`
+and `dfm-success-workbench-313ab79e0f44.png`. Historical evidence is never repaired
+retroactively.
+
+Fresh successor checks (sampling / screening, printer not selected): envelope 25 × 24 ×
+11.5 mm `pass`; sampled minimum thickness 0.9149495583883871 mm against 0.8 mm `pass`;
+overhang bed-contact centroids z = 0 excluded by declared 0.2 mm Z-min filter, 0
+remaining, `pass`. Not a printer SKU. No flight, strength or manufacturing
+authorization. The earlier root Compose collision is historical; the successor used the
+owned H1 group.
 
 **DFM recorded viewer source** (unpublished):
 `/Volumes/DEV/Projects/mcp-dfm-viewer-20260912` (`io.casys.mcp-dfm.results`
@@ -797,8 +840,9 @@ plus pure provider-parser recross (exact available / historical cross-revision
 `unavailable`). Hulls: 53 UI + 1 membership. Workbench remains generic read-only `GET` +
 SSE. Production solver pin stays `0.1.0` while provider source is `0.3.0`. Legacy
 recorded `0.1` captures lack newer quality fields: show `not recorded` / `unavailable`,
-never infer quality. No install, publication or runtime adoption. Private `stagedPath`
-stays off the App.
+never infer quality. The local display package is installed and its real viewer is
+verified above; no provider source publication was performed. Private `stagedPath` stays
+off the App.
 
 ## F44 — candidate qualification has no generic catalogue-activation route (open, deferred)
 
