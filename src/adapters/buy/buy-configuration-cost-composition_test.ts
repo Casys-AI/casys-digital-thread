@@ -500,8 +500,8 @@ Deno.test("seal refuses a candidate configuration from another project", async (
   }
 });
 
-Deno.test("seal refuses malformed, ambiguous or archived candidates on its exact basis", async () => {
-  for (const mode of ["malformed", "ambiguous", "archived"] as const) {
+Deno.test("seal refuses malformed, ambiguous, archived or stale candidates on its exact basis", async () => {
+  for (const mode of ["malformed", "ambiguous", "archived", "stale"] as const) {
     const root = await Deno.makeTempDir({ prefix: "buy-seal-foreign-" });
     try {
       const wrapper = await loadProducerWrapper();
@@ -551,6 +551,19 @@ Deno.test("seal refuses malformed, ambiguous or archived candidates on its exact
                   ? snapshot.artifacts.map((artifact) =>
                     artifact.id === candidateArtifact!.id
                       ? { ...artifact, mediaType: "text/plain" }
+                      : artifact
+                  )
+                  : mode === "stale"
+                  ? snapshot.artifacts.map((artifact) =>
+                    artifact.id === candidateArtifact!.id
+                      ? {
+                        ...artifact,
+                        freshness: {
+                          ...artifact.freshness,
+                          status: "stale" as const,
+                          reason: "fixture-invalidated",
+                        },
+                      }
                       : artifact
                   )
                   : snapshot.artifacts,

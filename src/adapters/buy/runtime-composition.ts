@@ -160,6 +160,20 @@ export class CapabilityRuntimeBuyQualifiedErpBindingResolver
           "The current project is not authorized for the qualified ERP Buy runtime binding.",
       };
     }
+    const capabilities = context.authorization.allowedCapabilities.filter((
+      capability,
+    ) =>
+      capability.id === catalogBinding.capability.id &&
+      capability.version === catalogBinding.capability.version &&
+      capability.use === catalogBinding.use
+    );
+    if (capabilities.length !== 1 || capabilities[0]!.qualification !== "qualified") {
+      return {
+        status: "unresolved",
+        reason:
+          "The project capability authorization does not cover qualified ERP Buy execution.",
+      };
+    }
     const allowed = context.authorization.allowedBindings.filter((binding) =>
       binding.capability.id === catalogBinding.capability.id &&
       binding.capability.version === catalogBinding.capability.version &&

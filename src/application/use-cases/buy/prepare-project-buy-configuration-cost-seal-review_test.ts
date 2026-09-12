@@ -336,12 +336,28 @@ function artifact(
   };
 }
 
-Deno.test("seal review refuses ambiguous or archived candidates before reopening CAS", async () => {
+Deno.test("seal review refuses ambiguous, archived or stale candidates before reopening CAS", async () => {
   const fixture = await sealReviewFixture();
   const candidate = fixture.thread.artifacts.find((item) =>
     item.id === fixture.command.candidateArtifactId
   )!;
   const snapshots: ThreadSnapshot[] = [
+    {
+      ...fixture.thread,
+      artifacts: fixture.thread.artifacts.map((artifact) =>
+        artifact.id === candidate.id
+          ? {
+            ...artifact,
+            freshness: {
+              ...artifact.freshness,
+              status: "stale" as const,
+              reason: "fixture-invalidated",
+            },
+          }
+          : artifact
+      ),
+    },
+
     {
       ...fixture.thread,
       artifacts: [...fixture.thread.artifacts, {

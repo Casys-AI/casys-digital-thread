@@ -1121,6 +1121,20 @@ Deno.test("qualified ERP rejects installed unit and full authorization substitut
     { ...allowed, materials: [{ ...allowed.materials[0]!, unitId: "foreign-unit" }] },
   ];
   const changedContexts: ProjectCapabilityRuntimeContext[] = [
+    { ...context, authorization: { ...authorization, allowedCapabilities: [] } },
+    ...[
+      {
+        ...authorization.allowedCapabilities[0]!,
+        qualification: "compatible" as const,
+      },
+      { ...authorization.allowedCapabilities[0]!, id: "foreign-capability" },
+      { ...authorization.allowedCapabilities[0]!, version: "foreign-version" },
+      { ...authorization.allowedCapabilities[0]!, use: "preparation" as const },
+    ].map((capability) => ({
+      ...context,
+      authorization: { ...authorization, allowedCapabilities: [capability] },
+    })),
+
     ...[
       { ...unit, version: "foreign-version" },
       { ...unit, manifestFingerprint: foreignFingerprint },
