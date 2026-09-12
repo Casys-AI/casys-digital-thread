@@ -223,7 +223,7 @@ Deno.test("stale configuration basis is refused before ERP dispatch", async () =
   await assertRejects(
     () => fixture.executor.execute(AGENT, fixture.command),
     EngineeringProjectCommandError,
-    "Thread basis",
+    "signed parameters",
   );
   assertEquals(calls, []);
 });
@@ -1132,6 +1132,10 @@ async function createCaptureFixture(options: {
     typeof BuyCaptureConfigurationCostRunExecutor
   >[0]["bindings"];
   readonly mcp: ConstructorParameters<typeof ErpnextBuyCaptureClient>[0];
+  readonly runtimeOverrides?: Partial<
+    ConstructorParameters<typeof BuyCaptureConfigurationCostRunExecutor>[0]
+  >;
+  readonly signedGeometry?: ReturnType<typeof buyConfigurationFixture>["geometry"];
   readonly candidateDirectory?: string;
   readonly snapshotDirectory?: string;
   readonly configuration?: ReturnType<typeof buyConfigurationFixture>;
@@ -1152,7 +1156,7 @@ async function createCaptureFixture(options: {
     configurationRevision: 1,
     basisSnapshotId: "snapshot.buy.r1",
     basisRevision: 1,
-    geometry: configuration.geometry,
+    geometry: options.signedGeometry ?? configuration.geometry,
     documents: [{ doctype: "Item Price", name: "ITEM-PRICE-SYNTHETIC-001" }],
     pricing: buyPricingContext(),
     authorizedSiteFingerprint: BUY_FIXTURE_SITE,
@@ -1203,6 +1207,7 @@ async function createCaptureFixture(options: {
     },
     erpnext: new ErpnextBuyCaptureClient(options.mcp),
     lease: { withLease: (_projectId, _scope, operation) => operation() },
+    ...options.runtimeOverrides,
   });
   return {
     command: {
@@ -1840,3 +1845,50 @@ class MemoryCommands {
     return Promise.resolve(this.project);
   }
 }
+
+Deno.test("mixed JIT and injected ERP dependencies never fall back to direct dispatch", async () => {
+  const calls: string[] = [];
+  const fixture = await createCaptureFixture({
+    mcp: {
+      callTool: () => {
+        calls.push("provider");
+        return Promise.reject(new Error("must not dispatch"));
+      },
+      callToolTextResult: () => Promise.reject(new Error("must not dispatch")),
+    },
+    runtimeOverrides: {
+      capabilityRuntime: {
+        requireExecution: () => Promise.reject(new Error("must not begin JIT")),
+      },
+    },
+  });
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, fixture.command),
+    EngineeringProjectCommandError,
+    "one complete runtime mode",
+  );
+  assertEquals(calls, []);
+});
+
+Deno.test("signed geometry cannot contradict the reopened configuration", async () => {
+  const calls: string[] = [];
+  const fixture = await createCaptureFixture({
+    signedGeometry: {
+      ...buyConfigurationFixture().geometry,
+      stepFingerprint: "0".repeat(64),
+    },
+    mcp: {
+      callTool: () => {
+        calls.push("provider");
+        return Promise.reject(new Error("must not dispatch"));
+      },
+      callToolTextResult: () => Promise.reject(new Error("must not dispatch")),
+    },
+  });
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, fixture.command),
+    EngineeringProjectCommandError,
+    "signed parameters",
+  );
+  assertEquals(calls, []);
+});

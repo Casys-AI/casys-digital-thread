@@ -1,4 +1,8 @@
-import { waitForChromeDebuggerAddress } from "../../testing/headless-chrome.ts";
+import {
+  removeChromeProfile,
+  stopChrome,
+  waitForChromeDebuggerAddress,
+} from "../../testing/headless-chrome.ts";
 import { assertEquals } from "@std/assert";
 import {
   materializeMcpAppDocument,
@@ -136,14 +140,13 @@ Deno.test({
     } finally {
       try {
         if (chrome && chromeStatus) {
-          chrome.kill("SIGTERM");
-          await chromeStatus;
+          await stopChrome(chrome, chromeStatus);
         }
       } finally {
         try {
           await server.shutdown();
         } finally {
-          await Deno.remove(profile, { recursive: true });
+          await removeChromeProfile(profile);
         }
       }
     }

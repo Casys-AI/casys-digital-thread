@@ -1,4 +1,8 @@
-import { waitForChromeDebuggerAddress } from "../../src/testing/headless-chrome.ts";
+import {
+  removeChromeProfile,
+  stopChrome,
+  waitForChromeDebuggerAddress,
+} from "../../src/testing/headless-chrome.ts";
 import { assertEquals, assertRejects } from "@std/assert";
 import {
   materializeMcpAppDocument,
@@ -381,66 +385,12 @@ async function fetchWithTimeout(
   }
 }
 
-async function stopChrome(
-  chrome: Deno.ChildProcess,
-  status: Promise<Deno.CommandStatus>,
-): Promise<void> {
-  try {
-    chrome.kill("SIGTERM");
-  } catch (error) {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
-  }
-  if (await settlesWithin(status, 2_000)) return;
-  try {
-    chrome.kill("SIGKILL");
-  } catch (error) {
-    if (!(error instanceof Deno.errors.NotFound)) throw error;
-  }
-  if (!(await settlesWithin(status, 2_000))) {
-    throw new Error("The test Chrome process did not terminate.");
-  }
-}
-
 Deno.test("Chrome profile cleanup removes only its temporary profile", async () => {
   const profile = await Deno.makeTempDir({ prefix: "casys-mcp-app-chrome-" });
   await Deno.writeTextFile(`${profile}/marker`, "test");
   await removeChromeProfile(profile);
   await assertRejects(() => Deno.stat(profile), Deno.errors.NotFound);
 });
-
-async function removeChromeProfile(profile: string): Promise<void> {
-  let lastDirectoryNotEmpty: Error | undefined;
-  for (let attempt = 0; attempt < 80; attempt++) {
-    try {
-      await Deno.remove(profile, { recursive: true });
-      return;
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes("Directory not empty")) {
-        throw error;
-      }
-      lastDirectoryNotEmpty = error;
-      await delay(25);
-    }
-  }
-  throw lastDirectoryNotEmpty;
-}
-
-async function settlesWithin<T>(
-  promise: Promise<T>,
-  timeoutMs: number,
-): Promise<boolean> {
-  let timeout: ReturnType<typeof setTimeout> | undefined;
-  try {
-    return await Promise.race([
-      promise.then(() => true),
-      new Promise<boolean>((resolve) => {
-        timeout = setTimeout(() => resolve(false), timeoutMs);
-      }),
-    ]);
-  } finally {
-    if (timeout !== undefined) clearTimeout(timeout);
-  }
-}
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));

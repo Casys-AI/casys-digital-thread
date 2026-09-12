@@ -1,3 +1,4 @@
+import { sameSnapshotRef } from "../../../domain/project/validation/engineering-project-invariant-values.ts";
 /**
  * Provider-free executor for `industrialize.seal-dfm-case@1`.
  *
@@ -402,6 +403,12 @@ function requireAttestedGeometry(
   dfmCase: DfmCheckCase,
 ): ThreadArtifact {
   const parsed = parseDfmTargetArtifactUri(dfmCase.target.artifactUri);
+  if (parsed.projectId !== dfmCase.project.id) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "DFM target URI project does not match the sealed case project.",
+    );
+  }
   const artifact = snapshot.artifacts.find((item) => item.id === parsed.artifactId);
   if (!artifact) {
     throw new EngineeringProjectCommandError(
@@ -546,12 +553,14 @@ function requireMrtrApproval(
       approval.decisionId === decision.id &&
       approval.status === "approved" &&
       approval.decidedByOrigin === "human" &&
-      sameSnapshotBasis(approval.baseSnapshot, basis) &&
+      approval.baseSnapshot !== undefined &&
+      sameSnapshotRef(approval.baseSnapshot, basis) &&
       fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint)
     );
     if (
       exactHumanApprovals.length === 1 &&
-      sameSnapshotBasis(decision.baseSnapshot, basis) &&
+      decision.baseSnapshot !== undefined &&
+      sameSnapshotRef(decision.baseSnapshot, basis) &&
       decision.inputFingerprint
     ) {
       candidates.push({ decision, proposal: decision.proposal });
@@ -585,13 +594,6 @@ async function exactBasisSnapshot(
     );
   }
   return snapshot;
-}
-
-function sameSnapshotBasis(
-  left: { readonly snapshotId: string; readonly revision: number } | undefined,
-  right: EngineeringThreadSnapshotBasis,
-): boolean {
-  return left?.snapshotId === right.snapshotId && left.revision === right.revision;
 }
 
 function assertCompleted(

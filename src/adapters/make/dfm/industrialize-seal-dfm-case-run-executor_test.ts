@@ -174,6 +174,8 @@ Deno.test("a human origin is refused before any store access", async () => {
 });
 
 async function createFixture(options: {
+  readonly targetProjectId?: string;
+  readonly approvalSubjectId?: string;
   readonly signedSha256?: string;
   readonly basisSha256?: string;
   readonly omitGeometry?: boolean;
@@ -187,7 +189,11 @@ async function createFixture(options: {
     ? CANONICAL_STEP
     : (options.basisSha256 ?? signedSha256);
   const targetId = options.canonicalChild ? CANONICAL_STEP_ID : GEOMETRY_ID;
-  const dfmCase = validateDfmCheckCase(caseJson(signedSha256, targetId));
+  const sourceCase = caseJson(signedSha256, targetId);
+  sourceCase.target.artifactUri = `thread-artifact://${
+    options.targetProjectId ?? PROJECT_ID
+  }/${targetId}`;
+  const dfmCase = validateDfmCheckCase(sourceCase);
   const caseDigest = (await sha256Fingerprint(dfmCase)).digest;
   const parameters = encodeDfmDecisionParameters(caseDigest, dfmCase);
   const geometryArtifact = options.canonicalChild
@@ -397,7 +403,10 @@ async function createFixture(options: {
       decidedBy: HUMAN.actorId,
       decidedByOrigin: "human",
       rationale: "Reviewed the case.",
-      baseSnapshot: reviewBasis,
+      baseSnapshot: {
+        ...reviewBasis,
+        subjectId: options.approvalSubjectId ?? SUBJECT_ID,
+      },
       inputFingerprint: decisionFingerprint,
       inputEvidenceRefs: [],
     }],
@@ -524,3 +533,21 @@ class MemoryCommands {
     return Promise.resolve(this.project);
   }
 }
+
+Deno.test("seal DFM case refuses a foreign project target even when the artifact ID and digest match", async () => {
+  const fixture = await createFixture({ targetProjectId: "foreign-project" });
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, fixture.command),
+    EngineeringProjectCommandError,
+    "target URI project",
+  );
+});
+
+Deno.test("seal DFM case refuses an approval from another Thread subject", async () => {
+  const fixture = await createFixture({ approvalSubjectId: "project:foreign" });
+  await assertRejects(
+    () => fixture.executor.execute(AGENT, fixture.command),
+    EngineeringProjectCommandError,
+    "human-approved",
+  );
+});

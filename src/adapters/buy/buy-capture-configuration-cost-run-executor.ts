@@ -272,6 +272,12 @@ export class BuyCaptureConfigurationCostRunExecutor {
         this.deps.snapshots,
       );
       const configuration = await this.#reopenConfiguration(decisionParams);
+      if (configuration.projectId !== command.projectId) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          "Buy configuration projectId does not match the run project.",
+        );
+      }
       requireMatchingConfigurationBasis(basis, configuration);
       requireCurrentGeometry(basisSnapshot, configuration);
       const binding = await this.deps.bindings.resolve({ project });
@@ -427,9 +433,22 @@ export class BuyCaptureConfigurationCostRunExecutor {
     run: EngineeringAgentRun,
     decisionParams: BuyCaptureDecisionParameters,
   ): Promise<BuySourceCaptureEnvelope> {
-    const jit = this.deps.capabilityRuntime &&
-      this.deps.capabilityRuntimeSession &&
-      this.deps.capabilityRuntimeConnection;
+    const runtimeParts = [
+      this.deps.capabilityRuntime,
+      this.deps.capabilityRuntimeSession,
+      this.deps.capabilityRuntimeConnection,
+      this.deps.erpInstallation,
+      this.deps.erpLaunchGroup,
+    ];
+    const hasRuntimePart = [...runtimeParts, this.deps.capabilityRuntimeSecrets]
+      .some((part) => part !== undefined);
+    const jit = runtimeParts.every((part) => part !== undefined);
+    if ((this.deps.erpnext && hasRuntimePart) || (!this.deps.erpnext && !jit)) {
+      throw new EngineeringProjectCommandError(
+        "invalid_transition",
+        "Buy capture requires one complete runtime mode; mixed or incomplete JIT dependencies are refused.",
+      );
+    }
     if (!jit) {
       if (!this.deps.erpnext) {
         throw new EngineeringProjectCommandError(
@@ -618,6 +637,21 @@ export class BuyCaptureConfigurationCostRunExecutor {
       throw new EngineeringProjectCommandError(
         "invalid_input",
         "Configuration projectId does not match the signed project.",
+      );
+    }
+    if (
+      configuration.schemaVersion !== decisionParams.schemaVersion ||
+      configuration.subjectId !== decisionParams.subjectId ||
+      configuration.configurationRevision !== decisionParams.configurationRevision ||
+      configuration.basis.snapshotId !== decisionParams.basisSnapshotId ||
+      configuration.basis.revision !== decisionParams.basisRevision ||
+      configuration.basis.subjectId !== decisionParams.subjectId ||
+      deterministicJson(configuration.geometry) !==
+        deterministicJson(decisionParams.geometry)
+    ) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "Reopened Buy configuration scope or geometry does not match the signed parameters.",
       );
     }
     return configuration;
