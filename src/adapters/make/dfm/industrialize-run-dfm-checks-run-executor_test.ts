@@ -32,6 +32,10 @@ import { FileDfmCheckAttemptStore } from "./file-dfm-check-attempt-store.ts";
 import qualification from "./dfm-mcp-qualification.json" with {
   type: "json",
 };
+import {
+  DFM_RUN_AUTHORITY_DIVERGENT_REASON,
+  DFM_RUN_AUTHORITY_MISSING_REASON,
+} from "../../../domain/make/dfm/dfm-run-authority.ts";
 import { IndustrializeRunDfmChecksRunExecutor } from "./industrialize-run-dfm-checks-run-executor.ts";
 import { McpToolCallError } from "../../shared/mcp/http-mcp-tool-client.ts";
 
@@ -209,7 +213,10 @@ Deno.test(
     const fixture = await createFixture();
     try {
       patchMrtrBaseSnapshot(fixture.project, { revision: 117 });
-      await assertRejectedBeforeDispatch(fixture);
+      await assertRejectedBeforeDispatch(
+        fixture,
+        DFM_RUN_AUTHORITY_DIVERGENT_REASON,
+      );
     } finally {
       await fixture.cleanup();
     }
@@ -224,7 +231,10 @@ Deno.test(
       patchMrtrBaseSnapshot(fixture.project, {
         snapshotId: "snapshot.dfm.run.r115",
       });
-      await assertRejectedBeforeDispatch(fixture);
+      await assertRejectedBeforeDispatch(
+        fixture,
+        DFM_RUN_AUTHORITY_DIVERGENT_REASON,
+      );
     } finally {
       await fixture.cleanup();
     }
@@ -239,7 +249,10 @@ Deno.test(
       patchMrtrBaseSnapshot(fixture.project, {
         subjectId: "project:other-subject",
       });
-      await assertRejectedBeforeDispatch(fixture);
+      await assertRejectedBeforeDispatch(
+        fixture,
+        DFM_RUN_AUTHORITY_DIVERGENT_REASON,
+      );
     } finally {
       await fixture.cleanup();
     }
@@ -592,11 +605,12 @@ function patchMrtrBaseSnapshot(
 
 async function assertRejectedBeforeDispatch(
   fixture: Awaited<ReturnType<typeof createFixture>>,
+  message = DFM_RUN_AUTHORITY_MISSING_REASON,
 ): Promise<void> {
   await assertRejects(
     () => fixture.executor.execute(AGENT, fixture.command),
     EngineeringProjectCommandError,
-    "No exact human-approved DFM-check MRTR decision is bound to this run basis.",
+    message,
   );
   assertEquals(fixture.dfm.names.length, 0);
   assertEquals(fixture.project.agentRuns[0]?.status, "queued");

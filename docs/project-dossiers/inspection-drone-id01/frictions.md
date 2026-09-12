@@ -746,6 +746,21 @@ that source **and** a **fresh** exact approval/execution; never a retroactive re
 the old MRTR. The three recorded `pass` values remain evidence, not restored authority.
 Previous failed attempt `run:id01-queue-dfm-run-board-r1-f52-20260912` remains history.
 
+**Source and local Workbench update 2026-09-12.** Queue, executor and viewer now share
+the domain-owned `recrossDfmRunAuthority`. The registered DFM queue refuses a stale
+approval before eligibility/runtime lookup or run publication. The targeted domain,
+queue, executor, viewer and architecture suites pass: 78 tests, 0 failures. The local
+DFM App package is installed and its real Workbench viewer opens with the literal
+r115/r117 refusal; no hull was changed for this correction.
+
+Fresh decision `decision-run-dfm-id01-camera-board-envelope-mk4s-r2-authority` is
+proposed on exact Thread r118, with input fingerprint
+`37157a666c6dc99b5ecbdbd3705ce2b8c2b4682dd1f7249eb25f134af7a0db83`. Production readers
+reopened the unchanged sealed case and canonical STEP; the seven run parameters preserve
+the declared Z-min filter. Project r884 records this proposal with a pending approval
+and no new run. F52 authority recovery remains open until a fresh human-signed MRTR and
+registered successor execution publish valid evidence.
+
 Recorded checks (sampling / screening, printer not selected): envelope 25 × 24 × 11.5 mm
 `pass`; sampled minimum thickness 0.9149495583883871 mm against 0.8 mm `pass`; overhang
 bed-contact centroids z = 0 excluded by declared 0.2 mm Z-min filter, 0 remaining,

@@ -29,15 +29,14 @@ import {
   parseDfmRunDecisionParameters,
   verifyDfmRunParametersMatchCase,
 } from "../../../domain/make/dfm/dfm-proposal.ts";
+import { recrossDfmRunAuthority } from "../../../domain/make/dfm/dfm-run-authority.ts";
 import {
   deterministicJson,
-  fingerprintsEqual,
   sha256Fingerprint,
 } from "../../../domain/kernel/deterministic-json.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type {
   EngineeringAgentRun,
-  EngineeringApproval,
   EngineeringDecision,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
@@ -1010,49 +1009,14 @@ function requireMrtrApproval(
     );
   }
   const basis = requireBasis(run);
-  const candidates = [];
-  for (const decisionId of workItem.decisionIds) {
-    const decision = project.decisions.find((item) =>
-      item.id === decisionId && item.status === "approved"
-    );
-    if (!decision?.proposal) continue;
-    const approvals = project.approvals.filter((approval: EngineeringApproval) =>
-      approval.decisionId === decision.id &&
-      approval.status === "approved" &&
-      approval.decidedByOrigin === "human" &&
-      fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint) &&
-      sameSnapshotBasis(approval.baseSnapshot, basis)
-    );
-    if (
-      approvals.length === 1 &&
-      sameSnapshotBasis(decision.baseSnapshot, basis)
-    ) {
-      candidates.push({ decision, proposal: decision.proposal });
-    }
-  }
-  if (candidates.length !== 1) {
+  const authority = recrossDfmRunAuthority(project, workItem, basis);
+  if (authority.status !== "available") {
     throw new EngineeringProjectCommandError(
       "invalid_transition",
-      "No exact human-approved DFM-check MRTR decision is bound to this run basis.",
+      authority.reason,
     );
   }
-  return candidates[0]!;
-}
-
-function sameSnapshotBasis(
-  left:
-    | {
-      readonly snapshotId: string;
-      readonly revision: number;
-      readonly subjectId: string;
-    }
-    | undefined,
-  right: EngineeringThreadSnapshotBasis,
-): boolean {
-  return !!left &&
-    left.snapshotId === right.snapshotId &&
-    left.revision === right.revision &&
-    left.subjectId === right.subjectId;
+  return { decision: authority.decision, proposal: authority.proposal };
 }
 
 async function exactBasisSnapshot(

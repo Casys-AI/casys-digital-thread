@@ -8,13 +8,17 @@ import type {
   EngineeringProjectSnapshot,
   EngineeringThreadSnapshotRef,
 } from "../../domain/project/engineering-project.ts";
-import { sameSnapshotRef } from "../../domain/project/validation/engineering-project-invariant-values.ts";
 import {
   deterministicJson,
-  fingerprintsEqual,
   sha256Fingerprint,
   sha256Hex,
 } from "../../domain/kernel/deterministic-json.ts";
+import {
+  DFM_RUN_AUTHORITY_AMBIGUOUS_REASON,
+  DFM_RUN_AUTHORITY_DIVERGENT_REASON,
+  DFM_RUN_AUTHORITY_MISSING_REASON,
+  recrossDfmRunAuthority,
+} from "../../domain/make/dfm/dfm-run-authority.ts";
 import {
   type DfmCheckCase,
   INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
@@ -55,12 +59,9 @@ export const DFM_VIEWER_APP_ID = "io.casys.mcp-dfm.results";
 export const DFM_VIEWER_RESOURCE_URI = "ui://mcp-dfm/results-viewer";
 export const DFM_VIEWER_SESSION_SCHEMA = "io.casys.mcp-dfm.recorded-checks-session/1.0";
 export const DFM_VIEWER_SESSION_KIND = "dfm.measured-checks";
-export const DFM_VIEWER_AUTHORITY_MISSING_REASON =
-  "No exact human-approved DFM-check MRTR decision is bound to this run basis.";
-export const DFM_VIEWER_AUTHORITY_DIVERGENT_REASON =
-  "The signed DFM-check approval basis differs from this run basis.";
-export const DFM_VIEWER_AUTHORITY_AMBIGUOUS_REASON =
-  "Multiple human-approved DFM-check MRTR decisions are bound to this run basis.";
+export const DFM_VIEWER_AUTHORITY_MISSING_REASON = DFM_RUN_AUTHORITY_MISSING_REASON;
+export const DFM_VIEWER_AUTHORITY_DIVERGENT_REASON = DFM_RUN_AUTHORITY_DIVERGENT_REASON;
+export const DFM_VIEWER_AUTHORITY_AMBIGUOUS_REASON = DFM_RUN_AUTHORITY_AMBIGUOUS_REASON;
 const DFM_RECORDED_CHECKS_SCHEMA = "io.casys.mcp-dfm.recorded-checks/1.0";
 const DFM_OPERATION =
   `${INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION.id}@${INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION.version}`;
@@ -128,7 +129,11 @@ export async function buildDfmViewerBinding(request: {
     basis.projectId,
   );
   recrossRecordedLimits(capture, caseCapture.dfmCase);
-  const authority = recrossDfmRunAuthority(request.project, run);
+  const authority = recrossDfmRunAuthority(
+    request.project,
+    run.workItem,
+    threadSnapshotBasis(run.run),
+  );
   const captureRef = {
     uri: resultArtifact.uri!,
     fingerprint: `sha256:${resultArtifact.fingerprint.digest}`,
@@ -337,59 +342,6 @@ function exactCompletedDfmRun(
     assertKnownSnapshot(project, run.basis, basis.subjectId, "basis");
   }
   return { run, workItem, operation };
-}
-
-function recrossDfmRunAuthority(
-  project: EngineeringProjectSnapshot,
-  binding: ReturnType<typeof exactCompletedDfmRun>,
-): { readonly status: "available" } | {
-  readonly status: "unavailable";
-  readonly reason: string;
-} {
-  const runBasis = threadSnapshotBasis(binding.run);
-  if (!runBasis) {
-    return {
-      status: "unavailable",
-      reason: DFM_VIEWER_AUTHORITY_MISSING_REASON,
-    };
-  }
-  const matching = [];
-  let signedOnAnotherBasis = false;
-  for (const decisionId of binding.workItem.decisionIds) {
-    const decision = project.decisions.find((item) =>
-      item.id === decisionId && item.status === "approved"
-    );
-    const decisionBasis = decision?.proposal ? decision.baseSnapshot : undefined;
-    if (!decision || !decisionBasis) continue;
-    const approvals = project.approvals.filter((approval) => {
-      const approvalBasis = approval.baseSnapshot;
-      return approval.decisionId === decision.id &&
-        approval.status === "approved" &&
-        approval.decidedByOrigin === "human" &&
-        approvalBasis !== undefined &&
-        fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint) &&
-        sameSnapshotRef(approvalBasis, decisionBasis);
-    });
-    if (approvals.length !== 1) continue;
-    if (sameSnapshotRef(decisionBasis, runBasis)) {
-      matching.push(decision);
-    } else {
-      signedOnAnotherBasis = true;
-    }
-  }
-  if (matching.length === 1) return { status: "available" };
-  if (matching.length > 1) {
-    return {
-      status: "unavailable",
-      reason: DFM_VIEWER_AUTHORITY_AMBIGUOUS_REASON,
-    };
-  }
-  return {
-    status: "unavailable",
-    reason: signedOnAnotherBasis
-      ? DFM_VIEWER_AUTHORITY_DIVERGENT_REASON
-      : DFM_VIEWER_AUTHORITY_MISSING_REASON,
-  };
 }
 
 function threadSnapshotBasis(
