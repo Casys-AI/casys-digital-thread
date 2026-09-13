@@ -14,3 +14,4 @@ admit a method, select a provider, or establish engineering evidence.
   persisted evidence, and their limits.
 - [Capability packs](capability-packs/README.md) — demand, authorization, activation,
   qualification, and local administration.
+- [Task catalog](task-catalog.md) — registered `deno.json` tasks grouped by intent.

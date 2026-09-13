@@ -51,6 +51,9 @@ deno task test
 would rewrite source files. Never report a suite run with `--no-check` as passing source
 validation.
 
+The contributor shortcut `deno task verify` runs the commands above plus
+`deno task verify:docs`. It does not replace step 4 below.
+
 ## 4. Validate committed evidence contracts and the Workbench build
 
 ```bash
@@ -62,6 +65,9 @@ These gates validate checked-in fixtures and build the read-only Workbench prese
 They still do not contact live providers or prove a live engineering execution. The old
 root-Compose CalculiX smoke gate was retired: recorded sensitivity now runs only through
 the sealed capability launch group after its own runtime qualification.
+
+A `deno.json` task change also needs `deno task verify:task-catalog` and an update to
+the [task catalog](../../reference/runtime/task-catalog.md).
 
 ## 5. Check for validation side effects
 
