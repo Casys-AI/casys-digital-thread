@@ -10,7 +10,8 @@ This page is the A–Z continuation after
 [Walk through a dated engineering project](walk-through-an-engineering-project.md) §4.
 It does not start a second proof. It walks the **behave** branch: join → correction
 document → corrected source → reseal. Measured DFM on canonical STEP is the separate
-**make** branch. Buy (BOM / cost) has no registered seal yet. See
+**make** branch. Buy (BOM / cost) has separate capture and seal operations for dated
+configuration-cost evidence. See
 [Three judgement branches](../../explanations/product/product-direction.md#three-judgement-branches).
 
 The person never types a provider tool. The agent never invents a metric alias, a `z*`,

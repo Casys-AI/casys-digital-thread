@@ -202,3 +202,11 @@ Make and buy stay later V1 work. Do not open those branches to make the current 
 look complete. A missing DFM or BOM card means that work was not run. A new live project
 follows
 [Run the behave loop from zero](../../how-to/verify-design/verify-a-new-design-from-scratch.md).
+
+## BE project response goal
+
+The A-to-Z response-packet goal — from brief / specification / tender to a reviewable
+technical and economic dossier in measured hours — is bounded in
+[BE project response goal](be-project-response-goal.md) and prepared via
+[Prepare a project response](../../how-to/prepare-project-response.md). Both are
+preparatory scope, not a claim the goal is achieved.
