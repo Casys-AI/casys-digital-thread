@@ -11,6 +11,10 @@ import { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "../../src/domain/arch
 import { MODEL_RECAPTURE_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-recapture-proposal.ts";
 import { MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-traced-recapture-proposal.ts";
 import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../src/domain/record/requirements-brief-trace.ts";
+import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "../../src/domain/record/documentary-clause-response.ts";
+import { createDocumentaryClauseResponseStore } from "../../src/adapters/record/documentary-clause-response-store.ts";
+import { fingerprintResourceBytes } from "../../src/domain/kernel/resource-bytes.ts";
+import { REQUIREMENTS_CAPTURE_DESCRIPTOR } from "../../src/adapters/shared/cas/file-capture-store.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../src/domain/compile/admission/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../src/domain/cad/isolated/build123d-execution-proposal.ts";
 import {
@@ -35,6 +39,7 @@ import {
   createFocusedWorkspaceHandler,
   createNativeWorkbenchCapabilityWorkbench,
   createNativeWorkbenchHandler,
+  DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
   hasUnattachedDurableProjectOperationForTest,
   injectMcpAppScriptNonce,
   MCP_APP_SCRIPT_NONCE_META_NAME,
@@ -943,11 +948,13 @@ Deno.test("native Workbench evidence GET enriches the already-resolved project a
           item,
           correspondence: "unresolved" as const,
           requirements: [],
+          clauseResponses: [],
           gaps: [{
             code: "correspondence.missing",
             message: "No exact mapping.",
           }],
         })),
+        historicalClauseResponses: [],
         diagnostics: [],
         grants: "none",
       });
@@ -1630,6 +1637,7 @@ Deno.test("native Workbench hides durable unattached generic requirements and ge
       MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
       MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
       RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
+      RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
       DESIGN_WRITE_GEOMETRY_OPERATION,
     ]
   ) {
@@ -1715,6 +1723,7 @@ Deno.test("native Workbench classifies every known durable writer before attachm
     MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
     MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
     RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
+    RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
     VERIFY_SEAL_PROOF_CASE_OPERATION,
     VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
     COMPILE_SEAL_ADMISSION_OPERATION,
@@ -2627,6 +2636,33 @@ Deno.test("native Workbench exposes no route for internal geometry draft bytes",
       new Request(`http://localhost/api/draft-assets/${digest}`, { method }),
     );
     assertEquals(response.status, 404, method);
+  }
+});
+
+Deno.test("standalone Workbench clause-response CAS is the writer default root", async () => {
+  assertEquals(
+    DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
+    "state/local/documentary-clause-responses",
+  );
+  assertEquals(
+    DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY ===
+      `${REQUIREMENTS_CAPTURE_DESCRIPTOR.directory}/clause-responses`,
+    false,
+  );
+  const root = await Deno.makeTempDir({ prefix: "workbench-clause-cas-" });
+  try {
+    const directory = `${root}/${DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY}`;
+    const writer = createDocumentaryClauseResponseStore(directory);
+    const text = '{"schemaVersion":"documentary-clause-response/1.0"}';
+    const digest = await fingerprintResourceBytes(
+      new TextEncoder().encode(text),
+    );
+    const fingerprint = { algorithm: "sha256" as const, digest };
+    await writer.save(fingerprint, text);
+    const reader = createDocumentaryClauseResponseStore(directory);
+    assertEquals(await reader.read(fingerprint), text);
+  } finally {
+    await Deno.remove(root, { recursive: true });
   }
 });
 

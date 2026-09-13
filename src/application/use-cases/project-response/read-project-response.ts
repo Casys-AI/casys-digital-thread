@@ -16,6 +16,8 @@ import {
   type ProjectResponseApplicability,
   projectResponseBasesEqual,
   type ProjectResponseBasis,
+  type ProjectResponseClauseResponse,
+  type ProjectResponseClauseSourceRef,
   type ProjectResponseCorrespondence,
   type ProjectResponseDiagnostic,
   type ProjectResponseGap,
@@ -28,6 +30,7 @@ import {
 import type { EngineeringProjectRevisionStore } from "../../ports/out/engineering-project-revision-store.ts";
 import type {
   ProjectResponseAvailableTraceFact,
+  ProjectResponseClauseResponseFact,
   ProjectResponseEvidenceFacts,
   ProjectResponseEvidenceReader,
   ProjectResponseThreadArtifactFact,
@@ -37,6 +40,7 @@ import type {
 } from "../../ports/out/project-response/project-response-evidence-reader.ts";
 import { approvedBriefBasisForProject } from "../project/engineering-project-command-service.ts";
 import { deepFreeze } from "../../../domain/kernel/case-validation.ts";
+import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
 import type { EngineeringProjectSnapshot } from "../../../domain/project/engineering-project.ts";
 import {
   isProjectBriefGateKind,
@@ -55,6 +59,7 @@ export interface ReadProjectResponseDependencies {
 
 interface IndexedEvidence {
   readonly traces: readonly ProjectResponseAvailableTraceFact[];
+  readonly clauseResponses: readonly ProjectResponseClauseResponseFact[];
   readonly gapTraces: readonly { artifactId: string }[];
   readonly requirements: ReadonlyMap<string, ProjectResponseThreadRequirementFact>;
   readonly evaluations: ReadonlyMap<string, ProjectResponseThreadEvaluationFact[]>;
@@ -194,25 +199,39 @@ export class ReadProjectResponse implements ProjectResponseUseCase {
     }
 
     const facts = await this.#evidence.read({ project, thread });
-    const indexed = indexFacts(facts);
-    const diagnostics = [
+    const failure = facts.clauseResponseFailure;
+    const evidenceDiagnostics = [
       ...extraDiagnostics,
+      ...(failure ? [diagnostic(failure.code, failure.message)] : []),
+    ];
+    const indexed = indexFacts(facts);
+    const items = approved.brief.items.map((item) =>
+      projectItem(item, approved.brief, indexed, thread === undefined)
+    );
+    const historicalClauseResponses = projectRemovedClauseResponses(
+      approved.brief,
+      indexed,
+    );
+    const diagnostics = [
+      ...evidenceDiagnostics,
       ...traceGapDiagnostics(indexed.gapTraces),
-      ...(thread || extraDiagnostics.length > 0 ? [] : [diagnostic(
+      ...(thread || evidenceDiagnostics.length > 0 ? [] : [diagnostic(
         "thread.absent",
         "No Thread snapshot is bound to this approved brief; items list missing-evidence gaps.",
       )]),
     ];
     const basis = responseBasis(project, approved.brief, thread);
-    const items = approved.brief.items.map((item) =>
-      projectItem(item, approved.brief, indexed, thread === undefined)
-    );
     const status =
-      extraDiagnostics.some((item) =>
-          item.code === "thread.unresolved" || item.code === "thread.unbound"
+      evidenceDiagnostics.some((item) =>
+          item.code === "thread.unresolved" ||
+          item.code === "thread.unbound" ||
+          item.code === "clause-response.unresolved"
         )
         ? "unresolved"
-        : extraDiagnostics.some((item) => item.code === "thread.unavailable")
+        : evidenceDiagnostics.some((item) =>
+            item.code === "thread.unavailable" ||
+            item.code === "clause-response.unavailable"
+          )
         ? "unavailable"
         : "available";
     return deepFreeze({
@@ -220,6 +239,7 @@ export class ReadProjectResponse implements ProjectResponseUseCase {
       status,
       basis,
       items,
+      historicalClauseResponses,
       diagnostics,
       grants: "none",
     });
@@ -299,6 +319,7 @@ function indexFacts(facts: ProjectResponseEvidenceFacts): IndexedEvidence {
   }
   return {
     traces: facts.traces.filter((trace) => trace.status === "available"),
+    clauseResponses: facts.clauseResponseFailure ? [] : facts.clauseResponses,
     gapTraces: facts.traces.filter((trace) => trace.status === "TRACE GAP").map(
       (trace) => ({ artifactId: trace.artifactId }),
     ),
@@ -339,10 +360,12 @@ function projectItem(
       left.traceArtifactId.localeCompare(right.traceArtifactId)
     );
   const correspondence = itemCorrespondence(candidates);
+  const clauseResponses = projectClauseResponses(item, brief, facts);
   const gaps = itemGaps({
     item,
     candidates,
     requirements,
+    clauseResponses,
     evaluationIssues: projected.flatMap((entry) => entry.issues),
     threadAbsent,
   });
@@ -350,8 +373,93 @@ function projectItem(
     item: structuredClone(item),
     correspondence,
     requirements,
+    clauseResponses,
     gaps,
   };
+}
+
+function projectClauseResponses(
+  item: ProjectBriefItem,
+  brief: ProjectBriefRevision,
+  facts: IndexedEvidence,
+): readonly ProjectResponseClauseResponse[] {
+  const superseded = new Set(
+    facts.clauseResponses.flatMap((record) =>
+      record.predecessorArtifactId ? [record.predecessorArtifactId] : []
+    ),
+  );
+  return facts.clauseResponses
+    .filter((record) => record.sourceItemId === item.id)
+    .map((record) => {
+      const current = record.sourceBrief.briefId === brief.briefId &&
+        record.sourceBrief.snapshotId === brief.id &&
+        record.sourceBrief.revision === brief.revision;
+      const sameItem = deterministicJson(record.sourceItem) ===
+        deterministicJson(item);
+      return {
+        artifactId: record.artifactId,
+        revision: record.revision,
+        sourceItemId: record.sourceItemId,
+        sourceBrief: { ...record.sourceBrief },
+        sourceState: sameItem ? "unchanged" as const : "changed" as const,
+        applicability: current && sameItem && !superseded.has(record.artifactId)
+          ? "current" as const
+          : "historical" as const,
+        recordingStatus: record.recordingStatus,
+        authorKind: record.authorKind,
+        scope: record.scope,
+        answer: record.answer,
+        sourceRefs: clauseSourceRefs(record),
+        ...(record.predecessorArtifactId
+          ? { predecessorArtifactId: record.predecessorArtifactId }
+          : {}),
+      };
+    })
+    .toSorted(compareClauseResponses);
+}
+
+function projectRemovedClauseResponses(
+  brief: ProjectBriefRevision,
+  facts: IndexedEvidence,
+): readonly ProjectResponseClauseResponse[] {
+  const currentIds = new Set(brief.items.map((item) => item.id));
+  return facts.clauseResponses
+    .filter((record) => !currentIds.has(record.sourceItemId))
+    .map((record) => ({
+      artifactId: record.artifactId,
+      revision: record.revision,
+      sourceItemId: record.sourceItemId,
+      sourceBrief: { ...record.sourceBrief },
+      sourceState: "removed" as const,
+      applicability: "historical" as const,
+      recordingStatus: record.recordingStatus,
+      authorKind: record.authorKind,
+      scope: record.scope,
+      answer: record.answer,
+      sourceRefs: clauseSourceRefs(record),
+      ...(record.predecessorArtifactId
+        ? { predecessorArtifactId: record.predecessorArtifactId }
+        : {}),
+    }))
+    .toSorted(compareClauseResponses);
+}
+
+function clauseSourceRefs(
+  record: ProjectResponseClauseResponseFact,
+): readonly ProjectResponseClauseSourceRef[] {
+  return record.sourceRefs.map((ref): ProjectResponseClauseSourceRef =>
+    ref.kind === "agent-resource"
+      ? { kind: "agent-resource", uri: ref.uri }
+      : { kind: "thread-artifact", artifactId: ref.artifactId }
+  );
+}
+
+function compareClauseResponses(
+  left: ProjectResponseClauseResponse,
+  right: ProjectResponseClauseResponse,
+): number {
+  return left.revision - right.revision ||
+    left.artifactId.localeCompare(right.artifactId);
 }
 
 function tracesForItem(
@@ -537,6 +645,7 @@ function itemGaps(input: {
   readonly item: ProjectBriefItem;
   readonly candidates: readonly ProjectResponseAvailableTraceFact[];
   readonly requirements: readonly ProjectResponseRequirementEvidence[];
+  readonly clauseResponses: readonly ProjectResponseClauseResponse[];
   readonly evaluationIssues: readonly string[];
   readonly threadAbsent: boolean;
 }): readonly ProjectResponseGap[] {
@@ -576,6 +685,20 @@ function itemGaps(input: {
     gaps.push(gap(
       "evaluation.missing",
       `Item ${input.item.id} has at least one exactly mapped requirement without a recorded evaluation.`,
+    ));
+  }
+  if (
+    isProjectBriefGateKind(input.item.kind) &&
+    input.clauseResponses.some((record) => record.applicability === "current") &&
+    !input.requirements.some((requirement) =>
+      requirement.evaluations.some((evaluation) =>
+        evaluation.applicability === "current" && evaluation.status === "pass"
+      )
+    )
+  ) {
+    gaps.push(gap(
+      "clause-response.not-proof",
+      `Documentary clause-response for ${input.item.id} does not satisfy this verification clause; exact applicable proof is still required.`,
     ));
   }
   for (const code of unique(input.evaluationIssues)) {

@@ -2,6 +2,7 @@ import { assertEquals, assertThrows } from "@std/assert";
 import {
   parseProjectResponseBasis,
   PROJECT_RESPONSE_SCHEMA,
+  PROJECT_RESPONSE_SCHEMA_V1,
   projectResponseBasesEqual,
   unavailableProjectResponse,
 } from "./project-response.ts";
@@ -58,11 +59,21 @@ Deno.test("project-response basis equality is exact and does not mix a missing T
   );
 });
 
+Deno.test("current project-response schema is V2 and keeps historical V1 distinct", () => {
+  assertEquals(PROJECT_RESPONSE_SCHEMA, "project-response/2.0");
+  assertEquals(PROJECT_RESPONSE_SCHEMA_V1, "project-response/1.0");
+  assertEquals(
+    (PROJECT_RESPONSE_SCHEMA as string) === PROJECT_RESPONSE_SCHEMA_V1,
+    false,
+  );
+});
+
 Deno.test("unavailable project-response keeps grants none and empty items", () => {
   const result = unavailableProjectResponse();
   assertEquals(result.schemaVersion, PROJECT_RESPONSE_SCHEMA);
   assertEquals(result.status, "unavailable");
   assertEquals(result.items, []);
+  assertEquals(result.historicalClauseResponses, []);
   assertEquals(result.grants, "none");
   assertEquals("pass" in result, false);
   assertEquals("coverage" in result, false);

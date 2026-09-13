@@ -273,7 +273,8 @@ function isEvidenceWorkbenchSnapshot(
         candidate.requirementsBriefTraces,
         candidate.thread,
       )) ||
-    // The server-owned project response index (`project-response/1.0`) rides
+    // The server-owned project response index (`project-response/2.0`, with
+    // historical `/1.0` still admissible as a distinct discriminator) rides
     // along as an optional record. A non-record here refuses the whole
     // projection loudly; a malformed record stays admissible so the page
     // survives and the index panel reports its own explicit unreadable

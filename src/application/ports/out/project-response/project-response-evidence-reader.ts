@@ -8,12 +8,16 @@
 
 import type { RequirementsBriefSourceImpactState } from "../../../../domain/architecture/requirements/requirements-brief-impact.ts";
 import type { EngineeringProjectSnapshot } from "../../../../domain/project/engineering-project.ts";
+import type { ProjectBriefItem } from "../../../../domain/project/project-brief.ts";
 import type {
   RequirementEvaluationStatus,
   ThreadFreshness,
   ThreadSnapshot,
 } from "../../../../domain/thread/thread-snapshot.ts";
-import type { ProjectResponseBriefIdentity } from "../../../../domain/project/project-response.ts";
+import type {
+  ProjectResponseBriefIdentity,
+  ProjectResponseClauseSourceRef,
+} from "../../../../domain/project/project-response.ts";
 
 export interface ProjectResponseTraceRequirementFact {
   readonly threadRequirementId: string;
@@ -80,8 +84,30 @@ export interface ProjectResponseThreadArtifactFact {
   readonly consumptionMismatch: boolean;
 }
 
+export interface ProjectResponseClauseResponseFact {
+  readonly artifactId: string;
+  readonly revision: number;
+  readonly sourceItemId: string;
+  readonly sourceBrief: ProjectResponseBriefIdentity;
+  readonly sourceItem: ProjectBriefItem;
+  readonly recordingStatus: "proposal";
+  readonly authorKind: "agent";
+  readonly scope: string;
+  readonly answer: string;
+  readonly sourceRefs: readonly ProjectResponseClauseSourceRef[];
+  readonly predecessorArtifactId?: string;
+}
+
+export interface ProjectResponseClauseResponseFailure {
+  readonly status: "unavailable" | "unresolved";
+  readonly code: string;
+  readonly message: string;
+}
+
 export interface ProjectResponseEvidenceFacts {
   readonly traces: readonly ProjectResponseTraceFact[];
+  readonly clauseResponses: readonly ProjectResponseClauseResponseFact[];
+  readonly clauseResponseFailure?: ProjectResponseClauseResponseFailure;
   readonly requirements: readonly ProjectResponseThreadRequirementFact[];
   readonly evaluations: readonly ProjectResponseThreadEvaluationFact[];
   readonly observations: readonly ProjectResponseThreadObservationFact[];
@@ -99,6 +125,7 @@ export interface ProjectResponseEvidenceReader {
 export function emptyProjectResponseEvidenceFacts(): ProjectResponseEvidenceFacts {
   return {
     traces: [],
+    clauseResponses: [],
     requirements: [],
     evaluations: [],
     observations: [],

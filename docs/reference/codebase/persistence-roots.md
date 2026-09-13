@@ -1,4 +1,5 @@
 # Reference: source map — persistence roots
+
 > Verified-Against: 9671648f (2026-09-05).
 
 Audience: agent · Diátaxis: reference · Kind: contract
@@ -84,6 +85,11 @@ single default through `FileCapabilityRuntimeCachePreparationJournal`. The retir
 `state/local/capability-runtime-cache-preparation/` tree is neither read, migrated nor
 deleted; its records belong to an earlier recipe model and remain outside current
 runtime authority.
+
+#### `state/local/documentary-clause-responses/`
+
+Ignored immutable CAS for `record.seal-documentary-clause-response@1` documents. Not a
+requirement capture and not a verification evaluation.
 
 #### `state/local/engineering-projects/`
 

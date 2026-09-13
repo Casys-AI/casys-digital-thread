@@ -1,6 +1,7 @@
 /**
  * Read-only presentation model for the server-owned project response index
- * (`project-response/1.0`).
+ * (`project-response/2.0`, with historical `project-response/1.0` accepted
+ * as a distinct discriminator).
  *
  * The domain server computes every join. React only renders. Types come
  * exclusively from the shared domain contract; this module keeps only the
@@ -15,19 +16,26 @@
 import type {
   ProjectResponseApplicability,
   ProjectResponseBasis,
+  ProjectResponseClauseResponse,
   ProjectResponseCorrespondence,
   ProjectResponseDiagnostic,
+  ProjectResponseDocument,
   ProjectResponseGap,
   ProjectResponseItem,
   ProjectResponseOrigin,
-  ProjectResponseReadModel,
   ProjectResponseRequirementEvaluation,
   ProjectResponseRequirementEvidence,
   ProjectResponseStatus,
+  ProjectResponseV1Item,
 } from "../../../domain/project/project-response.ts";
+import { DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX } from "../../../domain/record/documentary-clause-response.ts";
+import { AGENT_RESOURCE_URI_PATTERN } from "../../../domain/resource/agent-resource-reference.ts";
 import {
+  isProjectResponseV2,
   parseProjectResponseBasis,
+  parseProjectResponseBriefIdentity,
   PROJECT_RESPONSE_SCHEMA,
+  PROJECT_RESPONSE_SCHEMA_V1,
   projectResponseBasesEqual,
 } from "../../../domain/project/project-response.ts";
 import type { RequirementsBriefSourceImpactState } from "../../../domain/architecture/requirements/requirements-brief-impact.ts";
@@ -45,16 +53,24 @@ import type { ThreadGraphRef } from "../thread/types.ts";
 export type {
   ProjectResponseApplicability,
   ProjectResponseBasis,
+  ProjectResponseClauseResponse,
   ProjectResponseCorrespondence,
   ProjectResponseDiagnostic,
+  ProjectResponseDocument,
   ProjectResponseGap,
   ProjectResponseItem,
   ProjectResponseOrigin,
   ProjectResponseReadModel,
   ProjectResponseRequirementEvidence,
   ProjectResponseStatus,
+  ProjectResponseV1Item,
+  ProjectResponseV1ReadModel,
 } from "../../../domain/project/project-response.ts";
-export { PROJECT_RESPONSE_SCHEMA } from "../../../domain/project/project-response.ts";
+export {
+  isProjectResponseV2,
+  PROJECT_RESPONSE_SCHEMA,
+  PROJECT_RESPONSE_SCHEMA_V1,
+} from "../../../domain/project/project-response.ts";
 
 /** Alias kept for the existing row rendering names. */
 export type ProjectResponseEvaluation = ProjectResponseRequirementEvaluation;
@@ -63,7 +79,7 @@ export type ProjectResponseEvaluation = ProjectResponseRequirementEvaluation;
 export const DEFAULT_RESPONSE_FILTER = "all" as const;
 
 export type ProjectResponseParseResult =
-  | { readonly ok: true; readonly model: ProjectResponseReadModel }
+  | { readonly ok: true; readonly model: ProjectResponseDocument }
   | {
     readonly ok: false;
     readonly issues: readonly ProjectResponseDiagnostic[];
@@ -92,6 +108,11 @@ const SOURCE_STATE: readonly string[] = [
   "unchanged",
   "changed",
   "removed",
+  "brief-unavailable",
+];
+const CURRENT_CLAUSE_RESPONSE_SOURCE_STATE: readonly string[] = [
+  "unchanged",
+  "changed",
   "brief-unavailable",
 ];
 const FRESHNESS_STATUS: readonly ThreadFreshnessStatus[] = [
@@ -365,16 +386,11 @@ function parseRequirement(
       ),
     );
   }
-  const sourceBrief = isRecord(value.sourceBrief) &&
-      isNonEmptyString(value.sourceBrief.briefId) &&
-      isNonEmptyString(value.sourceBrief.snapshotId) &&
-      Number.isInteger(value.sourceBrief.revision)
-    ? {
-      briefId: value.sourceBrief.briefId as string,
-      snapshotId: value.sourceBrief.snapshotId as string,
-      revision: value.sourceBrief.revision as number,
-    }
-    : undefined;
+  const sourceBrief = parseResponseBriefIdentity(
+    value.sourceBrief,
+    `${path}.sourceBrief`,
+    issues,
+  );
   if (!sourceBrief) {
     issues.push(
       issue(
@@ -414,7 +430,8 @@ function parseResponseItem(
   value: unknown,
   path: string,
   issues: ProjectResponseDiagnostic[],
-): ProjectResponseItem | undefined {
+  schemaVersion: string,
+): ProjectResponseV1Item | ProjectResponseItem | undefined {
   if (!isRecord(value)) {
     issues.push(issue("response.invalid-shape", `${path} must be an object.`));
     return undefined;
@@ -444,21 +461,294 @@ function parseResponseItem(
       requirements.push(parsed);
     }
   }
+  if (schemaVersion === PROJECT_RESPONSE_SCHEMA_V1) {
+    if (Object.hasOwn(value, "clauseResponses")) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          `${path}.clauseResponses is not a project-response/1.0 field.`,
+        ),
+      );
+    }
+    if (issues.length !== before || !item || !gaps) return undefined;
+    return {
+      item,
+      correspondence: value.correspondence as ProjectResponseCorrespondence,
+      requirements,
+      gaps,
+    };
+  }
+  const clauseResponses: ProjectResponseClauseResponse[] = [];
+  if (!Array.isArray(value.clauseResponses)) {
+    issues.push(
+      issue(
+        "response.invalid-shape",
+        `${path}.clauseResponses must be an array.`,
+      ),
+    );
+  } else {
+    for (const [index, entry] of value.clauseResponses.entries()) {
+      const parsed = parseClauseResponse(
+        entry,
+        `${path}.clauseResponses[${index}]`,
+        issues,
+      );
+      if (!parsed) break;
+      if (item && parsed.sourceItemId !== item.id) {
+        issues.push(
+          issue(
+            "response.invalid-shape",
+            `${path}.clauseResponses[${index}].sourceItemId must match item.id.`,
+          ),
+        );
+        break;
+      }
+      clauseResponses.push(parsed);
+    }
+  }
   if (issues.length !== before || !item || !gaps) return undefined;
   return {
     item,
     correspondence: value.correspondence as ProjectResponseCorrespondence,
     requirements,
+    clauseResponses,
     gaps,
   };
 }
 
+function parseClauseResponse(
+  value: unknown,
+  path: string,
+  issues: ProjectResponseDiagnostic[],
+  allowRemoved = false,
+): ProjectResponseClauseResponse | undefined {
+  if (!isRecord(value)) {
+    issues.push(issue("response.invalid-shape", `${path} must be an object.`));
+    return undefined;
+  }
+  const before = issues.length;
+  checkLiteral(
+    value.applicability,
+    APPLICABILITY,
+    `${path}.applicability`,
+    issues,
+  );
+  checkLiteral(
+    value.sourceState,
+    allowRemoved ? SOURCE_STATE : CURRENT_CLAUSE_RESPONSE_SOURCE_STATE,
+    `${path}.sourceState`,
+    issues,
+  );
+  if (value.recordingStatus !== "proposal") {
+    issues.push(
+      issue(
+        "response.invalid-shape",
+        `${path}.recordingStatus must be "proposal".`,
+      ),
+    );
+  }
+  if (value.authorKind !== "agent") {
+    issues.push(
+      issue("response.invalid-shape", `${path}.authorKind must be "agent".`),
+    );
+  }
+  if (
+    !isNonEmptyString(value.artifactId) ||
+    typeof value.revision !== "number" ||
+    !Number.isSafeInteger(value.revision) || value.revision < 1 ||
+    !isNonEmptyString(value.sourceItemId) ||
+    !isNonEmptyString(value.scope) ||
+    !isNonEmptyString(value.answer) ||
+    !Array.isArray(value.sourceRefs)
+  ) {
+    issues.push(
+      issue(
+        "response.invalid-shape",
+        `${path} must carry exact artifact, brief item, scope, answer and source refs.`,
+      ),
+    );
+  }
+  const sourceBrief = parseResponseBriefIdentity(
+    value.sourceBrief,
+    `${path}.sourceBrief`,
+    issues,
+  );
+  if (!sourceBrief) {
+    issues.push(
+      issue(
+        "response.invalid-shape",
+        `${path}.sourceBrief must carry briefId, snapshotId and revision.`,
+      ),
+    );
+  }
+  const sourceRefs = Array.isArray(value.sourceRefs)
+    ? parseClauseSourceRefs(
+      value.sourceRefs,
+      `${path}.sourceRefs`,
+      issues,
+    )
+    : undefined;
+  if (Object.hasOwn(value, "predecessorArtifactId")) {
+    if (!isNonEmptyString(value.predecessorArtifactId)) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          `${path}.predecessorArtifactId must be a non-empty string when present.`,
+        ),
+      );
+    }
+  }
+  if (issues.length !== before || !sourceBrief || !sourceRefs) return undefined;
+  return {
+    artifactId: value.artifactId as string,
+    revision: value.revision as number,
+    sourceItemId: value.sourceItemId as string,
+    sourceBrief,
+    sourceState: value
+      .sourceState as ProjectResponseClauseResponse["sourceState"],
+    applicability: value.applicability as ProjectResponseApplicability,
+    recordingStatus: "proposal",
+    authorKind: "agent",
+    scope: value.scope as string,
+    answer: value.answer as string,
+    sourceRefs,
+    ...(Object.hasOwn(value, "predecessorArtifactId") &&
+        isNonEmptyString(value.predecessorArtifactId)
+      ? { predecessorArtifactId: value.predecessorArtifactId }
+      : {}),
+  };
+}
+
+function parseClauseSourceRefs(
+  value: readonly unknown[],
+  path: string,
+  issues: ProjectResponseDiagnostic[],
+): readonly ProjectResponseClauseResponse["sourceRefs"][number][] | undefined {
+  if (
+    value.length < 1 || value.length > DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX
+  ) {
+    issues.push(
+      issue(
+        "response.invalid-shape",
+        `${path} must contain 1 to ${DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX} sources.`,
+      ),
+    );
+    return undefined;
+  }
+  const refs: ProjectResponseClauseResponse["sourceRefs"][number][] = [];
+  const before = issues.length;
+  for (const [index, entry] of value.entries()) {
+    const parsed = parseClauseSourceRef(entry, `${path}[${index}]`, issues);
+    if (!parsed) return undefined;
+    refs.push(parsed);
+  }
+  return issues.length === before ? refs : undefined;
+}
+
+function parseResponseBriefIdentity(
+  value: unknown,
+  path: string,
+  issues: ProjectResponseDiagnostic[],
+): ProjectResponseBasis["brief"] | undefined {
+  try {
+    return parseProjectResponseBriefIdentity(value, path);
+  } catch (error) {
+    issues.push(
+      issue(
+        "response.invalid-shape",
+        `${path} is not an exact brief identity: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      ),
+    );
+    return undefined;
+  }
+}
+
+function parseClauseSourceRef(
+  value: unknown,
+  path: string,
+  issues: ProjectResponseDiagnostic[],
+): ProjectResponseClauseResponse["sourceRefs"][number] | undefined {
+  if (!isRecord(value)) {
+    issues.push(
+      issue("response.invalid-shape", `${path} must be an object.`),
+    );
+    return undefined;
+  }
+  const extra = Object.keys(value).filter((key) =>
+    key !== "kind" && key !== "artifactId" && key !== "uri"
+  );
+  if (extra.length > 0) {
+    issues.push(
+      issue(
+        "response.invalid-shape",
+        `${path} has unsupported field "${extra[0]}".`,
+      ),
+    );
+    return undefined;
+  }
+  if (value.kind === "agent-resource") {
+    if (value.artifactId !== undefined) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          `${path} agent-resource must not name artifactId.`,
+        ),
+      );
+      return undefined;
+    }
+    if (
+      !isNonEmptyString(value.uri) ||
+      !AGENT_RESOURCE_URI_PATTERN.test(value.uri)
+    ) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          `${path} agent-resource must carry a canonical resource uri.`,
+        ),
+      );
+      return undefined;
+    }
+    return { kind: "agent-resource", uri: value.uri };
+  }
+  if (value.kind === "thread-artifact") {
+    if (value.uri !== undefined) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          `${path} thread-artifact must not carry uri.`,
+        ),
+      );
+      return undefined;
+    }
+    if (!isNonEmptyString(value.artifactId)) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          `${path} thread-artifact must carry artifactId.`,
+        ),
+      );
+      return undefined;
+    }
+    return { kind: "thread-artifact", artifactId: value.artifactId };
+  }
+  issues.push(
+    issue(
+      "response.invalid-shape",
+      `${path}.kind must be agent-resource or thread-artifact.`,
+    ),
+  );
+  return undefined;
+}
+
 /**
- * Strictly validate an unknown BFF payload against `project-response/1.0`.
- * Never casts unknown data blindly: every literal, array and referenced
- * identity is checked, and the first structural defect rejects the payload
- * with an explicit issue list for the read state. The basis itself is
- * validated by the shared contract parser.
+ * Strictly validate an unknown BFF payload as historical `project-response/1.0`
+ * or current `project-response/2.0`. V1 remains closed: V2 fields are refused
+ * rather than folded into the historical discriminator. V2 requires the
+ * extended item fields. The first structural defect rejects the payload with
+ * an explicit issue list. The basis itself is validated by the shared contract
+ * parser.
  */
 export function parseProjectResponse(
   value: unknown,
@@ -472,11 +762,15 @@ export function parseProjectResponse(
       ],
     };
   }
-  if (value.schemaVersion !== PROJECT_RESPONSE_SCHEMA) {
+  const schemaVersion = value.schemaVersion;
+  if (
+    schemaVersion !== PROJECT_RESPONSE_SCHEMA_V1 &&
+    schemaVersion !== PROJECT_RESPONSE_SCHEMA
+  ) {
     issues.push(
       issue(
         "response.unsupported-schema",
-        `schemaVersion must be ${PROJECT_RESPONSE_SCHEMA}.`,
+        `schemaVersion must be ${PROJECT_RESPONSE_SCHEMA_V1} or ${PROJECT_RESPONSE_SCHEMA}.`,
       ),
     );
   }
@@ -484,17 +778,70 @@ export function parseProjectResponse(
   if (value.grants !== "none") {
     issues.push(issue("response.invalid-shape", `grants must be "none".`));
   }
-  const items: ProjectResponseItem[] = [];
+  const items: Array<ProjectResponseV1Item | ProjectResponseItem> = [];
   if (!Array.isArray(value.items)) {
     issues.push(issue("response.invalid-shape", "items must be an array."));
   } else {
+    const itemSchema = typeof schemaVersion === "string"
+      ? schemaVersion
+      : PROJECT_RESPONSE_SCHEMA;
     for (const [index, entry] of value.items.entries()) {
-      const parsed = parseResponseItem(entry, `items[${index}]`, issues);
+      const parsed = parseResponseItem(
+        entry,
+        `items[${index}]`,
+        issues,
+        itemSchema,
+      );
       if (!parsed) break;
       items.push(parsed);
     }
   }
   const diagnostics = parseGaps(value.diagnostics, "diagnostics", issues);
+  const historicalClauseResponses: ProjectResponseClauseResponse[] = [];
+  if (schemaVersion === PROJECT_RESPONSE_SCHEMA_V1) {
+    if (Object.hasOwn(value, "historicalClauseResponses")) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          "historicalClauseResponses is not a project-response/1.0 field.",
+        ),
+      );
+    }
+  } else if (schemaVersion === PROJECT_RESPONSE_SCHEMA) {
+    if (!Array.isArray(value.historicalClauseResponses)) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          "historicalClauseResponses must be an array.",
+        ),
+      );
+    } else {
+      for (
+        const [index, entry] of value.historicalClauseResponses.entries()
+      ) {
+        const parsed = parseClauseResponse(
+          entry,
+          `historicalClauseResponses[${index}]`,
+          issues,
+          true,
+        );
+        if (!parsed) break;
+        if (
+          parsed.sourceState !== "removed" ||
+          parsed.applicability !== "historical"
+        ) {
+          issues.push(
+            issue(
+              "response.invalid-shape",
+              `historicalClauseResponses[${index}] must be removed and historical.`,
+            ),
+          );
+          break;
+        }
+        historicalClauseResponses.push(parsed);
+      }
+    }
+  }
   let basis: ProjectResponseBasis | undefined;
   if (value.basis !== undefined) {
     try {
@@ -513,17 +860,48 @@ export function parseProjectResponse(
   if (issues.length > 0 || !diagnostics) {
     return { ok: false, issues };
   }
+  const envelope = {
+    status: value.status as ProjectResponseStatus,
+    ...(basis ? { basis } : {}),
+    diagnostics,
+    grants: "none" as const,
+  };
+  if (schemaVersion === PROJECT_RESPONSE_SCHEMA_V1) {
+    return {
+      ok: true,
+      model: {
+        schemaVersion: PROJECT_RESPONSE_SCHEMA_V1,
+        ...envelope,
+        items: items as readonly ProjectResponseV1Item[],
+      },
+    };
+  }
   return {
     ok: true,
     model: {
       schemaVersion: PROJECT_RESPONSE_SCHEMA,
-      status: value.status as ProjectResponseStatus,
-      ...(basis ? { basis } : {}),
-      items,
-      diagnostics,
-      grants: "none",
+      ...envelope,
+      items: items as readonly ProjectResponseItem[],
+      historicalClauseResponses,
     },
   };
+}
+
+/** Documentary answers exist only on the current V2 discriminator. */
+export function clauseResponsesOn(
+  model: ProjectResponseDocument,
+  item: ProjectResponseV1Item | ProjectResponseItem,
+): readonly ProjectResponseClauseResponse[] {
+  if (!isProjectResponseV2(model)) return [];
+  return (item as ProjectResponseItem).clauseResponses;
+}
+
+/** Removed-item answers: inspectable, never current correspondence. */
+export function historicalClauseResponsesOn(
+  model: ProjectResponseDocument,
+): readonly ProjectResponseClauseResponse[] {
+  if (!isProjectResponseV2(model)) return [];
+  return model.historicalClauseResponses;
 }
 
 /**
@@ -557,11 +935,11 @@ export function isResponseBasisMatch(
  * are display facts on their row, not filter signals: assumptions,
  * exclusions and open questions never automatically need solver evidence.
  */
-export function hasResponseGap(item: ProjectResponseItem): boolean {
+export function hasResponseGap(item: ProjectResponseV1Item): boolean {
   return item.gaps.length > 0;
 }
 
-export function responseIndexSummary(model: ProjectResponseReadModel): string {
+export function responseIndexSummary(model: ProjectResponseDocument): string {
   const brief = model.basis?.brief;
   const basis = brief ? ` · brief approuvé r${brief.revision}` : "";
   const count = model.items.length === 1

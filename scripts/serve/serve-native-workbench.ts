@@ -36,6 +36,17 @@ import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/s
 import { enrichEngineeringEvidenceWorkbenchWithRequirementsBriefTraces } from "../../src/adapters/thread/requirements-brief-trace-workbench.ts";
 import { createRequirementsBriefTraceStore } from "../../src/adapters/record/requirements-brief-trace-store.ts";
 import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../src/domain/record/requirements-brief-trace.ts";
+import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "../../src/domain/record/documentary-clause-response.ts";
+import {
+  createDocumentaryClauseResponseStore,
+  DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
+} from "../../src/adapters/record/documentary-clause-response-store.ts";
+import {
+  DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY,
+  FileAgentResourceStore,
+} from "../../src/adapters/resource/file-agent-resource-store.ts";
+import { ReopenAgentResource } from "../../src/application/use-cases/resource/reopen-agent-resource.ts";
+export { DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY };
 import { isExplicitLoopbackHostname } from "../../src/adapters/loopback-host.ts";
 import {
   type EngineeringWorkbenchSnapshot,
@@ -1279,6 +1290,7 @@ const DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
   MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
   MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
   RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
+  RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
   DESIGN_WRITE_GEOMETRY_OPERATION,
   VERIFY_SEAL_PROOF_CASE_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
@@ -1955,11 +1967,18 @@ if (import.meta.main) {
   const requirementsBriefTraceCaptures = createRequirementsBriefTraceStore(
     REQUIREMENTS_CAPTURE_DESCRIPTOR.directory,
   );
+  const documentaryClauseResponseCaptures = createDocumentaryClauseResponseStore(
+    DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
+  );
+  const reopenAgentResource = new ReopenAgentResource(
+    new FileAgentResourceStore(DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY),
+  );
   const projectResponse = new ReadProjectResponse({
     projects: projectStore,
     snapshots: projectSnapshots ?? store,
     evidence: new ThreadProjectResponseEvidenceReader({
       projects: projectStore,
+      snapshots: projectSnapshots ?? store,
       captures: requirementsCaptures,
       claimHistory: {
         projects: projectStore,
@@ -1967,6 +1986,8 @@ if (import.meta.main) {
         captures: requirementsCaptures,
         traces: requirementsBriefTraceCaptures,
       },
+      clauseResponses: documentaryClauseResponseCaptures,
+      resources: reopenAgentResource,
     }),
   });
   const handler = createNativeWorkbenchHandler({

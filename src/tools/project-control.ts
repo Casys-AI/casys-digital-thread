@@ -143,6 +143,10 @@ import {
   registerProjectRequirementsBriefTraceReviewTools,
 } from "./project-control/requirements-brief-trace-review-tools.ts";
 import {
+  type ProjectDocumentaryClauseResponseReviewToolDependencies,
+  registerProjectDocumentaryClauseResponseReviewTools,
+} from "./project-control/documentary-clause-response-review-tools.ts";
+import {
   type ProjectResponseToolDependencies,
   registerProjectResponseTools,
 } from "./project-control/project-response-tools.ts";
@@ -193,6 +197,7 @@ export interface ProjectControlToolDependencies
     ProjectPrescribedKinematicsReviewToolDependencies,
     ProjectRequirementsRecaptureReviewToolDependencies,
     ProjectRequirementsBriefTraceReviewToolDependencies,
+    ProjectDocumentaryClauseResponseReviewToolDependencies,
     ProjectResponseToolDependencies,
     ProjectBuyReviewToolDependencies,
     ProjectBuyEstimatePreviewToolDependencies {
@@ -283,6 +288,7 @@ export function registerProjectControlTools(
   registerProjectPrescribedKinematicsReviewTools(app, dependencies);
   registerProjectRequirementsRecaptureReviewTools(app, dependencies);
   registerProjectRequirementsBriefTraceReviewTools(app, dependencies);
+  registerProjectDocumentaryClauseResponseReviewTools(app, dependencies);
   registerProjectResponseTools(app, dependencies);
   registerProjectBuyReviewTools(app, dependencies);
   registerProjectBuyEstimatePreviewTools(app, dependencies);

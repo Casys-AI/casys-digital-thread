@@ -5,6 +5,7 @@ import { DESIGN_WRITE_GEOMETRY_OPERATION } from "../../domain/cad/canonical/geom
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-proposal.ts";
 import { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-proposal.ts";
 import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../domain/record/requirements-brief-trace.ts";
+import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "../../domain/record/documentary-clause-response.ts";
 import { MODEL_RECAPTURE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-recapture-proposal.ts";
 import { MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-recapture-proposal.ts";
 import { EngineeringProjectCommandError } from "../../application/use-cases/project/engineering-project-command-service.ts";
@@ -186,6 +187,7 @@ Deno.test("recorded @2 writers participate in the same basis exclusion", async (
       MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
       MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
       RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
+      RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
     ].entries()
   ) {
     const sibling = {

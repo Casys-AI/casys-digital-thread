@@ -1,4 +1,5 @@
 # Reference: source map — project, Thread, and record
+
 > Verified-Against: 75e977b6 (2026-08-31).
 
 Audience: agent · Diátaxis: reference · Kind: contract
@@ -6,8 +7,8 @@ Audience: agent · Diátaxis: reference · Kind: contract
 Census of project ledger, Thread snapshot, brief, and record-reconciliation files. Not
 Workbench presentation and not CAS directory roots.
 
-Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays
-on [engineering domains](../domains/README.md).
+Index: [workspace source map](../codebase/codebase-map.md). Domain coverage stays on
+[engineering domains](../domains/README.md).
 
 ## Source map
 
@@ -33,14 +34,16 @@ Outbound cockpit-focus ledger port. Other project ports remain flat under `ports
 
 #### [`src/domain/record/`](../../../src/domain/record)
 
-`record.reconcile-uncertain-writer@1` proposal and accepted-write basis-release. Archive
+`record.reconcile-uncertain-writer@1` proposal and accepted-write basis-release.
+`record.seal-documentary-clause-response@1` closed clause-response grammar. Archive
 cascade math stays in `domain/thread/thread-retirement.ts`. Not CAD/FEA
 
 #### [`src/adapters/record/`](../../../src/adapters/record)
 
-Trusted executors for `record.archive-lineage@1` and
-`record.reconcile-uncertain-writer@1`. No WAL, no provider. Shared thread-write guard
-lives in `adapters/shared/thread-write-basis-guard.ts`
+Trusted executors for `record.archive-lineage@1`, `record.reconcile-uncertain-writer@1`,
+`record.seal-requirements-brief-trace@1`, and
+`record.seal-documentary-clause-response@1`. No WAL, no provider. Shared thread-write
+guard lives in `adapters/shared/thread-write-basis-guard.ts`
 
 #### [`src/domain/thread/thread-snapshot.ts`](../../../src/domain/thread/thread-snapshot.ts)
 

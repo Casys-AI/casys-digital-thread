@@ -2,7 +2,8 @@
  * Read-only exhaustive index of every approved brief item.
  *
  * Server joins, React renders: input is only the already computed
- * `project-response/1.0` read model (or `undefined` on an older host, in
+ * `project-response/2.0` read model, or a historical `project-response/1.0`
+ * payload (or `undefined` on an older host, in
  * which case the old view is preserved untouched). No MCP calls, no
  * mutations, no aggregate verdict — `available` means the index was read,
  * never that the response is ready.
@@ -15,18 +16,23 @@ import { CARD_SURFACE, DATA_LINE, SECTION_LABEL } from "../ui/cockpit.tsx";
 import type { ThreadGraphRef } from "../thread/types.ts";
 import {
   applicabilityLabel,
+  clauseResponsesOn,
   correspondenceLabel,
   DEFAULT_RESPONSE_FILTER,
   freshnessLabel,
   hasResponseGap,
+  historicalClauseResponsesOn,
   isResponseBasisMatch,
   parseProjectResponse,
   type ProjectResponseBasis,
+  type ProjectResponseClauseResponse,
   type ProjectResponseCorrespondence,
+  type ProjectResponseDocument,
   type ProjectResponseEvaluation,
   type ProjectResponseItem,
   type ProjectResponseReadModel,
   type ProjectResponseRequirementEvidence,
+  type ProjectResponseV1Item,
   responseIndexSummary,
   sourceStateLabel,
 } from "./overview-response-index-model.ts";
@@ -38,7 +44,7 @@ export function OverviewResponseIndex({
   expectedBasis,
   onOpenEvidence,
 }: {
-  /** Server-owned `project-response/1.0` payload, or absent on an older host. */
+  /** Server-owned `project-response/2.0` or historical `/1.0` payload. */
   readonly response?: unknown;
   /**
    * Basis of the containing Project/Thread view. A payload must name the
@@ -90,6 +96,7 @@ export function OverviewResponseIndex({
   const gapItems = model.items.filter(hasResponseGap);
   const visible = filter === "gaps" ? gapItems : model.items;
   const hiddenCount = model.items.length - gapItems.length;
+  const historicalRecords = historicalClauseResponsesOn(model);
   return (
     <section
       className={cn(
@@ -176,12 +183,34 @@ export function OverviewResponseIndex({
                     model.basis?.brief.snapshotId ?? "brief"
                   }:${row.item.id}`}
                   row={row}
+                  clauseResponses={clauseResponsesOn(model, row)}
                   markGap={filter === "all"}
                   onOpenEvidence={onOpenEvidence}
                 />
               ))}
             </ol>
           )}
+        {historicalRecords.length > 0 && (
+          <details className="mt-2">
+            <summary className={cn("cursor-pointer text-xs", DATA_LINE)}>
+              Réponses hors brief actuel ({historicalRecords.length}) ·
+              historiques, non courantes
+            </summary>
+            <p className="m-0 mt-1 text-xs text-muted-foreground">
+              Inspectables ; ni correspondance courante ni preuve
+              d&apos;exigence.
+            </p>
+            <ul className="m-0 mt-1.5 list-none space-y-1 p-0">
+              {historicalRecords.map((record) => (
+                <ClauseResponseEntry
+                  key={record.artifactId}
+                  record={record}
+                  onOpenEvidence={onOpenEvidence}
+                />
+              ))}
+            </ul>
+          </details>
+        )}
         <BasisProvenance model={model} />
       </details>
     </section>
@@ -189,7 +218,7 @@ export function OverviewResponseIndex({
 }
 
 function UnavailableResponseIndex(
-  { model }: { readonly model: ProjectResponseReadModel },
+  { model }: { readonly model: ProjectResponseDocument },
 ): JSX.Element {
   return (
     <section
@@ -225,7 +254,7 @@ function UnavailableResponseIndex(
 }
 
 function MismatchedResponseIndex(
-  { model }: { readonly model: ProjectResponseReadModel },
+  { model }: { readonly model: ProjectResponseDocument },
 ): JSX.Element {
   return (
     <section
@@ -272,10 +301,12 @@ function FilterButton({
 
 function ResponseRow({
   row,
+  clauseResponses,
   markGap,
   onOpenEvidence,
 }: {
-  readonly row: ProjectResponseItem;
+  readonly row: ProjectResponseV1Item | ProjectResponseItem;
+  readonly clauseResponses: readonly ProjectResponseClauseResponse[];
   readonly markGap: boolean;
   readonly onOpenEvidence?: (reference: ThreadGraphRef) => void;
 }): JSX.Element {
@@ -346,6 +377,17 @@ function ResponseRow({
               ))}
             </ul>
           )}
+        {clauseResponses.length > 0 && (
+          <ul className="m-0 mt-1.5 list-none space-y-1 p-0">
+            {clauseResponses.map((record) => (
+              <ClauseResponseEntry
+                key={record.artifactId}
+                record={record}
+                onOpenEvidence={onOpenEvidence}
+              />
+            ))}
+          </ul>
+        )}
         {row.gaps.length > 0 && (
           <ul className="m-0 mt-1.5 list-none space-y-0.5 p-0">
             {row.gaps.map((item) => (
@@ -361,6 +403,52 @@ function ResponseRow({
           </ul>
         )}
       </details>
+    </li>
+  );
+}
+
+function ClauseResponseEntry({
+  record,
+  onOpenEvidence,
+}: {
+  readonly record: ProjectResponseClauseResponse;
+  readonly onOpenEvidence?: (reference: ThreadGraphRef) => void;
+}): JSX.Element {
+  return (
+    <li className="rounded border border-border/50 px-2 py-1.5">
+      <span className="flex flex-wrap items-center gap-x-1.5 gap-y-1">
+        <EvidenceLink
+          reference={{ kind: "artifact", id: record.artifactId }}
+          onOpenEvidence={onOpenEvidence}
+        />
+        <Badge variant="warning">proposition documentaire</Badge>
+        <span className={cn(DATA_LINE)}>
+          {applicabilityLabel(record.applicability)}
+          {" · "}
+          {sourceStateLabel(record.sourceState)}
+          {" · "}
+          r{record.revision}
+        </span>
+      </span>
+      <span className={cn("mt-0.5 block", DATA_LINE)}>
+        {record.sourceItemId} · {record.scope}{" "}
+        · auteur agent · enregistrement, pas acceptation
+      </span>
+      <p className="m-0 mt-1 text-[12px] leading-relaxed">{record.answer}</p>
+      <ul className="m-0 mt-1 list-none space-y-0.5 p-0">
+        {record.sourceRefs.map((source) => (
+          <li
+            key={source.kind === "agent-resource"
+              ? source.uri
+              : source.artifactId}
+            className={cn(DATA_LINE)}
+          >
+            {source.kind === "agent-resource"
+              ? `agent-resource · ${source.uri}`
+              : `thread-artifact · ${source.artifactId}`}
+          </li>
+        ))}
+      </ul>
     </li>
   );
 }
@@ -514,7 +602,7 @@ function CorrespondenceBadge({
 }
 
 function BasisProvenance(
-  { model }: { readonly model: ProjectResponseReadModel },
+  { model }: { readonly model: ProjectResponseDocument },
 ): JSX.Element | null {
   const basis = model.basis;
   if (!basis) return null;
@@ -540,4 +628,4 @@ function BasisProvenance(
   );
 }
 
-export type { ProjectResponseReadModel };
+export type { ProjectResponseDocument, ProjectResponseReadModel };

@@ -80,6 +80,7 @@ import {
 } from "../../domain/fea/evaluation-closeout/static-mechanical-evaluation-closeout-proposal.ts";
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../domain/record/requirements-brief-trace.ts";
+import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "../../domain/record/documentary-clause-response.ts";
 import { FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS } from "./fea-isolated-static-proof.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
@@ -1754,6 +1755,27 @@ const OPERATIONS = [
         allowedThreadEntityKinds: ["artifact"],
       },
     ],
+  },
+  {
+    id: RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION.id,
+    version: RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal a documentary clause-response proposal",
+    description:
+      "Append one human-reviewed, versioned documentary answer to one exact current approved brief item, reopening immutable agent-resource captures or registered Thread artifacts. " +
+      "Human MRTR authorizes the act of recording the agent proposal; it does not accept the answer content, create a requirement, or grant a verification pass. " +
+      "A successor may record a later brief item or source set without changing prior documents.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    requiresAdditiveChange: true,
+    threadEntityBindingsMustMatchBasis: true,
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
   },
   {
     id: RECONCILE_UNCERTAIN_WRITER_OPERATION.id,

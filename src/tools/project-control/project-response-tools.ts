@@ -23,6 +23,8 @@ import {
   parseProjectResponseBasis,
   PROJECT_RESPONSE_SCHEMA,
 } from "../../application/ports/in/project-response/project-response.ts";
+import { DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX } from "../../domain/record/documentary-clause-response.ts";
+import { AGENT_RESOURCE_REFERENCE_SCHEMA } from "../../domain/resource/agent-resource-reference.ts";
 import { PROJECT_ID, READ_ONLY_ANNOTATIONS } from "./mcp-tool-schemas.ts";
 
 export interface ProjectResponseToolDependencies {
@@ -58,6 +60,12 @@ const SOURCE_STATE = [
   "unchanged",
   "changed",
   "removed",
+  "brief-unavailable",
+] as const;
+
+const CURRENT_CLAUSE_RESPONSE_SOURCE_STATE = [
+  "unchanged",
+  "changed",
   "brief-unavailable",
 ] as const;
 
@@ -119,6 +127,7 @@ const COUNTS = {
     diagnostics: { type: "integer", minimum: 0 },
     diagnosticsIncluded: { type: "integer", minimum: 0 },
     diagnosticsOmitted: { type: "integer", minimum: 0 },
+    removedClauseResponseCount: { type: "integer", minimum: 0 },
     byKind: {
       type: "object",
       additionalProperties: { type: "integer", minimum: 0 },
@@ -136,6 +145,7 @@ const COUNTS = {
     "diagnostics",
     "diagnosticsIncluded",
     "diagnosticsOmitted",
+    "removedClauseResponseCount",
     "byKind",
     "byCorrespondence",
   ],
@@ -312,15 +322,76 @@ const REQUIREMENT = {
   additionalProperties: false,
 } as const;
 
+const CLAUSE_SOURCE_REF = {
+  oneOf: [
+    {
+      type: "object",
+      properties: {
+        kind: { const: "agent-resource" },
+        uri: AGENT_RESOURCE_REFERENCE_SCHEMA.properties.uri,
+      },
+      required: ["kind", "uri"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { kind: { const: "thread-artifact" }, artifactId: ID },
+      required: ["kind", "artifactId"],
+      additionalProperties: false,
+    },
+  ],
+} as const;
+
+const CLAUSE_RESPONSE = {
+  type: "object",
+  properties: {
+    artifactId: ID,
+    revision: { type: "integer", minimum: 1 },
+    sourceItemId: ID,
+    sourceBrief: BRIEF_IDENTITY,
+    sourceState: {
+      type: "string",
+      enum: CURRENT_CLAUSE_RESPONSE_SOURCE_STATE,
+    },
+    applicability: { type: "string", enum: APPLICABILITY },
+    recordingStatus: { const: "proposal" },
+    authorKind: { const: "agent" },
+    scope: STRING,
+    answer: STRING,
+    sourceRefs: {
+      type: "array",
+      minItems: 1,
+      maxItems: DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX,
+      items: CLAUSE_SOURCE_REF,
+    },
+    predecessorArtifactId: ID,
+  },
+  required: [
+    "artifactId",
+    "revision",
+    "sourceItemId",
+    "sourceBrief",
+    "sourceState",
+    "applicability",
+    "recordingStatus",
+    "authorKind",
+    "scope",
+    "answer",
+    "sourceRefs",
+  ],
+  additionalProperties: false,
+} as const;
+
 const RESPONSE_ITEM = {
   type: "object",
   properties: {
     item: BRIEF_ITEM,
     correspondence: { type: "string", enum: CORRESPONDENCE },
     requirements: { type: "array", items: REQUIREMENT },
+    clauseResponses: { type: "array", items: CLAUSE_RESPONSE },
     gaps: { type: "array", items: DIAGNOSTIC },
   },
-  required: ["item", "correspondence", "requirements", "gaps"],
+  required: ["item", "correspondence", "requirements", "clauseResponses", "gaps"],
   additionalProperties: false,
 } as const;
 
@@ -333,6 +404,9 @@ const SUMMARY_ROW = {
     requirementCount: { type: "integer", minimum: 0 },
     currentEvaluationCount: { type: "integer", minimum: 0 },
     historicalEvaluationCount: { type: "integer", minimum: 0 },
+    clauseResponseCount: { type: "integer", minimum: 0 },
+    currentClauseResponseCount: { type: "integer", minimum: 0 },
+    historicalClauseResponseCount: { type: "integer", minimum: 0 },
     gapCount: { type: "integer", minimum: 0 },
   },
   required: [
@@ -342,6 +416,9 @@ const SUMMARY_ROW = {
     "requirementCount",
     "currentEvaluationCount",
     "historicalEvaluationCount",
+    "clauseResponseCount",
+    "currentClauseResponseCount",
+    "historicalClauseResponseCount",
     "gapCount",
   ],
   additionalProperties: false,
@@ -404,6 +481,17 @@ const FULL_OUTPUT = {
     view: { const: "full-evidence" },
     counts: COUNTS,
     items: { type: "array", items: RESPONSE_ITEM },
+    historicalClauseResponses: {
+      type: "array",
+      items: {
+        ...CLAUSE_RESPONSE,
+        properties: {
+          ...CLAUSE_RESPONSE.properties,
+          sourceState: { const: "removed" },
+          applicability: { const: "historical" },
+        },
+      },
+    },
     omission: OMISSION,
   },
   required: [
@@ -412,6 +500,7 @@ const FULL_OUTPUT = {
     "view",
     "counts",
     "items",
+    "historicalClauseResponses",
     "diagnostics",
     "grants",
   ],
@@ -493,6 +582,9 @@ export interface ProjectResponseSummaryRow {
   readonly requirementCount: number;
   readonly currentEvaluationCount: number;
   readonly historicalEvaluationCount: number;
+  readonly clauseResponseCount: number;
+  readonly currentClauseResponseCount: number;
+  readonly historicalClauseResponseCount: number;
   readonly gapCount: number;
 }
 
@@ -504,6 +596,7 @@ interface ProjectResponseCounts {
   readonly diagnostics: number;
   readonly diagnosticsIncluded: number;
   readonly diagnosticsOmitted: number;
+  readonly removedClauseResponseCount: number;
   readonly byKind: Readonly<Record<string, number>>;
   readonly byCorrespondence: Readonly<Record<string, number>>;
 }
@@ -544,6 +637,8 @@ export interface ProjectResponseToolResult {
   readonly itemId?: string;
   readonly counts?: ProjectResponseCounts;
   readonly items: readonly unknown[];
+  readonly historicalClauseResponses?:
+    readonly ProjectResponseItem["clauseResponses"][number][];
   readonly omission?: ProjectResponseOmission;
   readonly diagnosticOmission?: ProjectResponseDiagnosticOmission;
   readonly diagnostics: ProjectResponseReadModel["diagnostics"];
@@ -698,6 +793,7 @@ function summaryPage(
       included.length,
       model.diagnostics.length,
       envelope.diagnostics.length,
+      model.historicalClauseResponses.length,
     ),
     items: included,
     ...omissionFor(
@@ -728,8 +824,10 @@ function fullPage(
       included.length,
       model.diagnostics.length,
       model.diagnostics.length,
+      model.historicalClauseResponses.length,
     ),
     items: included,
+    historicalClauseResponses: model.historicalClauseResponses,
     ...omissionFor(
       model,
       remaining,
@@ -778,6 +876,7 @@ function countsFor(
   included: number,
   diagnostics: number,
   diagnosticsIncluded: number,
+  removedClauseResponseCount: number,
 ): ProjectResponseCounts {
   const byKind: Record<string, number> = {};
   const byCorrespondence: Record<string, number> = {};
@@ -796,6 +895,7 @@ function countsFor(
     diagnostics,
     diagnosticsIncluded,
     diagnosticsOmitted: diagnostics - diagnosticsIncluded,
+    removedClauseResponseCount,
     byKind,
     byCorrespondence,
   };
@@ -871,6 +971,12 @@ function summaryRow(item: ProjectResponseItem): ProjectResponseSummaryRow {
       if (evaluation.applicability === "historical") historicalEvaluationCount++;
     }
   }
+  let currentClauseResponseCount = 0;
+  let historicalClauseResponseCount = 0;
+  for (const record of item.clauseResponses) {
+    if (record.applicability === "current") currentClauseResponseCount++;
+    if (record.applicability === "historical") historicalClauseResponseCount++;
+  }
   return {
     itemId: item.item.id,
     kind: item.item.kind,
@@ -878,6 +984,9 @@ function summaryRow(item: ProjectResponseItem): ProjectResponseSummaryRow {
     requirementCount: item.requirements.length,
     currentEvaluationCount,
     historicalEvaluationCount,
+    clauseResponseCount: item.clauseResponses.length,
+    currentClauseResponseCount,
+    historicalClauseResponseCount,
     gapCount: item.gaps.length,
   };
 }

@@ -1,4 +1,5 @@
 # Reference: lookalike traps
+
 > Verified-Against: 7e634350 (2026-09-12).
 
 Audience: agent · Diátaxis: reference · Kind: contract
@@ -251,5 +252,8 @@ CalculiX `@3` is not the admitted-source pattern: the agent never writes `.inp`.
 | `project_resource_capture` (`tools/call`)                               | Client-to-server ingestion of exact bytes into draft CAS                                                 | `resources/read`, MCP roots, a per-domain capture tool, admission, or microVM input      |
 | `resources/read`                                                        | Server-to-client projection of a minted URI                                                              | Client upload; MCP roots (URI only, no bytes)                                            |
 | Public `resourceRef`                                                    | Full `AgentResourceReference` from `project_resource_capture`                                            | Inline `sourceText`, URI alone, digest alone, or `resources/read` upload                 |
+| `record.seal-requirements-brief-trace@1`                                | Documentary correspondence from one existing captured requirement to one approved clause                 | An arbitrary context answer, a new requirement, or a pass                                |
+| `record.seal-documentary-clause-response@1`                             | Source-backed documentary proposal for one approved brief item                                           | Requirement authoring, content acceptance, or inherited evaluation                       |
+| Human MRTR for that seal                                                | Authorizes the act of recording the agent proposal                                                       | Acceptance of the answer content                                                         |
 | Project source workspace                                                | Draft file identities, paths and revisions for one project                                               | Engineering Project ledger, Thread evidence, admission, or a compilation/runtime profile |
 | `captureRequest` on a workspace file revision                           | Caller-authored requested parser/source identity. Vertical 1 stores it inertly; not a registered profile | Compilation profile, provider, tool, image, or runtime selection                         |

@@ -193,6 +193,13 @@ import { PrepareProjectRequirementsBriefTraceReview } from "./src/adapters/recor
 import { RecordSealRequirementsBriefTraceRunExecutor } from "./src/adapters/record/record-seal-requirements-brief-trace-run-executor.ts";
 import { createRequirementsBriefTraceStore } from "./src/adapters/record/requirements-brief-trace-store.ts";
 import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "./src/domain/record/requirements-brief-trace.ts";
+import { PrepareProjectDocumentaryClauseResponseReview } from "./src/adapters/record/capture-backed-documentary-clause-response-reviewer.ts";
+import { RecordSealDocumentaryClauseResponseRunExecutor } from "./src/adapters/record/record-seal-documentary-clause-response-run-executor.ts";
+import {
+  createDocumentaryClauseResponseStore,
+  DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
+} from "./src/adapters/record/documentary-clause-response-store.ts";
+import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "./src/domain/record/documentary-clause-response.ts";
 import { FileLiveThreadUpdateStore } from "./src/adapters/shared/stores/live-thread-update-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./src/adapters/shared/stores/engineering-project-store.ts";
 import {
@@ -345,7 +352,10 @@ import {
   VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION,
 } from "./src/adapters/electrical/server-composition.ts";
 import { createAgentResourceIngress } from "./src/adapters/resource/server-composition.ts";
-import { FileAgentResourceStore } from "./src/adapters/resource/file-agent-resource-store.ts";
+import {
+  DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY,
+  FileAgentResourceStore,
+} from "./src/adapters/resource/file-agent-resource-store.ts";
 import { ProjectResourceCaptureError } from "./src/application/use-cases/resource/prepare-project-resource-capture.ts";
 import {
   AgentResourceReopenError,
@@ -453,7 +463,6 @@ const LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT = Object.freeze({
 });
 const LOCAL_MODELICA_QUALIFICATION_ROOT =
   "state/local/modelica-microsandbox-qualification";
-const DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY = "state/local/agent-resource-captures";
 
 export interface CreateConsoleServerOptions {
   manifest?: FleetManifest;
@@ -514,6 +523,8 @@ export interface CreateConsoleServerOptions {
   requirementsAttemptDirectory?: string;
   /** Generic model.recapture-requirements@1 publication WAL directory. */
   requirementsRecapturePublicationDirectory?: string;
+  /** Immutable documentary clause-response CAS; shared by writer and reader. */
+  documentaryClauseResponseDirectory?: string;
   printabilityCaseCaptureDirectory?: string;
   printabilityAttemptDirectory?: string;
   printabilityObservationCaptureDirectory?: string;
@@ -1425,11 +1436,31 @@ async function createProjectControl(
     commands: runtime.commands,
     lease,
   });
+  const documentaryClauseResponseStore = createDocumentaryClauseResponseStore(
+    options.documentaryClauseResponseDirectory ??
+      DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
+  );
+  const documentaryClauseResponseInputs = {
+    projects: runtime.projects,
+    snapshots: activeThreadSnapshots,
+    captures: documentaryClauseResponseStore,
+    resources: reopenAgentResource,
+  };
+  const documentaryClauseResponseReview =
+    new PrepareProjectDocumentaryClauseResponseReview(
+      documentaryClauseResponseInputs,
+    );
+  const documentaryClauseResponse = new RecordSealDocumentaryClauseResponseRunExecutor({
+    ...documentaryClauseResponseInputs,
+    commands: runtime.commands,
+    lease,
+  });
   const projectResponse = new ReadProjectResponse({
     projects: runtime.projects,
     snapshots: threadSnapshots,
     evidence: new ThreadProjectResponseEvidenceReader({
       projects: runtime.projects,
+      snapshots: threadSnapshots,
       captures: architectureFoundation.requirementsCaptures,
       claimHistory: {
         projects: runtime.projects,
@@ -1437,6 +1468,8 @@ async function createProjectControl(
         captures: architectureFoundation.requirementsCaptures,
         traces: requirementsBriefTraceStore,
       },
+      clauseResponses: documentaryClauseResponseStore,
+      resources: reopenAgentResource,
     }),
   });
   // Reconcile-uncertain-writer requires no provider — always available.
@@ -1798,6 +1831,7 @@ async function createProjectControl(
       briefRequirementsReview: architectureProject.briefRequirementsReview,
       requirementsRecaptureReview: architectureProject.requirementsRecaptureReview,
       requirementsBriefTraceReview,
+      documentaryClauseResponseReview,
       projectResponse,
       feaProofCaseCapture: feaProject.feaProofCaseCapture,
       feaProofSealReview: feaProject.feaProofSealReview,
@@ -2033,6 +2067,10 @@ async function createProjectControl(
           {
             operation: RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
             executor: requirementsBriefTrace,
+          },
+          {
+            operation: RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
+            executor: documentaryClauseResponse,
           },
           {
             operation: RECONCILE_UNCERTAIN_WRITER_OPERATION,

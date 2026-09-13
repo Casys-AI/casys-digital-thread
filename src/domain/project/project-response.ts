@@ -17,7 +17,8 @@ import type { RequirementsBriefSourceImpactState } from "../architecture/require
 import type { ProjectBriefItem } from "./project-brief.ts";
 import type { ThreadFreshness } from "../thread/thread-snapshot.ts";
 
-export const PROJECT_RESPONSE_SCHEMA = "project-response/1.0" as const;
+export const PROJECT_RESPONSE_SCHEMA_V1 = "project-response/1.0" as const;
+export const PROJECT_RESPONSE_SCHEMA = "project-response/2.0" as const;
 
 export type ProjectResponseStatus = "available" | "unavailable" | "unresolved";
 
@@ -91,20 +92,69 @@ export interface ProjectResponseRequirementEvidence {
   readonly evaluations: readonly ProjectResponseRequirementEvaluation[];
 }
 
-export interface ProjectResponseItem {
+export type ProjectResponseClauseRecordingStatus = "proposal";
+export type ProjectResponseClauseAuthorKind = "agent";
+
+export type ProjectResponseClauseSourceRef =
+  | { readonly kind: "agent-resource"; readonly uri: string }
+  | { readonly kind: "thread-artifact"; readonly artifactId: string };
+
+export interface ProjectResponseClauseResponse {
+  readonly artifactId: string;
+  readonly revision: number;
+  readonly sourceItemId: string;
+  readonly sourceBrief: ProjectResponseBriefIdentity;
+  readonly sourceState: RequirementsBriefSourceImpactState;
+  readonly applicability: ProjectResponseApplicability;
+  readonly recordingStatus: ProjectResponseClauseRecordingStatus;
+  readonly authorKind: ProjectResponseClauseAuthorKind;
+  readonly scope: string;
+  readonly answer: string;
+  readonly sourceRefs: readonly ProjectResponseClauseSourceRef[];
+  readonly predecessorArtifactId?: string;
+}
+
+export interface ProjectResponseV1Item {
   readonly item: ProjectBriefItem;
   readonly correspondence: ProjectResponseCorrespondence;
   readonly requirements: readonly ProjectResponseRequirementEvidence[];
   readonly gaps: readonly ProjectResponseGap[];
 }
 
-export interface ProjectResponseReadModel {
-  readonly schemaVersion: typeof PROJECT_RESPONSE_SCHEMA;
+export interface ProjectResponseItem extends ProjectResponseV1Item {
+  readonly clauseResponses: readonly ProjectResponseClauseResponse[];
+}
+
+export interface ProjectResponseEnvelope {
   readonly status: ProjectResponseStatus;
   readonly basis?: ProjectResponseBasis;
-  readonly items: readonly ProjectResponseItem[];
   readonly diagnostics: readonly ProjectResponseDiagnostic[];
   readonly grants: "none";
+}
+
+export interface ProjectResponseV1ReadModel extends ProjectResponseEnvelope {
+  readonly schemaVersion: typeof PROJECT_RESPONSE_SCHEMA_V1;
+  readonly items: readonly ProjectResponseV1Item[];
+}
+
+export interface ProjectResponseReadModel extends ProjectResponseEnvelope {
+  readonly schemaVersion: typeof PROJECT_RESPONSE_SCHEMA;
+  readonly items: readonly ProjectResponseItem[];
+  /**
+   * Documentary answers whose brief item is no longer on the current
+   * human-approved brief. Never current correspondence or requirement proof.
+   */
+  readonly historicalClauseResponses: readonly ProjectResponseClauseResponse[];
+}
+
+export type ProjectResponseDocument =
+  | ProjectResponseV1ReadModel
+  | ProjectResponseReadModel;
+
+export function isProjectResponseV2(
+  model: ProjectResponseDocument,
+): model is ProjectResponseReadModel {
+  return model.schemaVersion === PROJECT_RESPONSE_SCHEMA;
 }
 
 export function parseProjectResponseBriefIdentity(
@@ -191,6 +241,7 @@ export function unavailableProjectResponse(
     schemaVersion: PROJECT_RESPONSE_SCHEMA,
     status: extras.status ?? "unavailable",
     items: extras.items ?? [],
+    historicalClauseResponses: extras.historicalClauseResponses ?? [],
     diagnostics: extras.diagnostics ?? [],
     grants: "none",
     ...(extras.basis ? { basis: extras.basis } : {}),

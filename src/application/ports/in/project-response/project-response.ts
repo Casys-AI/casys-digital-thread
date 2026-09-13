@@ -17,8 +17,13 @@ export type {
   ProjectResponseApplicability,
   ProjectResponseBasis,
   ProjectResponseBriefIdentity,
+  ProjectResponseClauseAuthorKind,
+  ProjectResponseClauseRecordingStatus,
+  ProjectResponseClauseResponse,
+  ProjectResponseClauseSourceRef,
   ProjectResponseCorrespondence,
   ProjectResponseDiagnostic,
+  ProjectResponseDocument,
   ProjectResponseEvaluationStatus,
   ProjectResponseGap,
   ProjectResponseItem,
@@ -28,13 +33,17 @@ export type {
   ProjectResponseRequirementEvidence,
   ProjectResponseStatus,
   ProjectResponseThreadIdentity,
+  ProjectResponseV1Item,
+  ProjectResponseV1ReadModel,
 } from "../../../../domain/project/project-response.ts";
 
 export {
+  isProjectResponseV2,
   parseProjectResponseBasis,
   parseProjectResponseBriefIdentity,
   parseProjectResponseThreadIdentity,
   PROJECT_RESPONSE_SCHEMA,
+  PROJECT_RESPONSE_SCHEMA_V1,
   projectResponseBasesEqual,
   unavailableProjectResponse,
 } from "../../../../domain/project/project-response.ts";

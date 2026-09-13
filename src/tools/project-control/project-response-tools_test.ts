@@ -76,7 +76,19 @@ Deno.test("project_response_read is a closed read-only tool without provider arg
   assertEquals(itemView.properties.items.items, fullView.properties.items.items);
   assertEquals(
     (itemView.properties.items.items as { required: string[] }).required,
-    ["item", "correspondence", "requirements", "gaps"],
+    ["item", "correspondence", "requirements", "clauseResponses", "gaps"],
+  );
+  const summaryView = output.oneOf.find((entry) =>
+    entry.properties.view.const === "summary"
+  )!;
+  const summaryProperties = summaryView.properties as unknown as {
+    schemaVersion: { const: string };
+    items: { items: { required: string[] } };
+  };
+  assertEquals(summaryProperties.schemaVersion.const, "project-response/2.0");
+  assertEquals(
+    summaryProperties.items.items.required.includes("clauseResponseCount"),
+    true,
   );
   assertStringIncludes(tool.description, "8KiB");
   assertStringIncludes(tool.description, "afterItemId");
@@ -198,6 +210,7 @@ Deno.test("project_response_read refuses a stale expected basis without mixing r
             status: "unavailable",
             basis: current.basis,
             items: [],
+            historicalClauseResponses: [],
             diagnostics: [{
               code: "basis.stale",
               message:
@@ -480,6 +493,7 @@ Deno.test("project_response_read stale model with many diagnostics does not adve
     status: "unavailable",
     basis: current.basis,
     items: [],
+    historicalClauseResponses: [],
     diagnostics: [
       {
         code: "basis.stale",
@@ -529,6 +543,7 @@ Deno.test("project_response_read unavailable summary does not fabricate a diagno
     schemaVersion: PROJECT_RESPONSE_SCHEMA,
     status: "unavailable",
     items: [],
+    historicalClauseResponses: [],
     diagnostics: traceGapDiagnostics(40, "z".repeat(400)),
     grants: "none",
   }, {
@@ -616,6 +631,7 @@ Deno.test("project_response_read published results match the declared outputSche
             status: "unavailable",
             basis: model.basis,
             items: [],
+            historicalClauseResponses: [],
             diagnostics: [
               {
                 code: "basis.stale",
@@ -657,7 +673,12 @@ Deno.test("project_response_read published results match the declared outputSche
   for (const result of published) {
     const checked = compiled.validate(result.structuredContent);
     assertEquals(checked.valid, true, JSON.stringify(checked.errors));
+    assertEquals(
+      result.structuredContent.schemaVersion,
+      PROJECT_RESPONSE_SCHEMA,
+    );
   }
+  assertEquals(PROJECT_RESPONSE_SCHEMA, "project-response/2.0");
   const missingItemId = { ...published[1].structuredContent };
   delete missingItemId.itemId;
   assertEquals(compiled.validate(missingItemId).valid, false);
@@ -730,6 +751,7 @@ function sampleAvailableModel(): ProjectResponseReadModel {
       ),
     ],
     diagnostics: [],
+    historicalClauseResponses: [],
     grants: "none",
   };
 }
@@ -760,6 +782,7 @@ function pagedFullEvidenceModel(): ProjectResponseReadModel {
       responseItem("page-c", "exclusion", "unresolved", statement),
     ],
     diagnostics: [],
+    historicalClauseResponses: [],
     grants: "none",
   };
 }
@@ -781,6 +804,7 @@ function largeResponseModel(count: number): ProjectResponseReadModel {
     basis: sampleBasis(),
     items,
     diagnostics: [],
+    historicalClauseResponses: [],
     grants: "none",
   };
 }
@@ -824,6 +848,7 @@ function responseItem(
         }],
       }]
       : [],
+    clauseResponses: [],
     gaps: correspondence === "unresolved"
       ? [{ code: "correspondence.missing", message: "No exact mapping." }]
       : [],
@@ -837,6 +862,7 @@ function stubUseCase(): ProjectResponseUseCase {
         schemaVersion: PROJECT_RESPONSE_SCHEMA,
         status: "unavailable",
         items: [],
+        historicalClauseResponses: [],
         diagnostics: [],
         grants: "none",
       }),
@@ -864,3 +890,220 @@ function capturingApp() {
     },
   };
 }
+
+Deno.test("public clause source schema requires exactly the discriminator's identity", () => {
+  const app = capturingApp();
+  registerProjectResponseTools(app as unknown as McpApp, {
+    projectResponse: stubUseCase(),
+  });
+  const output = app.tool(PROJECT_RESPONSE_TOOL_NAME).outputSchema as {
+    oneOf: Array<
+      {
+        properties: {
+          view: { const: string };
+          items: {
+            items: {
+              properties: {
+                clauseResponses: {
+                  items: {
+                    properties: { sourceRefs: { items: Record<string, unknown> } };
+                  };
+                };
+              };
+            };
+          };
+        };
+      }
+    >;
+  };
+  const full = output.oneOf.find((entry) =>
+    entry.properties.view.const === "full-evidence"
+  );
+  const schema =
+    full!.properties.items.items.properties.clauseResponses.items.properties.sourceRefs
+      .items;
+  const validate = new SchemaValidator().compileSchema({
+    type: "object",
+    properties: { source: schema },
+    required: ["source"],
+    additionalProperties: false,
+  });
+  for (
+    const source of [
+      {
+        kind: "agent-resource",
+        uri: "casys://agent-resource-capture/sha256/" + "a".repeat(64),
+      },
+      { kind: "thread-artifact", artifactId: "artifact.synthetic.source" },
+    ]
+  ) assertEquals(validate.validate({ source }).valid, true);
+  for (
+    const source of [
+      null,
+      {},
+      { kind: "future" },
+      { kind: "agent-resource" },
+      { kind: "agent-resource", uri: "casys://synthetic/source" },
+      { kind: "thread-artifact" },
+      { kind: "agent-resource", artifactId: "artifact.synthetic.source" },
+      { kind: "thread-artifact", uri: "casys://synthetic/source" },
+      {
+        kind: "agent-resource",
+        uri: "casys://synthetic/source",
+        artifactId: "artifact.synthetic.source",
+      },
+      { kind: "thread-artifact", artifactId: "artifact.synthetic.source", extra: true },
+    ]
+  ) assertEquals(validate.validate({ source }).valid, false);
+});
+
+Deno.test("public V2 clause sourceRefs schema enforces the 1-8 domain bound", () => {
+  const app = capturingApp();
+  registerProjectResponseTools(app as unknown as McpApp, {
+    projectResponse: stubUseCase(),
+  });
+  const output = app.tool(PROJECT_RESPONSE_TOOL_NAME).outputSchema as {
+    oneOf: Array<
+      {
+        properties: {
+          view: { const: string };
+          items: {
+            items: {
+              properties: {
+                clauseResponses: {
+                  items: {
+                    properties: {
+                      sourceRefs: {
+                        minItems?: number;
+                        maxItems?: number;
+                        items: Record<string, unknown>;
+                      };
+                    };
+                  };
+                };
+              };
+            };
+          };
+        };
+      }
+    >;
+  };
+  const full = output.oneOf.find((entry) =>
+    entry.properties.view.const === "full-evidence"
+  );
+  const sourceRefs =
+    full!.properties.items.items.properties.clauseResponses.items.properties
+      .sourceRefs;
+  assertEquals(sourceRefs.minItems, 1);
+  assertEquals(sourceRefs.maxItems, 8);
+  const validate = new SchemaValidator().compileSchema({
+    type: "object",
+    properties: { sourceRefs },
+    required: ["sourceRefs"],
+    additionalProperties: false,
+  });
+  const one = {
+    kind: "thread-artifact",
+    artifactId: "artifact.synthetic.source",
+  };
+  assertEquals(validate.validate({ sourceRefs: [one] }).valid, true);
+  assertEquals(validate.validate({ sourceRefs: [] }).valid, false);
+  assertEquals(
+    validate.validate({ sourceRefs: Array.from({ length: 9 }, () => one) })
+      .valid,
+    false,
+  );
+});
+
+Deno.test("removed clause-response answers stay out of default summary and appear in full-evidence", () => {
+  const model: ProjectResponseReadModel = {
+    ...sampleAvailableModel(),
+    historicalClauseResponses: [{
+      artifactId: "documentary-clause-response-retired",
+      revision: 1,
+      sourceItemId: "retired-exclusion",
+      sourceBrief: sampleBasis().brief,
+      sourceState: "removed",
+      applicability: "historical",
+      recordingStatus: "proposal",
+      authorKind: "agent",
+      scope: "context",
+      answer: "Historical retired answer must not enter the default summary.",
+      sourceRefs: [{
+        kind: "agent-resource",
+        uri: "casys://agent-resource-capture/sha256/" + "a".repeat(64),
+      }],
+    }],
+  };
+  const summary = presentProjectResponse(model, {
+    query: { projectId: "project.response" },
+    evidence: "summary",
+  });
+  assertEquals(summary.view, "summary");
+  assertEquals(summary.historicalClauseResponses, undefined);
+  assertEquals(summary.counts?.removedClauseResponseCount, 1);
+  assertEquals(
+    JSON.stringify(summary).includes("Historical retired answer must not enter"),
+    false,
+  );
+  const full = presentProjectResponse(model, {
+    query: { projectId: "project.response", expectedBasis: sampleBasis() },
+    evidence: "full-evidence",
+  });
+  assertEquals(full.view, "full-evidence");
+  assertEquals(full.historicalClauseResponses?.length, 1);
+  assertEquals(
+    full.historicalClauseResponses?.[0]?.answer,
+    "Historical retired answer must not enter the default summary.",
+  );
+  assertEquals(full.historicalClauseResponses?.[0]?.sourceState, "removed");
+  assertEquals(full.historicalClauseResponses?.[0]?.applicability, "historical");
+  const app = capturingApp();
+  registerProjectResponseTools(app as unknown as McpApp, {
+    projectResponse: stubUseCase(),
+  });
+  const validate = new SchemaValidator().compileSchema(
+    app.tool(PROJECT_RESPONSE_TOOL_NAME).outputSchema!,
+  );
+  assertEquals(validate.validate({ ...full }).valid, true);
+  const currentItem = full.items[0] as ProjectResponseItem;
+  assertEquals(
+    validate.validate({
+      ...full,
+      items: [{
+        ...currentItem,
+        clauseResponses: [{
+          ...full.historicalClauseResponses?.[0],
+          sourceItemId: currentItem.item.id,
+          sourceState: "removed",
+          applicability: "current",
+        }],
+      }],
+    }).valid,
+    false,
+  );
+  for (
+    const changed of [
+      { applicability: "current" },
+      { sourceState: "unchanged" },
+      { sourceRefs: [] },
+    ]
+  ) {
+    assertEquals(
+      validate.validate({
+        ...full,
+        historicalClauseResponses: [{
+          ...full.historicalClauseResponses?.[0],
+          ...changed,
+        }],
+      }).valid,
+      false,
+    );
+  }
+  assertEquals(
+    full.items.every((item) =>
+      (item as ProjectResponseItem).item.id !== "retired-exclusion"
+    ),
+    true,
+  );
+});
