@@ -195,6 +195,25 @@ Deno.test("project_response_read refuses a stale expected basis without mixing r
   assertEquals(stale.structuredContent.items, []);
   assertEquals(stale.structuredContent.diagnostics[0]?.code, "basis.stale");
   assertStringIncludes(stale.content, "structured diagnostics");
+  for (const evidence of ["summary", "full-evidence"]) {
+    const continuation = await app.handle(PROJECT_RESPONSE_TOOL_NAME, {
+      projectId: "project.response",
+      expectedBasis: { ...sampleBasis(), projectRevision: 1 },
+      afterItemId: "objective",
+      evidence,
+    }) as {
+      structuredContent: {
+        status: string;
+        view: string;
+        items: unknown[];
+        diagnostics: Array<{ code: string }>;
+      };
+    };
+    assertEquals(continuation.structuredContent.status, "unavailable");
+    assertEquals(continuation.structuredContent.view, evidence);
+    assertEquals(continuation.structuredContent.items, []);
+    assertEquals(continuation.structuredContent.diagnostics[0]?.code, "basis.stale");
+  }
 });
 
 Deno.test("project_response_read continuation and full-evidence stay on the exact basis", async () => {

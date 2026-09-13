@@ -495,8 +495,10 @@ export function presentProjectResponse(
       status: item || model.status !== "available" ? model.status : "unresolved",
     };
   }
-  const start = sliceStart(model.items, request.afterItemId);
-  const remaining = model.items.slice(start);
+  const start = model.status === "available"
+    ? sliceStart(model.items, request.afterItemId)
+    : 0;
+  const remaining = model.status === "available" ? model.items.slice(start) : [];
   if (request.evidence === "full-evidence") {
     const included = takeFitting(
       remaining,

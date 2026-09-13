@@ -3,7 +3,7 @@
  * (`project-response/1.0`).
  *
  * The domain server computes every join. React only renders. Types come
- * exclusively from the shared application DTO; this module keeps only the
+ * exclusively from the shared domain contract; this module keeps only the
  * transport parser (which reports explicit UI read states instead of
  * throwing) and small pure presentation helpers (labels, gap detection,
  * exact evidence refs, basis binding).
@@ -31,7 +31,11 @@ import {
   projectResponseBasesEqual,
 } from "../../../domain/project/project-response.ts";
 import type { RequirementsBriefSourceImpactState } from "../../../domain/architecture/requirements/requirements-brief-impact.ts";
-import type { ProjectBriefItem } from "../../../domain/project/project-brief.ts";
+import {
+  isProjectBriefItemKind,
+  isProjectBriefSourceKind,
+  type ProjectBriefItem,
+} from "../../../domain/project/project-brief.ts";
 import type {
   ThreadFreshness,
   ThreadFreshnessStatus,
@@ -182,11 +186,11 @@ function parseBriefItem(
     return undefined;
   }
   if (
-    !isNonEmptyString(value.id) || typeof value.kind !== "string" ||
-    value.kind.length === 0 || typeof value.statement !== "string" ||
+    !isNonEmptyString(value.id) || !isProjectBriefItemKind(value.kind) ||
+    typeof value.statement !== "string" ||
     (!Array.isArray(value.sourceRefs) ||
       !value.sourceRefs.every((source) =>
-        isRecord(source) && isNonEmptyString(source.kind) &&
+        isRecord(source) && isProjectBriefSourceKind(source.kind) &&
         isNonEmptyString(source.reference)
       ))
   ) {

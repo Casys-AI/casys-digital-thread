@@ -99,6 +99,20 @@ Deno.test("available payload with native current pass parses and has no gap", ()
   assertEquals(hasResponseGap(parsed.model.items[0]!), false);
 });
 
+Deno.test("unknown brief item and source kinds make the response unreadable", () => {
+  for (
+    const item of [
+      { ...(briefItem("item-1") as Record<string, unknown>), kind: "future-kind" },
+      {
+        ...(briefItem("item-1") as Record<string, unknown>),
+        sourceRefs: [{ kind: "future-source", reference: "source-1" }],
+      },
+    ]
+  ) {
+    assertEquals(parseProjectResponse(availablePayload([row({ item })])).ok, false);
+  }
+});
+
 Deno.test("only explicit server gaps filter the focused view, never evaluations", () => {
   const explicit = {
     code: "response.no-correspondence",

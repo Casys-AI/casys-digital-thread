@@ -1428,7 +1428,7 @@ async function createProjectControl(
       captures: architectureFoundation.requirementsCaptures,
       claimHistory: {
         projects: runtime.projects,
-        snapshots: activeThreadSnapshots,
+        snapshots: threadSnapshots,
         captures: architectureFoundation.requirementsCaptures,
         traces: requirementsBriefTraceStore,
       },
