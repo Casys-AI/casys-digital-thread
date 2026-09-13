@@ -261,3 +261,12 @@ Deno.test("doc-code-refs gate scans deeper literal quote markers in a non-shell 
   assert(result.code === 1, `expected exit 1, got ${result.code}: ${result.stdout}`);
   assertStringIncludes(result.stderr, "src/gone.ts:1");
 });
+
+Deno.test("doc-code-refs gate does not let an indented literal fence swallow later locators", async () => {
+  const result = await runGate({
+    "src/ok.ts": SOURCE,
+    "doc.md": "# Doc\n\n    ```bash\n    example\n\nReal reference: src/gone.ts:1\n",
+  });
+  assert(result.code === 1, `expected exit 1, got ${result.code}: ${result.stdout}`);
+  assertStringIncludes(result.stderr, "src/gone.ts:1");
+});

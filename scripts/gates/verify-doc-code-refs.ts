@@ -269,7 +269,7 @@ function markdownCodeRefs(body: string): readonly CodeRef[] {
     if (fenced && fenceQuoteDepth === null) {
       // Unquoted fence: every line is literal code. A `>` marker changes
       // nothing and must neither close nor reset this block.
-      const fence = line.match(/^\s*(`{3,}|~{3,})(.*)$/u);
+      const fence = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
       if (fence) {
         if (closesFence(fence[1] ?? "", fence[2] ?? "")) closeFence();
         continue;
@@ -289,7 +289,7 @@ function markdownCodeRefs(body: string): readonly CodeRef[] {
       closeFence();
     }
     if (fenced) {
-      const fence = content.match(/^\s*(`{3,}|~{3,})(.*)$/u);
+      const fence = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
       if (fence) {
         if (closesFence(fence[1] ?? "", fence[2] ?? "")) closeFence();
         continue;
@@ -298,7 +298,7 @@ function markdownCodeRefs(body: string): readonly CodeRef[] {
       scanLine(line, index);
       continue;
     }
-    const fence = content.match(/^\s*(`{3,}|~{3,})(.*)$/u);
+    const fence = content.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
     if (fence) {
       openFence(fence[1] ?? "", fence[2] ?? "", depth);
       continue;
@@ -320,7 +320,7 @@ function splitBlockquotePrefix(line: string): {
   let rest = line;
   let depth = 0;
   for (;;) {
-    const marker = rest.match(/^\s{0,3}>([ \t]?)/u);
+    const marker = rest.match(/^ {0,3}>([ \t]?)/u);
     if (!marker) break;
     depth += 1;
     rest = rest.slice(marker[0].length);
