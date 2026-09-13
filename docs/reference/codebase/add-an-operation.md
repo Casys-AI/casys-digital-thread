@@ -55,7 +55,7 @@ operation planable, queueable, executable, and projectable.
   classification: pages with only live identities are watched; pages naming
   historical or unknown identities stay explicitly inventoried as unwatched.
   A new live path document must join the watched list, or the pin at
-  [`operation-reference-docs_test.ts:260`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
+  [`operation-reference-docs_test.ts:278`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
   will not see it.
 - Do not assume registry membership alone wires execution or Workbench
   persistence ordering. Those lists are explicit.
@@ -426,7 +426,7 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
     that list includes live reference pages, how-tos and agent skills.
     Add any new
     operation-citing path document to that array, or
-    [`operation-reference-docs_test.ts:260`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
+    [`operation-reference-docs_test.ts:278`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
     will not see it.
     File census of the owning authority stays on the matching page under
     [codebase map](../codebase/codebase-map.md)
@@ -509,7 +509,7 @@ Every `file:line` was read in source.
 | Runtime demand | Exhaustive `none` vs required counts | [`src/orchestration/operations/runtime-demand-registry_test.ts:105`](../../../src/orchestration/operations/runtime-demand-registry_test.ts) |
 | Registry unknown | `unknown_operation`, no tool/args leak | [`src/orchestration/operations/registry_test.ts:105`](../../../src/orchestration/operations/registry_test.ts) |
 | Doc watch list | Exact documents the pin suite reads (`OPERATION_CITING_DOCUMENTS`, live reference pages, how-tos and skills) | [`src/orchestration/operations/operation-reference-docs_test.ts:30`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
-| Doc pin | Cited ids in those watched documents must exist | [`src/orchestration/operations/operation-reference-docs_test.ts:260`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
+| Doc pin | Cited ids in those watched documents must exist | [`src/orchestration/operations/operation-reference-docs_test.ts:278`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
 
 ### Tracer-only, not a general wiring step
 
