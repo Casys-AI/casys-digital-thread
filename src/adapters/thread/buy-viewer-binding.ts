@@ -198,7 +198,9 @@ export async function buildBuyViewerBinding(request: {
       applicability.status === "historical" ? "historical" : "current",
     )
     : undefined;
-  const projection = recorded
+  const resultSchemaSupported = recorded &&
+    installed.resource.resultSchemas.includes(String(recorded.result.schemaVersion));
+  const projection = recorded && resultSchemaSupported
     ? { status: "available" as const, result: recorded.result }
     : {
       status: "unavailable" as const,
@@ -206,6 +208,8 @@ export async function buildBuyViewerBinding(request: {
         ? authority.reason
         : applicability.status === "refused"
         ? applicability.reason
+        : recorded && !resultSchemaSupported
+        ? `The installed Buy viewer does not accept ${recorded.result.schemaVersion}.`
         : "Buy recorded result is unavailable.",
     };
   const payload = await composeBuyViewerSessionPayload({

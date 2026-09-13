@@ -16,6 +16,8 @@ import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 
 export const BUY_RECORDED_RESULT_SCHEMA =
   "io.casys.mcp-erpnext.buy-recorded-result/1.0" as const;
+export const BUY_RECORDED_RESULT_V2_SCHEMA =
+  "io.casys.mcp-erpnext.buy-recorded-result/2.0" as const;
 export const BUY_RECORDED_RESULT_KIND = "buy.configuration-cost" as const;
 export const BUY_RESULT_URI_PREFIX =
   "casys://mcp-erpnext/buy-recorded-result/sha256/" as const;
@@ -35,11 +37,14 @@ export async function buildBuyRecordedResult(
   const capturedAt = capture.sourceCaptures[0]?.capture.capturedAt ??
     capture.sealedAt;
   const priced = capture.bundle.lines.filter((line) => line.amount !== undefined);
+  const unpriced = capture.bundle.lines.filter((line) => line.amount === undefined);
   const excluded = capture.bundle.coverage.excludedLineIds;
   const gaps = recordedGaps(capture);
   const status = recordedCoverageStatus(capture, priced, excluded, gaps);
   const result = {
-    schemaVersion: BUY_RECORDED_RESULT_SCHEMA,
+    schemaVersion: unpriced.length > 0
+      ? BUY_RECORDED_RESULT_V2_SCHEMA
+      : BUY_RECORDED_RESULT_SCHEMA,
     kind: BUY_RECORDED_RESULT_KIND,
     configurationRef: {
       uri: `${BUY_CONFIGURATION_URI_PREFIX}${capture.configurationDigest}`,
@@ -64,6 +69,17 @@ export async function buildBuyRecordedResult(
       observedAt: capturedAt,
     },
     lines: priced.map((line) => recordedLine(line, capturedAt)),
+    ...(unpriced.length > 0
+      ? {
+        excludedLines: unpriced.map((line) => ({
+          lineId: line.configurationLineId,
+          qty: line.quantity,
+          uom: line.uom,
+          reason: line.gaps.map((gap) => gap.message).join(" ") ||
+            "No sourced monetary amount is established for this configuration line.",
+        })),
+      }
+      : {}),
     coverage: {
       status,
       coveredLineIds: priced.map((line) => line.configurationLineId),
@@ -116,16 +132,21 @@ function recordedTotals(
   const covered = capture.bundle.totals.find((item) =>
     item.kind === "covered-subtotal"
   );
+  if (!covered) {
+    throw new TypeError(
+      "Recorded Buy evidence requires its retained covered subtotal.",
+    );
+  }
   const totals: Record<string, unknown>[] = [{
     kind: "covered-subtotal",
     currency: capture.bundle.pricingContext.currency,
-    amount: covered?.amount ?? "0.00",
+    amount: covered.amount,
   }];
   if (status === "complete") {
     totals.push({
       kind: "complete-total",
       currency: capture.bundle.pricingContext.currency,
-      amount: covered?.amount ?? "0.00",
+      amount: covered.amount,
     });
   }
   return totals;
@@ -172,6 +193,14 @@ function recordedLine(
   line: BuyCostLine,
   capturedAt: string,
 ): Record<string, unknown> {
+  if (
+    line.unitPrice === undefined || line.currency === undefined ||
+    line.amount === undefined || !line.citation
+  ) {
+    throw new TypeError(
+      `Priced Buy line ${line.configurationLineId} requires retained price, currency, amount and citation.`,
+    );
+  }
   const sourceCategory = line.costClass === "catalogue"
     ? "catalogue-price"
     : line.costClass === "quotation"
@@ -184,9 +213,9 @@ function recordedLine(
     sourceCategory,
     qty: line.quantity,
     uom: line.uom,
-    unitPrice: line.unitPrice ?? "0",
-    currency: line.currency ?? "EUR",
-    lineAmount: line.amount ?? "0",
+    unitPrice: line.unitPrice,
+    currency: line.currency,
+    lineAmount: line.amount,
     priceDate: (line.sourceValidity?.from ?? capturedAt).slice(0, 10),
     observedAt: line.capturedAt ?? capturedAt,
     source: recordedSource(line),
@@ -195,15 +224,14 @@ function recordedLine(
 
 function recordedSource(line: BuyCostLine): Record<string, unknown> {
   const citation = line.citation;
-  if (!citation || citation.kind === "external-documentary") {
+  if (!citation) {
+    throw new TypeError("A recorded priced Buy line requires its retained citation.");
+  }
+  if (citation.kind === "external-documentary") {
     return {
       kind: "external-documentary",
-      uri: citation && citation.kind === "external-documentary"
-        ? citation.resourceUri
-        : "casys://digital-thread/documentary-estimate/unpriced",
-      fingerprint: citation && citation.kind === "external-documentary"
-        ? citation.fingerprint
-        : `sha256:${"c".repeat(64)}`,
+      uri: citation.resourceUri,
+      fingerprint: citation.fingerprint,
     };
   }
   return {
