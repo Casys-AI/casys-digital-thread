@@ -5,9 +5,12 @@
  * V2 reuses the single totals/coverage authority `aggregateBuyCoveredTotals`:
  * it adds no second sum engine. Catalogue lines keep their exact ERP
  * provenance; estimate lines are `costClass: "estimate"` with
- * `external-documentary` citations pointing at the exact annex bytes. A
- * simultaneous usable ERP price and usable estimate for one line is refused:
- * estimates never silently replace catalogue prices.
+ * `external-documentary` citations pointing at the exact reopened input
+ * bytes (`inputCaptureUri` + `inputFingerprint`); annex identity stays
+ * separate in `annexRef.annexFingerprint`, which names the computed annex
+ * and is never cited as reopenable store bytes. A simultaneous usable ERP
+ * price and usable estimate for one line is refused: estimates never
+ * silently replace catalogue prices.
  *
  * Arithmetic coverage never removes documentary/provisional origin: estimate
  * lines carry `provisional` from their annex, and assumed operands stay
@@ -276,6 +279,13 @@ export async function computeBuyCostCandidateV2(input: {
         "$buyCostBundleV2 annex configuration digest does not match the validated configuration.",
       );
     }
+    if (
+      annex.estimateRef.stepFingerprint !== configuration.geometry.stepFingerprint
+    ) {
+      throw new TypeError(
+        "$buyCostBundleV2 annex STEP fingerprint does not match the validated configuration.",
+      );
+    }
   }
   const annexDigests: string[] = [];
   for (const annex of annexes) {
@@ -373,15 +383,19 @@ export async function computeBuyCostCandidateV2(input: {
 }
 
 /**
- * Recross a v2 bundle against its retained base bundle and annexes without
- * repricing. ERP citation-to-capture checks stay with the existing
- * buy-source-lineage authority over the base bundle and its captures.
+ * Recross a v2 bundle against its retained base bundle, annexes, and
+ * configuration. Preserved lines must equal the base bundle exactly;
+ * estimate-backed lines are recomputed from the retained annex and
+ * configuration through the composition calculator and compared exactly.
+ * ERP citation-to-capture checks stay with the existing buy-source-lineage
+ * authority over the base bundle and its captures.
  */
 export async function assertBuyCostBundleV2Lineage(
   bundle: BuyCostBundleV2,
   retained: {
     readonly baseBundle: BuyCostBundle;
     readonly annexes: readonly BuyProductionEstimateBundle[];
+    readonly configuration: BuyConfiguration;
   },
 ): Promise<void> {
   const v2 = validateBuyCostBundleV2(bundle);
@@ -389,10 +403,34 @@ export async function assertBuyCostBundleV2Lineage(
   const annexes = retained.annexes.map((annex) =>
     validateBuyProductionEstimateBundle(annex)
   );
+  const configuration = validateBuyConfiguration(retained.configuration);
+  const verifiedDigest = await canonicalDigest(configuration);
   if (await canonicalDigest(base) !== v2.baseBundle.digest) {
     throw new TypeError(
       "Buy v2 base bundle digest does not match the retained base bundle.",
     );
+  }
+  if (
+    v2.configurationRef.digest !== verifiedDigest ||
+    base.configurationRef.digest !== verifiedDigest
+  ) {
+    throw new TypeError(
+      "Buy v2 configuration reference does not match the retained configuration.",
+    );
+  }
+  for (const annex of annexes) {
+    if (annex.estimateRef.configurationDigest !== verifiedDigest) {
+      throw new TypeError(
+        "Buy v2 annex configuration digest does not match the retained configuration.",
+      );
+    }
+    if (
+      annex.estimateRef.stepFingerprint !== configuration.geometry.stepFingerprint
+    ) {
+      throw new TypeError(
+        "Buy v2 annex STEP fingerprint does not match the retained configuration.",
+      );
+    }
   }
   if (
     deterministicJson(v2.pricingContext) !== deterministicJson(base.pricingContext) ||
@@ -472,14 +510,25 @@ export async function assertBuyCostBundleV2Lineage(
     const annexLine = annex?.lines.find((item) =>
       item.configurationLineId === line.configurationLineId
     );
+    const configurationLine = configuration.lines.find((item) =>
+      item.id === line.configurationLineId
+    );
     if (
       !annex || !annexLine || annexLine.unitCost === undefined ||
-      line.annexRef.inputFingerprint !== annex.estimateSource.inputFingerprint ||
-      line.citation?.kind !== "external-documentary" ||
-      line.citation.fingerprint !== `sha256:${annexDigests[annexIndex]}` ||
-      line.citation.resourceUri !== annex.estimateSource.inputCaptureUri ||
-      line.citation.capturedAt !== annex.estimateSource.inputAsOf
+      !configurationLine
     ) {
+      throw new TypeError(
+        `Buy v2 estimate line ${line.configurationLineId} does not match its retained annex.`,
+      );
+    }
+    const expected = priceEstimateLine({
+      configurationLine,
+      annex,
+      annexLine,
+      annexDigest: annexDigests[annexIndex]!,
+      pricingContext: v2.pricingContext,
+    });
+    if (deterministicJson(line) !== deterministicJson(expected)) {
       throw new TypeError(
         `Buy v2 estimate line ${line.configurationLineId} does not match its retained annex.`,
       );
@@ -522,7 +571,7 @@ function priceEstimateLine(input: {
     citation: {
       kind: "external-documentary",
       resourceUri: input.annex.estimateSource.inputCaptureUri,
-      fingerprint: `sha256:${input.annexDigest}`,
+      fingerprint: input.annex.estimateSource.inputFingerprint,
       capturedAt: input.annex.estimateSource.inputAsOf,
     },
     quantity: input.configurationLine.quantity,

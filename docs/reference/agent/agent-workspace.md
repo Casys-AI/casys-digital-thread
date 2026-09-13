@@ -565,11 +565,17 @@ new evidence and would not repair that old capture. The App is not a live solver
 | ----------------------------------------------- | ------ | -------------------------------------------------------------------------------------------- |
 | `project_buy_configuration_cost_capture_review` | None   | Read-only; `decisionParameters` / `next` for `buy.capture-configuration-cost@1`. No ERP      |
 | `project_buy_configuration_cost_seal_review`    | None   | Read-only; `decisionParameters` / `next` for `buy.seal-configuration-cost@1`. No ERP refresh |
+| `project_buy_cost_estimate_preview`             | None   | Read-only documentary costing preview; bounded summary plus opaque `evidenceRef`. No seal    |
+| `project_buy_cost_estimate_preview_detail`      | None   | Read-only named evidence pages or explicit `full-evidence`. No seal, no MRTR params          |
 
 Contract: [Buy configuration and dated cost](../domains/buy/README.md). Capture demands
 `commerce.read-erpnext-buy-source@1` at `qualified` plus an exact site fingerprint. The
 agent does not choose provider/tool/args. Seal reopens CAS only. Viewer `anchor` equals
 `provenance.bundleRef` of the sealed DT artefact, not a hash of the displayed result.
+Preview/detail contract:
+[Sourced production estimates](../domains/buy/production-estimates.md). The preview
+executes no registered seal, approves no spend, qualifies nothing, performs no ERP
+refresh, and advertises no operation; detail reads recompute nothing.
 
 Queueing sequence for any trusted consequential op:
 

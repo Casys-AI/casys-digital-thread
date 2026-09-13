@@ -180,6 +180,20 @@ Deno.test("mutated nested output fails schema validation and strict reads refuse
     },
   };
   assertEquals(compiled.validate(mutated).valid, false);
+  const withTermGap = {
+    ...summary.structuredContent,
+    samples: {
+      gaps: [{
+        code: "unpriced-component",
+        message: "Term material.bracket consumption is unknown and is not free.",
+        lineId: "line.bracket",
+        termId: "material.bracket",
+      }],
+      omittedGaps: 0,
+    },
+  };
+  const termChecked = compiled.validate(withTermGap);
+  assertEquals(termChecked.valid, true, JSON.stringify(termChecked.errors));
   await assertRejects(
     () =>
       app.handle(BUY_COST_ESTIMATE_PREVIEW_DETAIL_TOOL_NAME, {

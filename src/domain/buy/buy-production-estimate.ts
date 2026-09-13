@@ -206,6 +206,7 @@ export async function computeBuyProductionEstimateCandidate(input: {
     );
   }
   const envelope = validateBuyDocumentaryEstimateEnvelope(input.estimate);
+  await assertBuyDocumentaryEstimateFingerprint(envelope, sha256Hex);
   const estimate = envelope.estimate;
   const lines = estimate.lines.map((line) =>
     priceAnnexLine({
@@ -235,34 +236,32 @@ export async function computeBuyProductionEstimateCandidate(input: {
 }
 
 /**
- * Recross annex facts against the retained estimate bytes without repricing.
- * Operand evidence references are closed AgentResourceReferences; their
- * genuine store reopen happens at preview, not in this domain check.
+ * Recross a retained annex against the annex recomputed from the retained
+ * estimate and calculation context: canonical input fingerprint, exact
+ * configuration/STEP basis, retained currency, validity, assumptions,
+ * operands, and every derived term/line value. Operand evidence references
+ * are closed AgentResourceReferences; their genuine store reopen happens at
+ * preview, not in this domain check.
  */
 export async function assertBuyProductionEstimateLineage(
   bundle: BuyProductionEstimateBundle,
   estimate: BuyDocumentaryEstimateEnvelope,
+  retained: {
+    readonly configuration: BuyConfiguration;
+    readonly configurationDigest: string;
+    readonly pricingContext: BuyPricingContext;
+  },
 ): Promise<void> {
-  const envelope = validateBuyDocumentaryEstimateEnvelope(estimate);
-  await assertBuyDocumentaryEstimateFingerprint(envelope, sha256Hex);
-  if (
-    bundle.estimateSource.inputFingerprint !== envelope.fingerprint ||
-    bundle.estimateSource.inputCaptureUri !== envelope.capture.uri ||
-    bundle.estimateSource.inputAsOf !== envelope.estimate.asOf
-  ) {
+  const validated = validateBuyProductionEstimateBundle(bundle);
+  const expected = await computeBuyProductionEstimateCandidate({
+    configuration: retained.configuration,
+    configurationDigest: retained.configurationDigest,
+    estimate,
+    pricingContext: retained.pricingContext,
+  });
+  if (deterministicJson(validated) !== deterministicJson(expected)) {
     throw new TypeError(
-      "Buy annex estimate source does not match the retained estimate.",
-    );
-  }
-  const inputLineIds = new Set(
-    envelope.estimate.lines.map((line) => line.configurationLineId),
-  );
-  if (
-    bundle.lines.length !== inputLineIds.size ||
-    bundle.lines.some((line) => !inputLineIds.has(line.configurationLineId))
-  ) {
-    throw new TypeError(
-      "Buy annex lines do not match the estimate lines exactly.",
+      "Buy annex does not match the annex recomputed from the retained estimate and context.",
     );
   }
 }
@@ -294,13 +293,14 @@ function priceAnnexLine(input: {
     nature: term.nature,
     consumption: term.consumption,
     rate: term.rate,
-    provisional: false,
+    provisional: term.consumption.operand === "assumed" ||
+      term.rate.operand === "assumed",
     gaps: [] as BuyEstimateGap[],
   }));
   if (!estimateBasisMatches(input)) {
     return {
       ...base,
-      provisional: false,
+      provisional: unpricedTerms.some((term) => term.provisional),
       terms: unpricedTerms,
       gaps: [{
         code: "estimate-basis-mismatch",
@@ -361,7 +361,12 @@ function priceAnnexLine(input: {
       gap.code === "uom-unresolved"
     );
   if (blocked) {
-    return { ...base, provisional: false, terms: unpricedTerms, gaps };
+    return {
+      ...base,
+      provisional: unpricedTerms.some((term) => term.provisional),
+      terms: unpricedTerms,
+      gaps,
+    };
   }
   const terms = input.line.terms.map((term) => priceTerm(term, configurationLine.id));
   const unpricedIds = terms
@@ -378,9 +383,7 @@ function priceAnnexLine(input: {
     });
     return {
       ...base,
-      provisional: terms.some((term) =>
-        term.provisional && term.termAmount !== undefined
-      ),
+      provisional: terms.some((term) => term.provisional),
       terms,
       gaps,
     };
@@ -496,6 +499,29 @@ function parseAnnexLine(
   if (typeof input.provisional !== "boolean") {
     throw new TypeError(`${path}.provisional must be a boolean.`);
   }
+  const terms = arrayOf(input.terms, `${path}.terms`).map((term, i) =>
+    parseAnnexTerm(term, `${path}.terms[${i}]`, currency)
+  );
+  if (terms.length === 0) {
+    throw new TypeError(`${path}.terms must hold at least one term.`);
+  }
+  const unitCost = input.unitCost === undefined || input.unitCost === null
+    ? undefined
+    : parseBuyDecimal(input.unitCost, `${path}.unitCost`);
+  if (terms.some((term) => term.termAmount === undefined)) {
+    if (unitCost !== undefined) {
+      throw new TypeError(
+        `${path}.unitCost must be absent when a term has no complete unit cost.`,
+      );
+    }
+  } else if (
+    unitCost !==
+      terms.reduce((sum, term) => addBuyDecimals(sum, term.termAmount!), "0")
+  ) {
+    throw new TypeError(
+      `${path}.unitCost must equal the exact sum of priced term amounts.`,
+    );
+  }
   return {
     configurationLineId: safeId(
       input.configurationLineId,
@@ -508,13 +534,9 @@ function parseAnnexLine(
       `${path}.configurationQuantity`,
     ),
     configurationUom: nonEmptyText(input.configurationUom, `${path}.configurationUom`),
-    ...(input.unitCost === undefined || input.unitCost === null ? {} : {
-      unitCost: parseBuyDecimal(input.unitCost, `${path}.unitCost`),
-    }),
+    ...(unitCost === undefined ? {} : { unitCost }),
     provisional: input.provisional,
-    terms: arrayOf(input.terms, `${path}.terms`).map((term, i) =>
-      parseAnnexTerm(term, `${path}.terms[${i}]`, currency)
-    ),
+    terms,
     gaps: arrayOf(input.gaps, `${path}.gaps`).map((gap, i) =>
       parseGap(gap, `${path}.gaps[${i}]`)
     ),

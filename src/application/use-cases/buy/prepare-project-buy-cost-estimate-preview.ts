@@ -16,7 +16,11 @@ import type {
   ProjectBuyCostEstimatePreviewResult,
   ProjectBuyCostEstimatePreviewUseCase,
 } from "../../ports/in/buy/project-buy-cost-estimate-preview.ts";
-import { BUY_COST_ESTIMATE_PREVIEW_MAX_ESTIMATES } from "../../ports/in/buy/project-buy-cost-estimate-preview.ts";
+import {
+  BUY_COST_ESTIMATE_PREVIEW_MAX_ESTIMATES,
+  BUY_COST_ESTIMATE_PREVIEW_MAX_EVIDENCE_BYTES,
+  BUY_COST_ESTIMATE_PREVIEW_MAX_EVIDENCE_REFS,
+} from "../../ports/in/buy/project-buy-cost-estimate-preview.ts";
 import type { ProjectBuyConfigurationCostSealReviewUseCase } from "../../ports/in/buy/project-buy-configuration-cost-seal-review.ts";
 import {
   assertBuyCostBundleV2Lineage,
@@ -45,12 +49,14 @@ import {
   rejectDuplicates,
   safeId,
 } from "../../../domain/kernel/case-validation.ts";
-import { sha256Fingerprint } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../../domain/kernel/deterministic-json.ts";
 import { parseExactThreadSnapshotBasis } from "../../../domain/project/thread-tip.ts";
 import type { AgentResourceReference } from "../../../domain/resource/agent-resource-capture.ts";
 import { AGENT_RESOURCE_MAX_BYTES } from "../../../domain/resource/agent-resource-envelope.ts";
 import {
-  agentResourceReferencesEqual,
   JSON_SOURCE_ACCEPTED_MIME_TYPES,
   parseAgentResourceReference,
 } from "../../../domain/resource/agent-resource-reference.ts";
@@ -109,7 +115,11 @@ export class PrepareProjectBuyCostEstimatePreview
           estimate: envelope,
           pricingContext: candidate.capture.bundle.pricingContext,
         });
-        await assertBuyProductionEstimateLineage(annex, envelope);
+        await assertBuyProductionEstimateLineage(annex, envelope, {
+          configuration: candidate.capture.configuration,
+          configurationDigest: candidate.capture.configurationDigest,
+          pricingContext: candidate.capture.bundle.pricingContext,
+        });
         annexes.push(validateBuyProductionEstimateBundle(annex));
       }
       const bundle = await computeBuyCostCandidateV2({
@@ -122,6 +132,7 @@ export class PrepareProjectBuyCostEstimatePreview
       await assertBuyCostBundleV2Lineage(bundle, {
         baseBundle: candidate.capture.bundle,
         annexes,
+        configuration: candidate.capture.configuration,
       });
       return {
         status: "preview",
@@ -248,44 +259,61 @@ export class PrepareProjectBuyCostEstimatePreview
   }
 
   private async reopenEvidence(envelopes: readonly BuyDocumentaryEstimateEnvelope[]) {
-    const evidence: Array<
-      Omit<ProjectBuyCostEstimatePreviewEvidence, "anchors" | "observedAts"> & {
-        readonly anchors: string[];
-        readonly observedAts: string[];
-      }
-    > = [];
-    const seen: AgentResourceReference[] = [];
-    for (const envelope of envelopes) {
-      for (const ref of collectEvidenceRefs(envelope)) {
-        if (seen.some((item) => agentResourceReferencesEqual(item, ref.reference))) {
-          const existing = evidence.find((item) => item.uri === ref.reference.uri)!;
-          if (!existing.anchors.includes(ref.anchor)) {
-            existing.anchors.push(ref.anchor);
-          }
-          if (!existing.observedAts.includes(ref.observedAt)) {
-            existing.observedAts.push(ref.observedAt);
-          }
-          continue;
-        }
-        seen.push(ref.reference);
-        let reopened;
-        try {
-          reopened = await this.reopen.reopenUtf8Text(ref.reference, {
-            acceptedMimeTypes: [...JSON_SOURCE_ACCEPTED_MIME_TYPES],
-            maxBytes: AGENT_RESOURCE_MAX_BYTES,
-          });
-        } catch (error) {
-          return mapReopenRefusal(error, `Evidence source ${ref.reference.uri}`);
-        }
-        evidence.push({
-          uri: reopened.reference.uri,
-          digest: reopened.reference.fingerprint.digest,
-          byteCount: reopened.reference.byteCount,
-          mimeType: reopened.reference.mimeType,
-          anchors: [ref.anchor],
-          observedAts: [ref.observedAt],
+    const collected = envelopes.flatMap((envelope) => collectEvidenceRefs(envelope));
+    const unique = new Map<string, typeof collected>();
+    for (const ref of collected) {
+      const key = deterministicJson(ref.reference);
+      const group = unique.get(key);
+      if (group) group.push(ref);
+      else unique.set(key, [ref]);
+    }
+    if (unique.size > BUY_COST_ESTIMATE_PREVIEW_MAX_EVIDENCE_REFS) {
+      return {
+        status: "unresolved" as const,
+        reason:
+          `Evidence references exceed the per-request budget (${unique.size} unique sources; at most ${BUY_COST_ESTIMATE_PREVIEW_MAX_EVIDENCE_REFS}).`,
+      };
+    }
+    let declaredBytes = 0;
+    for (const group of unique.values()) {
+      declaredBytes += group[0]!.reference.byteCount;
+    }
+    if (declaredBytes > BUY_COST_ESTIMATE_PREVIEW_MAX_EVIDENCE_BYTES) {
+      return {
+        status: "unresolved" as const,
+        reason:
+          `Evidence declared bytes exceed the per-request budget (${declaredBytes} bytes; at most ${BUY_COST_ESTIMATE_PREVIEW_MAX_EVIDENCE_BYTES}).`,
+      };
+    }
+    const evidence: ProjectBuyCostEstimatePreviewEvidence[] = [];
+    let actualBytes = 0;
+    for (const group of unique.values()) {
+      const reference = group[0]!.reference;
+      let reopened;
+      try {
+        reopened = await this.reopen.reopenUtf8Text(reference, {
+          acceptedMimeTypes: [...JSON_SOURCE_ACCEPTED_MIME_TYPES],
+          maxBytes: AGENT_RESOURCE_MAX_BYTES,
         });
+      } catch (error) {
+        return mapReopenRefusal(error, `Evidence source ${reference.uri}`);
       }
+      actualBytes += reopened.reference.byteCount;
+      if (actualBytes > BUY_COST_ESTIMATE_PREVIEW_MAX_EVIDENCE_BYTES) {
+        return {
+          status: "unresolved" as const,
+          reason:
+            `Evidence actual bytes exceed the per-request budget (over ${BUY_COST_ESTIMATE_PREVIEW_MAX_EVIDENCE_BYTES} bytes reopened).`,
+        };
+      }
+      evidence.push({
+        uri: reopened.reference.uri,
+        digest: reopened.reference.fingerprint.digest,
+        byteCount: reopened.reference.byteCount,
+        mimeType: reopened.reference.mimeType,
+        anchors: [...new Set(group.map((item) => item.anchor))],
+        observedAts: [...new Set(group.map((item) => item.observedAt))],
+      });
     }
     return { status: "ready" as const, evidence };
   }

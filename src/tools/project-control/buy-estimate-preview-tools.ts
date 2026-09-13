@@ -371,6 +371,17 @@ const ESTIMATE_OPERAND_SCHEMAS = {
   },
 } as const;
 
+const BUY_ESTIMATE_GAP_SCHEMA = {
+  type: "object",
+  properties: {
+    code: { type: "string", enum: [...BUY_ESTIMATE_GAP_CODES] },
+    message: { type: "string", minLength: 1 },
+    lineId: { type: "string", minLength: 1 },
+  },
+  required: ["code", "message"],
+  additionalProperties: false,
+} as const;
+
 const ANNEX_TERM_SCHEMA = {
   type: "object",
   properties: {
@@ -382,16 +393,7 @@ const ANNEX_TERM_SCHEMA = {
     provisional: { type: "boolean" },
     gaps: {
       type: "array",
-      items: {
-        type: "object",
-        properties: {
-          code: { type: "string", enum: [...BUY_ESTIMATE_GAP_CODES] },
-          message: { type: "string", minLength: 1 },
-          lineId: { type: "string", minLength: 1 },
-        },
-        required: ["code", "message"],
-        additionalProperties: false,
-      },
+      items: BUY_ESTIMATE_GAP_SCHEMA,
     },
   },
   required: ["id", "nature", "consumption", "rate", "provisional", "gaps"],
@@ -512,6 +514,7 @@ const projectBuyCostEstimatePreviewTool: MCPTool = {
                     code: { type: "string" },
                     message: { type: "string", maxLength: 200 },
                     lineId: { type: "string", minLength: 1 },
+                    termId: { type: "string", minLength: 1 },
                   },
                   required: ["code", "message"],
                   additionalProperties: false,
@@ -619,9 +622,10 @@ function buyCostEstimatePreviewDetailOutputSchema() {
           configurationLineId: { type: "string", minLength: 1 },
           annexFingerprint: PREFIXED_SHA256,
           inputCaptureUri: { type: "string", minLength: 1 },
+          lineGaps: { type: "array", items: BUY_ESTIMATE_GAP_SCHEMA },
           term: ANNEX_TERM_SCHEMA,
         },
-        required: ["configurationLineId", "inputCaptureUri", "term"],
+        required: ["configurationLineId", "inputCaptureUri", "lineGaps", "term"],
         additionalProperties: false,
       }),
       detailPageSchema("source-evidence", {

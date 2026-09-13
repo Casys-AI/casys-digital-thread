@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assert, assertEquals, assertRejects } from "@std/assert";
 import { DESIGN_WRITE_GEOMETRY_TOOL } from "../../../domain/cad/canonical/canonical-write-geometry-step.ts";
 import {
   BUY_CANDIDATE_CAPTURE_SCHEMA,
@@ -6,6 +6,7 @@ import {
   validateBuyCandidateCapture,
 } from "../../../domain/buy/buy-candidate-capture.ts";
 import { computeBuyCostCandidate } from "../../../domain/buy/buy-cost-bundle.ts";
+import type { BuyDocumentaryEstimate } from "../../../domain/buy/buy-documentary-estimate.ts";
 import { selectBuyCostLines } from "../../../domain/buy/buy-cost-selection.ts";
 import {
   BUY_FIXTURE_PARENT,
@@ -40,6 +41,11 @@ import type {
   ThreadSnapshot,
 } from "../../../domain/thread/thread-snapshot.ts";
 import { FileAgentResourceStore } from "../../../adapters/resource/file-agent-resource-store.ts";
+import { BUY_COST_ESTIMATE_PREVIEW_MAX_EVIDENCE_BYTES } from "../../ports/in/buy/project-buy-cost-estimate-preview.ts";
+import {
+  ReopenAgentResource,
+  type ReopenedAgentResourceText,
+} from "../resource/reopen-agent-resource.ts";
 import {
   persistAgentResourceText,
   tamperAgentResourceReference,
@@ -61,8 +67,7 @@ const SEAL_BASIS = {
   revision: 2,
   subjectId: SUBJECT_ID,
 };
-Deno.test("preview reopens captured estimate and evidence and composes V2", async () => {
-  const directory = await Deno.makeTempDir({ prefix: "buy-estimate-preview-" });
+async function capturedBracketPreview(directory: string) {
   const evidence = await persistAgentResourceText(directory, {
     name: "bracket-sheet.txt",
     mimeType: "text/plain",
@@ -115,6 +120,12 @@ Deno.test("preview reopens captured estimate and evidence and composes V2", asyn
     ...preview.command,
     estimateRefs: [captured.reference],
   });
+  return { evidence, captured, result };
+}
+
+Deno.test("preview reopens captured estimate and evidence and composes V2", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "buy-estimate-preview-" });
+  const { evidence, captured, result } = await capturedBracketPreview(directory);
   assertEquals(result.status, "preview");
   if (result.status !== "preview") return;
   assertEquals(result.bundle.lines[0]?.amount, "5.00");
@@ -143,6 +154,37 @@ Deno.test("preview reopens captured estimate and evidence and composes V2", asyn
     captured.reference.uri,
   );
   assertEquals(result.limits.maxEstimates, 8);
+});
+
+Deno.test("estimate line citation reopens the exact captured input bytes", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "buy-estimate-preview-" });
+  const { captured, result } = await capturedBracketPreview(directory);
+  assertEquals(result.status, "preview");
+  if (result.status !== "preview") return;
+  const bracket = result.bundle.lines[1];
+  assertEquals(bracket?.costClass, "estimate");
+  const citation = bracket?.citation;
+  assertEquals(citation?.kind, "external-documentary");
+  if (citation?.kind !== "external-documentary") {
+    throw new Error("expected an external-documentary citation");
+  }
+  assertEquals(citation.resourceUri, captured.reference.uri);
+  assertEquals(
+    citation.fingerprint,
+    `sha256:${captured.reference.fingerprint.digest}`,
+  );
+  assertEquals(bracket?.annexRef?.inputFingerprint, citation.fingerprint);
+  assertEquals(
+    bracket?.annexRef?.annexFingerprint === citation.fingerprint,
+    false,
+  );
+  const store = new FileAgentResourceStore(directory);
+  const reopened = await store.read(citation.resourceUri);
+  assert(reopened !== undefined);
+  assertEquals(
+    await sha256Hex(reopened.bytes),
+    captured.reference.fingerprint.digest,
+  );
 });
 
 Deno.test("fake, missing, or invented references yield no usable costs", async () => {
@@ -223,6 +265,200 @@ Deno.test("non-canonical, foreign-byte, wrong-MIME estimate bytes are refused", 
     estimateRefs: [invalid.reference],
   });
   assertEquals(badUtf8.status, "unavailable");
+});
+
+function missingEvidenceRef(index: number, byteCount = 64): AgentResourceReference {
+  const digest = index.toString(16).padStart(64, "0");
+  return {
+    schemaVersion: "agent-resource-capture/1.0",
+    uri: `casys://agent-resource-capture/sha256/${digest}`,
+    name: `sheet-${index}.txt`,
+    mimeType: "text/plain",
+    representation: "text",
+    byteCount,
+    fingerprint: { algorithm: "sha256", digest },
+  };
+}
+
+async function persistWideEstimate(
+  directory: string,
+  lines: BuyDocumentaryEstimate["lines"],
+) {
+  const configurationDigest = await buyConfigurationDigest(
+    buyTwoLineConfigurationFixture(),
+  );
+  const estimate = buyDocumentaryEstimateFixture(configurationDigest, { lines });
+  return await persistAgentResourceText(directory, {
+    name: "estimate.json",
+    mimeType: "application/json",
+    text: deterministicJson(estimate),
+  });
+}
+
+function wideEstimateLines(
+  count: number,
+  byteCount = 64,
+  offset = 0,
+): BuyDocumentaryEstimate["lines"] {
+  return Array.from({ length: count }, (_, line) => ({
+    configurationLineId: `line.synthetic.${offset + line}`,
+    quantityBasis: "per-configuration-unit",
+    productUom: "Nos",
+    terms: [{
+      id: `term.${offset + line}`,
+      nature: "material",
+      consumption: {
+        operand: "sourced",
+        decimal: "1",
+        uom: "kg",
+        source: {
+          reference: missingEvidenceRef((offset + line) * 2, byteCount),
+          anchor: `sheet line ${(offset + line) * 2}`,
+          observedAt: "2026-02-10T09:00:00.000Z",
+        },
+      },
+      rate: {
+        operand: "sourced",
+        decimal: "50.00",
+        perUom: "kg",
+        currency: "EUR",
+        source: {
+          reference: missingEvidenceRef((offset + line) * 2 + 1, byteCount),
+          anchor: `sheet line ${(offset + line) * 2 + 1}`,
+          observedAt: "2026-02-10T09:00:00.000Z",
+        },
+      },
+    }],
+  }));
+}
+
+Deno.test("evidence reference count budget is refused before reopening sources", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "buy-estimate-preview-" });
+  const preview = await previewFixture(directory);
+  const first = await persistWideEstimate(directory, wideEstimateLines(100, 64, 0));
+  const second = await persistWideEstimate(directory, wideEstimateLines(100, 64, 100));
+  const third = await persistWideEstimate(directory, wideEstimateLines(100, 64, 200));
+  const refused = await preview.execute({
+    ...preview.command,
+    estimateRefs: [first.reference, second.reference, third.reference],
+  });
+  assertEquals(refused.status, "unresolved");
+  assertEquals("reason" in refused && refused.reason.includes("budget"), true);
+  assertEquals(
+    "reason" in refused && refused.reason.includes("not present in draft CAS"),
+    false,
+  );
+});
+
+Deno.test("evidence declared-byte budget is refused before reopening sources", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "buy-estimate-preview-" });
+  const preview = await previewFixture(directory);
+  const captured = await persistWideEstimate(
+    directory,
+    wideEstimateLines(10, 250_000),
+  );
+  const refused = await preview.execute({
+    ...preview.command,
+    estimateRefs: [captured.reference],
+  });
+  assertEquals(refused.status, "unresolved");
+  assertEquals("reason" in refused && refused.reason.includes("budget"), true);
+  assertEquals(
+    "reason" in refused && refused.reason.includes("not present in draft CAS"),
+    false,
+  );
+});
+
+class InflatingEvidenceReopen extends ReopenAgentResource {
+  override async reopenUtf8Text(
+    expected: AgentResourceReference,
+    options: { acceptedMimeTypes: readonly string[]; maxBytes: number },
+  ): Promise<ReopenedAgentResourceText> {
+    const reopened = await super.reopenUtf8Text(expected, options);
+    if (expected.name === "estimate.json") return reopened;
+    return {
+      ...reopened,
+      reference: {
+        ...reopened.reference,
+        byteCount: BUY_COST_ESTIMATE_PREVIEW_MAX_EVIDENCE_BYTES,
+      },
+    };
+  }
+}
+
+Deno.test("evidence actual-byte budget refuses overstated reopened bytes", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "buy-estimate-preview-" });
+  const first = await persistAgentResourceText(directory, {
+    name: "sheet-a.txt",
+    mimeType: "text/plain",
+    text: "synthetic evidence A",
+  });
+  const second = await persistAgentResourceText(directory, {
+    name: "sheet-b.txt",
+    mimeType: "text/plain",
+    text: "synthetic evidence B",
+  });
+  const configurationDigest = await buyConfigurationDigest(
+    buyTwoLineConfigurationFixture(),
+  );
+  const estimate = buyDocumentaryEstimateFixture(configurationDigest, {
+    estimateId: "estimate.synthetic.bracket",
+    lines: [{
+      configurationLineId: "line.bracket",
+      quantityBasis: "per-configuration-unit",
+      productUom: "Nos",
+      terms: [{
+        id: "material.bracket",
+        nature: "material",
+        consumption: {
+          operand: "sourced",
+          decimal: "1",
+          uom: "kg",
+          source: {
+            reference: first.reference,
+            anchor: "sheet A line 1",
+            observedAt: "2026-02-10T09:00:00.000Z",
+          },
+        },
+        rate: {
+          operand: "sourced",
+          decimal: "50.00",
+          perUom: "kg",
+          currency: "EUR",
+          source: {
+            reference: second.reference,
+            anchor: "sheet B line 1",
+            observedAt: "2026-02-10T09:00:00.000Z",
+          },
+        },
+      }],
+    }],
+  });
+  const captured = await persistAgentResourceText(directory, {
+    name: "estimate.json",
+    mimeType: "application/json",
+    text: deterministicJson(estimate),
+  });
+  const preview = await previewFixture(directory);
+  const inflated = new PrepareProjectBuyCostEstimatePreview(
+    preview.seal(),
+    preview.candidates,
+    new InflatingEvidenceReopen(new FileAgentResourceStore(directory)),
+  );
+  const refused = await inflated.execute({
+    ...preview.command,
+    estimateRefs: [captured.reference],
+  });
+  assertEquals(refused.status, "unresolved");
+  assertEquals(
+    "reason" in refused && refused.reason.includes("actual bytes"),
+    true,
+  );
+  const genuine = await preview.execute({
+    ...preview.command,
+    estimateRefs: [captured.reference],
+  });
+  assertEquals(genuine.status, "preview");
 });
 
 Deno.test("uncaptured evidence named by an estimate blocks usable costs", async () => {

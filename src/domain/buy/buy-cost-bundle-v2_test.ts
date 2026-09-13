@@ -128,6 +128,17 @@ Deno.test("mixed catalogue and estimate lines compose through the shared aggrega
   assertEquals(fastener.amount, "5.00");
   assertEquals(bracket.costClass, "estimate");
   assertEquals(bracket.citation?.kind, "external-documentary");
+  const citation = bracket.citation;
+  if (citation?.kind !== "external-documentary") {
+    throw new Error("expected an external-documentary citation");
+  }
+  assertEquals(citation.resourceUri, annex.estimateSource.inputCaptureUri);
+  assertEquals(citation.fingerprint, annex.estimateSource.inputFingerprint);
+  assertEquals(
+    bracket.annexRef?.inputFingerprint,
+    annex.estimateSource.inputFingerprint,
+  );
+  assertEquals(bracket.annexRef?.annexFingerprint === citation.fingerprint, false);
   assertEquals(bracket.provisional, true);
   assertEquals(bracket.unitPrice, "50.00");
   // Independent: bracket 1 x 50.00 = 50.00 per unit, x2 units = 100.00;
@@ -139,7 +150,11 @@ Deno.test("mixed catalogue and estimate lines compose through the shared aggrega
   assertEquals(v2.totals.some((total) => total.kind === "total-complete"), true);
   assertEquals(v2.estimateProvenance[0]?.provisionalLineIds, ["line.bracket"]);
   validateBuyCostBundleV2(v2);
-  await assertBuyCostBundleV2Lineage(v2, { baseBundle: base, annexes: [annex] });
+  await assertBuyCostBundleV2Lineage(v2, {
+    baseBundle: base,
+    annexes: [annex],
+    configuration,
+  });
 });
 
 Deno.test("usable ERP price plus usable estimate for one line is refused", async () => {
@@ -289,7 +304,11 @@ Deno.test("lines with unknown terms stay out of the covered subtotal with facts 
   assertEquals(v2.coverage.status, "partial");
   assertEquals(v2.estimateProvenance[0]?.configurationLineIds, ["line.bracket"]);
   validateBuyCostBundleV2(v2);
-  await assertBuyCostBundleV2Lineage(v2, { baseBundle: base, annexes: [annex] });
+  await assertBuyCostBundleV2Lineage(v2, {
+    baseBundle: base,
+    annexes: [annex],
+    configuration,
+  });
 });
 
 Deno.test("base, pricing, and digest preservation are exact", async () => {
@@ -386,13 +405,22 @@ Deno.test("v2 lineage detects swapped annexes and edited preserved lines", async
     estimates: [annex],
     pricingContext: buyPricingContext(),
   });
-  await assertBuyCostBundleV2Lineage(v2, { baseBundle: base, annexes: [annex] });
+  await assertBuyCostBundleV2Lineage(v2, {
+    baseBundle: base,
+    annexes: [annex],
+    configuration,
+  });
   const swapped = await annexFor(digest, {
     estimateId: "estimate.synthetic.swapped",
     lines: [bracketLine({ operand: "sourced", decimal: "50.00" })],
   });
   await assertRejects(
-    () => assertBuyCostBundleV2Lineage(v2, { baseBundle: base, annexes: [swapped] }),
+    () =>
+      assertBuyCostBundleV2Lineage(v2, {
+        baseBundle: base,
+        annexes: [swapped],
+        configuration,
+      }),
     TypeError,
   );
   const edited = validateBuyCostBundleV2({
@@ -400,8 +428,132 @@ Deno.test("v2 lineage detects swapped annexes and edited preserved lines", async
     lines: v2.lines.map((line) => line.annexRef ? line : { ...line, amount: "6.00" }),
   });
   await assertRejects(
-    () => assertBuyCostBundleV2Lineage(edited, { baseBundle: base, annexes: [annex] }),
+    () =>
+      assertBuyCostBundleV2Lineage(edited, {
+        baseBundle: base,
+        annexes: [annex],
+        configuration,
+      }),
     TypeError,
     "does not match the base bundle",
+  );
+});
+
+Deno.test("v2 lineage recrosses estimate-backed amounts, price, dimensions, gaps, and refs", async () => {
+  const { configuration, digest, base } = await twoLineBase();
+  const annex = await annexFor(digest, {
+    lines: [bracketLine({ operand: "sourced", decimal: "50.00" })],
+  });
+  const v2 = await computeBuyCostCandidateV2({
+    configuration,
+    configurationDigest: digest,
+    baseBundle: base,
+    estimates: [annex],
+    pricingContext: buyPricingContext(),
+  });
+  const retained = { baseBundle: base, annexes: [annex], configuration };
+  await assertBuyCostBundleV2Lineage(v2, retained);
+  const tampered = (edit: (line: Record<string, unknown>) => void) =>
+    validateBuyCostBundleV2({
+      ...JSON.parse(JSON.stringify(v2)),
+      lines: v2.lines.map((line) => {
+        if (!line.annexRef) return line;
+        const clone = JSON.parse(JSON.stringify(line));
+        edit(clone);
+        return clone;
+      }),
+    });
+  for (
+    const [name, edit] of [
+      ["amount", (line: Record<string, unknown>) => {
+        line["amount"] = "101.00";
+      }],
+      ["unitPrice", (line: Record<string, unknown>) => {
+        line["unitPrice"] = "51.00";
+      }],
+      ["provisional", (line: Record<string, unknown>) => {
+        line["provisional"] = !line["provisional"];
+      }],
+      ["dimensions", (line: Record<string, unknown>) => {
+        line["dimensions"] = {
+          ...(line["dimensions"] as Record<string, unknown>),
+          tax: "established",
+        };
+      }],
+      ["gaps", (line: Record<string, unknown>) => {
+        line["gaps"] = [{
+          code: "dimension-unknown",
+          message: "forged gap",
+          lineId: "line.bracket",
+        }];
+      }],
+    ] as const
+  ) {
+    await assertRejects(
+      () => assertBuyCostBundleV2Lineage(tampered(edit), retained),
+      TypeError,
+      "does not match its retained annex",
+      `edited ${name} must be rejected`,
+    );
+  }
+  const noRef = tampered((line) => {
+    delete line["annexRef"];
+  });
+  await assertRejects(
+    () => assertBuyCostBundleV2Lineage(noRef, retained),
+    TypeError,
+    "does not match the base bundle",
+  );
+  const badRef = validateBuyCostBundleV2({
+    ...JSON.parse(JSON.stringify(v2)),
+    configurationRef: { digest: "ff".repeat(32) },
+  });
+  await assertRejects(
+    () => assertBuyCostBundleV2Lineage(badRef, retained),
+    TypeError,
+    "configuration",
+  );
+});
+
+Deno.test("annex STEP basis must match the configuration at composition and lineage", async () => {
+  const { configuration, digest, base } = await twoLineBase();
+  const annex = await annexFor(digest, {
+    lines: [bracketLine({ operand: "sourced", decimal: "50.00" })],
+  });
+  const forged = validateBuyProductionEstimateBundle({
+    ...JSON.parse(JSON.stringify(annex)),
+    estimateRef: {
+      ...annex.estimateRef,
+      stepFingerprint: "ee".repeat(32),
+    },
+  });
+  await assertRejects(
+    () =>
+      computeBuyCostCandidateV2({
+        configuration,
+        configurationDigest: digest,
+        baseBundle: base,
+        estimates: [forged],
+        pricingContext: buyPricingContext(),
+      }),
+    TypeError,
+    "STEP fingerprint",
+  );
+  const v2 = await computeBuyCostCandidateV2({
+    configuration,
+    configurationDigest: digest,
+    baseBundle: base,
+    estimates: [annex],
+    pricingContext: buyPricingContext(),
+  });
+  await assertRejects(
+    () =>
+      assertBuyCostBundleV2Lineage(v2, {
+        baseBundle: base,
+        annexes: [forged],
+        configuration,
+      }),
+    TypeError,
+    "STEP fingerprint",
   );
 });

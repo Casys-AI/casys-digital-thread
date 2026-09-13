@@ -91,10 +91,15 @@ envelope preimage/tamper checks stay async.
 `computeBuyCostCandidateV2({configuration, configurationDigest, baseBundle,
 estimates, pricingContext})`
 requires the base v1 bundle, configuration, and pricing context to match exactly, annex
-digests to match the validated configuration, and every annex line to name a known
-configuration line exactly once. A simultaneous usable ERP price and usable estimate for
-one line is refused: estimates never silently replace catalogue prices. Catalogue lines
-keep exact ERP provenance; estimate lines point at exact annex bytes. Required
+configuration digests and STEP fingerprints to match the validated configuration, and
+every annex line to name a known configuration line exactly once. Estimate-backed V2
+lines are recomputed from the retained annex and configuration at lineage and compared
+exactly; annexes are recomputed from the retained estimate and context likewise. A
+simultaneous usable ERP price and usable estimate for one line is refused: estimates
+never silently replace catalogue prices. Catalogue lines keep exact ERP provenance;
+estimate lines cite the exact reopened input bytes (`inputCaptureUri` +
+`inputFingerprint`) while `annexRef.annexFingerprint` keeps the computed-annex identity
+separate (never cited as reopenable store bytes). Required
 tax/transport/discount/fees/MOQ/FX stay `dimension-unknown`. Complete arithmetic
 coverage never removes documentary/provisional origin.
 
@@ -132,6 +137,13 @@ spending approval, no qualification, no ready advertisement, and no MRTR decisio
 parameters. Candidate fingerprints must be `sha256` with lowercase hex digests; anything
 else is refused before reads. No cost or authority computation happens in the Workbench.
 
+One request reopens at most 512 unique operand evidence sources and 4 MiB of declared
+evidence bytes (`BUY_COST_ESTIMATE_PREVIEW_MAX_EVIDENCE_REFS/_BYTES`); both are server
+resource policy, not engineering values. Unique-reference count and declared bytes are
+refused before any source I/O, actually reopened bytes are refused as soon as they cross
+the same bound, and excess yields no alias, no recompute, no retained evidence, and no
+read of any source. Deduplication is by canonical reference key.
+
 ## Preview evidence and bounded retrieval
 
 Each preview persists as draft immutable evidence under the dedicated
@@ -141,12 +153,23 @@ candidate, configuration and base-bundle digests, input refs, and computed facts
 validates canonical bytes, hash, byte count, project equality, and nested annex/bundle
 structures. The default response is a canonical summary of at most 8192 UTF-8 bytes
 (nature, status, basis, `evidenceRef`, digests, coverage/subtotals, provisional and gap
-counts with bounded samples); private source bytes stay out. Detail reads address named
-sections (`pricing`, `lines`, `annex-terms`, `source-evidence`, `assumptions`) by exact
-`evidenceRef` with bounded pages and opaque continuations scoped to project, evidence
-hash, section, and offset; scope mismatch, foreign, stale, or tampered refs and cursors
-are refused without switching basis or recomputing. Explicit `full-evidence` exists only
-for human full review, never by default. MCP tools `project_buy_cost_estimate_preview` /
+counts with bounded samples); private source bytes stay out. Gap counts, per-code
+counts, and samples cover V2 bundle/line gaps plus annex line and term gaps (expired,
+basis, asOf, currency, UOM, unknown-component refusals), so a blocked line's concrete
+refusal survives the summary even when its base line stays unpriced. Collection
+de-duplicates a reason that appears at several propagation levels (V2 copy wins); term
+refusals keep their distinct `termId`. `annex-terms` items also carry the enclosing
+line's `lineGaps`, so a line rejected before term calculation still shows its concrete
+refusal without `full-evidence`. Detail reads address named sections (`pricing`,
+`lines`, `annex-terms`, `source-evidence`, `assumptions`) by exact `evidenceRef` with
+bounded pages and opaque continuations scoped to project, evidence hash, section, and
+offset; scope mismatch, foreign, stale, or tampered refs and cursors are refused without
+switching basis or recomputing. Oversized grouped `source-evidence` entries page as
+bounded fragments (at most 8192 bytes each) with the same closed shape and shared
+resource identity; readers concatenate `anchors` and `observedAts` across fragments in
+order, with no pairing between the two independent arrays. Page packing budgets the full
+64-character cursor, not a placeholder. Explicit `full-evidence` exists only for human
+full review, never by default. MCP tools `project_buy_cost_estimate_preview` /
 `project_buy_cost_estimate_preview_detail` are read-only. They register no new execution
 operation or MRTR grammar and cannot seal the extended bundle.
 

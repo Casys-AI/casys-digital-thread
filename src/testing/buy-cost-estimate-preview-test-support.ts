@@ -35,6 +35,23 @@ export const PREVIEW_TEST_CANDIDATE_DIGEST = "ab".repeat(32);
 
 export async function genuinePreviewResult(
   estimateOverrides: Partial<BuyDocumentaryEstimate> = {},
+  lineTerms: BuyDocumentaryEstimate["lines"][number]["terms"] = [{
+    id: "material.bracket",
+    nature: "material",
+    consumption: {
+      operand: "sourced",
+      decimal: "1",
+      uom: "kg",
+      source: buyEstimateSourceRef(),
+    },
+    rate: {
+      operand: "sourced",
+      decimal: "50.00",
+      perUom: "kg",
+      currency: "EUR",
+      source: buyEstimateSourceRef(),
+    },
+  }],
 ) {
   const rawConfiguration = buyTwoLineConfigurationFixture();
   const configuration = validateBuyConfiguration(rawConfiguration);
@@ -64,23 +81,7 @@ export async function genuinePreviewResult(
       configurationLineId: "line.bracket",
       quantityBasis: "per-configuration-unit",
       productUom: "Nos",
-      terms: [{
-        id: "material.bracket",
-        nature: "material",
-        consumption: {
-          operand: "sourced",
-          decimal: "1",
-          uom: "kg",
-          source: buyEstimateSourceRef(),
-        },
-        rate: {
-          operand: "sourced",
-          decimal: "50.00",
-          perUom: "kg",
-          currency: "EUR",
-          source: buyEstimateSourceRef(),
-        },
-      }],
+      terms: lineTerms,
     }],
   });
   const estimateEnvelope = await buyDocumentaryEstimateEnvelopeFixture(estimate);

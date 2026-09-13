@@ -1,4 +1,5 @@
 import type {
+  ProjectBuyCostEstimatePreviewEvidence,
   ProjectBuyCostEstimatePreviewResult,
   ProjectBuyCostEstimatePreviewUseCase,
 } from "../../ports/in/buy/project-buy-cost-estimate-preview.ts";
@@ -10,7 +11,6 @@ import {
   BUY_COST_ESTIMATE_PREVIEW_EVIDENCE_REFERENCE_SCHEMA,
   BUY_COST_ESTIMATE_PREVIEW_EVIDENCE_SCHEMA,
 } from "../../ports/out/buy/buy-cost-estimate-preview-evidence-store.ts";
-import type { BuyCostBundleV2Gap } from "../../../domain/buy/buy-cost-bundle-v2.ts";
 import {
   arrayOf,
   closedRecord,
@@ -45,6 +45,7 @@ export interface BoundedBuyCostEstimatePreviewGapSample {
   readonly code: string;
   readonly message: string;
   readonly lineId?: string;
+  readonly termId?: string;
 }
 
 export interface BoundedBuyCostEstimatePreviewResult {
@@ -184,6 +185,7 @@ export function summary(
             )
             : gap.message,
           ...(gap.lineId === undefined ? {} : { lineId: gap.lineId }),
+          ...(gap.termId === undefined ? {} : { termId: gap.termId }),
         })),
         omittedGaps: Math.max(0, gaps.length - sampleCount),
       },
@@ -253,7 +255,11 @@ export class ReadBuyCostEstimatePreviewEvidence {
       if (
         section !== "full-evidence" &&
         new TextEncoder().encode(
-            deterministicJson({ section, items: candidate, nextCursor: "x" }),
+            deterministicJson({
+              section,
+              items: candidate,
+              nextCursor: "0".repeat(64),
+            }),
           ).byteLength > BUY_COST_ESTIMATE_PREVIEW_DETAIL_MAX_BYTES
       ) break;
       page.push(item);
@@ -320,13 +326,14 @@ function section(
               configurationLineId: line.configurationLineId,
               ...(annexFingerprint === undefined ? {} : { annexFingerprint }),
               inputCaptureUri: annex.estimateSource.inputCaptureUri,
+              lineGaps: [...line.gaps],
               term,
             };
           })
         )
       );
     case "source-evidence":
-      return [...result.evidence];
+      return result.evidence.flatMap((entry) => chunkSourceEvidenceEntry(entry));
     case "assumptions":
       return result.annexes.flatMap((annex) =>
         annex.assumptions.map((assumption) => {
@@ -345,17 +352,123 @@ function section(
   }
 }
 
+interface CollectedPreviewGap {
+  readonly code: string;
+  readonly message: string;
+  readonly lineId?: string;
+  readonly termId?: string;
+}
+
+const BUY_COST_ESTIMATE_PREVIEW_EVIDENCE_FRAGMENT_MAX_BYTES = 8192;
+
+function chunkSourceEvidenceEntry(
+  entry: ProjectBuyCostEstimatePreviewEvidence,
+): readonly ProjectBuyCostEstimatePreviewEvidence[] {
+  if (
+    summaryBytes({ ...entry }) <=
+      BUY_COST_ESTIMATE_PREVIEW_EVIDENCE_FRAGMENT_MAX_BYTES
+  ) {
+    return [entry];
+  }
+  const fragments: ProjectBuyCostEstimatePreviewEvidence[] = [];
+  for (
+    const anchors of chunkValues(
+      entry.anchors,
+      (slice) => summaryBytes({ ...entry, anchors: slice, observedAts: [] }),
+    )
+  ) {
+    fragments.push({ ...entry, anchors: [...anchors], observedAts: [] });
+  }
+  for (
+    const observedAts of chunkValues(
+      entry.observedAts,
+      (slice) => summaryBytes({ ...entry, anchors: [], observedAts: slice }),
+    )
+  ) {
+    fragments.push({ ...entry, anchors: [], observedAts: [...observedAts] });
+  }
+  return fragments.length > 0 ? fragments : [entry];
+}
+
+function chunkValues(
+  values: readonly string[],
+  weigh: (slice: readonly string[]) => number,
+): Array<readonly string[]> {
+  const chunks: Array<readonly string[]> = [];
+  let current: string[] = [];
+  for (const value of values) {
+    const candidate = [...current, value];
+    if (
+      current.length > 0 &&
+      weigh(candidate) > BUY_COST_ESTIMATE_PREVIEW_EVIDENCE_FRAGMENT_MAX_BYTES
+    ) {
+      chunks.push(current);
+      current = [value];
+    } else {
+      current = candidate;
+    }
+  }
+  if (current.length > 0) chunks.push(current);
+  return chunks;
+}
+
 function collectGaps(
   result: PreviewResult,
-): readonly BuyCostBundleV2Gap[] {
-  return [
-    ...result.bundle.gaps,
-    ...result.bundle.lines.flatMap((line) => line.gaps),
-  ];
+): readonly CollectedPreviewGap[] {
+  // V2 bundle and line gaps first so a reason copied from an annex line into
+  // its estimate line counts once at V2 level; annex-only reasons (unpriced
+  // base lines, term gaps with termId) survive through explicit de-duplication.
+  const collected: CollectedPreviewGap[] = [];
+  const seen = new Set<string>();
+  const push = (gap: CollectedPreviewGap): void => {
+    const key = [gap.code, gap.message, gap.lineId ?? "", gap.termId ?? ""]
+      .join("\n");
+    if (seen.has(key)) return;
+    seen.add(key);
+    collected.push(gap);
+  };
+  for (const gap of result.bundle.gaps) {
+    push({
+      code: gap.code,
+      message: gap.message,
+      ...(gap.lineId === undefined ? {} : { lineId: gap.lineId }),
+    });
+  }
+  for (const line of result.bundle.lines) {
+    for (const gap of line.gaps) {
+      push({
+        code: gap.code,
+        message: gap.message,
+        ...(gap.lineId === undefined ? {} : { lineId: gap.lineId }),
+      });
+    }
+  }
+  for (const annex of result.annexes) {
+    for (const line of annex.lines) {
+      for (const gap of line.gaps) {
+        push({
+          code: gap.code,
+          message: gap.message,
+          lineId: gap.lineId ?? line.configurationLineId,
+        });
+      }
+      for (const term of line.terms) {
+        for (const gap of term.gaps) {
+          push({
+            code: gap.code,
+            message: gap.message,
+            lineId: gap.lineId ?? line.configurationLineId,
+            termId: term.id,
+          });
+        }
+      }
+    }
+  }
+  return collected;
 }
 
 function countByCode(
-  gaps: readonly BuyCostBundleV2Gap[],
+  gaps: readonly CollectedPreviewGap[],
 ): Readonly<Record<string, number>> {
   const counts: Record<string, number> = {};
   for (const gap of gaps) {

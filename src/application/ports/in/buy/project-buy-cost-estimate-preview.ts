@@ -5,6 +5,17 @@ import type { AgentResourceReference } from "../../../../domain/resource/agent-r
 
 export const BUY_COST_ESTIMATE_PREVIEW_MAX_ESTIMATES = 8;
 
+/**
+ * Server resource policy for one read-only preview request, not engineering
+ * values. At most 512 unique operand evidence sources and 4 MiB of declared
+ * evidence bytes are reopened; unique-reference count and declared bytes are
+ * refused before any source I/O, and actually reopened bytes are refused as
+ * soon as they cross the same bound. Excess yields no alias, no recompute,
+ * and no retained evidence.
+ */
+export const BUY_COST_ESTIMATE_PREVIEW_MAX_EVIDENCE_REFS = 512;
+export const BUY_COST_ESTIMATE_PREVIEW_MAX_EVIDENCE_BYTES = 4_194_304;
+
 export interface ProjectBuyCostEstimatePreviewCommand {
   readonly projectId: string;
   readonly basis: EngineeringThreadSnapshotBasis;

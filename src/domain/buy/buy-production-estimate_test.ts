@@ -1,6 +1,7 @@
-import { assertEquals, assertRejects } from "@std/assert";
+import { assertEquals, assertRejects, assertThrows } from "@std/assert";
 import { validateBuyConfiguration } from "./buy-configuration.ts";
 import type { BuyDocumentaryEstimate } from "./buy-documentary-estimate.ts";
+import { validateBuyDocumentaryEstimateEnvelope } from "./buy-documentary-estimate.ts";
 import {
   assertBuyProductionEstimateLineage,
   computeBuyProductionEstimateCandidate,
@@ -314,18 +315,162 @@ Deno.test("unknown configuration lines are refused, lineage recrosses retained b
     "unknown configuration line",
   );
   const good = await estimateEnvelope(buyDocumentaryEstimateFixture(digest));
-  const bundle = await computeBuyProductionEstimateCandidate({
+  const context = {
     configuration,
     configurationDigest: digest,
-    estimate: good,
     pricingContext: buyPricingContext(),
+  };
+  const bundle = await computeBuyProductionEstimateCandidate({
+    ...context,
+    estimate: good,
   });
-  await assertBuyProductionEstimateLineage(bundle, good);
+  await assertBuyProductionEstimateLineage(bundle, good, context);
   const swapped = await estimateEnvelope(
     buyDocumentaryEstimateFixture(digest, { estimateId: "estimate.synthetic.swapped" }),
   );
   await assertRejects(
-    () => assertBuyProductionEstimateLineage(bundle, swapped),
+    () => assertBuyProductionEstimateLineage(bundle, swapped, context),
     TypeError,
   );
+});
+
+Deno.test("annex lineage recrosses the complete derived annex, not just line ids", async () => {
+  const configuration = validateBuyConfiguration(buyConfigurationFixture());
+  const digest = await realDigest();
+  const good = await estimateEnvelope(buyDocumentaryEstimateFixture(digest));
+  const context = {
+    configuration,
+    configurationDigest: digest,
+    pricingContext: buyPricingContext(),
+  };
+  const bundle = await computeBuyProductionEstimateCandidate({
+    ...context,
+    estimate: good,
+  });
+  await assertBuyProductionEstimateLineage(bundle, good, context);
+  const tampered = JSON.parse(JSON.stringify(bundle));
+  tampered.lines[0].terms[0].termAmount = "22.00";
+  tampered.lines[0].unitCost = "157.00";
+  validateBuyProductionEstimateBundle(tampered);
+  await assertRejects(
+    () => assertBuyProductionEstimateLineage(tampered, good, context),
+    TypeError,
+    "does not match the annex recomputed",
+  );
+  const otherContext = {
+    ...context,
+    pricingContext: { ...buyPricingContext(), asOf: "2026-04-01T00:00:00.000Z" },
+  };
+  await assertRejects(
+    () => assertBuyProductionEstimateLineage(bundle, good, otherContext),
+    TypeError,
+    "does not match the annex recomputed",
+  );
+});
+
+Deno.test("calculator refuses an envelope fingerprint unrelated to the estimate bytes", async () => {
+  const digest = await realDigest();
+  const good = await estimateEnvelope(buyDocumentaryEstimateFixture(digest));
+  const forged = {
+    ...JSON.parse(JSON.stringify(good)),
+    capture: {
+      ...good.capture,
+      uri: `casys://agent-resource-capture/sha256/${"ff".repeat(32)}`,
+      fingerprint: { algorithm: "sha256", digest: "ff".repeat(32) },
+    },
+    fingerprint: `sha256:${"ff".repeat(32)}`,
+  };
+  validateBuyDocumentaryEstimateEnvelope(forged);
+  const configuration = validateBuyConfiguration(buyConfigurationFixture());
+  await assertRejects(
+    () =>
+      computeBuyProductionEstimateCandidate({
+        configuration,
+        configurationDigest: digest,
+        estimate: forged,
+        pricingContext: buyPricingContext(),
+      }),
+    TypeError,
+    "does not match SHA-256 of canonicalText",
+  );
+});
+
+Deno.test("annex parser refuses empty terms and invented unit costs", async () => {
+  const bundle = await annex();
+  const empty = JSON.parse(JSON.stringify(bundle));
+  empty.lines[0].terms = [];
+  empty.lines[0].unitCost = undefined;
+  assertThrows(
+    () => validateBuyProductionEstimateBundle(empty),
+    TypeError,
+    "at least one term",
+  );
+  const base = buyDocumentaryEstimateFixture(await realDigest());
+  const unknown = await annex({
+    lines: [{
+      ...base.lines[0]!,
+      terms: [
+        base.lines[0]!.terms[0]!,
+        {
+          id: "energy.furnace",
+          nature: "other",
+          consumption: { operand: "unknown" },
+          rate: {
+            operand: "sourced",
+            decimal: "0.30",
+            perUom: "kWh",
+            currency: "EUR",
+            source: buyEstimateSourceRef(),
+          },
+        },
+      ],
+    }],
+  });
+  assertEquals(unknown.lines[0]?.unitCost, undefined);
+  const invented = JSON.parse(JSON.stringify(unknown));
+  invented.lines[0].unitCost = "1.00";
+  assertThrows(
+    () => validateBuyProductionEstimateBundle(invented),
+    TypeError,
+    "no complete unit cost",
+  );
+  const wrongSum = JSON.parse(JSON.stringify(bundle));
+  wrongSum.lines[0].unitCost = "999.99";
+  assertThrows(
+    () => validateBuyProductionEstimateBundle(wrongSum),
+    TypeError,
+    "sum of priced term amounts",
+  );
+});
+
+Deno.test("rejected paths keep provisional origin from assumed operands", async () => {
+  const base = buyDocumentaryEstimateFixture(await realDigest());
+  const expired = await annex({
+    sourceValidity: { from: "2026-01-01", to: "2026-01-15" },
+    lines: [{
+      ...base.lines[0]!,
+      terms: [{
+        ...base.lines[0]!.terms[0]!,
+        rate: {
+          operand: "assumed",
+          decimal: "10.50",
+          perUom: "kg",
+          currency: "EUR",
+          justification: {
+            statement: "Synthetic catalogue extrapolation.",
+            source: buyEstimateSourceRef(),
+          },
+        },
+      }],
+    }],
+  });
+  const line = expired.lines[0]!;
+  assertEquals(line.unitCost, undefined);
+  assertEquals(
+    line.gaps.some((gap) => gap.code === "estimate-expired"),
+    true,
+  );
+  assertEquals(line.terms[0]?.provisional, true);
+  assertEquals(line.provisional, true);
+  validateBuyProductionEstimateBundle(expired);
 });
