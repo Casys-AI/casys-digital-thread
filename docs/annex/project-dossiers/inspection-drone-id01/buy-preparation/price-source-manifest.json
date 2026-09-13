@@ -1,0 +1,191 @@
+{
+  "schemaVersion": "id01-buy-preparation/1.0",
+  "documentKind": "price-source-manifest",
+  "notSchema": "buy-configuration/1.0",
+  "status": "catalogue-observation",
+  "notSupplierQuotation": true,
+  "notApprovedSpend": true,
+  "noAggregateDroneTotal": true,
+  "writtenAtUtc": "2026-09-13T07:22:14Z",
+  "retrievalPolicy": "Actual UTC retrieval timestamps. Public listing price is a catalogue observation, never a Supplier Quotation.",
+  "observations": [
+    {
+      "observationId": "obs.holybro-11088-none",
+      "articleProposalId": "article.pixhawk-6c-mini-a-current",
+      "kind": "add-to-cart-catalogue-price",
+      "manufacturer": "Holybro",
+      "seller": "Holybro Store",
+      "productName": "Pixhawk 6C Mini Model-A (revision) / Power Module None",
+      "sku": "11088",
+      "url": "https://holybro.com/products/pixhawk-6c-mini",
+      "datasheetUrls": [
+        "https://docs.holybro.com/autopilot/pixhawk-6c-mini/technical-specification",
+        "https://docs.holybro.com/autopilot/pixhawk-6c-mini/pixhawk-6c-mini-ports",
+        "https://docs.holybro.com/autopilot/pixhawk-6c-mini/dimensions"
+      ],
+      "retrievedAtUtc": "2026-09-13T07:19:33.000Z",
+      "observedValue": "130.99",
+      "currency": "USD",
+      "unit": "1 controller variant (Power Module = None)",
+      "shopifyVariantTitle": "Pixhawk 6C Mini Model-A (revision) / None",
+      "scope": {
+        "tax": "shopify taxable=false on this variant; destination tax unknown",
+        "shipping": "calculated at checkout; unknown",
+        "validity": "unspecified",
+        "stock": "variant available=true at retrieval; not a reservation",
+        "bundle": "This amount is not the default $149.98 SKU 11088+15010 (controller + PM02 V3). Cable-set inclusion is restated for SKU 11062/11079, not independently restated for SKU 11088."
+      },
+      "identityNotes": "Mechanical data on the same page and docs: Model A Current 54.3x39x17.5 mm, 42.4 g. ID01 AutopilotEnvelope used those Model A Current dimensions. Weight 42.4 g is manufacturer data, not an ID01 installed mass.",
+      "itemPriceReady": true,
+      "shopifyVariantId": "44511517540541",
+      "rootBrowseReproduction": "Root primary browse reproduced SKU 11088 None variant USD 130.99 (variant 44511517540541), separate from default 149.98 bundle."
+    },
+    {
+      "observationId": "obs.ligpower-f1404-kv4600",
+      "articleProposalId": "article.thobby-f1404-kv4600",
+      "kind": "add-to-cart-catalogue-price",
+      "manufacturer": "T-HOBBY / LIGPOWER",
+      "seller": "ligpower.com manufacturer storefront",
+      "productName": "T-HOBBY F1404 KV4600",
+      "sku": null,
+      "skuNote": "No numeric manufacturer SKU visible. Page URL and KV4600 selector identify the variant.",
+      "url": "https://www.ligpower.com/product/f1404-kv4600-fpv-motor.html",
+      "datasheetUrls": [
+        "https://www.ligpower.com/product/f1404-kv4600-fpv-motor.html"
+      ],
+      "datasheetNote": "Specifications and a technical-drawing image live on the product page. No separate PDF URL was obtained.",
+      "retrievedAtUtc": "2026-09-13T07:19:33.000Z",
+      "observedValue": "16.90",
+      "currency": "USD",
+      "unit": "1 motor + parts bag",
+      "scope": {
+        "tax": "unspecified",
+        "shipping": "page claims Free Shipping by DHL/UPS Express; destination, duties and true landed cost unknown",
+        "validity": "unspecified",
+        "stock": "unspecified",
+        "kvSelector": "KV4600 was the selected parameter on this URL. Sibling KV2900/KV3800 share the family page; this observation is the KV4600 URL."
+      },
+      "identityNotes": "Page lists Motor Dimensions Φ17.9*16.6mm and Weight(Incl.Cable) 9.34g for KV4600. Mount pattern remains unresolved on the accessible text.",
+      "itemPriceReady": true,
+      "rootBrowseReproduction": "Root primary browse reproduced KV4600 USD 16.90."
+    },
+    {
+      "observationId": "obs.rpi-zero-2-w-rrp-copy",
+      "articleProposalId": "article.rpi-zero-2-w",
+      "kind": "manufacturer-stated-copy-not-checkout",
+      "manufacturer": "Raspberry Pi Ltd",
+      "seller": "sold through Approved Resellers; checkout not read",
+      "productName": "Raspberry Pi Zero 2 W",
+      "sku": null,
+      "url": "https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/",
+      "datasheetUrls": [
+        "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-product-brief.pdf",
+        "https://datasheets.raspberrypi.com/rpizero2/raspberry-pi-zero-2-w-mechanical-drawing.pdf"
+      ],
+      "retrievedAtUtc": "2026-09-13T07:19:33.000Z",
+      "observedValue": "15",
+      "currency": "USD",
+      "unit": "1 board (manufacturer headline)",
+      "readableCheckoutPrice": false,
+      "scope": {
+        "tax": "unknown",
+        "shipping": "unknown",
+        "validity": "unspecified",
+        "stock": "unknown",
+        "limitation": "Official page title/description is Your tiny, tiny $15 computer. The Buy widget listed Approved Resellers without a readable unit price in the fetched HTML. This is not an add-to-cart line. Do not treat it as current reseller checkout."
+      },
+      "itemPriceReady": false
+    },
+    {
+      "observationId": "obs.rpi-cam-mod3-from-price",
+      "articleProposalId": "article.rpi-camera-module-3-standard",
+      "kind": "manufacturer-stated-copy-not-checkout",
+      "manufacturer": "Raspberry Pi Ltd",
+      "seller": "sold through Approved Resellers; checkout not read",
+      "productName": "Raspberry Pi Camera Module 3 (family starting price; Standard vs Wide vs NoIR not isolated in checkout)",
+      "sku": null,
+      "skuNote": "PIP identities SC0872–SC0875 exist for the family. Exact Standard SKU was not isolated from a readable checkout.",
+      "url": "https://www.raspberrypi.com/products/camera-module-3/",
+      "datasheetUrls": [
+        "https://pip.raspberrypi.com/categories/786-raspberry-pi-camera-module-3",
+        "https://datasheets.raspberrypi.com/camera/camera-module-3-product-brief.pdf"
+      ],
+      "datasheetNote": "Product-brief PDF redirected across hosts during retrieval; the official product page and PIP category were used. PDF bytes were not captured.",
+      "retrievedAtUtc": "2026-09-13T07:19:33.000Z",
+      "observedValue": "25",
+      "currency": "USD",
+      "unit": "1 module, manufacturer starting price for the family",
+      "readableCheckoutPrice": false,
+      "scope": {
+        "tax": "unknown",
+        "shipping": "unknown",
+        "validity": "unspecified",
+        "stock": "unknown",
+        "limitation": "Page states Available from $25 with standard and wide lenses, with or without infrared filter. Direct fetch of the product page was blocked once by a challenge page; the manufacturer-stated from-price is from the official product page content. Approved-reseller checkout was not readable. Wide variants are historically higher. Do not copy into Item Price."
+      },
+      "itemPriceReady": false
+    },
+    {
+      "observationId": "obs.prusa-petg-jet-black-1kg",
+      "articleProposalId": "article.prusament-petg-jet-black-1kg",
+      "kind": "add-to-cart-catalogue-price",
+      "manufacturer": "Prusa Polymers / Prusa Research",
+      "seller": "prusa3d.com official shop",
+      "productName": "Prusament PETG Jet Black 1kg (NFC)",
+      "sku": "IDF:17558 IDS:3449",
+      "url": "https://www.prusa3d.com/product/prusament-petg-jet-black-1kg-nfc/",
+      "datasheetUrls": [
+        "https://help.prusa3d.com/filament-material-guide",
+        "https://www.prusa3d.com/downloads/press/prusament-portfolio-november-2025.pdf"
+      ],
+      "retrievedAtUtc": "2026-09-13T07:21:33.000Z",
+      "observedValue": "25.49",
+      "currency": "USD",
+      "unit": "1 kg spool, filament diameter 1.75 mm",
+      "scope": {
+        "tax": "not stated on the fetched product block; other Prusa locales sometimes say import duties included — not verified on this fetch",
+        "shipping": "unknown; shop UI showed Shipping to Taiwan while currency USD",
+        "validity": "visible -15 % badge; promotional duration unspecified; undiscounted list amount not readable on this product block",
+        "stock": "In stock at retrieval; not a reservation",
+        "geo": "Displayed price may depend on shipping country. This observation is the USD amount shown on the fetched page, not a landed Taiwan price."
+      },
+      "itemPriceReady": false,
+      "rootIndependentFetch": "no-readable-25.49-directGET403",
+      "sessionObservationRetained": true,
+      "sessionObservationNotInvalidated": true,
+      "reasonNotItemPriceReady": "This writer did not retain a primary retrieval receipt/excerpt of product/locale/unit/currency/value. The 25.49 USD observation is kept as documentary only and is not treated as invalid. Root could not independently read that amount."
+    }
+  ],
+  "explicitlyNotPriced": [
+    {
+      "topic": "print-time",
+      "status": "unknown"
+    },
+    {
+      "topic": "print-mass",
+      "status": "unknown"
+    },
+    {
+      "topic": "energy",
+      "status": "unknown"
+    },
+    {
+      "topic": "labor",
+      "status": "unknown"
+    },
+    {
+      "topic": "machine-rate",
+      "status": "unknown"
+    },
+    {
+      "topic": "6082-T6-stock",
+      "status": "not-sourced"
+    },
+    {
+      "topic": "full-drone-bom-total",
+      "status": "forbidden-in-this-packet"
+    }
+  ],
+  "finalizedAtUtc": "2026-09-13T07:33:58.000Z",
+  "itemPriceReadyPolicy": "Only add-to-cart catalogue observations with a retained readable unit price are ItemPrice-ready. Manufacturer headlines and root-unverified quotes stay documentary."
+}

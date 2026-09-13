@@ -1,0 +1,1361 @@
+{
+  "schemaVersion": "id01-buy-preparation/1.0",
+  "documentKind": "architecture-reconstruction",
+  "notSchema": "buy-configuration/1.0",
+  "status": "preparatory-proposal",
+  "authority": "not-admitted-source",
+  "writtenAtUtc": "2026-09-13T07:22:14Z",
+  "baseline": {
+    "projectId": "inspection-drone-id01",
+    "projectSnapshotId": "inspection-drone-id01:project:r892:5d6ef81cf812c6f1",
+    "projectRevision": 892,
+    "projectGeneratedAt": "2026-09-12T14:59:27.513Z",
+    "approvedBriefId": "inspection-drone-id01:brief:r7:22fb5d1b598dbd41",
+    "approvedBriefRevision": 7,
+    "approvedBriefItemCount": 40,
+    "threadSnapshotId": "project:inspection-drone-id01:r119:industrialize-run-dfm-checks-run:id01-yolo-queue-dfm-r118-authority-retry-jit-20260912",
+    "threadRevision": 119,
+    "threadGeneratedAt": "2026-09-12T14:59:25.465Z",
+    "threadArtifactCount": 220,
+    "subjectId": "project:inspection-drone-id01",
+    "auditInputs": [
+      "/Volumes/DEV/Projects/cdt-be-a-to-z-20260913-audit/project-canonical-baseline.json",
+      "/Volumes/DEV/Projects/cdt-be-a-to-z-20260913-audit/thread-snapshot-baseline.json",
+      "/Volumes/DEV/Projects/cdt-be-a-to-z-20260913-audit/workbench-baseline.json",
+      "/Volumes/DEV/Projects/cdt-be-a-to-z-20260913-audit/id01-demo-preparation.md",
+      "/Volumes/DEV/Projects/cdt-be-a-to-z-20260913-audit/id01-response.json",
+      "/Volumes/DEV/Projects/cdt-be-a-to-z-20260913-audit/id01-architecture-current.json",
+      "/Volumes/DEV/Projects/cdt-be-a-to-z-20260913-audit/id01-part-definitions-current.json",
+      "/Volumes/DEV/Projects/cdt-be-a-to-z-20260913-audit/id01-architecture-cas-reopen.json"
+    ],
+    "workbenchBaselineNote": "Public projection only; not used as canonical stored bytes."
+  },
+  "buyAbsence": {
+    "buyArtifactsInThreadR119": 0,
+    "buyMentionsInProjectRuns": 0,
+    "siteQualifier": "absent",
+    "installationProfile": "absent-from-this-isolated-writer",
+    "qualificationFixture": "absent-from-this-isolated-writer"
+  },
+  "casReopen": {
+    "architectureCaptureBytes": "reopened",
+    "partDefinitionsCaptureBytes": "reopened",
+    "copiedIntoPublicDocs": false,
+    "reason": "Root copied SHA-verified immutable captures into the audit checkout. This writer reopened those bytes in place and does not duplicate the captures under docs/.",
+    "currentArchitectureLocator": "casys://architecture-capture/sha256/1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9",
+    "currentPartDefinitionsLocator": "casys://part-definitions-capture/sha256/879ac8a5d892ded7ffe325fcde36d81ce41b4655dbfaf9b472140c5643ebae9c",
+    "auditCopies": {
+      "architecture": {
+        "path": "/Volumes/DEV/Projects/cdt-be-a-to-z-20260913-audit/id01-architecture-current.json",
+        "schemaVersion": "architecture-capture/4.0",
+        "sha256": "1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9",
+        "partDefinitionCount": 19,
+        "insertedAt": "2026-09-11T04:16:50.078Z",
+        "trustedRunId": "run:id01-queue-camera-board-hole-architecture-20260911"
+      },
+      "partDefinitions": {
+        "path": "/Volumes/DEV/Projects/cdt-be-a-to-z-20260913-audit/id01-part-definitions-current.json",
+        "schemaVersion": "part-definitions-capture/1.0",
+        "sha256": "879ac8a5d892ded7ffe325fcde36d81ce41b4655dbfaf9b472140c5643ebae9c",
+        "partDefinitionCount": 19,
+        "capturedAt": "2026-09-11T06:29:14.534Z",
+        "trustedRunId": "run:id01-queue-capture-part-definitions-r102-20260911",
+        "architectureArtifactId": "architecture-1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9"
+      },
+      "receipt": {
+        "path": "/Volumes/DEV/Projects/cdt-be-a-to-z-20260913-audit/id01-architecture-cas-reopen.json",
+        "sha256": "510183ead32a0d3145fb3559c5195b5251dd471b4d762496f764b66c6f81e4ce"
+      }
+    }
+  },
+  "architectureLineage": [
+    {
+      "applicability": "historical",
+      "artifactId": "architecture-a3f4c77db74ef6fdffffc8aeca35438c7d6136a8df46d105171cb9d786eda781",
+      "fingerprint": "a3f4c77db74ef6fdffffc8aeca35438c7d6136a8df46d105171cb9d786eda781",
+      "changedAt": "2026-09-06T16:08:35.316Z",
+      "producerRunId": "run:id01-queue-architecture-20260906",
+      "partDefinitionsArtifactId": null,
+      "note": "First ID01Architecture insert. No part-definitions capture on this head."
+    },
+    {
+      "applicability": "historical",
+      "artifactId": "architecture-840bb0827526f054988ac631ed16289a7bcf06e6bf6549b46a6acacca81eaff6",
+      "fingerprint": "840bb0827526f054988ac631ed16289a7bcf06e6bf6549b46a6acacca81eaff6",
+      "changedAt": "2026-09-06T16:21:42.120Z",
+      "producerRunId": "run:id01-queue-camera-bracket-architecture-20260906",
+      "partDefinitionsArtifactId": null,
+      "note": "CameraMountBracket architecture. Input of the first CameraMountBracket geometry capture."
+    },
+    {
+      "applicability": "historical",
+      "artifactId": "architecture-034ecfca0553b1c1baadcfd92572ce111310fe8ac0511cfb1a8561b7db50dbba",
+      "fingerprint": "034ecfca0553b1c1baadcfd92572ce111310fe8ac0511cfb1a8561b7db50dbba",
+      "changedAt": "2026-09-06T17:40:55.559Z",
+      "producerRunId": "run:id01-queue-integration-architecture-20260907",
+      "partDefinitionsArtifactId": "part-definitions-d31e3f952060643eaecd7ad74825325eba5ad51a92af570a2aef7b0e0788402b",
+      "partDefinitionsFingerprint": "d31e3f952060643eaecd7ad74825325eba5ad51a92af570a2aef7b0e0788402b",
+      "partDefinitionsChangedAt": "2026-09-06T18:00:18.771Z",
+      "note": "Integration architecture used by the first module/root canary."
+    },
+    {
+      "applicability": "historical",
+      "artifactId": "architecture-8fdff1a0ac8c93b98e4c70074a32788044b724955d067bcaf4e384bb984e99f1",
+      "fingerprint": "8fdff1a0ac8c93b98e4c70074a32788044b724955d067bcaf4e384bb984e99f1",
+      "changedAt": "2026-09-06T19:53:46.158Z",
+      "producerRunId": "run:id01-queue-unit-camera-deck-interface-architecture-20260907",
+      "partDefinitionsArtifactId": "part-definitions-0f86b7224cd7e9905118d2d2af78c2b963eea1abd9fec15f0785e53157b8375d",
+      "partDefinitionsFingerprint": "0f86b7224cd7e9905118d2d2af78c2b963eea1abd9fec15f0785e53157b8375d",
+      "partDefinitionsChangedAt": "2026-09-07T00:06:03.157Z",
+      "note": "Camera-deck interface successor."
+    },
+    {
+      "applicability": "current-at-thread-r119",
+      "artifactId": "architecture-1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9",
+      "fingerprint": "1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9",
+      "changedAt": "2026-09-11T04:16:50.078Z",
+      "producerRunId": "run:id01-queue-camera-board-hole-architecture-20260911",
+      "partDefinitionsArtifactId": "part-definitions-879ac8a5d892ded7ffe325fcde36d81ce41b4655dbfaf9b472140c5643ebae9c",
+      "partDefinitionsFingerprint": "879ac8a5d892ded7ffe325fcde36d81ce41b4655dbfaf9b472140c5643ebae9c",
+      "partDefinitionsChangedAt": "2026-09-11T06:29:14.534Z",
+      "partDefinitionsRunId": "run:id01-queue-capture-part-definitions-r102-20260911",
+      "note": "Camera-board hole architecture. Current unique architecture-capture/4.0 at Thread r119 among five Architecture: ID01Architecture artifacts."
+    }
+  ],
+  "nameJoinMethod": [
+    "Superseded as name authority: architecture-capture/4.0 and part-definitions-capture/1.0 now supply exact PartDefinition/PartUsage labels, ids, parent, and target.",
+    "Placement JSON remains layout evidence (transforms) only. It is not the name authority.",
+    "A prior layout join matched these capture labels; matching is disclosed, not a second authority."
+  ],
+  "rootPartDefinition": {
+    "elementId": "f58ee456-a69f-4835-a6f4-e15503c528a1",
+    "name": "InspectionDrone",
+    "kind": "PartDefinition",
+    "nameEvidence": "architecture-capture/4.0 semanticRoot and partDefinitions label",
+    "currentCaptureContinuity": "confirmed-by-cas-reopen",
+    "quantity": {
+      "buyStatus": "unresolved",
+      "canonicalBuyQuantity": false,
+      "note": "System root; configuration geometry parent, not a purchased occurrence."
+    }
+  },
+  "subsystems": [
+    {
+      "name": "Airframe",
+      "partDefinitionElementId": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+      "occurrenceElementId": "682ab9c1-a59f-4419-bced-db434a9e99e9",
+      "occurrenceLabel": "airframe",
+      "kind": "module",
+      "class": "documentary-assembly",
+      "identitySource": "architecture-capture/4.0"
+    },
+    {
+      "name": "PropulsionSystem",
+      "partDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+      "occurrenceElementId": "40728220-ecd8-46d5-85d2-bd24259dedf4",
+      "occurrenceLabel": "propulsion",
+      "kind": "module",
+      "class": "documentary-assembly",
+      "identitySource": "architecture-capture/4.0"
+    },
+    {
+      "name": "CameraPayload",
+      "partDefinitionElementId": "ed1a741f-4c24-4166-8e90-745c9211d6cf",
+      "occurrenceElementId": "aada756e-3ba9-4089-ab6c-c00252007218",
+      "occurrenceLabel": "cameraPayload",
+      "kind": "module",
+      "class": "documentary-assembly",
+      "identitySource": "architecture-capture/4.0"
+    },
+    {
+      "name": "ElectricalPower",
+      "partDefinitionElementId": "8a55a273-884c-486d-b336-00662d5c4107",
+      "occurrenceElementId": "1a748d4f-733d-475a-b8ab-919fd5fe8ea1",
+      "occurrenceLabel": "electricalPower",
+      "kind": "module",
+      "class": "documentary-assembly",
+      "identitySource": "architecture-capture/4.0"
+    },
+    {
+      "name": "FlightAvionics",
+      "partDefinitionElementId": "9cac605e-5d64-4451-9421-7852a34a4223",
+      "occurrenceElementId": "5a905cf3-43e2-4c2d-b9aa-277b82ce3005",
+      "occurrenceLabel": "avionics",
+      "kind": "module",
+      "class": "documentary-assembly",
+      "identitySource": "architecture-capture/4.0"
+    },
+    {
+      "name": "LandingGear",
+      "partDefinitionElementId": "1f63469d-9b5b-4693-8aef-42066e3bdf5d",
+      "occurrenceElementId": "78e6c567-3d38-4e35-a3f8-40d8d23bd883",
+      "occurrenceLabel": "landingGear",
+      "kind": "module",
+      "class": "documentary-assembly",
+      "identitySource": "architecture-capture/4.0"
+    }
+  ],
+  "parts": [
+    {
+      "name": "CentralDeck",
+      "partDefinitionElementId": "3569666d-a105-47b5-87ac-c42c7bcdaa0a",
+      "class": "printed-or-custom-candidate",
+      "classNote": "Original parameterized CAD. Manufacturing process unresolved. FEA material 6082-T6 is a bench assumption, not a mill purchase.",
+      "occurrences": [
+        {
+          "elementId": "3ab9e02f-8fdd-44d9-9241-650f4ec8439c",
+          "kind": "PartUsage",
+          "label": "centralDeck",
+          "parentPartDefinitionElementId": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+          "parentLabel": "Airframe",
+          "targetId": "3569666d-a105-47b5-87ac-c42c7bcdaa0a",
+          "targetKind": "PartDefinition",
+          "targetLabel": "CentralDeck",
+          "identitySource": "architecture-capture/4.0"
+        }
+      ],
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "architectureUsageCount": 1,
+        "architectureUsageCountScope": "Count of PartUsage targeting this PartDefinition in architecture-capture/4.0. Not a selected BOM quantity.",
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "sourceFile": "docs/annex/project-dossiers/inspection-drone-id01/sources/central-deck.py",
+      "currentGeometry": {
+        "parentArtifactId": "geometry-335e7a221bacd2b72b635ee02632af17fc711a594c6947db507581e5822950ed",
+        "parentFingerprint": "335e7a221bacd2b72b635ee02632af17fc711a594c6947db507581e5822950ed",
+        "parentOperation": "design.write-geometry@1",
+        "stepArtifactId": "cad-asset-335e7a221bacd2b72b635ee02632af17fc711a594c6947db507581e5822950ed-target-0-9213a54a7c3ce0a4141366c5ab1b2e9dbc0a2dbedc84f06bab013a22e65b9ce3",
+        "stepFingerprint": "9213a54a7c3ce0a4141366c5ab1b2e9dbc0a2dbedc84f06bab013a22e65b9ce3",
+        "changedAt": "2026-09-07T00:17:21.232Z",
+        "applicability": "current"
+      },
+      "historicalGeometry": [
+        {
+          "parentArtifactId": "geometry-4faa5c5b7acea9c2a2fb321d1b29c88a6bcf08280fbc9afa3f75254b7b3642ec",
+          "stepFingerprint": "d3d8305b5929c11da13d6cb8d01ab1b42cd998a47612e65348b429d569ad88d9",
+          "changedAt": "2026-09-06T18:12:57.147Z",
+          "applicability": "historical"
+        }
+      ],
+      "nameEvidence": "architecture-capture/4.0 partDefinitions.label"
+    },
+    {
+      "name": "RadialArm",
+      "partDefinitionElementId": "444df600-019b-45d5-ac36-617ff0a0f791",
+      "class": "printed-or-custom-candidate",
+      "nameEvidence": "architecture-capture/4.0 partDefinitions.label",
+      "occurrences": [
+        {
+          "elementId": "b19446b5-d5d5-4b9b-a215-d2840e21332e",
+          "kind": "PartUsage",
+          "label": "frontLeftArm",
+          "parentPartDefinitionElementId": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+          "parentLabel": "Airframe",
+          "targetId": "444df600-019b-45d5-ac36-617ff0a0f791",
+          "targetKind": "PartDefinition",
+          "targetLabel": "RadialArm",
+          "identitySource": "architecture-capture/4.0"
+        },
+        {
+          "elementId": "53a90253-4ac0-4ad4-9fad-2a45697b8654",
+          "kind": "PartUsage",
+          "label": "frontRightArm",
+          "parentPartDefinitionElementId": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+          "parentLabel": "Airframe",
+          "targetId": "444df600-019b-45d5-ac36-617ff0a0f791",
+          "targetKind": "PartDefinition",
+          "targetLabel": "RadialArm",
+          "identitySource": "architecture-capture/4.0"
+        },
+        {
+          "elementId": "a06fd9ac-494e-4669-914f-fe2c33f409c7",
+          "kind": "PartUsage",
+          "label": "rearLeftArm",
+          "parentPartDefinitionElementId": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+          "parentLabel": "Airframe",
+          "targetId": "444df600-019b-45d5-ac36-617ff0a0f791",
+          "targetKind": "PartDefinition",
+          "targetLabel": "RadialArm",
+          "identitySource": "architecture-capture/4.0"
+        },
+        {
+          "elementId": "1f4bbc1e-d53b-4728-b184-cdc44659c01b",
+          "kind": "PartUsage",
+          "label": "rearRightArm",
+          "parentPartDefinitionElementId": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+          "parentLabel": "Airframe",
+          "targetId": "444df600-019b-45d5-ac36-617ff0a0f791",
+          "targetKind": "PartDefinition",
+          "targetLabel": "RadialArm",
+          "identitySource": "architecture-capture/4.0"
+        }
+      ],
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "architectureUsageCount": 4,
+        "architectureUsageCountScope": "Count of PartUsage targeting this PartDefinition in architecture-capture/4.0. Not a selected BOM quantity.",
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "4",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "sourceFile": "docs/annex/project-dossiers/inspection-drone-id01/sources/radial-arm.py",
+      "currentGeometry": {
+        "parentArtifactId": "geometry-96fba39719f529232145535fd549ff4b0d37dfca38e62defe7a386b071f43aea",
+        "parentFingerprint": "96fba39719f529232145535fd549ff4b0d37dfca38e62defe7a386b071f43aea",
+        "parentOperation": "design.write-geometry@1",
+        "stepArtifactId": "cad-asset-96fba39719f529232145535fd549ff4b0d37dfca38e62defe7a386b071f43aea-target-0-4351574f57e1b8204163be8b672abd7836d1e7f2bbb4376e61d455892f24498b",
+        "stepFingerprint": "4351574f57e1b8204163be8b672abd7836d1e7f2bbb4376e61d455892f24498b",
+        "changedAt": "2026-09-06T18:13:23.431Z",
+        "applicability": "current",
+        "note": "No later RadialArm STEP at Thread r119."
+      }
+    },
+    {
+      "name": "BatteryTray",
+      "partDefinitionElementId": "3c238d78-df6c-4c8c-9fa8-4583749ec8c4",
+      "class": "printed-or-custom-candidate",
+      "occurrences": [
+        {
+          "elementId": "55f2d0b5-a763-4a18-80f3-cea63c2328f7",
+          "kind": "PartUsage",
+          "label": "batteryTray",
+          "parentPartDefinitionElementId": "8a55a273-884c-486d-b336-00662d5c4107",
+          "parentLabel": "ElectricalPower",
+          "targetId": "3c238d78-df6c-4c8c-9fa8-4583749ec8c4",
+          "targetKind": "PartDefinition",
+          "targetLabel": "BatteryTray",
+          "identitySource": "architecture-capture/4.0"
+        }
+      ],
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "architectureUsageCount": 1,
+        "architectureUsageCountScope": "Count of PartUsage targeting this PartDefinition in architecture-capture/4.0. Not a selected BOM quantity.",
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "sourceFile": "docs/annex/project-dossiers/inspection-drone-id01/sources/battery-tray.py",
+      "currentGeometry": {
+        "parentArtifactId": "geometry-c9c34283fc5a3afd83c3606f431352e11f9394fd207eaf114a982900cc6f33fa",
+        "parentFingerprint": "c9c34283fc5a3afd83c3606f431352e11f9394fd207eaf114a982900cc6f33fa",
+        "parentOperation": "design.write-geometry@1",
+        "stepArtifactId": "cad-asset-c9c34283fc5a3afd83c3606f431352e11f9394fd207eaf114a982900cc6f33fa-target-0-bc69476d7a459c975bb95ce1550903ff837a52f0f9c81361dc87c8be51c7d494",
+        "stepFingerprint": "bc69476d7a459c975bb95ce1550903ff837a52f0f9c81361dc87c8be51c7d494",
+        "changedAt": "2026-09-06T18:13:32.408Z",
+        "applicability": "current"
+      },
+      "nameEvidence": "architecture-capture/4.0 partDefinitions.label"
+    },
+    {
+      "name": "BatteryReservedVolume",
+      "partDefinitionElementId": "fbbfcc87-d879-4235-a121-0226b21c6a81",
+      "class": "generic-unselected-placeholder",
+      "classNote": "Keep-in solid. No battery SKU selected. Not a purchased cell.",
+      "occurrences": [
+        {
+          "elementId": "12676fdd-ce42-41ba-b30c-f24165a9547d",
+          "kind": "PartUsage",
+          "label": "batteryReservedVolume",
+          "parentPartDefinitionElementId": "8a55a273-884c-486d-b336-00662d5c4107",
+          "parentLabel": "ElectricalPower",
+          "targetId": "fbbfcc87-d879-4235-a121-0226b21c6a81",
+          "targetKind": "PartDefinition",
+          "targetLabel": "BatteryReservedVolume",
+          "identitySource": "architecture-capture/4.0"
+        }
+      ],
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "architectureUsageCount": 1,
+        "architectureUsageCountScope": "Count of PartUsage targeting this PartDefinition in architecture-capture/4.0. Not a selected BOM quantity.",
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "sourceFile": "docs/annex/project-dossiers/inspection-drone-id01/sources/battery-reserved-volume.py",
+      "currentGeometry": {
+        "parentArtifactId": "geometry-67b5990d9827f3d3c34b60e2462b8bd67eb722c58927cb88384d25a8abf408c9",
+        "parentFingerprint": "67b5990d9827f3d3c34b60e2462b8bd67eb722c58927cb88384d25a8abf408c9",
+        "parentOperation": "design.write-geometry@1",
+        "stepArtifactId": "cad-asset-67b5990d9827f3d3c34b60e2462b8bd67eb722c58927cb88384d25a8abf408c9-target-0-ab023669d0b044bbc7b29675cc244c8d35e09bc26c6030aa3f5c3025b8501662",
+        "stepFingerprint": "ab023669d0b044bbc7b29675cc244c8d35e09bc26c6030aa3f5c3025b8501662",
+        "changedAt": "2026-09-06T18:13:41.239Z",
+        "applicability": "current"
+      },
+      "nameEvidence": "architecture-capture/4.0 partDefinitions.label"
+    },
+    {
+      "name": "AvionicsCarrier",
+      "partDefinitionElementId": "6e2822d9-0894-42c5-a9e4-ad4d96f2294f",
+      "class": "printed-or-custom-candidate",
+      "occurrences": [
+        {
+          "elementId": "673bebc3-48f5-4cfe-a2eb-e849ff9b50a3",
+          "kind": "PartUsage",
+          "label": "avionicsCarrier",
+          "parentPartDefinitionElementId": "9cac605e-5d64-4451-9421-7852a34a4223",
+          "parentLabel": "FlightAvionics",
+          "targetId": "6e2822d9-0894-42c5-a9e4-ad4d96f2294f",
+          "targetKind": "PartDefinition",
+          "targetLabel": "AvionicsCarrier",
+          "identitySource": "architecture-capture/4.0"
+        }
+      ],
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "architectureUsageCount": 1,
+        "architectureUsageCountScope": "Count of PartUsage targeting this PartDefinition in architecture-capture/4.0. Not a selected BOM quantity.",
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "sourceFile": "docs/annex/project-dossiers/inspection-drone-id01/sources/avionics-carrier.py",
+      "currentGeometry": {
+        "parentArtifactId": "geometry-a5beef7c9bec47ad36569a651d21436275fe4ef499136d24a2b276e793dcf950",
+        "parentFingerprint": "a5beef7c9bec47ad36569a651d21436275fe4ef499136d24a2b276e793dcf950",
+        "parentOperation": "design.write-geometry@1",
+        "stepArtifactId": "cad-asset-a5beef7c9bec47ad36569a651d21436275fe4ef499136d24a2b276e793dcf950-target-0-e26bafa27d2379a3141f5c06f754ad0b1b7f9513ab61cf082abbbbbf269abef5",
+        "stepFingerprint": "e26bafa27d2379a3141f5c06f754ad0b1b7f9513ab61cf082abbbbbf269abef5",
+        "changedAt": "2026-09-06T18:13:50.729Z",
+        "applicability": "current"
+      },
+      "nameEvidence": "architecture-capture/4.0 partDefinitions.label"
+    },
+    {
+      "name": "LandingSkid",
+      "partDefinitionElementId": "bde8e324-0c63-41b6-a98d-65cd942b7ce6",
+      "class": "printed-or-custom-candidate",
+      "occurrences": [
+        {
+          "elementId": "ed375891-8966-4a1d-acc0-d6a09b33275f",
+          "kind": "PartUsage",
+          "label": "leftLandingSkid",
+          "parentPartDefinitionElementId": "1f63469d-9b5b-4693-8aef-42066e3bdf5d",
+          "parentLabel": "LandingGear",
+          "targetId": "bde8e324-0c63-41b6-a98d-65cd942b7ce6",
+          "targetKind": "PartDefinition",
+          "targetLabel": "LandingSkid",
+          "identitySource": "architecture-capture/4.0"
+        },
+        {
+          "elementId": "56b813c6-9c9c-44ff-90b9-0b465fc2c8e0",
+          "kind": "PartUsage",
+          "label": "rightLandingSkid",
+          "parentPartDefinitionElementId": "1f63469d-9b5b-4693-8aef-42066e3bdf5d",
+          "parentLabel": "LandingGear",
+          "targetId": "bde8e324-0c63-41b6-a98d-65cd942b7ce6",
+          "targetKind": "PartDefinition",
+          "targetLabel": "LandingSkid",
+          "identitySource": "architecture-capture/4.0"
+        }
+      ],
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "architectureUsageCount": 2,
+        "architectureUsageCountScope": "Count of PartUsage targeting this PartDefinition in architecture-capture/4.0. Not a selected BOM quantity.",
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "2",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "sourceFile": "docs/annex/project-dossiers/inspection-drone-id01/sources/landing-skid.py",
+      "currentGeometry": {
+        "parentArtifactId": "geometry-0f248d7f9d02bca4a44453f78609fafb0e87c941f5fb27eb1cca59c43280c027",
+        "parentFingerprint": "0f248d7f9d02bca4a44453f78609fafb0e87c941f5fb27eb1cca59c43280c027",
+        "parentOperation": "design.write-geometry@1",
+        "stepArtifactId": "cad-asset-0f248d7f9d02bca4a44453f78609fafb0e87c941f5fb27eb1cca59c43280c027-target-0-4d9968a0b397eb1f76fd64377c833862d012b475c2b2345ffd6307cd189bb5ae",
+        "stepFingerprint": "4d9968a0b397eb1f76fd64377c833862d012b475c2b2345ffd6307cd189bb5ae",
+        "changedAt": "2026-09-06T18:14:18.583Z",
+        "applicability": "current"
+      },
+      "nameEvidence": "architecture-capture/4.0 partDefinitions.label"
+    },
+    {
+      "name": "AutopilotEnvelope",
+      "partDefinitionElementId": "07ad2fb6-3205-4bff-9f7f-7e041d0c58a9",
+      "class": "cots-envelope",
+      "classNote": "Coarse envelope of Holybro Pixhawk 6C Mini Model A Current. Not a selected purchase. Mounting holes/connectors unresolved.",
+      "occurrences": [
+        {
+          "elementId": "8c24a053-7dab-4de6-92c7-005498a989f4",
+          "kind": "PartUsage",
+          "label": "autopilot",
+          "parentPartDefinitionElementId": "9cac605e-5d64-4451-9421-7852a34a4223",
+          "parentLabel": "FlightAvionics",
+          "targetId": "07ad2fb6-3205-4bff-9f7f-7e041d0c58a9",
+          "targetKind": "PartDefinition",
+          "targetLabel": "AutopilotEnvelope",
+          "identitySource": "architecture-capture/4.0"
+        }
+      ],
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "architectureUsageCount": 1,
+        "architectureUsageCountScope": "Count of PartUsage targeting this PartDefinition in architecture-capture/4.0. Not a selected BOM quantity.",
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "identityCompatibility": "envelope-dimensions-sourced; installation-compatibility-unresolved",
+      "sourceFile": "docs/annex/project-dossiers/inspection-drone-id01/sources/autopilot-envelope.py",
+      "currentGeometry": {
+        "parentArtifactId": "geometry-77532a965259a78723d0d1f208bdccf5b606240bbdbef9f6cd0e0ee205018fba",
+        "parentFingerprint": "77532a965259a78723d0d1f208bdccf5b606240bbdbef9f6cd0e0ee205018fba",
+        "parentOperation": "design.write-geometry@1",
+        "stepArtifactId": "cad-asset-77532a965259a78723d0d1f208bdccf5b606240bbdbef9f6cd0e0ee205018fba-target-0-69705f29327b03ab738d291664f354f405844d5ce303b58056623db7bc4ced2d",
+        "stepFingerprint": "69705f29327b03ab738d291664f354f405844d5ce303b58056623db7bc4ced2d",
+        "changedAt": "2026-09-06T18:14:28.398Z",
+        "applicability": "current"
+      },
+      "nameEvidence": "architecture-capture/4.0 partDefinitions.label"
+    },
+    {
+      "name": "CompanionComputerEnvelope",
+      "partDefinitionElementId": "e19064f9-3d0c-4052-b025-53468ab864cb",
+      "class": "cots-envelope",
+      "classNote": "65x30 mm Raspberry Pi Zero 2 W footprint plus 10 mm vertical reserve that is an Astra packaging hypothesis, not manufacturer height.",
+      "occurrences": [
+        {
+          "elementId": "582266cb-1186-4e5d-9ff0-9342a007f167",
+          "kind": "PartUsage",
+          "label": "companionComputer",
+          "parentPartDefinitionElementId": "9cac605e-5d64-4451-9421-7852a34a4223",
+          "parentLabel": "FlightAvionics",
+          "targetId": "e19064f9-3d0c-4052-b025-53468ab864cb",
+          "targetKind": "PartDefinition",
+          "targetLabel": "CompanionComputerEnvelope",
+          "identitySource": "architecture-capture/4.0"
+        }
+      ],
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "architectureUsageCount": 1,
+        "architectureUsageCountScope": "Count of PartUsage targeting this PartDefinition in architecture-capture/4.0. Not a selected BOM quantity.",
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "identityCompatibility": "footprint-sourced; assembled-height-and-headers-unresolved",
+      "sourceFile": "docs/annex/project-dossiers/inspection-drone-id01/sources/companion-computer-envelope.py",
+      "currentGeometry": {
+        "parentArtifactId": "geometry-071e1d6db9de1adf95c6fe0a2754fa13f257ca91ac128a4d7497550ab1644e07",
+        "parentFingerprint": "071e1d6db9de1adf95c6fe0a2754fa13f257ca91ac128a4d7497550ab1644e07",
+        "parentOperation": "design.write-geometry@1",
+        "stepArtifactId": "cad-asset-071e1d6db9de1adf95c6fe0a2754fa13f257ca91ac128a4d7497550ab1644e07-target-0-a604e5e8990a1e356705843d0c51832e364535d30061f49bf4ea589ef16d6e91",
+        "stepFingerprint": "a604e5e8990a1e356705843d0c51832e364535d30061f49bf4ea589ef16d6e91",
+        "changedAt": "2026-09-06T18:14:38.214Z",
+        "applicability": "current"
+      },
+      "nameEvidence": "architecture-capture/4.0 partDefinitions.label"
+    },
+    {
+      "name": "MotorEnvelope",
+      "partDefinitionElementId": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+      "class": "cots-envelope",
+      "classNote": "Cylinder from T-HOBBY F1404 published 17.9 x 16.6 mm. Mount topology, shaft, propeller and ESC unresolved. Not a selected motor.",
+      "occurrences": [
+        {
+          "elementId": "a77d99bc-14a6-48bb-bdbf-33e6b001e39a",
+          "kind": "PartUsage",
+          "label": "frontLeftMotor",
+          "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+          "parentLabel": "PropulsionSystem",
+          "targetId": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+          "targetKind": "PartDefinition",
+          "targetLabel": "MotorEnvelope",
+          "identitySource": "architecture-capture/4.0"
+        },
+        {
+          "elementId": "2af4870f-8d50-4c48-8c2e-6e3ef1a88209",
+          "kind": "PartUsage",
+          "label": "frontRightMotor",
+          "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+          "parentLabel": "PropulsionSystem",
+          "targetId": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+          "targetKind": "PartDefinition",
+          "targetLabel": "MotorEnvelope",
+          "identitySource": "architecture-capture/4.0"
+        },
+        {
+          "elementId": "5155b333-d1b7-43c9-8b38-42fd2c0be55d",
+          "kind": "PartUsage",
+          "label": "rearLeftMotor",
+          "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+          "parentLabel": "PropulsionSystem",
+          "targetId": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+          "targetKind": "PartDefinition",
+          "targetLabel": "MotorEnvelope",
+          "identitySource": "architecture-capture/4.0"
+        },
+        {
+          "elementId": "9276f935-52cd-4699-bcce-c2cc3bc54500",
+          "kind": "PartUsage",
+          "label": "rearRightMotor",
+          "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+          "parentLabel": "PropulsionSystem",
+          "targetId": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+          "targetKind": "PartDefinition",
+          "targetLabel": "MotorEnvelope",
+          "identitySource": "architecture-capture/4.0"
+        }
+      ],
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "architectureUsageCount": 4,
+        "architectureUsageCountScope": "Count of PartUsage targeting this PartDefinition in architecture-capture/4.0. Not a selected BOM quantity.",
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "4",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "identityCompatibility": "overall-size-sourced; mount-and-propeller-compatibility-unresolved",
+      "sourceFile": "docs/annex/project-dossiers/inspection-drone-id01/sources/motor-envelope.py",
+      "currentGeometry": {
+        "parentArtifactId": "geometry-b30a9ea5f461ade799dbc39a673efe5851b04b4e015e48df7ff6a812b8a0b724",
+        "parentFingerprint": "b30a9ea5f461ade799dbc39a673efe5851b04b4e015e48df7ff6a812b8a0b724",
+        "parentOperation": "design.write-geometry@1",
+        "stepArtifactId": "cad-asset-b30a9ea5f461ade799dbc39a673efe5851b04b4e015e48df7ff6a812b8a0b724-target-0-b89468cba3ee04b1454914be424bd779f3241ea7b4883a7bae6fae8c2f29dbd5",
+        "stepFingerprint": "b89468cba3ee04b1454914be424bd779f3241ea7b4883a7bae6fae8c2f29dbd5",
+        "changedAt": "2026-09-06T18:15:04.058Z",
+        "applicability": "current"
+      },
+      "nameEvidence": "architecture-capture/4.0 partDefinitions.label"
+    },
+    {
+      "name": "StaticPropellerEnvelope",
+      "partDefinitionElementId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+      "class": "generic-unselected-placeholder",
+      "classNote": "Original provisional 3-inch-class planform proxy. Not a commercial propeller CAD. GF3016 appears only as a manufacturer bench row, not a selected SKU.",
+      "occurrences": [
+        {
+          "elementId": "698c6a23-e848-4782-995e-fedfecbd15aa",
+          "kind": "PartUsage",
+          "label": "frontLeftPropeller",
+          "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+          "parentLabel": "PropulsionSystem",
+          "targetId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+          "targetKind": "PartDefinition",
+          "targetLabel": "StaticPropellerEnvelope",
+          "identitySource": "architecture-capture/4.0"
+        },
+        {
+          "elementId": "d253e7d0-2a2b-4c7d-9670-6b72f030bad8",
+          "kind": "PartUsage",
+          "label": "frontRightPropeller",
+          "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+          "parentLabel": "PropulsionSystem",
+          "targetId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+          "targetKind": "PartDefinition",
+          "targetLabel": "StaticPropellerEnvelope",
+          "identitySource": "architecture-capture/4.0"
+        },
+        {
+          "elementId": "22bf7d13-7332-4a44-acae-6a2356ffa6dc",
+          "kind": "PartUsage",
+          "label": "rearLeftPropeller",
+          "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+          "parentLabel": "PropulsionSystem",
+          "targetId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+          "targetKind": "PartDefinition",
+          "targetLabel": "StaticPropellerEnvelope",
+          "identitySource": "architecture-capture/4.0"
+        },
+        {
+          "elementId": "117a5eb0-84e7-4d83-a1cb-e05d53860158",
+          "kind": "PartUsage",
+          "label": "rearRightPropeller",
+          "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+          "parentLabel": "PropulsionSystem",
+          "targetId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+          "targetKind": "PartDefinition",
+          "targetLabel": "StaticPropellerEnvelope",
+          "identitySource": "architecture-capture/4.0"
+        }
+      ],
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "architectureUsageCount": 4,
+        "architectureUsageCountScope": "Count of PartUsage targeting this PartDefinition in architecture-capture/4.0. Not a selected BOM quantity.",
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "4",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "identityCompatibility": "no-commercial-identity",
+      "sourceFile": "docs/annex/project-dossiers/inspection-drone-id01/sources/static-propeller-envelope.py",
+      "currentGeometry": {
+        "parentArtifactId": "geometry-136b720a5b1c02d3f9c176bdea39bd3e6535aa1bb58ca3033d6f527b322318ca",
+        "parentFingerprint": "136b720a5b1c02d3f9c176bdea39bd3e6535aa1bb58ca3033d6f527b322318ca",
+        "parentOperation": "design.write-geometry@1",
+        "stepArtifactId": "cad-asset-136b720a5b1c02d3f9c176bdea39bd3e6535aa1bb58ca3033d6f527b322318ca-target-0-136ccd019e8016de450f214f2ed2531253ae2d4aaf5659eccf41f69a4a146d47",
+        "stepFingerprint": "136ccd019e8016de450f214f2ed2531253ae2d4aaf5659eccf41f69a4a146d47",
+        "changedAt": "2026-09-06T18:15:21.481Z",
+        "applicability": "current"
+      },
+      "nameEvidence": "architecture-capture/4.0 partDefinitions.label"
+    },
+    {
+      "name": "CameraBoardEnvelope",
+      "partDefinitionElementId": "e8531caf-bb17-41cc-8297-e271ed5a5bea",
+      "class": "cots-envelope",
+      "classNote": "Raspberry Pi Camera Module 3 Standard full package 25 x 24 x 11.5 mm. Not PCB, cable, or selected purchase. Zero camera cable required per manufacturer; cable SKU unresolved.",
+      "occurrences": [
+        {
+          "elementId": "730c5d50-f4dd-4757-a1d9-cb532dc3afac",
+          "kind": "PartUsage",
+          "label": "cameraBoard",
+          "parentPartDefinitionElementId": "ed1a741f-4c24-4166-8e90-745c9211d6cf",
+          "parentLabel": "CameraPayload",
+          "targetId": "e8531caf-bb17-41cc-8297-e271ed5a5bea",
+          "targetKind": "PartDefinition",
+          "targetLabel": "CameraBoardEnvelope",
+          "identitySource": "architecture-capture/4.0"
+        }
+      ],
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "architectureUsageCount": 1,
+        "architectureUsageCountScope": "Count of PartUsage targeting this PartDefinition in architecture-capture/4.0. Not a selected BOM quantity.",
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "identityCompatibility": "package-envelope-sourced; connector-cable-and-image-quality-unresolved",
+      "sourceFile": "docs/annex/project-dossiers/inspection-drone-id01/sources/camera-board-envelope.py",
+      "currentGeometry": {
+        "parentArtifactId": "geometry-b59023102670e06b4e33e534d05008c0fe2440ae91dafbaa9c256c92a4ebe3e8",
+        "parentFingerprint": "b59023102670e06b4e33e534d05008c0fe2440ae91dafbaa9c256c92a4ebe3e8",
+        "parentOperation": "design.write-geometry@1",
+        "stepArtifactId": "cad-asset-b59023102670e06b4e33e534d05008c0fe2440ae91dafbaa9c256c92a4ebe3e8-target-0-2572f73de4a8607fbd963642778019cfa742d6e06d9dd01a37294c0d3e7d8b5f",
+        "stepFingerprint": "2572f73de4a8607fbd963642778019cfa742d6e06d9dd01a37294c0d3e7d8b5f",
+        "changedAt": "2026-09-11T06:18:38.035Z",
+        "applicability": "current"
+      },
+      "historicalGeometry": [
+        {
+          "parentArtifactId": "geometry-92a99f4872726b3d93c60d14568cf5f93f6de4dd139fc349c02430abe2b0d3c1",
+          "stepFingerprint": "283f0e918ca66cd7b35c1ec4aa464f549d0974629290f2112d06e828704c26a0",
+          "changedAt": "2026-09-06T18:15:12.738Z",
+          "applicability": "historical"
+        }
+      ],
+      "nameEvidence": "architecture-capture/4.0 partDefinitions.label"
+    },
+    {
+      "name": "CameraMountBracket",
+      "partDefinitionElementId": "e9f1d48b-666d-48ff-af6c-abf74646b68e",
+      "class": "printed-or-custom-candidate",
+      "nameEvidence": "architecture-capture/4.0 partDefinitions.label",
+      "occurrences": [
+        {
+          "elementId": "86d80ea4-efeb-4cc5-a93a-bd496761566c",
+          "kind": "PartUsage",
+          "label": "cameraMountBracket",
+          "parentPartDefinitionElementId": "ed1a741f-4c24-4166-8e90-745c9211d6cf",
+          "parentLabel": "CameraPayload",
+          "targetId": "e9f1d48b-666d-48ff-af6c-abf74646b68e",
+          "targetKind": "PartDefinition",
+          "targetLabel": "CameraMountBracket",
+          "identitySource": "architecture-capture/4.0"
+        }
+      ],
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "architectureUsageCount": 1,
+        "architectureUsageCountScope": "Count of PartUsage targeting this PartDefinition in architecture-capture/4.0. Not a selected BOM quantity.",
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "sourceFile": "docs/annex/project-dossiers/inspection-drone-id01/sources/camera-mount-bracket.py",
+      "currentGeometry": {
+        "parentArtifactId": "geometry-ae70dd5928700f06d2434f410c15890ca3e1b007b5c781785a27a29d85781a01",
+        "parentFingerprint": "ae70dd5928700f06d2434f410c15890ca3e1b007b5c781785a27a29d85781a01",
+        "parentOperation": "design.write-geometry@1",
+        "stepArtifactId": "cad-asset-ae70dd5928700f06d2434f410c15890ca3e1b007b5c781785a27a29d85781a01-target-0-b821e5598b75449636eb57d0ea7db48ea560260ce56a6872ebeaec0f7691d201",
+        "stepFingerprint": "b821e5598b75449636eb57d0ea7db48ea560260ce56a6872ebeaec0f7691d201",
+        "changedAt": "2026-09-06T16:28:47.748Z",
+        "applicability": "current"
+      }
+    }
+  ],
+  "unmodeledSlots": [
+    {
+      "slot": "battery-pack",
+      "status": "unresolved",
+      "note": "Only BatteryReservedVolume exists. Pre-selection cards are not architecture parts."
+    },
+    {
+      "slot": "esc",
+      "status": "unresolved",
+      "note": "No PartDefinition. Pre-selection ESC cards are not selected."
+    },
+    {
+      "slot": "power-module-pdb",
+      "status": "unresolved",
+      "note": "Holybro PM02/PM06 are documentary leads, not ID01 parts."
+    },
+    {
+      "slot": "propeller-commercial",
+      "status": "unresolved",
+      "note": "StaticPropellerEnvelope is a proxy, not GF3016 or T3140."
+    },
+    {
+      "slot": "rc-command-link",
+      "status": "unresolved"
+    },
+    {
+      "slot": "fasteners-harness-guards",
+      "status": "unresolved"
+    }
+  ],
+  "applicableConfigurationGeometry": {
+    "note": "Preparatory mapping of Thread r119 current InspectionDrone module. Not buy-configuration/1.0. Snapshot projection URI is /api/thread/assets/...; the thread-artifact:// form is the shape expected later by validateBuyConfiguration.",
+    "parentOperation": "design.write-geometry@1",
+    "parentArtifactId": "geometry-2c93a4b804641c2ebfc99c78adef30954c400fd41de85591b79d63f71c7d2358",
+    "parentFingerprint": "2c93a4b804641c2ebfc99c78adef30954c400fd41de85591b79d63f71c7d2358",
+    "parentRunId": "run:id01-queue-module-inspection-drone-r104-20260911",
+    "parentChangedAt": "2026-09-11T06:32:58.838Z",
+    "stepArtifactId": "cad-asset-2c93a4b804641c2ebfc99c78adef30954c400fd41de85591b79d63f71c7d2358-module-step-f62028c3f1df56a50d2b551edb4d140f547710672dc3a99b1f752b9be33c57b8",
+    "stepFingerprint": "f62028c3f1df56a50d2b551edb4d140f547710672dc3a99b1f752b9be33c57b8",
+    "stepProducer": "geometry.module.immediate-compound@1.0",
+    "snapshotProjectionUri": "/api/thread/assets/f62028c3f1df56a50d2b551edb4d140f547710672dc3a99b1f752b9be33c57b8.step",
+    "preparatoryThreadArtifactUri": "thread-artifact://inspection-drone-id01/cad-asset-2c93a4b804641c2ebfc99c78adef30954c400fd41de85591b79d63f71c7d2358-module-step-f62028c3f1df56a50d2b551edb4d140f547710672dc3a99b1f752b9be33c57b8",
+    "mediaType": "model/step",
+    "architectureInput": "architecture-1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9",
+    "partDefinitionsInput": "part-definitions-879ac8a5d892ded7ffe325fcde36d81ce41b4655dbfaf9b472140c5643ebae9c",
+    "historicalInspectionDroneSteps": [
+      {
+        "applicability": "historical",
+        "stepFingerprint": "25355392f1f4bea282e523802a4072f6b024d526fa0f9bb520c0d5a61ed6fed1",
+        "changedAt": "2026-09-06T19:27:10.712Z"
+      },
+      {
+        "applicability": "historical",
+        "stepFingerprint": "a59064588e50bef545ec47a83f847cb549321ffd26d9691863d341c88d0fcc37",
+        "changedAt": "2026-09-07T00:30:58.029Z"
+      }
+    ]
+  },
+  "placementSources": {
+    "schemaVersion": "cad-immediate-placement-source/1.0",
+    "files": [
+      {
+        "path": "docs/annex/project-dossiers/inspection-drone-id01/sources/root-placements.json",
+        "sha256": "92610ea558a523d5ca64b83509879db737880c4e6c2674a1158e547a3cb6b0fc",
+        "bytes": 2152
+      },
+      {
+        "path": "docs/annex/project-dossiers/inspection-drone-id01/sources/airframe-placements.json",
+        "sha256": "71c2cf6f977f380056dec7a1aed051429ccc79dd9b9a2e14d440ca69bbd7df26",
+        "bytes": 1821
+      },
+      {
+        "path": "docs/annex/project-dossiers/inspection-drone-id01/sources/propulsion-placements.json",
+        "sha256": "5e22f5c3489d03479293b822a65313138427dcf4a0d730c62f6c839415b82927",
+        "bytes": 2836
+      },
+      {
+        "path": "docs/annex/project-dossiers/inspection-drone-id01/sources/avionics-placements.json",
+        "sha256": "1ae2b199b7d3cfc7dd48af840d8aab45024df6bc755f256e9b8b5898822e3b08",
+        "bytes": 1157
+      },
+      {
+        "path": "docs/annex/project-dossiers/inspection-drone-id01/sources/electricalPower-placements.json",
+        "sha256": "e91b30b90f0b2653d0fd98854f1e4aa3254cc68304a193dacf39b6f89ac40c93",
+        "bytes": 826
+      },
+      {
+        "path": "docs/annex/project-dossiers/inspection-drone-id01/sources/landingGear-placements.json",
+        "sha256": "d2505d01704d0e8e032df38d7f8130cb0d8da541bbda495958ee4e6fbc8e038b",
+        "bytes": 831
+      },
+      {
+        "path": "docs/annex/project-dossiers/inspection-drone-id01/sources/cameraPayload-placements.json",
+        "sha256": "4207034a80cd67df5797ceed8a7d2316416e9e49de0451fb5bed69edebe0fe97",
+        "bytes": 829
+      }
+    ]
+  },
+  "counts": {
+    "leafPartDefinitions": 12,
+    "modulePartDefinitions": 6,
+    "rootPartDefinitions": 1,
+    "placementOccurrencesLeaf": 22,
+    "placementOccurrencesModules": 6,
+    "stepArtifactsThreadR119": 25,
+    "designWriteGeometryCadModels": 25,
+    "architectureArtifacts": 5,
+    "partDefinitionsArtifacts": 3,
+    "architectureCapturePartDefinitions": 19,
+    "captureBackedLeafUsages": 22
+  },
+  "finalizedAtUtc": "2026-09-13T07:33:58.000Z",
+  "captureBackedProductStructure": {
+    "schemaVersion": "architecture-capture/4.0",
+    "semanticRoot": {
+      "id": "f58ee456-a69f-4835-a6f4-e15503c528a1",
+      "kind": "PartDefinition",
+      "label": "InspectionDrone"
+    },
+    "scopeRoot": {
+      "id": "b9c84fbe-c4ea-4118-9808-8b650e6074b2",
+      "kind": "Package",
+      "label": "ID01Architecture"
+    },
+    "partDefinitionCount": 19,
+    "partDefinitions": [
+      {
+        "id": "f58ee456-a69f-4835-a6f4-e15503c528a1",
+        "kind": "PartDefinition",
+        "label": "InspectionDrone",
+        "usages": [
+          {
+            "id": "682ab9c1-a59f-4419-bced-db434a9e99e9",
+            "kind": "PartUsage",
+            "label": "airframe",
+            "parentPartDefinitionElementId": "f58ee456-a69f-4835-a6f4-e15503c528a1",
+            "parentLabel": "InspectionDrone",
+            "targetId": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+            "targetKind": "PartDefinition",
+            "targetLabel": "Airframe"
+          },
+          {
+            "id": "40728220-ecd8-46d5-85d2-bd24259dedf4",
+            "kind": "PartUsage",
+            "label": "propulsion",
+            "parentPartDefinitionElementId": "f58ee456-a69f-4835-a6f4-e15503c528a1",
+            "parentLabel": "InspectionDrone",
+            "targetId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+            "targetKind": "PartDefinition",
+            "targetLabel": "PropulsionSystem"
+          },
+          {
+            "id": "aada756e-3ba9-4089-ab6c-c00252007218",
+            "kind": "PartUsage",
+            "label": "cameraPayload",
+            "parentPartDefinitionElementId": "f58ee456-a69f-4835-a6f4-e15503c528a1",
+            "parentLabel": "InspectionDrone",
+            "targetId": "ed1a741f-4c24-4166-8e90-745c9211d6cf",
+            "targetKind": "PartDefinition",
+            "targetLabel": "CameraPayload"
+          },
+          {
+            "id": "1a748d4f-733d-475a-b8ab-919fd5fe8ea1",
+            "kind": "PartUsage",
+            "label": "electricalPower",
+            "parentPartDefinitionElementId": "f58ee456-a69f-4835-a6f4-e15503c528a1",
+            "parentLabel": "InspectionDrone",
+            "targetId": "8a55a273-884c-486d-b336-00662d5c4107",
+            "targetKind": "PartDefinition",
+            "targetLabel": "ElectricalPower"
+          },
+          {
+            "id": "5a905cf3-43e2-4c2d-b9aa-277b82ce3005",
+            "kind": "PartUsage",
+            "label": "avionics",
+            "parentPartDefinitionElementId": "f58ee456-a69f-4835-a6f4-e15503c528a1",
+            "parentLabel": "InspectionDrone",
+            "targetId": "9cac605e-5d64-4451-9421-7852a34a4223",
+            "targetKind": "PartDefinition",
+            "targetLabel": "FlightAvionics"
+          },
+          {
+            "id": "78e6c567-3d38-4e35-a3f8-40d8d23bd883",
+            "kind": "PartUsage",
+            "label": "landingGear",
+            "parentPartDefinitionElementId": "f58ee456-a69f-4835-a6f4-e15503c528a1",
+            "parentLabel": "InspectionDrone",
+            "targetId": "1f63469d-9b5b-4693-8aef-42066e3bdf5d",
+            "targetKind": "PartDefinition",
+            "targetLabel": "LandingGear"
+          }
+        ]
+      },
+      {
+        "id": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+        "kind": "PartDefinition",
+        "label": "Airframe",
+        "usages": [
+          {
+            "id": "3ab9e02f-8fdd-44d9-9241-650f4ec8439c",
+            "kind": "PartUsage",
+            "label": "centralDeck",
+            "parentPartDefinitionElementId": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+            "parentLabel": "Airframe",
+            "targetId": "3569666d-a105-47b5-87ac-c42c7bcdaa0a",
+            "targetKind": "PartDefinition",
+            "targetLabel": "CentralDeck"
+          },
+          {
+            "id": "b19446b5-d5d5-4b9b-a215-d2840e21332e",
+            "kind": "PartUsage",
+            "label": "frontLeftArm",
+            "parentPartDefinitionElementId": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+            "parentLabel": "Airframe",
+            "targetId": "444df600-019b-45d5-ac36-617ff0a0f791",
+            "targetKind": "PartDefinition",
+            "targetLabel": "RadialArm"
+          },
+          {
+            "id": "53a90253-4ac0-4ad4-9fad-2a45697b8654",
+            "kind": "PartUsage",
+            "label": "frontRightArm",
+            "parentPartDefinitionElementId": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+            "parentLabel": "Airframe",
+            "targetId": "444df600-019b-45d5-ac36-617ff0a0f791",
+            "targetKind": "PartDefinition",
+            "targetLabel": "RadialArm"
+          },
+          {
+            "id": "a06fd9ac-494e-4669-914f-fe2c33f409c7",
+            "kind": "PartUsage",
+            "label": "rearLeftArm",
+            "parentPartDefinitionElementId": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+            "parentLabel": "Airframe",
+            "targetId": "444df600-019b-45d5-ac36-617ff0a0f791",
+            "targetKind": "PartDefinition",
+            "targetLabel": "RadialArm"
+          },
+          {
+            "id": "1f4bbc1e-d53b-4728-b184-cdc44659c01b",
+            "kind": "PartUsage",
+            "label": "rearRightArm",
+            "parentPartDefinitionElementId": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d",
+            "parentLabel": "Airframe",
+            "targetId": "444df600-019b-45d5-ac36-617ff0a0f791",
+            "targetKind": "PartDefinition",
+            "targetLabel": "RadialArm"
+          }
+        ]
+      },
+      {
+        "id": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+        "kind": "PartDefinition",
+        "label": "PropulsionSystem",
+        "usages": [
+          {
+            "id": "a77d99bc-14a6-48bb-bdbf-33e6b001e39a",
+            "kind": "PartUsage",
+            "label": "frontLeftMotor",
+            "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+            "parentLabel": "PropulsionSystem",
+            "targetId": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+            "targetKind": "PartDefinition",
+            "targetLabel": "MotorEnvelope"
+          },
+          {
+            "id": "2af4870f-8d50-4c48-8c2e-6e3ef1a88209",
+            "kind": "PartUsage",
+            "label": "frontRightMotor",
+            "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+            "parentLabel": "PropulsionSystem",
+            "targetId": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+            "targetKind": "PartDefinition",
+            "targetLabel": "MotorEnvelope"
+          },
+          {
+            "id": "5155b333-d1b7-43c9-8b38-42fd2c0be55d",
+            "kind": "PartUsage",
+            "label": "rearLeftMotor",
+            "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+            "parentLabel": "PropulsionSystem",
+            "targetId": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+            "targetKind": "PartDefinition",
+            "targetLabel": "MotorEnvelope"
+          },
+          {
+            "id": "9276f935-52cd-4699-bcce-c2cc3bc54500",
+            "kind": "PartUsage",
+            "label": "rearRightMotor",
+            "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+            "parentLabel": "PropulsionSystem",
+            "targetId": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+            "targetKind": "PartDefinition",
+            "targetLabel": "MotorEnvelope"
+          },
+          {
+            "id": "698c6a23-e848-4782-995e-fedfecbd15aa",
+            "kind": "PartUsage",
+            "label": "frontLeftPropeller",
+            "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+            "parentLabel": "PropulsionSystem",
+            "targetId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+            "targetKind": "PartDefinition",
+            "targetLabel": "StaticPropellerEnvelope"
+          },
+          {
+            "id": "d253e7d0-2a2b-4c7d-9670-6b72f030bad8",
+            "kind": "PartUsage",
+            "label": "frontRightPropeller",
+            "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+            "parentLabel": "PropulsionSystem",
+            "targetId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+            "targetKind": "PartDefinition",
+            "targetLabel": "StaticPropellerEnvelope"
+          },
+          {
+            "id": "22bf7d13-7332-4a44-acae-6a2356ffa6dc",
+            "kind": "PartUsage",
+            "label": "rearLeftPropeller",
+            "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+            "parentLabel": "PropulsionSystem",
+            "targetId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+            "targetKind": "PartDefinition",
+            "targetLabel": "StaticPropellerEnvelope"
+          },
+          {
+            "id": "117a5eb0-84e7-4d83-a1cb-e05d53860158",
+            "kind": "PartUsage",
+            "label": "rearRightPropeller",
+            "parentPartDefinitionElementId": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7",
+            "parentLabel": "PropulsionSystem",
+            "targetId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+            "targetKind": "PartDefinition",
+            "targetLabel": "StaticPropellerEnvelope"
+          }
+        ]
+      },
+      {
+        "id": "ed1a741f-4c24-4166-8e90-745c9211d6cf",
+        "kind": "PartDefinition",
+        "label": "CameraPayload",
+        "usages": [
+          {
+            "id": "86d80ea4-efeb-4cc5-a93a-bd496761566c",
+            "kind": "PartUsage",
+            "label": "cameraMountBracket",
+            "parentPartDefinitionElementId": "ed1a741f-4c24-4166-8e90-745c9211d6cf",
+            "parentLabel": "CameraPayload",
+            "targetId": "e9f1d48b-666d-48ff-af6c-abf74646b68e",
+            "targetKind": "PartDefinition",
+            "targetLabel": "CameraMountBracket"
+          },
+          {
+            "id": "730c5d50-f4dd-4757-a1d9-cb532dc3afac",
+            "kind": "PartUsage",
+            "label": "cameraBoard",
+            "parentPartDefinitionElementId": "ed1a741f-4c24-4166-8e90-745c9211d6cf",
+            "parentLabel": "CameraPayload",
+            "targetId": "e8531caf-bb17-41cc-8297-e271ed5a5bea",
+            "targetKind": "PartDefinition",
+            "targetLabel": "CameraBoardEnvelope"
+          }
+        ]
+      },
+      {
+        "id": "8a55a273-884c-486d-b336-00662d5c4107",
+        "kind": "PartDefinition",
+        "label": "ElectricalPower",
+        "usages": [
+          {
+            "id": "55f2d0b5-a763-4a18-80f3-cea63c2328f7",
+            "kind": "PartUsage",
+            "label": "batteryTray",
+            "parentPartDefinitionElementId": "8a55a273-884c-486d-b336-00662d5c4107",
+            "parentLabel": "ElectricalPower",
+            "targetId": "3c238d78-df6c-4c8c-9fa8-4583749ec8c4",
+            "targetKind": "PartDefinition",
+            "targetLabel": "BatteryTray"
+          },
+          {
+            "id": "12676fdd-ce42-41ba-b30c-f24165a9547d",
+            "kind": "PartUsage",
+            "label": "batteryReservedVolume",
+            "parentPartDefinitionElementId": "8a55a273-884c-486d-b336-00662d5c4107",
+            "parentLabel": "ElectricalPower",
+            "targetId": "fbbfcc87-d879-4235-a121-0226b21c6a81",
+            "targetKind": "PartDefinition",
+            "targetLabel": "BatteryReservedVolume"
+          }
+        ]
+      },
+      {
+        "id": "9cac605e-5d64-4451-9421-7852a34a4223",
+        "kind": "PartDefinition",
+        "label": "FlightAvionics",
+        "usages": [
+          {
+            "id": "673bebc3-48f5-4cfe-a2eb-e849ff9b50a3",
+            "kind": "PartUsage",
+            "label": "avionicsCarrier",
+            "parentPartDefinitionElementId": "9cac605e-5d64-4451-9421-7852a34a4223",
+            "parentLabel": "FlightAvionics",
+            "targetId": "6e2822d9-0894-42c5-a9e4-ad4d96f2294f",
+            "targetKind": "PartDefinition",
+            "targetLabel": "AvionicsCarrier"
+          },
+          {
+            "id": "8c24a053-7dab-4de6-92c7-005498a989f4",
+            "kind": "PartUsage",
+            "label": "autopilot",
+            "parentPartDefinitionElementId": "9cac605e-5d64-4451-9421-7852a34a4223",
+            "parentLabel": "FlightAvionics",
+            "targetId": "07ad2fb6-3205-4bff-9f7f-7e041d0c58a9",
+            "targetKind": "PartDefinition",
+            "targetLabel": "AutopilotEnvelope"
+          },
+          {
+            "id": "582266cb-1186-4e5d-9ff0-9342a007f167",
+            "kind": "PartUsage",
+            "label": "companionComputer",
+            "parentPartDefinitionElementId": "9cac605e-5d64-4451-9421-7852a34a4223",
+            "parentLabel": "FlightAvionics",
+            "targetId": "e19064f9-3d0c-4052-b025-53468ab864cb",
+            "targetKind": "PartDefinition",
+            "targetLabel": "CompanionComputerEnvelope"
+          }
+        ]
+      },
+      {
+        "id": "1f63469d-9b5b-4693-8aef-42066e3bdf5d",
+        "kind": "PartDefinition",
+        "label": "LandingGear",
+        "usages": [
+          {
+            "id": "ed375891-8966-4a1d-acc0-d6a09b33275f",
+            "kind": "PartUsage",
+            "label": "leftLandingSkid",
+            "parentPartDefinitionElementId": "1f63469d-9b5b-4693-8aef-42066e3bdf5d",
+            "parentLabel": "LandingGear",
+            "targetId": "bde8e324-0c63-41b6-a98d-65cd942b7ce6",
+            "targetKind": "PartDefinition",
+            "targetLabel": "LandingSkid"
+          },
+          {
+            "id": "56b813c6-9c9c-44ff-90b9-0b465fc2c8e0",
+            "kind": "PartUsage",
+            "label": "rightLandingSkid",
+            "parentPartDefinitionElementId": "1f63469d-9b5b-4693-8aef-42066e3bdf5d",
+            "parentLabel": "LandingGear",
+            "targetId": "bde8e324-0c63-41b6-a98d-65cd942b7ce6",
+            "targetKind": "PartDefinition",
+            "targetLabel": "LandingSkid"
+          }
+        ]
+      },
+      {
+        "id": "e9f1d48b-666d-48ff-af6c-abf74646b68e",
+        "kind": "PartDefinition",
+        "label": "CameraMountBracket",
+        "usages": []
+      },
+      {
+        "id": "3569666d-a105-47b5-87ac-c42c7bcdaa0a",
+        "kind": "PartDefinition",
+        "label": "CentralDeck",
+        "usages": []
+      },
+      {
+        "id": "444df600-019b-45d5-ac36-617ff0a0f791",
+        "kind": "PartDefinition",
+        "label": "RadialArm",
+        "usages": []
+      },
+      {
+        "id": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+        "kind": "PartDefinition",
+        "label": "MotorEnvelope",
+        "usages": []
+      },
+      {
+        "id": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+        "kind": "PartDefinition",
+        "label": "StaticPropellerEnvelope",
+        "usages": []
+      },
+      {
+        "id": "e8531caf-bb17-41cc-8297-e271ed5a5bea",
+        "kind": "PartDefinition",
+        "label": "CameraBoardEnvelope",
+        "usages": []
+      },
+      {
+        "id": "3c238d78-df6c-4c8c-9fa8-4583749ec8c4",
+        "kind": "PartDefinition",
+        "label": "BatteryTray",
+        "usages": []
+      },
+      {
+        "id": "fbbfcc87-d879-4235-a121-0226b21c6a81",
+        "kind": "PartDefinition",
+        "label": "BatteryReservedVolume",
+        "usages": []
+      },
+      {
+        "id": "6e2822d9-0894-42c5-a9e4-ad4d96f2294f",
+        "kind": "PartDefinition",
+        "label": "AvionicsCarrier",
+        "usages": []
+      },
+      {
+        "id": "07ad2fb6-3205-4bff-9f7f-7e041d0c58a9",
+        "kind": "PartDefinition",
+        "label": "AutopilotEnvelope",
+        "usages": []
+      },
+      {
+        "id": "e19064f9-3d0c-4052-b025-53468ab864cb",
+        "kind": "PartDefinition",
+        "label": "CompanionComputerEnvelope",
+        "usages": []
+      },
+      {
+        "id": "bde8e324-0c63-41b6-a98d-65cd942b7ce6",
+        "kind": "PartDefinition",
+        "label": "LandingSkid",
+        "usages": []
+      }
+    ],
+    "note": "Extracted identities only. Full capture bytes stay in the audit checkout."
+  }
+}
