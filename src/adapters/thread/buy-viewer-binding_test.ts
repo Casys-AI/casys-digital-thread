@@ -1,6 +1,9 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
-import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
 import { validateBuyConfiguration } from "../../domain/buy/buy-configuration.ts";
 import { computeBuyCostCandidate } from "../../domain/buy/buy-cost-bundle.ts";
 import { selectBuyCostLines } from "../../domain/buy/buy-cost-selection.ts";
@@ -113,6 +116,85 @@ Deno.test("Buy projection keeps an entirely unpriced configuration unresolved", 
   assertEquals("unitPrice" in excluded[0]!, false);
   assertEquals("lineAmount" in excluded[0]!, false);
   assertEquals("source" in excluded[0]!, false);
+});
+
+Deno.test("Buy projection retains a line-specific gap when the captured price has no currency", async () => {
+  const fixture = await createBuyViewerFixture();
+  const original = fixture.capture.sourceCaptures[0]!;
+  const documents = original.capture.documents.map((document) => {
+    const fields = { ...document.fields };
+    delete fields.currency;
+    return { ...document, fields };
+  });
+  const body = { ...original.capture, documents };
+  const canonicalText = deterministicJson(body);
+  const envelope = validateBuySourceCaptureEnvelope({
+    ...original,
+    capture: body,
+    canonicalText,
+    fingerprint: `sha256:${(await sha256Fingerprint(body)).digest}`,
+    byteCount: new TextEncoder().encode(canonicalText).byteLength,
+  });
+  const bundle = computeBuyCostCandidate({
+    configuration: fixture.capture.configuration,
+    configurationDigest: fixture.capture.configurationDigest,
+    captures: [envelope],
+    authorizedSiteId: BUY_FIXTURE_SITE,
+    pricingContext: buyPricingContext(),
+    selections: selectBuyCostLines(fixture.capture.configuration, [envelope]),
+  });
+  assertEquals(bundle.lines[0]!.gaps, []);
+  assertEquals(bundle.lines[0]!.amount, undefined);
+  const { result } = await buildBuyRecordedResult({
+    ...fixture.capture,
+    bundle,
+    sourceCaptures: [envelope],
+  }, "current");
+  assertEquals(result.lines, []);
+  assertEquals(result.gaps, [{
+    code: "unpriced-component",
+    lineId: "line.fastener",
+    reason: "No sourced monetary amount is established for this configuration line.",
+  }]);
+  assertEquals((result.coverage as { status: string }).status, "unresolved");
+});
+
+Deno.test("Buy projection retains documentary dimension gaps on the excluded line", async () => {
+  const fixture = await createBuyViewerFixture();
+  const bundle = computeBuyCostCandidate({
+    configuration: fixture.capture.configuration,
+    configurationDigest: fixture.capture.configurationDigest,
+    captures: fixture.capture.sourceCaptures,
+    authorizedSiteId: BUY_FIXTURE_SITE,
+    pricingContext: buyPricingContext(),
+    selections: [{
+      configurationLineId: "line.fastener",
+      costClass: "estimate",
+      citation: {
+        kind: "external-documentary",
+        resourceUri: `casys://agent-resource-capture/sha256/${"1".repeat(64)}`,
+        fingerprint: `sha256:${"1".repeat(64)}`,
+        capturedAt: AT,
+      },
+    }],
+  });
+  const { result } = await buildBuyRecordedResult(
+    { ...fixture.capture, bundle },
+    "current",
+  );
+  const gaps = result.gaps as { code: string; lineId?: string; reason: string }[];
+  assertEquals(
+    gaps.some((gap) =>
+      gap.code === "dimension-unknown" && gap.lineId === "line.fastener" &&
+      gap.reason === bundle.lines[0]!.gaps[0]!.message
+    ),
+    true,
+  );
+  assertEquals(result.lines, []);
+  assertEquals(
+    (result.excludedLines as { lineId: string }[])[0]!.lineId,
+    "line.fastener",
+  );
 });
 
 Deno.test("Buy projection preserves V1 and refuses missing retained priced data", async () => {

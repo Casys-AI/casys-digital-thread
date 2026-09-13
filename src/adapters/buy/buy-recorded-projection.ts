@@ -75,8 +75,7 @@ export async function buildBuyRecordedResult(
           lineId: line.configurationLineId,
           qty: line.quantity,
           uom: line.uom,
-          reason: line.gaps.map((gap) => gap.message).join(" ") ||
-            "No sourced monetary amount is established for this configuration line.",
+          reason: unpricedLineReason(line),
         })),
       }
       : {}),
@@ -166,6 +165,14 @@ function recordedGaps(capture: BuySealCapture): readonly {
   }));
   for (const line of capture.bundle.lines) {
     for (const gap of line.gaps) {
+      if (line.amount === undefined) {
+        gaps.push({
+          code: gap.code,
+          reason: gap.message,
+          lineId: line.configurationLineId,
+        });
+        continue;
+      }
       if (gap.code === "dimension-unknown" && !gap.lineId) {
         gaps.push({ code: gap.code, reason: gap.message });
         continue;
@@ -185,8 +192,23 @@ function recordedGaps(capture: BuySealCapture): readonly {
         ...(gap.lineId ? { lineId: gap.lineId } : {}),
       });
     }
+    if (
+      line.amount === undefined &&
+      !gaps.some((gap) => gap.lineId === line.configurationLineId)
+    ) {
+      gaps.push({
+        code: "unpriced-component",
+        reason: unpricedLineReason(line),
+        lineId: line.configurationLineId,
+      });
+    }
   }
   return gaps;
+}
+
+function unpricedLineReason(line: BuyCostLine): string {
+  return line.gaps.map((gap) => gap.message).join(" ") ||
+    "No sourced monetary amount is established for this configuration line.";
 }
 
 function recordedLine(
