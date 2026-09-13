@@ -46,6 +46,7 @@ const OPERATION_CITING_DOCUMENTS = [
   "docs/how-to/verify-design/close-out-a-static-mechanical-proof.md",
   "docs/how-to/verify-design/verify-assembly-integrity.md",
   "docs/how-to/workbench/preview-native-workbench.md",
+  "docs/reference/codebase/add-an-operation.md",
   "docs/reference/codebase/cad.md",
   "docs/reference/codebase/compile.md",
   "docs/reference/codebase/impact.md",
