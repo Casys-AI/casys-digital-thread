@@ -65,7 +65,7 @@ import {
   THREAD_VIEWER_APP_REGISTRY_SCHEMA,
 } from "../../src/adapters/thread/file-thread-viewer-app-registry.ts";
 import { sha256Fingerprint } from "../../src/domain/kernel/deterministic-json.ts";
-import { PROJECT_RESPONSE_SCHEMA } from "../../src/application/ports/in/project-response/project-response-read-model.ts";
+import { PROJECT_RESPONSE_SCHEMA } from "../../src/domain/project/project-response.ts";
 import type { ProjectResponseUseCase } from "../../src/application/ports/in/project-response/project-response.ts";
 import type {
   ThreadViewerAppBinding,

@@ -24,12 +24,12 @@ import type {
   ProjectResponseRequirementEvaluation,
   ProjectResponseRequirementEvidence,
   ProjectResponseStatus,
-} from "../../../application/ports/in/project-response/project-response-read-model.ts";
+} from "../../../domain/project/project-response.ts";
 import {
   parseProjectResponseBasis,
   PROJECT_RESPONSE_SCHEMA,
   projectResponseBasesEqual,
-} from "../../../application/ports/in/project-response/project-response-read-model.ts";
+} from "../../../domain/project/project-response.ts";
 import type { RequirementsBriefSourceImpactState } from "../../../domain/architecture/requirements/requirements-brief-impact.ts";
 import type { ProjectBriefItem } from "../../../domain/project/project-brief.ts";
 import type {
@@ -49,8 +49,8 @@ export type {
   ProjectResponseReadModel,
   ProjectResponseRequirementEvidence,
   ProjectResponseStatus,
-} from "../../../application/ports/in/project-response/project-response-read-model.ts";
-export { PROJECT_RESPONSE_SCHEMA } from "../../../application/ports/in/project-response/project-response-read-model.ts";
+} from "../../../domain/project/project-response.ts";
+export { PROJECT_RESPONSE_SCHEMA } from "../../../domain/project/project-response.ts";
 
 /** Alias kept for the existing row rendering names. */
 export type ProjectResponseEvaluation = ProjectResponseRequirementEvaluation;
@@ -443,7 +443,7 @@ function parseResponseItem(
  * Never casts unknown data blindly: every literal, array and referenced
  * identity is checked, and the first structural defect rejects the payload
  * with an explicit issue list for the read state. The basis itself is
- * validated by the shared application parser.
+ * validated by the shared contract parser.
  */
 export function parseProjectResponse(
   value: unknown,
@@ -522,15 +522,16 @@ export function selectWorkbenchProjectResponse(workbench: unknown): unknown {
 }
 
 /**
- * Bind a parsed index to its containing Project/Thread. Returns true when
- * there is nothing to bind (either side omits its basis) so the panel falls
- * back to its own basis provenance instead of refusing to render.
+ * Bind a parsed index to its containing Project/Thread. A host-supplied
+ * expected basis requires the payload to name the same exact basis before
+ * any evidence link can target the displayed Thread.
  */
 export function isResponseBasisMatch(
   expected: ProjectResponseBasis | undefined,
   actual: ProjectResponseBasis | undefined,
 ): boolean {
-  if (!expected || !actual) return true;
+  if (!expected) return true;
+  if (!actual) return false;
   return projectResponseBasesEqual(expected, actual);
 }
 

@@ -155,7 +155,11 @@ refuses. Product inspection is `preview:thread` / `preview:cockpit`.
 Named item detail (`itemId`) and `evidence: "full-evidence"` require the exact
 `expectedBasis` from that summary. Rows omitted to stay in budget are declared; retrieve
 them without loss with the same `expectedBasis` and `afterItemId` of the last included
-item. A stale `expectedBasis` is refused without mixing revisions.
+item. Diagnostics in the default summary are a bounded prefix; omitted diagnostic text
+is declared as `diagnosticOmission` and retrieved with that `expectedBasis` and
+`evidence: "full-evidence"`, which may exceed 8KiB to return complete diagnostic facts.
+Without an exact basis, diagnostic omission is declared without a retrieval handle. A
+stale `expectedBasis` is refused without mixing revisions.
 
 Successor closeout of a leftover ready work item is **not** an MCP tool. Inspect or
 apply with `deno task recover:work-item-successor`. Default is inspect. `--apply` writes

@@ -4,7 +4,7 @@ import {
   PROJECT_RESPONSE_SCHEMA,
   projectResponseBasesEqual,
   unavailableProjectResponse,
-} from "./project-response-read-model.ts";
+} from "./project-response.ts";
 
 const BASIS = {
   projectId: "project.response",

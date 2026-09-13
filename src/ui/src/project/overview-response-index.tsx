@@ -11,7 +11,7 @@
 import { type JSX, useState } from "react";
 import { cn } from "../lib/utils.ts";
 import { Badge } from "../ui/badge.tsx";
-import { DATA_LINE, SECTION_LABEL } from "../ui/cockpit.tsx";
+import { CARD_SURFACE, DATA_LINE, SECTION_LABEL } from "../ui/cockpit.tsx";
 import type { ThreadGraphRef } from "../thread/types.ts";
 import {
   applicabilityLabel,
@@ -41,8 +41,8 @@ export function OverviewResponseIndex({
   /** Server-owned `project-response/1.0` payload, or absent on an older host. */
   readonly response?: unknown;
   /**
-   * Basis of the containing Project/Thread view. When both sides carry a
-   * basis and they differ, no cross-project or stale-basis link is shown.
+   * Basis of the containing Project/Thread view. A payload must name the
+   * same exact basis before an evidence link can target this Thread.
    */
   readonly expectedBasis?: ProjectResponseBasis;
   /** Opens the exact recorded artifact/requirement/evaluation/observation. */
@@ -92,7 +92,10 @@ export function OverviewResponseIndex({
   const hiddenCount = model.items.length - gapItems.length;
   return (
     <section
-      className="overview-response-index overview-response-index--dock rounded-lg border border-border bg-card px-3.5 py-2.5 shadow-sm"
+      className={cn(
+        CARD_SURFACE,
+        "overview-response-index overview-response-index--dock px-3.5 py-2.5 shadow-sm",
+      )}
       aria-label="Réponse au brief"
     >
       <details>
@@ -143,16 +146,21 @@ export function OverviewResponseIndex({
           </p>
         )}
         {model.diagnostics.length > 0 && (
-          <ul className="m-0 mt-1.5 list-none space-y-0.5 p-0">
-            {model.diagnostics.map((diagnostic) => (
-              <li
-                key={diagnostic.code + diagnostic.message}
-                className={cn(DATA_LINE)}
-              >
-                {diagnostic.code} · {diagnostic.message}
-              </li>
-            ))}
-          </ul>
+          <details className="mt-1.5">
+            <summary className={cn("cursor-pointer text-xs", DATA_LINE)}>
+              Diagnostics de provenance ({model.diagnostics.length})
+            </summary>
+            <ul className="m-0 mt-1 list-none space-y-0.5 p-0">
+              {model.diagnostics.map((diagnostic) => (
+                <li
+                  key={diagnostic.code + diagnostic.message}
+                  className={cn(DATA_LINE)}
+                >
+                  {diagnostic.code} · {diagnostic.message}
+                </li>
+              ))}
+            </ul>
+          </details>
         )}
         {visible.length === 0
           ? (
@@ -185,7 +193,10 @@ function UnavailableResponseIndex(
 ): JSX.Element {
   return (
     <section
-      className="overview-response-index overview-response-index--dock rounded-lg border border-border bg-card px-3.5 py-2.5"
+      className={cn(
+        CARD_SURFACE,
+        "overview-response-index overview-response-index--dock px-3.5 py-2.5",
+      )}
       aria-label="Réponse au brief indisponible"
     >
       <p className="m-0 text-[13px] font-semibold">

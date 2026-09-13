@@ -115,6 +115,9 @@ const COUNTS = {
     included: { type: "integer", minimum: 0 },
     omitted: { type: "integer", minimum: 0 },
     gaps: { type: "integer", minimum: 0 },
+    diagnostics: { type: "integer", minimum: 0 },
+    diagnosticsIncluded: { type: "integer", minimum: 0 },
+    diagnosticsOmitted: { type: "integer", minimum: 0 },
     byKind: {
       type: "object",
       additionalProperties: { type: "integer", minimum: 0 },
@@ -129,6 +132,9 @@ const COUNTS = {
     "included",
     "omitted",
     "gaps",
+    "diagnostics",
+    "diagnosticsIncluded",
+    "diagnosticsOmitted",
     "byKind",
     "byCorrespondence",
   ],
@@ -167,6 +173,34 @@ const OMISSION = {
     },
   },
   required: ["declared", "omittedItemCount", "afterItemId", "retrieval"],
+  additionalProperties: false,
+} as const;
+
+const DIAGNOSTIC_OMISSION = {
+  type: "object",
+  properties: {
+    declared: { const: true },
+    omittedDiagnosticCount: { type: "integer", minimum: 1 },
+    retrieval: {
+      type: "object",
+      properties: {
+        tool: { const: PROJECT_RESPONSE_TOOL_NAME },
+        arguments: {
+          type: "object",
+          properties: {
+            projectId: PROJECT_ID,
+            expectedBasis: BASIS,
+            evidence: { const: "full-evidence" },
+          },
+          required: ["projectId", "expectedBasis", "evidence"],
+          additionalProperties: false,
+        },
+      },
+      required: ["tool", "arguments"],
+      additionalProperties: false,
+    },
+  },
+  required: ["declared", "omittedDiagnosticCount"],
   additionalProperties: false,
 } as const;
 
@@ -209,6 +243,7 @@ const SUMMARY_OUTPUT = {
     counts: COUNTS,
     items: { type: "array", items: SUMMARY_ROW },
     omission: OMISSION,
+    diagnosticOmission: DIAGNOSTIC_OMISSION,
   },
   required: [
     "schemaVersion",
@@ -265,7 +300,7 @@ const FULL_OUTPUT = {
 const projectResponseReadTool: MCPTool = {
   name: PROJECT_RESPONSE_TOOL_NAME,
   description:
-    "Read-only index of every current human-approved brief item against recorded evidence. Default is a bounded canonical summary (≤8KiB) of exact item ids, kinds, independent correspondence and gap counts; statements, full brief text and solver bytes are omitted. available means the index was readable, never that the response is ready or a clause is satisfied. Named item detail (itemId) and full-evidence require the exact expectedBasis from that summary. Rows omitted to stay in budget are declared; retrieve them without loss with the same expectedBasis and afterItemId of the last included item. No provider, runtime, config or GET command. Grants none. Workbench stays GET/SSE.",
+    "Read-only index of every current human-approved brief item against recorded evidence. Default is a bounded canonical summary (≤8KiB) of exact item ids, kinds, independent correspondence, gap counts and a bounded diagnostic prefix; statements, full brief text and solver bytes are omitted. available means the index was readable, never that the response is ready or a clause is satisfied. Named item detail (itemId) and full-evidence require the exact expectedBasis from that summary. Omitted item rows are retrieved with the same expectedBasis and afterItemId. Omitted diagnostic text is declared as diagnosticOmission and retrieved with that expectedBasis and evidence full-evidence, which may exceed 8KiB to return complete diagnostic facts. Without an exact basis, diagnostic omission is declared without a retrieval handle. No provider, runtime, config or GET command. Grants none. Workbench stays GET/SSE.",
   inputSchema: {
     type: "object",
     properties: {
@@ -345,6 +380,9 @@ interface ProjectResponseCounts {
   readonly included: number;
   readonly omitted: number;
   readonly gaps: number;
+  readonly diagnostics: number;
+  readonly diagnosticsIncluded: number;
+  readonly diagnosticsOmitted: number;
   readonly byKind: Readonly<Record<string, number>>;
   readonly byCorrespondence: Readonly<Record<string, number>>;
 }
@@ -364,6 +402,19 @@ interface ProjectResponseOmission {
   };
 }
 
+interface ProjectResponseDiagnosticOmission {
+  readonly declared: true;
+  readonly omittedDiagnosticCount: number;
+  readonly retrieval?: {
+    readonly tool: typeof PROJECT_RESPONSE_TOOL_NAME;
+    readonly arguments: {
+      readonly projectId: string;
+      readonly expectedBasis: NonNullable<ProjectResponseReadModel["basis"]>;
+      readonly evidence: "full-evidence";
+    };
+  };
+}
+
 export interface ProjectResponseToolResult {
   readonly schemaVersion: typeof PROJECT_RESPONSE_SCHEMA;
   readonly status: ProjectResponseReadModel["status"];
@@ -373,6 +424,7 @@ export interface ProjectResponseToolResult {
   readonly counts?: ProjectResponseCounts;
   readonly items: readonly unknown[];
   readonly omission?: ProjectResponseOmission;
+  readonly diagnosticOmission?: ProjectResponseDiagnosticOmission;
   readonly diagnostics: ProjectResponseReadModel["diagnostics"];
   readonly grants: "none";
 }
@@ -381,7 +433,7 @@ export function parseProjectResponseReadArgs(
   args: Record<string, unknown>,
 ): ProjectResponseReadArgs {
   const projectId = String(args.projectId);
-  if (projectId === "latest") {
+  if (projectId.toLowerCase() === "latest") {
     throw new TypeError("projectId cannot use a latest alias.");
   }
   const itemId = optionalId(args.itemId, "itemId");
@@ -468,39 +520,62 @@ export function presentProjectResponse(
     );
   }
   const rows = remaining.map(summaryRow);
+  const diagnosticPlan = planSummaryDiagnostics(
+    envelope,
+    model,
+    remaining,
+    rows,
+    request.query.projectId,
+  );
+  const summaryEnvelope = {
+    ...envelope,
+    diagnostics: diagnosticPlan.diagnostics,
+  };
   const included = takeFitting(
     rows,
     (items) =>
       summaryPage(
-        envelope,
+        summaryEnvelope,
         model,
         remaining,
         items,
         request.query.projectId,
+        diagnosticPlan.omission,
       ),
     PROJECT_RESPONSE_SUMMARY_MAX_BYTES,
     "strict",
   );
   return summaryPage(
-    envelope,
+    summaryEnvelope,
     model,
     remaining,
     included,
     request.query.projectId,
+    diagnosticPlan.omission,
   );
 }
 
 function summaryPage(
-  envelope: Omit<ProjectResponseToolResult, "view" | "items">,
+  envelope: Omit<
+    ProjectResponseToolResult,
+    "view" | "items" | "diagnosticOmission"
+  >,
   model: ProjectResponseReadModel,
   remaining: readonly ProjectResponseItem[],
   included: readonly ProjectResponseSummaryRow[],
   projectId: string,
+  diagnosticOmission?: ProjectResponseDiagnosticOmission,
 ): ProjectResponseToolResult {
   return {
     ...envelope,
     view: "summary",
-    counts: countsFor(model.items, remaining, included.length),
+    counts: countsFor(
+      model.items,
+      remaining,
+      included.length,
+      model.diagnostics.length,
+      envelope.diagnostics.length,
+    ),
     items: included,
     ...omissionFor(
       model,
@@ -510,6 +585,7 @@ function summaryPage(
       "summary",
       (row) => row.itemId,
     ),
+    ...(diagnosticOmission ? { diagnosticOmission } : {}),
   };
 }
 
@@ -523,7 +599,13 @@ function fullPage(
   return {
     ...envelope,
     view: "full-evidence",
-    counts: countsFor(model.items, remaining, included.length),
+    counts: countsFor(
+      model.items,
+      remaining,
+      included.length,
+      model.diagnostics.length,
+      model.diagnostics.length,
+    ),
     items: included,
     ...omissionFor(
       model,
@@ -571,6 +653,8 @@ function countsFor(
   all: readonly ProjectResponseItem[],
   remaining: readonly ProjectResponseItem[],
   included: number,
+  diagnostics: number,
+  diagnosticsIncluded: number,
 ): ProjectResponseCounts {
   const byKind: Record<string, number> = {};
   const byCorrespondence: Record<string, number> = {};
@@ -586,8 +670,72 @@ function countsFor(
     included,
     omitted: remaining.length - included,
     gaps,
+    diagnostics,
+    diagnosticsIncluded,
+    diagnosticsOmitted: diagnostics - diagnosticsIncluded,
     byKind,
     byCorrespondence,
+  };
+}
+
+function planSummaryDiagnostics(
+  envelope: Omit<ProjectResponseToolResult, "view" | "items">,
+  model: ProjectResponseReadModel,
+  remaining: readonly ProjectResponseItem[],
+  rows: readonly ProjectResponseSummaryRow[],
+  projectId: string,
+): {
+  readonly diagnostics: ProjectResponseReadModel["diagnostics"];
+  readonly omission?: ProjectResponseDiagnosticOmission;
+} {
+  const all = model.diagnostics;
+  const probe = rows.length > 0 ? [rows[0]!] : [];
+  let fitted = 0;
+  for (let count = all.length; count >= 0; count--) {
+    const diagnostics = all.slice(0, count);
+    const omission = diagnosticOmissionFor(model, all.length - count, projectId);
+    const page = summaryPage(
+      { ...envelope, diagnostics },
+      model,
+      remaining,
+      probe,
+      projectId,
+      omission,
+    );
+    if (byteLength(page) <= PROJECT_RESPONSE_SUMMARY_MAX_BYTES) {
+      fitted = count;
+      break;
+    }
+  }
+  const diagnostics = all.slice(0, fitted);
+  const omission = diagnosticOmissionFor(
+    model,
+    all.length - fitted,
+    projectId,
+  );
+  return { diagnostics, ...(omission ? { omission } : {}) };
+}
+
+function diagnosticOmissionFor(
+  model: ProjectResponseReadModel,
+  omittedDiagnosticCount: number,
+  projectId: string,
+): ProjectResponseDiagnosticOmission | undefined {
+  if (omittedDiagnosticCount <= 0) return undefined;
+  if (!model.basis) {
+    return { declared: true, omittedDiagnosticCount };
+  }
+  return {
+    declared: true,
+    omittedDiagnosticCount,
+    retrieval: {
+      tool: PROJECT_RESPONSE_TOOL_NAME,
+      arguments: {
+        projectId,
+        expectedBasis: model.basis,
+        evidence: "full-evidence",
+      },
+    },
   };
 }
 
@@ -639,6 +787,9 @@ function takeFitting<T>(
   }
   const empty = remaining.slice(0, 0);
   if (byteLength(page(empty)) > maxBytes) {
+    if (overflow === "oversized-single") {
+      return remaining.length === 0 ? empty : remaining.slice(0, 1);
+    }
     throw new TypeError("Project response metadata exceeds its fixed bound.");
   }
   if (remaining.length === 0) return empty;
@@ -657,7 +808,7 @@ function byteLength(value: unknown): number {
 function optionalId(value: unknown, path: string): string | undefined {
   if (value === undefined) return undefined;
   const id = String(value);
-  if (!id || id === "latest") {
+  if (!id || id.toLowerCase() === "latest") {
     throw new TypeError(`${path} cannot use a latest alias.`);
   }
   return id;
@@ -665,7 +816,7 @@ function optionalId(value: unknown, path: string): string | undefined {
 
 function contentFor(result: ProjectResponseToolResult): string {
   if (result.status !== "available") {
-    return `Project response is ${result.status}. The expected basis was not mixed with a newer tip. Correspondence is recorded evidence, not clause satisfaction. Grants none.`;
+    return `Project response is ${result.status}. See the structured diagnostics for the missing or unresolved read basis. Correspondence is recorded evidence, not clause satisfaction. Grants none.`;
   }
   if (result.view === "item") {
     return `Project response item ${result.itemId} on the exact expected basis. Correspondence is recorded evidence, not clause satisfaction. Grants none.`;
@@ -673,12 +824,15 @@ function contentFor(result: ProjectResponseToolResult): string {
   const omitted = result.omission
     ? ` ${result.omission.omittedItemCount} later items are omitted; retrieve them with the returned expectedBasis and afterItemId.`
     : "";
+  const omittedDiagnostics = result.diagnosticOmission
+    ? ` ${result.diagnosticOmission.omittedDiagnosticCount} diagnostics are omitted; retrieve exact text with evidence full-evidence on the returned expectedBasis.`
+    : "";
   if (result.view === "full-evidence") {
     return `Project response full evidence for ${
       result.counts?.included ?? 0
-    } approved brief items on the exact expected basis.${omitted} Artifact bytes, source texts and solver outputs stay omitted. Grants none.`;
+    } approved brief items on the exact expected basis.${omitted}${omittedDiagnostics} Artifact bytes, source texts and solver outputs stay omitted. Grants none.`;
   }
   return `Project response summary for ${result.counts?.included ?? 0} of ${
     result.counts?.items ?? 0
-  } approved brief items on the exact current basis.${omitted} Correspondence is recorded evidence, not clause satisfaction. Grants none.`;
+  } approved brief items on the exact current basis.${omitted}${omittedDiagnostics} Correspondence is recorded evidence, not clause satisfaction. Grants none.`;
 }

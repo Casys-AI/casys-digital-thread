@@ -13,7 +13,7 @@ import type {
   ThreadFreshness,
   ThreadSnapshot,
 } from "../../../../domain/thread/thread-snapshot.ts";
-import type { ProjectResponseBriefIdentity } from "../../in/project-response/project-response-read-model.ts";
+import type { ProjectResponseBriefIdentity } from "../../../../domain/project/project-response.ts";
 
 export interface ProjectResponseTraceRequirementFact {
   readonly threadRequirementId: string;

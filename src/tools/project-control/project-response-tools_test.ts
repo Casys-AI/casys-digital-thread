@@ -1,9 +1,4 @@
-import {
-  assertEquals,
-  assertRejects,
-  assertStringIncludes,
-  assertThrows,
-} from "@std/assert";
+import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
 import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type {
@@ -199,7 +194,7 @@ Deno.test("project_response_read refuses a stale expected basis without mixing r
   assertEquals(stale.structuredContent.status, "unavailable");
   assertEquals(stale.structuredContent.items, []);
   assertEquals(stale.structuredContent.diagnostics[0]?.code, "basis.stale");
-  assertStringIncludes(stale.content, "not mixed");
+  assertStringIncludes(stale.content, "structured diagnostics");
 });
 
 Deno.test("project_response_read continuation and full-evidence stay on the exact basis", async () => {
@@ -268,22 +263,190 @@ Deno.test("project_response_read continuation and full-evidence stay on the exac
   );
 });
 
-Deno.test("project_response_read summary never emits an over-budget first row", () => {
-  assertThrows(
-    () =>
-      presentProjectResponse({
-        ...sampleAvailableModel(),
-        diagnostics: [{
-          code: "bound.test",
-          message: "x".repeat(9000),
-        }],
-      }, {
-        query: { projectId: "project.response" },
-        evidence: "summary",
-      }),
-    TypeError,
-    "bound",
+Deno.test("project_response_read summary stays bounded when one diagnostic exceeds 8KiB", async () => {
+  const huge = "y".repeat(9000);
+  const model: ProjectResponseReadModel = {
+    ...sampleAvailableModel(),
+    diagnostics: [{
+      code: "correspondence.trace-gap",
+      message: huge,
+    }],
+  };
+  const presented = presentProjectResponse(model, {
+    query: { projectId: "project.response" },
+    evidence: "summary",
+  });
+  assertEquals(presented.view, "summary");
+  assertEquals(presented.status, "available");
+  assertEquals(
+    new TextEncoder().encode(deterministicJson(presented)).byteLength <=
+      PROJECT_RESPONSE_SUMMARY_MAX_BYTES,
+    true,
   );
+  assertEquals(presented.diagnostics.length, 0);
+  assertEquals(presented.diagnosticOmission?.omittedDiagnosticCount, 1);
+  assertEquals(
+    presented.diagnosticOmission?.retrieval?.arguments.evidence,
+    "full-evidence",
+  );
+  assertEquals(presented.items.length >= 1, true);
+
+  const app = capturingApp();
+  registerProjectResponseTools(app as unknown as McpApp, {
+    projectResponse: {
+      ...stubUseCase(),
+      read: () => Promise.resolve(model),
+    },
+  });
+  const full = await app.handle(
+    PROJECT_RESPONSE_TOOL_NAME,
+    presented.diagnosticOmission!.retrieval!.arguments,
+  ) as {
+    structuredContent: {
+      view: string;
+      diagnostics: Array<{ code: string; message: string }>;
+    };
+  };
+  assertEquals(full.structuredContent.view, "full-evidence");
+  assertEquals(full.structuredContent.diagnostics, model.diagnostics);
+});
+
+Deno.test("project_response_read summary bounds many TRACE GAP diagnostics without dropping items", async () => {
+  const app = capturingApp();
+  const model: ProjectResponseReadModel = {
+    ...largeResponseModel(24),
+    diagnostics: traceGapDiagnostics(80, "artifact ".repeat(40)),
+  };
+  registerProjectResponseTools(app as unknown as McpApp, {
+    projectResponse: {
+      ...stubUseCase(),
+      read: () => Promise.resolve(model),
+    },
+  });
+  const first = await app.handle(PROJECT_RESPONSE_TOOL_NAME, {
+    projectId: "project.response",
+    expectedBasis: sampleBasis(),
+  }) as {
+    structuredContent: {
+      status: string;
+      view: string;
+      items: Array<{ itemId: string }>;
+      diagnostics: Array<{ code: string; message: string }>;
+      counts: {
+        items: number;
+        diagnostics: number;
+        diagnosticsIncluded: number;
+        diagnosticsOmitted: number;
+      };
+      omission?: {
+        retrieval: { arguments: Record<string, unknown> };
+      };
+      diagnosticOmission: {
+        omittedDiagnosticCount: number;
+        retrieval: { arguments: Record<string, unknown> };
+      };
+    };
+  };
+  assertEquals(first.structuredContent.status, "available");
+  assertEquals(first.structuredContent.view, "summary");
+  assertEquals(
+    new TextEncoder().encode(deterministicJson(first.structuredContent))
+      .byteLength <= PROJECT_RESPONSE_SUMMARY_MAX_BYTES,
+    true,
+  );
+  assertEquals(first.structuredContent.counts.diagnostics, 80);
+  assertEquals(
+    first.structuredContent.counts.diagnosticsIncluded,
+    first.structuredContent.diagnostics.length,
+  );
+  assertEquals(
+    first.structuredContent.diagnosticOmission.omittedDiagnosticCount >= 1,
+    true,
+  );
+  assertEquals(
+    first.structuredContent.diagnosticOmission.retrieval.arguments.evidence,
+    "full-evidence",
+  );
+  assertEquals(
+    first.structuredContent.diagnostics.every((item) =>
+      item.message ===
+        model.diagnostics.find((candidate) =>
+          candidate.code === item.code && candidate.message === item.message
+        )?.message
+    ),
+    true,
+  );
+
+  const seen = new Set<string>();
+  let argumentsForPage: Record<string, unknown> = {
+    projectId: "project.response",
+    expectedBasis: sampleBasis(),
+  };
+  for (let page = 0; page < 24; page++) {
+    const result = await app.handle(
+      PROJECT_RESPONSE_TOOL_NAME,
+      argumentsForPage,
+    ) as {
+      structuredContent: {
+        view: string;
+        items: Array<{ itemId: string }>;
+        omission?: { retrieval: { arguments: Record<string, unknown> } };
+      };
+    };
+    assertEquals(result.structuredContent.view, "summary");
+    assertEquals(
+      new TextEncoder().encode(deterministicJson(result.structuredContent))
+        .byteLength <= PROJECT_RESPONSE_SUMMARY_MAX_BYTES,
+      true,
+    );
+    for (const row of result.structuredContent.items) {
+      assertEquals(seen.has(row.itemId), false);
+      seen.add(row.itemId);
+    }
+    if (!result.structuredContent.omission) break;
+    argumentsForPage = result.structuredContent.omission.retrieval.arguments;
+  }
+  assertEquals(seen.size, 24);
+  for (const item of model.items) {
+    assertEquals(seen.has(item.item.id), true);
+  }
+
+  const full = await app.handle(
+    PROJECT_RESPONSE_TOOL_NAME,
+    first.structuredContent.diagnosticOmission.retrieval.arguments,
+  ) as {
+    structuredContent: {
+      view: string;
+      diagnostics: Array<{ code: string; message: string }>;
+    };
+  };
+  assertEquals(full.structuredContent.view, "full-evidence");
+  assertEquals(full.structuredContent.diagnostics, model.diagnostics);
+});
+
+Deno.test("project_response_read unavailable summary does not fabricate a diagnostic retrieval basis", () => {
+  const presented = presentProjectResponse({
+    schemaVersion: PROJECT_RESPONSE_SCHEMA,
+    status: "unavailable",
+    items: [],
+    diagnostics: traceGapDiagnostics(40, "z".repeat(400)),
+    grants: "none",
+  }, {
+    query: { projectId: "project.response" },
+    evidence: "summary",
+  });
+  assertEquals(presented.status, "unavailable");
+  assertEquals(presented.basis, undefined);
+  assertEquals(
+    new TextEncoder().encode(deterministicJson(presented)).byteLength <=
+      PROJECT_RESPONSE_SUMMARY_MAX_BYTES,
+    true,
+  );
+  assertEquals(
+    (presented.diagnosticOmission?.omittedDiagnosticCount ?? 0) >= 1,
+    true,
+  );
+  assertEquals(presented.diagnosticOmission?.retrieval, undefined);
 });
 
 Deno.test("project_response_read full-evidence continuation keeps the requested page mode", async () => {
@@ -402,6 +565,20 @@ function sampleAvailableModel(): ProjectResponseReadModel {
     diagnostics: [],
     grants: "none",
   };
+}
+
+function traceGapDiagnostics(
+  count: number,
+  message: string,
+): ProjectResponseReadModel["diagnostics"] {
+  const diagnostics: ProjectResponseReadModel["diagnostics"][number][] = [];
+  for (let index = 1; index <= count; index++) {
+    diagnostics.push({
+      code: "correspondence.trace-gap",
+      message: `TRACE GAP capture-${String(index).padStart(3, "0")}: ${message}`,
+    });
+  }
+  return diagnostics;
 }
 
 function pagedFullEvidenceModel(): ProjectResponseReadModel {

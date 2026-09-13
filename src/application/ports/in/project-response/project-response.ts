@@ -11,7 +11,7 @@ import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.t
 import type {
   ProjectResponseBasis,
   ProjectResponseReadModel,
-} from "./project-response-read-model.ts";
+} from "../../../../domain/project/project-response.ts";
 
 export type {
   ProjectResponseApplicability,
@@ -28,7 +28,7 @@ export type {
   ProjectResponseRequirementEvidence,
   ProjectResponseStatus,
   ProjectResponseThreadIdentity,
-} from "./project-response-read-model.ts";
+} from "../../../../domain/project/project-response.ts";
 
 export {
   parseProjectResponseBasis,
@@ -37,7 +37,7 @@ export {
   PROJECT_RESPONSE_SCHEMA,
   projectResponseBasesEqual,
   unavailableProjectResponse,
-} from "./project-response-read-model.ts";
+} from "../../../../domain/project/project-response.ts";
 
 export interface ProjectResponseReadQuery {
   readonly projectId: string;

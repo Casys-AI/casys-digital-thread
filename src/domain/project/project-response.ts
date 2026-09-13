@@ -12,10 +12,10 @@ import {
   nonEmptyText,
   positiveInteger,
   safeId,
-} from "../../../../domain/kernel/case-validation.ts";
-import type { RequirementsBriefSourceImpactState } from "../../../../domain/architecture/requirements/requirements-brief-impact.ts";
-import type { ProjectBriefItem } from "../../../../domain/project/project-brief.ts";
-import type { ThreadFreshness } from "../../../../domain/thread/thread-snapshot.ts";
+} from "../kernel/case-validation.ts";
+import type { RequirementsBriefSourceImpactState } from "../architecture/requirements/requirements-brief-impact.ts";
+import type { ProjectBriefItem } from "./project-brief.ts";
+import type { ThreadFreshness } from "../thread/thread-snapshot.ts";
 
 export const PROJECT_RESPONSE_SCHEMA = "project-response/1.0" as const;
 

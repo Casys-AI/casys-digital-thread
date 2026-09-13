@@ -7,7 +7,7 @@ import {
   type ProjectResponseEvidenceFacts,
   type ProjectResponseEvidenceReader,
 } from "../../ports/out/project-response/project-response-evidence-reader.ts";
-import type { ProjectResponseBasis } from "../../ports/in/project-response/project-response-read-model.ts";
+import type { ProjectResponseBasis } from "../../../domain/project/project-response.ts";
 import { ProjectBriefCommandService } from "../project/project-brief-command-service.ts";
 import { ReadProjectResponse } from "./read-project-response.ts";
 
@@ -102,6 +102,69 @@ Deno.test("a single current native pass is native correspondence and not a row v
   assertEquals(success.requirements[0]!.evaluations[0]!.status, "pass");
   assertEquals(success.requirements[0]!.evaluations[0]!.applicability, "current");
   assertEquals("pass" in success, false);
+});
+
+Deno.test("a gate item retains a gap when only one of its requirements is evaluated", async () => {
+  const { project } = await approvedProject();
+  const brief = project.framing!.currentBrief!;
+  const thread = listedThread(project, 1);
+  const facts = factsWithTraces([{
+    status: "available",
+    artifactId: "requirements-current",
+    threadRequirementIds: ["requirement-a", "requirement-b"],
+    origin: "native",
+    sourceBrief: {
+      briefId: brief.briefId,
+      snapshotId: brief.id,
+      revision: brief.revision,
+    },
+    requirementsArtifactId: "requirements-current",
+    requirements: ["requirement-a", "requirement-b"].map((id) => ({
+      threadRequirementId: id,
+      requirementId: id,
+      sourceItemId: "success",
+      sourceState: "unchanged" as const,
+    })),
+  }], {
+    requirements: [
+      req("requirement-a", "requirements-current"),
+      req("requirement-b", "requirements-current"),
+    ],
+    artifacts: [artifact("requirements-current"), artifact("obs-src")],
+    observations: [observation("obs-current", ["obs-src"])],
+    evaluations: [
+      evaluation("eval-a", "requirement-a", "pass", ["obs-current"], ["obs-src"]),
+    ],
+  });
+  const result = await usecase(facts).project({
+    project: withThread(project, thread),
+    thread,
+  });
+  const row = result.items.find((item) => item.item.id === "success")!;
+  assertEquals(row.requirements.map((item) => item.evaluations.length), [1, 0]);
+  assertEquals(row.gaps.some((item) => item.code === "evaluation.missing"), true);
+  assertEquals(row.requirements[0]!.evaluations[0]!.status, "pass");
+});
+
+Deno.test("latest aliases are refused before consulting the project store", async () => {
+  const service = new ReadProjectResponse({
+    projects: {
+      get() {
+        throw new Error("An alias must not reach the store.");
+      },
+    },
+    snapshots: {
+      get() {
+        throw new Error("An alias must not reach snapshots.");
+      },
+    },
+    evidence: new StubEvidence(),
+  });
+  for (const projectId of ["latest", "LATEST", "Latest"]) {
+    const result = await service.read({ projectId });
+    assertEquals(result.status, "unavailable");
+    assertEquals(result.diagnostics[0]!.code, "basis.unavailable");
+  }
 });
 
 Deno.test("exact current native pass stays current and an older unchanged clause stays historical", async () => {
@@ -499,6 +562,26 @@ Deno.test("approved brief without Thread enumerates items with missing-evidence 
     ),
     true,
   );
+});
+
+Deno.test("a declared but unreadable Thread stays unavailable in read and projection", async () => {
+  const { project, store } = await approvedProject();
+  const thread = listedThread(project, 2);
+  const listed = withThread(project, thread);
+  store.overlay = listed;
+  const service = usecase(undefined, store);
+  for (
+    const result of [
+      await service.read({ projectId: project.project.id }),
+      await service.project({ project: listed }),
+    ]
+  ) {
+    assertEquals(result.status, "unavailable");
+    assertEquals(result.basis!.thread, undefined);
+    assertEquals(result.items.length, project.framing!.currentBrief!.items.length);
+    assertEquals(result.diagnostics.map((item) => item.code), ["thread.unavailable"]);
+    assertEquals(result.grants, "none");
+  }
 });
 
 Deno.test("read rejects a mismatched expected basis without mixing revisions", async () => {

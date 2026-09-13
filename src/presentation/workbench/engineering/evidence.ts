@@ -5,7 +5,7 @@ import type {
   RequirementsBriefRevisionIdentity,
   RequirementsBriefSourceImpactState,
 } from "../../../domain/architecture/requirements/requirements-brief-impact.ts";
-import type { ProjectResponseReadModel } from "../../../application/ports/in/project-response/project-response-read-model.ts";
+import type { ProjectResponseReadModel } from "../../../domain/project/project-response.ts";
 import type { LiveThreadWorkbenchSnapshot } from "./live-overlay.ts";
 import type { ENGINEERING_WORKBENCH_SCHEMA } from "./schema.ts";
 

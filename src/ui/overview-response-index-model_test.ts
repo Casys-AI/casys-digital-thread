@@ -195,7 +195,8 @@ Deno.test("default visibility shows every item, including failing rows", () => {
 
 Deno.test("basis binding refuses cross-project and stale bases without links", () => {
   assertEquals(isResponseBasisMatch(undefined, basis()), true);
-  assertEquals(isResponseBasisMatch(basis(), undefined), true);
+  assertEquals(isResponseBasisMatch(basis(), undefined), false);
+  assertEquals(isResponseBasisMatch(undefined, undefined), true);
   assertEquals(isResponseBasisMatch(basis(), basis()), true);
   assertEquals(
     isResponseBasisMatch(basis(), { ...basis(), projectRevision: 891 }),

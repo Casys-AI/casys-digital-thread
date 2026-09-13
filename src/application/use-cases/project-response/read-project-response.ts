@@ -24,7 +24,7 @@ import {
   type ProjectResponseRequirementEvaluation,
   type ProjectResponseRequirementEvidence,
   unavailableProjectResponse,
-} from "../../ports/in/project-response/project-response-read-model.ts";
+} from "../../../domain/project/project-response.ts";
 import type { EngineeringProjectRevisionStore } from "../../ports/out/engineering-project-revision-store.ts";
 import type {
   ProjectResponseAvailableTraceFact,
@@ -75,7 +75,10 @@ export class ReadProjectResponse implements ProjectResponseUseCase {
 
   async read(query: ProjectResponseReadQuery): Promise<ProjectResponseReadModel> {
     const projectId = query.projectId;
-    if (!projectId || projectId !== projectId.trim() || projectId === "latest") {
+    if (
+      !projectId || projectId !== projectId.trim() ||
+      projectId.toLowerCase() === "latest"
+    ) {
       return unavailableProjectResponse({
         diagnostics: [diagnostic(
           "basis.unavailable",
@@ -152,6 +155,19 @@ export class ReadProjectResponse implements ProjectResponseUseCase {
       } else {
         thread = bound;
       }
+    } else {
+      const tip = selectCurrentThreadTip(query.project.threadSnapshots);
+      if (tip.status === "ok") {
+        extraDiagnostics.push(diagnostic(
+          "thread.unavailable",
+          "The declared Thread tip is absent from this resolved projection.",
+        ));
+      } else if (tip.diagnostic.code === "basis-ambiguous") {
+        extraDiagnostics.push(diagnostic(
+          "thread.unresolved",
+          tip.diagnostic.message,
+        ));
+      }
     }
     return await this.compose(query.project, thread, extraDiagnostics);
   }
@@ -182,7 +198,7 @@ export class ReadProjectResponse implements ProjectResponseUseCase {
     const diagnostics = [
       ...extraDiagnostics,
       ...traceGapDiagnostics(indexed.gapTraces),
-      ...(thread ? [] : [diagnostic(
+      ...(thread || extraDiagnostics.length > 0 ? [] : [diagnostic(
         "thread.absent",
         "No Thread snapshot is bound to this approved brief; items list missing-evidence gaps.",
       )]),
@@ -196,6 +212,8 @@ export class ReadProjectResponse implements ProjectResponseUseCase {
           item.code === "thread.unresolved" || item.code === "thread.unbound"
         )
         ? "unresolved"
+        : extraDiagnostics.some((item) => item.code === "thread.unavailable")
+        ? "unavailable"
         : "available";
     return deepFreeze({
       schemaVersion: PROJECT_RESPONSE_SCHEMA,
@@ -553,11 +571,11 @@ function itemGaps(input: {
   if (
     isProjectBriefGateKind(input.item.kind) &&
     input.requirements.length > 0 &&
-    input.requirements.every((requirement) => requirement.evaluations.length === 0)
+    input.requirements.some((requirement) => requirement.evaluations.length === 0)
   ) {
     gaps.push(gap(
       "evaluation.missing",
-      `Item ${input.item.id} has exact requirement correspondence and no recorded evaluation.`,
+      `Item ${input.item.id} has at least one exactly mapped requirement without a recorded evaluation.`,
     ));
   }
   for (const code of unique(input.evaluationIssues)) {

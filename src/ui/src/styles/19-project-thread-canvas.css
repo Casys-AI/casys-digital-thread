@@ -887,14 +887,18 @@
 /* Response-to-brief index dock. A compact perimeter instrument on the same
    canvas as the selection note above: absolutely positioned inside the
    board (never in flow, so hulls never move), collapsing to a chip and
-   scrolling internally when open. Stays clear of the top HUD controls. */
+   scrolling internally when open. Stays between the top and bottom HUDs. */
 .overview-response-index--dock {
   position: absolute;
   z-index: 32;
   right: 16px;
-  bottom: 16px;
+  bottom: calc(var(--project-thread-bottom-inset) + 16px);
   width: min(26rem, calc(100% - 32px));
-  max-height: min(36rem, calc(100% - 140px));
+  max-height: min(
+    36rem,
+    calc(100% - var(--project-thread-top-inset) -
+    var(--project-thread-bottom-inset) - 32px)
+  );
   display: flex;
   min-height: 0;
   overflow: hidden;
@@ -924,6 +928,5 @@
     left: 16px;
     right: 16px;
     width: auto;
-    max-height: calc(100% - 32px);
   }
 }
