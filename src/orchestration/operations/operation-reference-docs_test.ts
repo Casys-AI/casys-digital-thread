@@ -1,5 +1,5 @@
 /**
- * The industrial-project skill and the golden-path how-to both teach agents
+ * The industrial-project skill and operation-wiring guide both teach agents
  * to plan with registered operations. A document that cites an operation the
  * registry does not know is worse than silence: the agent will confidently
  * propose an identifier the server must refuse (the dead inspection-drone
@@ -13,6 +13,7 @@ import { listRegisteredEngineeringOperationKeys } from "./registry.ts";
 /** Every document that narrates the path by citing operation identifiers. */
 const OPERATION_CITING_DOCUMENTS = [
   "../../../.agents/skills/guide-industrial-project/SKILL.md",
+  "../../../docs/reference/codebase/add-an-operation.md",
 ] as const;
 
 /** Backtick-quoted exact operation references: `family.name@version`. */
