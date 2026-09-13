@@ -6,7 +6,8 @@
  * set of first-column code spans of true pipe-table rows in
  * docs/reference/runtime/task-catalog.md (`| `name` | ...`). A task named only
  * in prose or in another row's role cell is not cataloged, and a stale row
- * fails even when a prose mention of the same name remains.
+ * fails even when a prose mention of the same name remains. Row-looking text
+ * inside fenced code examples and indented code blocks is not a table row.
  */
 
 interface CitationFailure {
@@ -83,9 +84,29 @@ async function readCatalogBody(): Promise<string> {
 
 function collectCatalogTasks(body: string): ReadonlySet<string> {
   const cataloged = new Set<string>();
-  const tableRow = /^\s*\| `([^`\n]+)`\s*\|/gmu;
-  for (const match of body.matchAll(tableRow)) {
-    cataloged.add(match[1]!.trim());
+  const tableRow = /^ {0,3}\| `([^`\n]+)`\s*\|/u;
+  let fenceMarker: "`" | "~" | undefined;
+  let fenceLength = 0;
+  for (const line of body.split("\n")) {
+    const fence = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
+    if (fence) {
+      const run = fence[1]!;
+      const marker = run[0] as "`" | "~";
+      if (fenceMarker === undefined) {
+        fenceMarker = marker;
+        fenceLength = run.length;
+      } else if (
+        marker === fenceMarker && run.length >= fenceLength &&
+        (fence[2] ?? "").trim() === ""
+      ) {
+        fenceMarker = undefined;
+        fenceLength = 0;
+      }
+      continue;
+    }
+    if (fenceMarker !== undefined) continue;
+    const match = line.match(tableRow);
+    if (match) cataloged.add(match[1]!.trim());
   }
   return cataloged;
 }
