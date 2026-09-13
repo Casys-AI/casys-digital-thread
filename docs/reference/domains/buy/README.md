@@ -70,6 +70,12 @@ of the sanitized displayed result. Absent admitted package → `unavailable`. No
 `erpnext_bom_get`, `latest` package, or `app.callServerTool`.
 
 Provider capture is ephemeral canonical JSON + SHA-256; DT CAS is the durable store.
+Recorded-result `/2.0` separates unpriced configuration lines into closed
+`excludedLines` metadata (identity, quantity, UOM and reason), without monetary or
+price-source placeholders. Results with only priced lines retain `/1.0`. The
+installed viewer resource must advertise the emitted result schema; an older
+package receives an explicit `unavailable` projection. No sealed capture bytes or
+ERP source are refreshed to accommodate presentation.
 Local unpublished HTML proof: 853961 bytes, SHA-256
 `eee709976f49d43af306fc2a296d21b2e2b1262207b4f50a6d501db5a5a87c0f`. Canonical capture
 fixture `sha256:aa33230c6af6abc929f1687ce6ffc00ccf920510e58efa3c53ec71f4dbbe9d5a`, 2435

@@ -1,9 +1,17 @@
 import { assertEquals, assertRejects } from "@std/assert";
 import { ProjectBriefCommandService } from "../../application/use-cases/project/project-brief-command-service.ts";
-import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
 import { validateBuyConfiguration } from "../../domain/buy/buy-configuration.ts";
 import { computeBuyCostCandidate } from "../../domain/buy/buy-cost-bundle.ts";
 import { selectBuyCostLines } from "../../domain/buy/buy-cost-selection.ts";
+import {
+  buildBuyRecordedResult,
+  BUY_RECORDED_RESULT_SCHEMA,
+  BUY_RECORDED_RESULT_V2_SCHEMA,
+} from "../buy/buy-recorded-projection.ts";
 import {
   BUY_FIXTURE_PARENT,
   BUY_FIXTURE_SITE,
@@ -49,6 +57,208 @@ const AGENT = { kind: "agent" as const, actorId: "agent:test" };
 const HUMAN = { kind: "human" as const, actorId: "human:test" };
 const NEWER_PARENT = "1111111111111111111111111111111111111111111111111111111111111111";
 const NEWER_STEP = "2222222222222222222222222222222222222222222222222222222222222222";
+
+function unpricedConfigurationLine() {
+  const line = buyConfigurationFixture().lines[0]!;
+  return {
+    ...line,
+    id: "line.unpriced",
+    partDefinition: { elementId: "pd.unpriced" },
+    occurrences: [{ elementId: "occ.unpriced", quantity: "1", uom: "Nos" }],
+    quantity: "1",
+    item: { ...line.item!, name: "ITEM-SYNTHETIC-UNPRICED" },
+  };
+}
+
+Deno.test("Buy projection retains unpriced quantities and gaps without monetary defaults", async () => {
+  const fixture = await createBuyViewerFixture({
+    lines: [...buyConfigurationFixture().lines, unpricedConfigurationLine()],
+  });
+  const { result } = await buildBuyRecordedResult(fixture.capture, "current");
+  assertEquals(result.schemaVersion, BUY_RECORDED_RESULT_V2_SCHEMA);
+  assertEquals(result.coverage, {
+    status: "partial",
+    coveredLineIds: ["line.fastener"],
+    excludedLineIds: ["line.unpriced"],
+    quantityBasis: "configuration-occurrences",
+    currency: "EUR",
+  });
+  assertEquals(result.excludedLines, [{
+    lineId: "line.unpriced",
+    qty: "1",
+    uom: "Nos",
+    reason: "Configuration line line.unpriced has no priced citation and is not free.",
+  }]);
+  assertEquals(result.totals, [{
+    kind: "covered-subtotal",
+    currency: "EUR",
+    amount: "5.00",
+  }]);
+  assertEquals((result.lines as unknown[]).length, 1);
+  assertEquals((result.gaps as { lineId?: string }[])[0]?.lineId, "line.unpriced");
+});
+
+Deno.test("Buy projection keeps an entirely unpriced configuration unresolved", async () => {
+  const fixture = await createBuyViewerFixture({
+    lines: [unpricedConfigurationLine()],
+  });
+  const { result } = await buildBuyRecordedResult(fixture.capture, "current");
+  assertEquals(result.schemaVersion, BUY_RECORDED_RESULT_V2_SCHEMA);
+  assertEquals(result.lines, []);
+  assertEquals((result.coverage as { status: string }).status, "unresolved");
+  assertEquals(result.totals, [{
+    kind: "covered-subtotal",
+    currency: "EUR",
+    amount: "0.00",
+  }]);
+  const excluded = result.excludedLines as Record<string, unknown>[];
+  assertEquals(excluded.length, 1);
+  assertEquals("unitPrice" in excluded[0]!, false);
+  assertEquals("lineAmount" in excluded[0]!, false);
+  assertEquals("source" in excluded[0]!, false);
+});
+
+Deno.test("Buy projection retains a line-specific gap when the captured price has no currency", async () => {
+  const fixture = await createBuyViewerFixture();
+  const original = fixture.capture.sourceCaptures[0]!;
+  const documents = original.capture.documents.map((document) => {
+    const fields = { ...document.fields };
+    delete fields.currency;
+    return { ...document, fields };
+  });
+  const body = { ...original.capture, documents };
+  const canonicalText = deterministicJson(body);
+  const envelope = validateBuySourceCaptureEnvelope({
+    ...original,
+    capture: body,
+    canonicalText,
+    fingerprint: `sha256:${(await sha256Fingerprint(body)).digest}`,
+    byteCount: new TextEncoder().encode(canonicalText).byteLength,
+  });
+  const bundle = computeBuyCostCandidate({
+    configuration: fixture.capture.configuration,
+    configurationDigest: fixture.capture.configurationDigest,
+    captures: [envelope],
+    authorizedSiteId: BUY_FIXTURE_SITE,
+    pricingContext: buyPricingContext(),
+    selections: selectBuyCostLines(fixture.capture.configuration, [envelope]),
+  });
+  assertEquals(bundle.lines[0]!.gaps, []);
+  assertEquals(bundle.lines[0]!.amount, undefined);
+  const { result } = await buildBuyRecordedResult({
+    ...fixture.capture,
+    bundle,
+    sourceCaptures: [envelope],
+  }, "current");
+  assertEquals(result.lines, []);
+  assertEquals(result.gaps, [{
+    code: "unpriced-component",
+    lineId: "line.fastener",
+    reason: "No sourced monetary amount is established for this configuration line.",
+  }]);
+  assertEquals((result.coverage as { status: string }).status, "unresolved");
+});
+
+Deno.test("Buy projection retains documentary dimension gaps on the excluded line", async () => {
+  const fixture = await createBuyViewerFixture();
+  const bundle = computeBuyCostCandidate({
+    configuration: fixture.capture.configuration,
+    configurationDigest: fixture.capture.configurationDigest,
+    captures: fixture.capture.sourceCaptures,
+    authorizedSiteId: BUY_FIXTURE_SITE,
+    pricingContext: buyPricingContext(),
+    selections: [{
+      configurationLineId: "line.fastener",
+      costClass: "estimate",
+      citation: {
+        kind: "external-documentary",
+        resourceUri: `casys://agent-resource-capture/sha256/${"1".repeat(64)}`,
+        fingerprint: `sha256:${"1".repeat(64)}`,
+        capturedAt: AT,
+      },
+    }],
+  });
+  const { result } = await buildBuyRecordedResult(
+    { ...fixture.capture, bundle },
+    "current",
+  );
+  const gaps = result.gaps as { code: string; lineId?: string; reason: string }[];
+  assertEquals(
+    gaps.some((gap) =>
+      gap.code === "dimension-unknown" && gap.lineId === "line.fastener" &&
+      gap.reason === bundle.lines[0]!.gaps[0]!.message
+    ),
+    true,
+  );
+  assertEquals(result.lines, []);
+  assertEquals(
+    (result.excludedLines as { lineId: string }[])[0]!.lineId,
+    "line.fastener",
+  );
+});
+
+Deno.test("Buy projection preserves V1 and refuses missing retained priced data", async () => {
+  const fixture = await createBuyViewerFixture();
+  const { result } = await buildBuyRecordedResult(fixture.capture, "current");
+  assertEquals(result.schemaVersion, BUY_RECORDED_RESULT_SCHEMA);
+  assertEquals("excludedLines" in result, false);
+  for (const key of ["unitPrice", "currency", "citation"] as const) {
+    const lines = fixture.capture.bundle.lines.map((line) => ({
+      ...line,
+      [key]: undefined,
+    }));
+    await assertRejects(
+      () =>
+        buildBuyRecordedResult({
+          ...fixture.capture,
+          bundle: { ...fixture.capture.bundle, lines },
+        }, "current"),
+      TypeError,
+      "requires retained price",
+    );
+  }
+  await assertRejects(
+    () =>
+      buildBuyRecordedResult({
+        ...fixture.capture,
+        bundle: { ...fixture.capture.bundle, totals: [] },
+      }, "current"),
+    TypeError,
+    "retained covered subtotal",
+  );
+});
+
+Deno.test("Buy viewer refuses V2 for a V1-only package and accepts its explicit schema", async () => {
+  const fixture = await createBuyViewerFixture({
+    lines: [...buyConfigurationFixture().lines, unpricedConfigurationLine()],
+  });
+  const legacy = await buildBuyViewerBinding(fixture);
+  const legacyProjection = legacy!.session.payload.projection as {
+    status: string;
+    result?: unknown;
+    reason?: string;
+  };
+  assertEquals(legacyProjection.status, "unavailable");
+  assertEquals(legacyProjection.result, undefined);
+  assertEquals(
+    legacyProjection.reason,
+    `The installed Buy viewer does not accept ${BUY_RECORDED_RESULT_V2_SCHEMA}.`,
+  );
+  const packages = fixture.packages.map((app) => ({
+    ...app,
+    resources: app.resources.map((resource) => ({
+      ...resource,
+      resultSchemas: [BUY_RECORDED_RESULT_SCHEMA, BUY_RECORDED_RESULT_V2_SCHEMA],
+    })),
+  }));
+  const compatible = await buildBuyViewerBinding({ ...fixture, packages });
+  const projection = compatible!.session.payload.projection as {
+    status: string;
+    result: { schemaVersion: string };
+  };
+  assertEquals(projection.status, "available");
+  assertEquals(projection.result.schemaVersion, BUY_RECORDED_RESULT_V2_SCHEMA);
+});
 
 Deno.test("Buy viewer binding reopens a current-basis sealed fixture", async () => {
   const fixture = await createBuyViewerFixture();
