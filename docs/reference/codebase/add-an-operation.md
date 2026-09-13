@@ -78,9 +78,15 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
    Other operations typically colocate a closed parameter parser in
    a `*-proposal.ts` module; this tracer does not.
 
-2. **Add one descriptor to the code-owned registry.** Append a
-   `RegisteredEngineeringOperation` object to `OPERATIONS` in
+2. **Add one descriptor through its authority-owned list.** Registry-local
+   operations add a `RegisteredEngineeringOperation` object to `OPERATIONS` in
    [`src/orchestration/operations/registry.ts`](../../../src/orchestration/operations/registry.ts).
+   Isolated FEA owns `FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS` in
+   [`fea-isolated-static-proof.ts:25`](../../../src/orchestration/operations/fea-isolated-static-proof.ts);
+   the registry spreads that list at
+   [`registry.ts:1833`](../../../src/orchestration/operations/registry.ts).
+   Extend the owning descriptor list rather than duplicating that authority
+   directly in the registry.
    The tracer is
    [`registry.ts:1796`](../../../src/orchestration/operations/registry.ts)
    (`decisionEvidenceScope: "thread-entity-bindings"`,
@@ -108,8 +114,11 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
 4. **Declare runtime demand.** `none` or one explicit required-capability list.
    The tracer is `NO_RUNTIME_DEMAND`
    ([`registry.ts:123`](../../../src/orchestration/operations/registry.ts));
-   demanding operations use `requiredRuntimeDemand`
-   ([`registry.ts:143`](../../../src/orchestration/operations/registry.ts)).
+   registry-local demanding operations use the private `requiredRuntimeDemand`
+   helper ([`registry.ts:143`](../../../src/orchestration/operations/registry.ts)).
+   Authority-owned lists declare the same provider-neutral `kind: "required"`
+   capability contract directly, as FEA does at
+   [`fea-isolated-static-proof.ts:40`](../../../src/orchestration/operations/fea-isolated-static-proof.ts).
    The code-owned registry is the single projection source:
    `engineeringOperationRegistry.list()`
    ([`registry.ts:1986`](../../../src/orchestration/operations/registry.ts))
@@ -269,9 +278,12 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
    - `requiresAdditiveChange` — refused in the initial plan
      ([`project-planning-transitions.ts:86`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts)).
      The tracer does **not** set this flag.
-   - `requiresDependsOnOperation` — every work item must name exactly one
-     `dependsOnWorkItemIds` entry resolving to the unique current leaf
-     revision of that named registered operation. Unknown ids, multiple
+   - `requiresDependsOnOperation` — an appended work item must select exactly
+     one matching entry in `dependsOnWorkItemIds` for the required operation,
+     resolving to its unique current leaf revision. Other known dependencies
+     may coexist; the matching-entry count is enforced at
+     [`required-depends-on-operation.ts:84`](../../../src/domain/project/required-depends-on-operation.ts).
+     Unknown ids, multiple
      matches, stale non-leaf revisions, and ambiguous leaf sets are each
      refused. Enforced only at `project_change_append`, before MRTR or queue
      ([`project-planning-transitions.ts:279`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts),
@@ -328,6 +340,11 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
     ([`registry.ts:669`](../../../src/orchestration/operations/registry.ts))
     and `verify.run-fea-static-proof@3`
     ([`fea-isolated-static-proof.ts:55`](../../../src/orchestration/operations/fea-isolated-static-proof.ts)).
+    Also update the closed `isResolvedOperationPlanV2Operation` allowlist
+    used by `validateResolvedOperationPlanRunInvariant`
+    ([`run-receipt-invariants.ts:497`](../../../src/domain/project/validation/run-receipt-invariants.ts));
+    otherwise persistence validation rejects the new identity's resolved plan.
+    Preserve its historical receipt compatibility.
     Registry marker / persisted-receipt identity parity is pinned
     ([`registry_test.ts:304`](../../../src/orchestration/operations/registry_test.ts)).
     Skip this step when the operation does not need a sealed dispatch
@@ -386,7 +403,11 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
       `resolvedOperationPlan` are new.
     Unknown ids already fail closed
     ([`registry_test.ts:105`](../../../src/orchestration/operations/registry_test.ts),
-    code `unknown_operation`). A work-item whose operation is not in the
+    code `unknown_operation`, asserted at
+    [`registry_test.ts:123`](../../../src/orchestration/operations/registry_test.ts);
+    queue rejection at
+    [`registry_test.ts:265`](../../../src/orchestration/operations/registry_test.ts)).
+    A work-item whose operation is not in the
     registry compiles as `unresolved / operation-unregistered`
     ([`compile-project-capability-demand.ts:170`](../../../src/application/control-plane/compile-project-capability-demand.ts)).
 
@@ -467,7 +488,7 @@ Every `file:line` was read in source.
 | Capability runtime | `none` demand skips host | [`src/application/control-plane/capability-runtime-supervisor.ts:188`](../../../src/application/control-plane/capability-runtime-supervisor.ts) |
 | Prep-prerequisite field | Optional demand-closure edges; tracer has **none** | [`src/application/control-plane/engineering-operation-registry.ts:77`](../../../src/application/control-plane/engineering-operation-registry.ts) |
 | Prep-prerequisite graph | Canonicalize; preparation-only targets | [`src/application/control-plane/runtime-preparation-prerequisite-closure.ts:59`](../../../src/application/control-plane/runtime-preparation-prerequisite-closure.ts) |
-| Prep-prerequisite live | `verify.observe-assembly-integrity@1` → prepare-geometry-module | [`src/orchestration/operations/registry.ts:592`](../../../src/orchestration/operations/registry.ts) |
+| Prep-prerequisite live | `verify.observe-assembly-integrity@1` → `design.prepare-geometry-module@1` | [`src/orchestration/operations/registry.ts:592`](../../../src/orchestration/operations/registry.ts) |
 | Depends-on field | Optional planning predecessor; tracer has **none** | [`src/application/control-plane/engineering-operation-registry.ts:96`](../../../src/application/control-plane/engineering-operation-registry.ts) |
 | Depends-on append | `assertRequiredDependsOnOperation` at `project_change_append` | [`src/application/use-cases/project/commands/project-planning-transitions.ts:279`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts) |
 | Depends-on domain | Exact current leaf of the named operation | [`src/domain/project/required-depends-on-operation.ts:54`](../../../src/domain/project/required-depends-on-operation.ts) |
@@ -485,7 +506,7 @@ Every `file:line` was read in source.
 | Executor | Origin, shape, MRTR, publish, recovery, redundant cascade (representative publish test) | [`src/adapters/record/archive-lineage-run-executor_test.ts:329`](../../../src/adapters/record/archive-lineage-run-executor_test.ts) |
 | Thread-write guard | Shares basis exclusion with compilation | [`src/adapters/shared/thread-write-basis-guard_test.ts:625`](../../../src/adapters/shared/thread-write-basis-guard_test.ts) |
 | Workbench | Durable-writer classification includes the tracer | [`scripts/serve/serve-native-workbench_test.ts:1629`](../../../scripts/serve/serve-native-workbench_test.ts) |
-| Proposal | Ungated grammar; shared decision still gated by the other op | [`src/orchestration/operations/proposal-validation_test.ts:510`](../../../src/orchestration/operations/proposal-validation_test.ts) |
+| Proposal | Ungated grammar; shared decision still gated by the other op | [Ungated operation](../../../src/orchestration/operations/proposal-validation_test.ts), tests at `src/orchestration/operations/proposal-validation_test.ts:510` and `src/orchestration/operations/proposal-validation_test.ts:562` |
 | Path lanes | Totality over caller-visible registry keys | [`src/orchestration/operations/path-lanes_test.ts:13`](../../../src/orchestration/operations/path-lanes_test.ts) |
 | Runtime demand | Exhaustive `none` vs required counts | [`src/orchestration/operations/runtime-demand-registry_test.ts:105`](../../../src/orchestration/operations/runtime-demand-registry_test.ts) |
 | Registry unknown | `unknown_operation`, no tool/args leak | [`src/orchestration/operations/registry_test.ts:105`](../../../src/orchestration/operations/registry_test.ts) |
