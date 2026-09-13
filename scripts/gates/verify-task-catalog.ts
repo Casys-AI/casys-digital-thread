@@ -8,6 +8,7 @@
  * in prose or in another row's role cell is not cataloged, and a stale row
  * fails even when a prose mention of the same name remains. Row-looking text
  * inside fenced code examples and indented code blocks is not a table row.
+ * A table requires a header followed by a matching delimiter row.
  */
 
 interface CitationFailure {
@@ -84,12 +85,17 @@ async function readCatalogBody(): Promise<string> {
 
 function collectCatalogTasks(body: string): ReadonlySet<string> {
   const cataloged = new Set<string>();
-  const tableRow = /^ {0,3}\| `([^`\n]+)`\s*\|/u;
+  const tableLine = /^ {0,3}\|(.+)\|[ \t]*$/u;
+  const delimiterCell = /^[ \t]*:?-+:?[ \t]*$/u;
+  let headerColumns = 0;
+  let tableColumns = 0;
   let fenceMarker: "`" | "~" | undefined;
   let fenceLength = 0;
   for (const line of body.split("\n")) {
     const fence = line.match(/^ {0,3}(`{3,}|~{3,})(.*)$/u);
     if (fence) {
+      headerColumns = 0;
+      tableColumns = 0;
       const run = fence[1]!;
       const marker = run[0] as "`" | "~";
       if (fenceMarker === undefined) {
@@ -105,7 +111,20 @@ function collectCatalogTasks(body: string): ReadonlySet<string> {
       continue;
     }
     if (fenceMarker !== undefined) continue;
-    const match = line.match(tableRow);
+    const cells = line.match(tableLine)?.[1]?.split("|");
+    if (cells === undefined || cells.length < 2) {
+      headerColumns = 0;
+      tableColumns = 0;
+      continue;
+    }
+    const delimiter = cells.every((cell) => delimiterCell.test(cell));
+    if (tableColumns === 0) {
+      if (delimiter && cells.length === headerColumns) tableColumns = headerColumns;
+      headerColumns = delimiter ? 0 : cells.length;
+      continue;
+    }
+    if (delimiter) continue;
+    const match = cells[0]?.match(/^[ \t]*`([^`\n]+)`[ \t]*$/u);
     if (match) cataloged.add(match[1]!.trim());
   }
   return cataloged;
