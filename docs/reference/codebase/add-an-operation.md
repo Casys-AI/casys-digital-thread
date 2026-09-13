@@ -50,11 +50,12 @@ operation planable, queueable, executable, and projectable.
   [`operation-reference-docs_test.ts`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
   watches exactly the documents in `OPERATION_CITING_DOCUMENTS`
   ([`operation-reference-docs_test.ts:14`](../../../src/orchestration/operations/operation-reference-docs_test.ts)),
-  currently
-  [`.agents/skills/guide-industrial-project/SKILL.md`](../../../.agents/skills/guide-industrial-project/SKILL.md).
+  currently the
+  [industrial-project skill](../../../.agents/skills/guide-industrial-project/SKILL.md)
+  and this reference guide.
   It does not pin every skill or how-to. A new
   path document that cites operations must join that list, or the pin at
-  [`operation-reference-docs_test.ts:61`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
+  [`operation-reference-docs_test.ts:62`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
   will not see it.
 - Do not assume registry membership alone wires execution or Workbench
   persistence ordering. Those lists are explicit.
@@ -252,9 +253,17 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
    `project_agent_run_queue` already validate through that registry
    ([`project-planning-transitions.ts:730`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts),
    [`engineering-run-transitions.ts:451`](../../../src/application/use-cases/project/commands/engineering-run-transitions.ts)).
-   Do not add a new MCP tool for the operation.
-   `project_agent_run_execute` dispatches only by queued run id
+   Execute registered operations through `project_agent_run_execute`, which
+   dispatches only by queued run id
    ([`project-control.ts:751`](../../../src/tools/project-control.ts)).
+   When agents need a read-only review, preview or next-hop surface, add the
+   server-owned MCP review tools conditionally and register them in project
+   control. Existing examples are assembly-integrity review
+   ([`project-control.ts:270`](../../../src/tools/project-control.ts)) and
+   prescribed-kinematics review
+   ([`project-control.ts:273`](../../../src/tools/project-control.ts)).
+   These tools expose registered evidence and preparation choices; dispatch
+   authority stays in the generic run lifecycle. Workbench remains GET + SSE.
 
 11. **Set registry flags that planning actually enforces.**
    - `requiresAdditiveChange` — refused in the initial plan
@@ -393,11 +402,12 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
     citations are pinned only if the document is listed in
     `OPERATION_CITING_DOCUMENTS`
     ([`operation-reference-docs_test.ts:14`](../../../src/orchestration/operations/operation-reference-docs_test.ts));
-    today that list is
-    [`.agents/skills/guide-industrial-project/SKILL.md`](../../../.agents/skills/guide-industrial-project/SKILL.md).
+    today that list includes the
+    [industrial-project skill](../../../.agents/skills/guide-industrial-project/SKILL.md)
+    and this reference guide.
     Add any new
     operation-citing path document to that array, or
-    [`operation-reference-docs_test.ts:61`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
+    [`operation-reference-docs_test.ts:62`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
     will not see it.
     File census of the owning authority stays on the matching page under
     [codebase map](../codebase/codebase-map.md)
@@ -471,16 +481,16 @@ Every `file:line` was read in source.
 
 | Suite | What it pins | Citation |
 | ----- | ------------ | -------- |
-| Domain cascade | Closure, unknown target, idempotence | [`src/domain/thread/thread-retirement_test.ts:1`](../../../src/domain/thread/thread-retirement_test.ts) |
-| Executor | Origin, shape, MRTR, publish, recovery, redundant cascade | [`src/adapters/record/archive-lineage-run-executor_test.ts:1`](../../../src/adapters/record/archive-lineage-run-executor_test.ts) |
+| Domain cascade | Closure, unknown target, idempotence (representative cascade test) | [`src/domain/thread/thread-retirement_test.ts:216`](../../../src/domain/thread/thread-retirement_test.ts) |
+| Executor | Origin, shape, MRTR, publish, recovery, redundant cascade (representative publish test) | [`src/adapters/record/archive-lineage-run-executor_test.ts:329`](../../../src/adapters/record/archive-lineage-run-executor_test.ts) |
 | Thread-write guard | Shares basis exclusion with compilation | [`src/adapters/shared/thread-write-basis-guard_test.ts:625`](../../../src/adapters/shared/thread-write-basis-guard_test.ts) |
 | Workbench | Durable-writer classification includes the tracer | [`scripts/serve/serve-native-workbench_test.ts:1629`](../../../scripts/serve/serve-native-workbench_test.ts) |
 | Proposal | Ungated grammar; shared decision still gated by the other op | [`src/orchestration/operations/proposal-validation_test.ts:510`](../../../src/orchestration/operations/proposal-validation_test.ts) |
 | Path lanes | Totality over caller-visible registry keys | [`src/orchestration/operations/path-lanes_test.ts:13`](../../../src/orchestration/operations/path-lanes_test.ts) |
 | Runtime demand | Exhaustive `none` vs required counts | [`src/orchestration/operations/runtime-demand-registry_test.ts:105`](../../../src/orchestration/operations/runtime-demand-registry_test.ts) |
 | Registry unknown | `unknown_operation`, no tool/args leak | [`src/orchestration/operations/registry_test.ts:105`](../../../src/orchestration/operations/registry_test.ts) |
-| Doc watch list | Exact documents the pin suite reads (`OPERATION_CITING_DOCUMENTS`, currently one skill) | [`src/orchestration/operations/operation-reference-docs_test.ts:14`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
-| Doc pin | Cited ids in those watched documents must exist | [`src/orchestration/operations/operation-reference-docs_test.ts:61`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
+| Doc watch list | Exact documents the pin suite reads (`OPERATION_CITING_DOCUMENTS`, currently the industrial-project skill and this guide) | [`src/orchestration/operations/operation-reference-docs_test.ts:14`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
+| Doc pin | Cited ids in those watched documents must exist | [`src/orchestration/operations/operation-reference-docs_test.ts:62`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
 
 ### Tracer-only, not a general wiring step
 
