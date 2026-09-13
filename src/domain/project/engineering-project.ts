@@ -235,11 +235,11 @@ export type EngineeringWorkItemStatus =
   | "completed"
   | "cancelled"
   /**
-   * Human-governed terminal closeout for a work item that never acquired a
-   * provider run. Append-only: the work item remains in history but is excluded
-   * from active views. Only allowed from `ready` (no run) or
-   * `waiting-for-decision` (no run). Cannot be set on a work item that ever
-   * held a run or produced evidence.
+   * Human-governed terminal closeout for work with no execution or evidence.
+   * Human pre-claim cancelled runs may remain as history. Append-only: the
+   * work item remains in history but is excluded from active views. Only
+   * allowed from `ready` or `waiting-for-decision`. Abandoned is not
+   * completed and does not unlock dependents.
    */
   | "abandoned";
 
@@ -667,7 +667,6 @@ export function deriveEngineeringPhaseStatus(
     workItems.length > 0 &&
     workItems.every((item) =>
       item.status === "completed" ||
-      item.status === "abandoned" ||
       (item.status === "cancelled" && item.reconciliation !== undefined)
     ) &&
     requiredDecisions.every((decision) =>

@@ -1,6 +1,7 @@
 import { assertEquals } from "@std/assert";
 import {
   deriveEngineeringPhaseStatus,
+  deriveEngineeringProjectStatus,
   type EngineeringProjectSnapshot,
   type EngineeringThreadEntityRef,
   type EngineeringWorkItem,
@@ -150,3 +151,17 @@ function workItem(spec: {
     ...(spec.reconciliation ? { reconciliation: spec.reconciliation } : {}),
   };
 }
+
+Deno.test("abandoned work cannot complete a phase or project with earlier evidence", () => {
+  const previous = reconcileSnapshot({ samePhase: true });
+  const snapshot = {
+    ...previous,
+    workItems: previous.workItems.map((item) =>
+      item.id === "wi-seed"
+        ? { ...item, status: "abandoned" as const, reconciliation: undefined }
+        : item
+    ),
+  };
+  assertEquals(deriveEngineeringPhaseStatus(snapshot, "verification"), "planned");
+  assertEquals(deriveEngineeringProjectStatus(snapshot), "planned");
+});

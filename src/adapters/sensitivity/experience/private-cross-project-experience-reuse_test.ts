@@ -10,8 +10,11 @@ import {
 } from "../../../domain/compile/admission/technical-compilation.ts";
 import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import {
+  compileSensitivityExperienceTargetWithMethod,
   createSensitivityExperienceOriginBinding,
   deriveSensitivityExperienceRecord,
+  SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD,
+  SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_RECORDED,
   sensitivityExperienceExecutionPlanDigest,
 } from "../../../domain/sensitivity/experience/sensitivity-experience.ts";
 import {
@@ -80,6 +83,121 @@ Deno.test(
     }
   },
 );
+
+Deno.test("same-project origins remain a private-reuse miss", async () => {
+  const harness = await createHarness();
+  try {
+    const source = await harness.addSource("source-project", 0);
+    const target = await harness.coordinator.compileTarget({
+      studyCase: await makeStudyCase("source-project"),
+      admission: harness.admission,
+      build123dProfile: buildProfile(),
+    });
+    const lookup = await harness.coordinator.review({
+      projectId: "source-project",
+      basis: {
+        kind: "thread-snapshot",
+        snapshotId: source.snapshot.id,
+        revision: source.snapshot.revision,
+        subjectId: source.snapshot.subject.id,
+      },
+      basisSnapshot: source.snapshot,
+      target,
+      reviewedAt: AT,
+    });
+    assertEquals(lookup.review.outcome === "exact", false);
+    assertEquals(lookup.review.freshExecutionRequired, true);
+  } finally {
+    await harness.dispose();
+  }
+});
+
+Deno.test("current recorded targets exclude legacy method records without poisoning the index", async () => {
+  const harness = await createHarness();
+  try {
+    const current = await harness.addSource("source-project", 0);
+    assertEquals(
+      current.record.identity.method.solver.operationId,
+      SENSITIVITY_EXPERIENCE_SOLVER_OPERATION_RECORDED,
+    );
+    const legacyTarget = await compileSensitivityExperienceTargetWithMethod({
+      studyCase: await makeStudyCase("legacy-project"),
+      admission: harness.admission,
+      method: {
+        ...current.record.identity.method,
+        solver: {
+          ...current.record.identity.method.solver,
+          operationId: SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD.operationId,
+          requestLowerer: SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD.requestLowerer,
+          responseParser: SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD.responseParser,
+          outputValidator: SENSITIVITY_EXPERIENCE_LEGACY_SOLVER_METHOD.outputValidator,
+        },
+      },
+    });
+    const legacyCapture = await makeStudyCapture(
+      await makeStudyCase("legacy-project"),
+      "legacy-project",
+      0,
+    );
+    const legacyRecord = await deriveSensitivityExperienceRecord(
+      legacyTarget,
+      legacyCapture,
+    );
+    const legacyFingerprint = await sha256Fingerprint(legacyRecord);
+    const origin = await createSensitivityExperienceOriginBinding({
+      recordFingerprint: legacyFingerprint,
+      projectId: "legacy-project",
+      basis: harness.targetBasis,
+      studyArtifact: artifact({
+        id: "study-legacy-project",
+        fingerprint: fingerprint("3".repeat(64)),
+        tool: "analyze.run-fea-sensitivity@1",
+        runId: "run-legacy-project",
+      }),
+      caseArtifact: artifact({
+        id: "case-legacy-project",
+        fingerprint: fingerprint("4".repeat(64)),
+        tool: "analyze.seal-sensitivity-study@1",
+        runId: "seal-legacy-project",
+      }),
+      admissionArtifact: artifact({
+        id: "admission-legacy-project",
+        fingerprint: fingerprint(ADMISSION_DIGEST),
+        tool: "compile.seal-admission@3",
+        runId: "admit-legacy-project",
+      }),
+      trustedRunId: "run-legacy-project",
+      executionPlanDigest: "5".repeat(64),
+      admittedAt: AT,
+    });
+    await harness.repository.saveExperience(legacyRecord, origin);
+    const reread = await harness.repository.readRecord(legacyFingerprint);
+    assertEquals(reread?.identity.method.solver.operationId, "calculix_solve_static");
+    assertEquals(
+      reread?.scientificKey.digest === current.record.scientificKey.digest,
+      false,
+    );
+
+    const target = await harness.target("target-project");
+    const lookup = await harness.coordinator.review({
+      projectId: "target-project",
+      basis: harness.targetBasis,
+      basisSnapshot: harness.targetSnapshot,
+      target,
+      reviewedAt: AT,
+    });
+    assertEquals(lookup.review.outcome, "exact");
+    assertEquals(lookup.selected?.record, current.record);
+    const indexed = await harness.repository.lookup(current.record.scientificKey);
+    assertEquals(indexed?.records.length, 1);
+    assertEquals(
+      indexed?.records[0]?.recordFingerprint.digest,
+      current.recordFingerprint.digest,
+    );
+  } finally {
+    await harness.dispose();
+  }
+});
 
 Deno.test("scientific and method misses remain fresh-execution misses", async () => {
   const harness = await createHarness();

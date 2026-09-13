@@ -91,7 +91,7 @@ contractual label, never a softened `resolved`.
 | `catalog-unavailable` / `catalog-integrity-failed`                     | `unresolved`  | Declared catalog source unreadable/bad                    |
 | `basis-latest` / `basis-absent` / `basis-ambiguous` / `basis-mismatch` | `unresolved`  | Thread tip                                                |
 | `basis-not-current` / `project-state-unavailable`                      | `unavailable` | Historical or missing project head                        |
-| `project-state-mismatch` / `compiled-identities-conflict`              | `unresolved`  | Incompatible or already-used identities                   |
+| `project-state-mismatch` / `compiled-identities-conflict`              | `unresolved`  | Incompatible or already-used identities. Seal work/decision ids are `wi-sensitivity-seal-${caseId}-${cadSourceSha256.slice(0,16)}`; a historical unsuffixed id is a different activity. |
 | `admission-absent` / `semantic-key-unbound`                            | `unresolved`  | No unique admission binding the template semanticKey      |
 | `admission-ambiguous`                                                  | `unresolved`  | Several admissions bind the same semanticKey              |
 | `admission-parameter-mismatch`                                         | `unresolved`  | Admission parameter does not match the template           |

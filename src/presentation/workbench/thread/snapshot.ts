@@ -1,3 +1,7 @@
+import type {
+  ThreadRequirementHistoricalChain,
+  ThreadRequirementHistoricalEvaluation,
+} from "../../../domain/thread/requirement-historical-evaluation.ts";
 import type { ThreadFreshness, ThreadGraph } from "./graph.ts";
 import type {
   EngineeringCaseCatalog,
@@ -5,6 +9,8 @@ import type {
   ThreadEvidenceFamilyGraph,
   ThreadFlowStage,
 } from "./evidence.ts";
+
+export type { ThreadRequirementHistoricalChain, ThreadRequirementHistoricalEvaluation };
 
 export interface ThreadArtifact {
   id: string;
@@ -66,6 +72,13 @@ export interface ThreadRequirement {
   observationIds: string[];
   violationIds: string[];
   rationale: string;
+  /**
+   * Exact archived predecessor evaluations recrossed after recapture.
+   * Current status, observationIds, violations and graph evaluates edges
+   * stay the live projection; this collection never replaces them.
+   */
+  historicalEvaluations?: readonly ThreadRequirementHistoricalEvaluation[];
+  historicalChain?: ThreadRequirementHistoricalChain;
 }
 
 export interface ThreadViolation {

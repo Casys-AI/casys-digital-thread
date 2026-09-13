@@ -15,6 +15,12 @@ on [engineering domains](../domains/README.md).
 `dfm-check-case/1.0`: attested STEP target, object build volume, declared Z-min filter,
 measured verdicts. Distinct from documentary `printability-check-case/1.0`
 
+#### [`src/domain/make/dfm/dfm-canonical-step.ts`](../../../src/domain/make/dfm/dfm-canonical-step.ts)
+
+Attests a DFM STEP as canonical `design.write-geometry@1` output. Production STEP is
+the `cad-asset-<capture>-target-<n>-<stepDigest>` (or PartDefinition
+`…-definition-…`) child of `geometry-<capture>`; isolated CAD is refused
+
 #### [`src/domain/make/dfm/dfm-proposal.ts`](../../../src/domain/make/dfm/dfm-proposal.ts)
 
 Closed MRTR grammars for `industrialize.seal-dfm-case@1` and
@@ -31,8 +37,8 @@ evaluations on reread
 
 #### [`src/adapters/make/dfm/industrialize-seal-dfm-case-run-executor.ts`](../../../src/adapters/make/dfm/industrialize-seal-dfm-case-run-executor.ts)
 
-Provider-free seal of one signed DFM case; verifies the attested STEP in the basis;
-never calls mcp-dfm
+Provider-free seal of one signed DFM case; attests the STEP via
+`attestCanonicalWriteGeometryStep`; never calls mcp-dfm
 
 #### [`src/adapters/make/dfm/industrialize-run-dfm-checks-run-executor.ts`](../../../src/adapters/make/dfm/industrialize-run-dfm-checks-run-executor.ts)
 

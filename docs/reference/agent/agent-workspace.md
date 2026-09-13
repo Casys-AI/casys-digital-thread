@@ -82,6 +82,7 @@ Full tables: [lookalike traps](lookalike-traps.md). Keep this heading so older
 | FEA, sensitivity, correction | [lookalike traps § FEA](lookalike-traps.md#fea-sensitivity-correction) |
 | Cross-domain impact          | [lookalike traps § Impact](lookalike-traps.md#cross-domain-impact)     |
 | DFM and print                | [lookalike traps § DFM](lookalike-traps.md#dfm-and-print)              |
+| Buy                          | [lookalike traps § Buy](lookalike-traps.md#buy)                        |
 | Other                        | [lookalike traps § Other](lookalike-traps.md#other)                    |
 
 ## 4. Surfaces an agent actually calls
@@ -98,6 +99,10 @@ its opaque `evidenceRef` for a named page or explicit `full-evidence`. Full evid
 required for MRTR, and ready decision parameters and the exact operation appear only in
 their explicit detail sections. `cockpit_focus_set` may omit `expectedRevision`.
 `deno task preview:thread` follows cockpit focus unless `--project-id=` pins a vehicle.
+There is no `GET /projects/<id>` and no `projectId` query selector. Unfocused navigation
+lists `GET /api/project-discovery` (`native-workbench-project-discovery/2.0`) beside
+unchanged all-or-nothing `GET /api/projects`. A human asks the paired assistant to
+choose the project; the agent uses `cockpit_focus_set`. Workbench stays `GET` + SSE.
 
 This is a breaking `structuredContent` change: callers that previously read `document`,
 `gaps`, `decisionParameters`, or `operation` from the preview response must instead read
@@ -140,9 +145,9 @@ refuses. Product inspection is `preview:thread` / `preview:cockpit`.
 | `project_agent_run_queue`                              | Bounded mutation       | Server derives run id, basis, summary                                                                                                                                                                                                                                                                                                                                                   |
 | `project_agent_run_execute`                            | Server dispatch        | One queued registered operation. Same read-time `join` / `observations` hoist as `project_snapshot`.                                                                                                                                                                                                                                                                                    |
 | `project_agent_run_cancel`                             | Human MRTR             | Still-queued run only                                                                                                                                                                                                                                                                                                                                                                   |
-| `project_work_item_abandon`                            | Human MRTR             | Ready or waiting work items with no run or evidence, plus pending decisions. No Thread snapshot.                                                                                                                                                                                                                                                                                        |
+| `project_work_item_abandon`                            | Human MRTR             | Ready or waiting work with no evidence and no runs except human pre-claim cancellations, plus pending decisions; approved decisions remain intact when omitted. No Thread snapshot.                                                                                                                                                                                                     |
 | `project_agent_run_plan_get`                           | Read                   | Inspect sealed `resolved-operation-plan/2.0`; does not execute                                                                                                                                                                                                                                                                                                                          |
-| `cockpit_focus_set` / `cockpit_focus_snapshot`         | UI routing             | Point the cockpit at one durable project                                                                                                                                                                                                                                                                                                                                                |
+| `cockpit_focus_set` / `cockpit_focus_snapshot`         | UI routing             | Point the cockpit at one durable project. Not a Workbench command, not `GET /projects/<id>`, not a query selector                                                                                                                                                                                                                                                                       |
 
 Successor closeout of a leftover ready work item is **not** an MCP tool. Inspect or
 apply with `deno task recover:work-item-successor`. Default is inspect. `--apply` writes
@@ -497,6 +502,8 @@ cross-domain registry overview.
 | `industrialize.run-dfm-checks@1`                                                                | trusted                   | mcp-dfm                                                            | Measured observations + fail-closed evaluations                                                                                                  | `observe-printability` or a quote                                                |
 | `industrialize.seal-print-estimate-case@1`                                                      | trusted                   | none                                                               | Sealed print-estimate-case/1.0 document                                                                                                          | A slice or a price                                                               |
 | `industrialize.observe-print-estimate@1`                                                        | trusted                   | mcp-prusaslicer                                                    | Time and material observations                                                                                                                   | A cost quote or verdict                                                          |
+| `buy.capture-configuration-cost@1`                                                              | trusted                   | locked `erpnext_buy_capture`                                       | Canonical ERP read into DT CAS; documentary candidate bundle                                                                                     | RFQ, PO, `erpnext_bom_get`, or approved spend                                    |
+| `buy.seal-configuration-cost@1`                                                                 | trusted                   | none                                                               | Provider-free Thread seal of those CAS bytes                                                                                                     | A second ERP fetch or a current-price refresh                                    |
 | `design.apply-vector-correction@1`                                                              | trusted                   | none                                                               | Thread document of a bounded correction proposal (`grants: none`)                                                                                | CAD, SysON, provider, admission, or a join of proof-run observations             |
 | `record.reconcile-uncertain-writer@1`                                                           | trusted, **human origin** | none                                                               | Release or inspect an uncertain write                                                                                                            | Agent inspection of a provider                                                   |
 | `record.archive-lineage@1`                                                                      | trusted                   | none                                                               | Append-only archive change                                                                                                                       | SysML deletion                                                                   |
@@ -519,6 +526,26 @@ Live mcp-dfm 0.1.0 tools take `step_path` + `expected_step_sha256`, not STL.
 `build_volume_mm` is an object `{x, y, z}`. The sealed case must declare the Z-min
 bed-contact filter; the executor applies that signed filter and traces it. It must not
 invent a min-Z heuristic. A check fail is publishable with a named violation.
+
+Recorded DFM App identity (unpublished source): `io.casys.mcp-dfm.results`
+`0.3.0-local.viewer.1`, `ui://mcp-dfm/results-viewer`, `viewer.session.apply`. Binding
+reopens exact capture/case/STEP/run and recrosses human approval/decision fingerprints
+against that run basis. Historical `0.1` captures do not invent quality fields. A
+recorded `pass` is not restored MRTR authority. The ID01 r115 approval / r117 run
+capture stays authority-`unavailable`; a new exact-approved run would create separate
+new evidence and would not repair that old capture. The App is not a live solver UI.
+
+### Buy (`project_buy_configuration_cost_*` then `buy.capture-configuration-cost@1` / `buy.seal-configuration-cost@1`)
+
+| Tool                                            | Writes | Grant                                                                                        |
+| ----------------------------------------------- | ------ | -------------------------------------------------------------------------------------------- |
+| `project_buy_configuration_cost_capture_review` | None   | Read-only; `decisionParameters` / `next` for `buy.capture-configuration-cost@1`. No ERP      |
+| `project_buy_configuration_cost_seal_review`    | None   | Read-only; `decisionParameters` / `next` for `buy.seal-configuration-cost@1`. No ERP refresh |
+
+Contract: [Buy configuration and dated cost](../domains/buy/README.md). Capture demands
+`commerce.read-erpnext-buy-source@1` at `qualified` plus an exact site fingerprint. The
+agent does not choose provider/tool/args. Seal reopens CAS only. Viewer `anchor` equals
+`provenance.bundleRef` of the sealed DT artefact, not a hash of the displayed result.
 
 Queueing sequence for any trusted consequential op:
 
