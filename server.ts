@@ -180,6 +180,7 @@ import {
 import { BuyCaptureConfigurationCostRunExecutor } from "./src/adapters/buy/buy-capture-configuration-cost-run-executor.ts";
 import { BuySealConfigurationCostRunExecutor } from "./src/adapters/buy/buy-seal-configuration-cost-run-executor.ts";
 import { createBuyErpRuntimeComposition } from "./src/adapters/buy/runtime-composition.ts";
+import { createBuyCostEstimatePreviewComposition } from "./src/adapters/buy/cost-estimate-preview-composition.ts";
 import { AgentResourceBuyConfigurationReader } from "./src/adapters/buy/agent-resource-buy-configuration-reader.ts";
 import { PrepareProjectBuyConfigurationCostCaptureReview } from "./src/application/use-cases/buy/prepare-project-buy-configuration-cost-capture-review.ts";
 import { PrepareProjectBuyConfigurationCostSealReview } from "./src/application/use-cases/buy/prepare-project-buy-configuration-cost-seal-review.ts";
@@ -418,6 +419,8 @@ const DEFAULT_BUY_CANDIDATE_CAPTURE_DIRECTORY =
   "state/local/buy-configuration-cost-candidate-captures";
 const DEFAULT_BUY_SEAL_CAPTURE_DIRECTORY =
   "state/local/buy-configuration-cost-seal-captures";
+const DEFAULT_BUY_COST_ESTIMATE_PREVIEW_EVIDENCE_DIRECTORY =
+  "state/local/buy-cost-estimate-preview-evidence";
 const DEFAULT_PRINT_ESTIMATE_CASE_CAPTURE_DIRECTORY =
   "state/local/print-estimate-case-captures";
 const DEFAULT_PRINT_ESTIMATE_ATTEMPT_DIRECTORY = "state/local/print-estimate-attempts";
@@ -522,6 +525,8 @@ export interface CreateConsoleServerOptions {
   dfmCheckAttemptDirectory?: string;
   buyCandidateCaptureDirectory?: string;
   buySealCaptureDirectory?: string;
+  /** Documentary preview cache only; these bytes are not sealed Thread evidence. */
+  buyCostEstimatePreviewEvidenceDirectory?: string;
   /** Trusted local ERP Buy installation profile. Missing is non-qualified absence. */
   erpnextBuyInstallationProfilePath?: string;
   /** Trusted local ERP Buy qualification fixture. Missing leaves the binding unqualified. */
@@ -1572,6 +1577,13 @@ async function createProjectControl(
       buyCandidateCaptures,
       runtime.projects,
     );
+  const buyCostEstimatePreview = createBuyCostEstimatePreviewComposition({
+    sealReview: buyConfigurationCostSealReview,
+    candidates: buyCandidateCaptures,
+    resources: reopenAgentResource,
+    evidenceDirectory: options.buyCostEstimatePreviewEvidenceDirectory ??
+      DEFAULT_BUY_COST_ESTIMATE_PREVIEW_EVIDENCE_DIRECTORY,
+  });
   const industrializeRunDfmChecks = dfmRuntimeConnection
     ? new IndustrializeRunDfmChecksRunExecutor({
       projects: runtime.projects,
@@ -1798,6 +1810,7 @@ async function createProjectControl(
       isolatedGeometrySealReview: build123dCapability.isolatedGeometrySealReview,
       buyConfigurationCostCaptureReview,
       buyConfigurationCostSealReview,
+      ...buyCostEstimatePreview,
       vectorCorrectionReview: sensitivity.vectorCorrectionReview,
       sensitivityBaseEvaluationReview: sensitivity.sensitivityBaseEvaluationReview,
       sensitivityEdgesReview: sensitivity.sensitivityEdgesReview,

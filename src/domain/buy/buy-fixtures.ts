@@ -3,12 +3,22 @@
  */
 
 import { DESIGN_WRITE_GEOMETRY_TOOL } from "../cad/canonical/canonical-write-geometry-step.ts";
+import { deterministicJson, sha256Hex } from "../kernel/deterministic-json.ts";
 import {
   BUY_CONFIGURATION_SCHEMA,
   type BuyConfiguration,
+  validateBuyConfiguration,
 } from "./buy-configuration.ts";
 import { type BuyCostSelection, type BuyPricingContext } from "./buy-cost-bundle.ts";
 import { BUY_DECIMAL_SCHEMA } from "./buy-decimal.ts";
+import type { AgentResourceReference } from "../resource/agent-resource-capture.ts";
+import {
+  BUY_DOCUMENTARY_ESTIMATE_SCHEMA,
+  type BuyDocumentaryEstimate,
+  type BuyDocumentaryEstimateEnvelope,
+  type BuyEstimateSourceRef,
+  validateBuyDocumentaryEstimateEnvelope,
+} from "./buy-documentary-estimate.ts";
 import {
   BUY_SOURCE_CAPTURE_SCHEMA,
   BUY_SOURCE_INSTANCE_KIND,
@@ -126,6 +136,176 @@ export function buyCaptureBodyFixture(
     }],
     consistency: { kind: "repeated-read", reads: 2, consistent: true },
     ...overrides,
+  };
+}
+
+export const BUY_FIXTURE_ESTIMATE_OBSERVED_AT = "2026-02-10T09:00:00.000Z";
+export const BUY_FIXTURE_EVIDENCE_DIGEST =
+  "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc";
+
+/** Actual SHA-256 of the validated configuration canonical bytes. */
+export async function buyConfigurationDigest(
+  configuration: BuyConfiguration,
+): Promise<string> {
+  const validated = validateBuyConfiguration(configuration);
+  return await sha256Hex(new TextEncoder().encode(deterministicJson(validated)));
+}
+
+/**
+ * Explicitly synthetic evidence reference: well-formed but not captured.
+ * Operational paths receive genuine store references only.
+ */
+export function buySyntheticEvidenceReference(
+  digest = BUY_FIXTURE_EVIDENCE_DIGEST,
+): AgentResourceReference {
+  return {
+    schemaVersion: "agent-resource-capture/1.0",
+    uri: `casys://agent-resource-capture/sha256/${digest}`,
+    name: "synthetic-evidence.txt",
+    mimeType: "text/plain",
+    representation: "text",
+    byteCount: 32,
+    fingerprint: { algorithm: "sha256", digest },
+  };
+}
+
+export function buyEstimateSourceRef(
+  overrides: {
+    readonly reference?: AgentResourceReference;
+    readonly anchor?: string;
+    readonly observedAt?: string;
+  } = {},
+): BuyEstimateSourceRef {
+  return {
+    reference: overrides.reference ?? buySyntheticEvidenceReference(),
+    anchor: overrides.anchor ?? "synthetic page 2, line 7",
+    observedAt: overrides.observedAt ?? BUY_FIXTURE_ESTIMATE_OBSERVED_AT,
+  };
+}
+
+/**
+ * Pure-domain fixture envelope with an explicitly synthetic external
+ * locator bound to the canonical bytes. Operational paths build the
+ * envelope from an exact store reopen instead.
+ */
+export async function buyDocumentaryEstimateEnvelopeFixture(
+  estimate: BuyDocumentaryEstimate,
+): Promise<BuyDocumentaryEstimateEnvelope> {
+  const canonicalText = deterministicJson(estimate);
+  const bytes = new TextEncoder().encode(canonicalText);
+  const digest = await sha256Hex(bytes);
+  return validateBuyDocumentaryEstimateEnvelope({
+    schemaVersion: BUY_DOCUMENTARY_ESTIMATE_SCHEMA,
+    estimate,
+    capture: {
+      schemaVersion: "agent-resource-capture/1.0",
+      uri: `casys://agent-resource-capture/sha256/${digest}`,
+      name: "synthetic-estimate-input.json",
+      mimeType: "application/json",
+      representation: "text",
+      byteCount: bytes.byteLength,
+      fingerprint: { algorithm: "sha256", digest },
+    },
+    canonicalText,
+    fingerprint: `sha256:${digest}`,
+    byteCount: bytes.byteLength,
+  });
+}
+
+export function buyDocumentaryEstimateFixture(
+  configurationDigest: string,
+  overrides: Partial<BuyDocumentaryEstimate> = {},
+): BuyDocumentaryEstimate {
+  return {
+    schemaVersion: BUY_DOCUMENTARY_ESTIMATE_SCHEMA,
+    estimateId: "estimate.synthetic.machining",
+    projectId: "reviewed-project-v1",
+    subjectId: "project:reviewed-project-v1",
+    configurationDigest,
+    basis: {
+      snapshotId: "snapshot.buy.r1",
+      revision: 1,
+      subjectId: "project:reviewed-project-v1",
+    },
+    geometry: {
+      parentArtifactId: `geometry-${BUY_FIXTURE_PARENT}`,
+      parentFingerprint: BUY_FIXTURE_PARENT,
+      stepArtifactId: `cad-asset-${BUY_FIXTURE_PARENT}-target-0-${BUY_FIXTURE_STEP}`,
+      stepFingerprint: BUY_FIXTURE_STEP,
+      stepUri:
+        `thread-artifact://reviewed-project-v1/cad-asset-${BUY_FIXTURE_PARENT}-target-0-${BUY_FIXTURE_STEP}`,
+    },
+    asOf: BUY_FIXTURE_AS_OF,
+    sourceValidity: { from: "2026-01-01", to: "2026-12-31" },
+    currency: "EUR",
+    lines: [{
+      configurationLineId: "line.fastener",
+      quantityBasis: "per-configuration-unit",
+      productUom: "Nos",
+      terms: [
+        {
+          id: "material.bar",
+          nature: "material",
+          consumption: {
+            operand: "sourced",
+            decimal: "2",
+            uom: "kg",
+            source: buyEstimateSourceRef(),
+          },
+          rate: {
+            operand: "sourced",
+            decimal: "10.50",
+            perUom: "kg",
+            currency: "EUR",
+            source: buyEstimateSourceRef({ anchor: "synthetic page 2, line 9" }),
+          },
+        },
+        {
+          id: "labour.turning",
+          nature: "labour",
+          consumption: {
+            operand: "sourced",
+            decimal: "3",
+            uom: "h",
+            source: buyEstimateSourceRef({ anchor: "synthetic page 3, line 1" }),
+          },
+          rate: {
+            operand: "sourced",
+            decimal: "45.00",
+            perUom: "h",
+            currency: "EUR",
+            source: buyEstimateSourceRef({ anchor: "synthetic page 3, line 4" }),
+          },
+        },
+      ],
+    }],
+    assumptions: ["Synthetic stock size covers the part envelope."],
+    ...overrides,
+  };
+}
+
+export function buyTwoLineConfigurationFixture(): BuyConfiguration {
+  const base = buyConfigurationFixture();
+  return {
+    ...base,
+    lines: [
+      ...base.lines,
+      {
+        id: "line.bracket",
+        partDefinition: { elementId: "pd.bracket" },
+        occurrences: [{ elementId: "occ.bracket.1", quantity: "2", uom: "Nos" }],
+        quantity: "2",
+        uom: "Nos",
+        sourcing: "buy",
+        item: {
+          doctype: "Item",
+          name: "ITEM-SYNTHETIC-BRACKET",
+          authority: "source-attested",
+        },
+        sources: [...base.sources],
+        gaps: [],
+      },
+    ],
   };
 }
 

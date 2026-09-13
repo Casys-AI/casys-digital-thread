@@ -284,36 +284,77 @@ export function computeBuyCostCandidate(input: {
       pricingContext: input.pricingContext,
     })
   );
-  const priced = lines.filter((line) => line.amount !== undefined);
+  const aggregated = aggregateBuyCoveredTotals({
+    currency: input.pricingContext.currency,
+    requiredDimensions: input.pricingContext.requiredDimensions,
+    rounding: input.pricingContext.rounding,
+    lines,
+    bundleHasGap: bundleGaps.length > 0,
+  });
+  return deepFreeze({
+    schemaVersion: BUY_COST_BUNDLE_SCHEMA,
+    configurationRef: { digest: input.configurationDigest },
+    sourceCaptures: captureRefs,
+    pricingContext: input.pricingContext,
+    lines,
+    totals: aggregated.totals,
+    coverage: aggregated.coverage,
+    gaps: bundleGaps,
+  });
+}
+
+export interface BuyCoverageLineView {
+  readonly configurationLineId: string;
+  readonly amount?: string | undefined;
+  readonly dimensions: Readonly<Record<BuyCostDimension, "established" | "unknown">>;
+}
+
+export interface BuyAggregatedTotals {
+  readonly totals: readonly BuyCostTotal[];
+  readonly coverage: BuyCostCoverage;
+}
+
+/**
+ * Single Buy totals/coverage authority shared by v1 and v2 composition.
+ * Covered subtotal sums priced lines only; missing dimensions stay unknown
+ * and are never filled with zero. `total-complete` exists only with no
+ * excluded lines, no unknown required dimensions, and no bundle-level gap.
+ */
+export function aggregateBuyCoveredTotals(input: {
+  readonly currency: string;
+  readonly requiredDimensions: readonly BuyCostDimension[];
+  readonly rounding: BuyDecimalRounding;
+  readonly lines: readonly BuyCoverageLineView[];
+  readonly bundleHasGap: boolean;
+}): BuyAggregatedTotals {
+  const priced = input.lines.filter((line) => line.amount !== undefined);
   const coveredLineIds = priced.map((line) => line.configurationLineId);
-  const excludedLineIds = lines
+  const excludedLineIds = input.lines
     .filter((line) => !coveredLineIds.includes(line.configurationLineId))
     .map((line) => line.configurationLineId);
   const unknownDimensions = uniqueDimensions(
-    lines.flatMap((line) =>
+    input.lines.flatMap((line) =>
       BUY_COST_DIMENSIONS.filter((dimension) =>
-        input.pricingContext.requiredDimensions.includes(dimension) &&
+        input.requiredDimensions.includes(dimension) &&
         line.dimensions[dimension] === "unknown"
       )
     ),
   );
   const requiredUnknown = unknownDimensions.length > 0 ||
     excludedLineIds.length > 0 ||
-    bundleGaps.length > 0;
+    input.bundleHasGap;
   let amount = "0";
   if (priced.length > 0) {
     amount = priced.reduce((sum, line) => addBuyDecimals(sum, line.amount!), "0");
-    amount = roundBuyDecimal(amount, input.pricingContext.rounding);
+    amount = roundBuyDecimal(amount, input.rounding);
   }
   const coveredSubtotal: BuyCostTotal = {
     kind: "covered-subtotal",
-    currency: input.pricingContext.currency,
-    amount: priced.length === 0
-      ? roundBuyDecimal("0", input.pricingContext.rounding)
-      : amount,
+    currency: input.currency,
+    amount: priced.length === 0 ? roundBuyDecimal("0", input.rounding) : amount,
     includedLineIds: coveredLineIds,
     excludedLineIds,
-    includedDimensions: input.pricingContext.requiredDimensions.filter(
+    includedDimensions: input.requiredDimensions.filter(
       (dimension) => !unknownDimensions.includes(dimension),
     ),
     unknownDimensions,
@@ -322,32 +363,72 @@ export function computeBuyCostCandidate(input: {
   const coverageStatus: BuyCoverageStatus = requiredUnknown
     ? (priced.length === 0 ? "unresolved" : "partial")
     : "complete";
-  if (
-    coverageStatus === "complete" && priced.length === input.configuration.lines.length
-  ) {
+  if (coverageStatus === "complete" && priced.length === input.lines.length) {
     totals.push({
       ...coveredSubtotal,
       kind: "total-complete",
     });
   }
-  return deepFreeze({
-    schemaVersion: BUY_COST_BUNDLE_SCHEMA,
-    configurationRef: { digest: input.configurationDigest },
-    sourceCaptures: captureRefs,
-    pricingContext: input.pricingContext,
-    lines,
+  return {
     totals,
     coverage: {
       status: coverageStatus,
       coveredLineIds,
       excludedLineIds,
       quantityBasis: "configuration-occurrences",
-      currency: input.pricingContext.currency,
-      requiredDimensions: [...input.pricingContext.requiredDimensions],
+      currency: input.currency,
+      requiredDimensions: [...input.requiredDimensions],
       unknownDimensions,
     },
-    gaps: bundleGaps,
-  });
+  };
+}
+
+/** Fresh all-unknown cost dimensions for v1 and v2 line pricing. */
+export function createBuyCostDimensions(): Record<
+  BuyCostDimension,
+  "established" | "unknown"
+> {
+  return {
+    "unit-price": "unknown",
+    quantity: "unknown",
+    uom: "unknown",
+    currency: "unknown",
+    tax: "unknown",
+    transport: "unknown",
+    discount: "unknown",
+    fees: "unknown",
+    moq: "unknown",
+    fx: "unknown",
+  };
+}
+
+export function parseBuySourceCaptureRef(
+  value: unknown,
+  path: string,
+): BuySourceCaptureRef {
+  return parseCaptureRef(value, path);
+}
+
+export function parseBuyCostCitation(
+  value: unknown,
+  path: string,
+): BuyCostCitation {
+  return parseCitation(value, path);
+}
+
+export function parseBuyCostDimensions(
+  value: unknown,
+  path: string,
+): Readonly<Record<BuyCostDimension, "established" | "unknown">> {
+  return parseDimensions(value, path);
+}
+
+export function parseBuyCostTotal(value: unknown, path: string): BuyCostTotal {
+  return parseTotal(value, path);
+}
+
+export function parseBuyCostCoverage(value: unknown): BuyCostCoverage {
+  return parseCoverage(value);
 }
 
 function priceLine(input: {
@@ -623,18 +704,7 @@ function lineResult(
 }
 
 function emptyDimensions(): Record<BuyCostDimension, "established" | "unknown"> {
-  return {
-    "unit-price": "unknown",
-    quantity: "unknown",
-    uom: "unknown",
-    currency: "unknown",
-    tax: "unknown",
-    transport: "unknown",
-    discount: "unknown",
-    fees: "unknown",
-    moq: "unknown",
-    fx: "unknown",
-  };
+  return createBuyCostDimensions();
 }
 
 function markUnknown(
@@ -650,6 +720,13 @@ function uniqueDimensions(
   values: readonly BuyCostDimension[],
 ): readonly BuyCostDimension[] {
   return BUY_COST_DIMENSIONS.filter((dimension) => values.includes(dimension));
+}
+
+export function parseBuyPricingContext(
+  value: unknown,
+  path: string,
+): BuyPricingContext {
+  return parsePricingContext(value, path);
 }
 
 function parsePricingContext(value: unknown, path: string): BuyPricingContext {
