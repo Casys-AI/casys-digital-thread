@@ -180,3 +180,84 @@ Deno.test("doc-code-refs gate closes a tilde shell fence with a longer matching 
   );
   assertStringIncludes(result.stderr, "src/gone.ts:1");
 });
+
+Deno.test("doc-code-refs gate ignores a quoted shell example", async () => {
+  const result = await runGate({
+    "src/ok.ts": SOURCE,
+    "doc.md": "# Doc\n\n> ```bash\n> $ grep `src/gone.ts:1` log\n> ```\n",
+  });
+  assert(
+    result.code === 0,
+    `expected exit 0, got ${result.code}: ${result.stderr}`,
+  );
+});
+
+Deno.test("doc-code-refs gate ignores a nested quoted shell example", async () => {
+  const result = await runGate({
+    "src/ok.ts": SOURCE,
+    "doc.md": "# Doc\n\n>> ```bash\n>> $ grep `src/gone.ts:1` log\n>> ```\n",
+  });
+  assert(
+    result.code === 0,
+    `expected exit 0, got ${result.code}: ${result.stderr}`,
+  );
+});
+
+Deno.test("doc-code-refs gate still fails outside a closed quoted block", async () => {
+  const result = await runGate({
+    "src/ok.ts": SOURCE,
+    "doc.md":
+      "# Doc\n\n> ```bash\n> $ grep `src/gone.ts:1` log\n> ```\n\nSee `src/gone.ts:1`.\n",
+  });
+  assert(
+    result.code === 1,
+    `expected exit 1, got ${result.code}: ${result.stdout}`,
+  );
+  assertStringIncludes(result.stderr, "src/gone.ts:1");
+});
+
+Deno.test("doc-code-refs gate keeps a deeper marker inside a quoted example as content", async () => {
+  const result = await runGate({
+    "src/ok.ts": SOURCE,
+    "doc.md":
+      "# Doc\n\n> ```bash\n> $ grep `src/gone.ts:1` log\n>> ```\n> $ grep `src/gone.ts:1` again\n> ```\n",
+  });
+  assert(
+    result.code === 0,
+    `expected exit 0, got ${result.code}: ${result.stderr}`,
+  );
+});
+
+Deno.test("doc-code-refs gate does not let an unclosed quoted block swallow later locators", async () => {
+  const result = await runGate({
+    "src/ok.ts": SOURCE,
+    "doc.md":
+      "# Doc\n\n> ```bash\n> $ grep `src/gone.ts:1` log\n\nSee `src/gone.ts:1`.\n",
+  });
+  assert(
+    result.code === 1,
+    `expected exit 1, got ${result.code}: ${result.stdout}`,
+  );
+  assertStringIncludes(result.stderr, "src/gone.ts:1");
+});
+
+Deno.test("doc-code-refs gate keeps prefix changes inside an unquoted block as literal code", async () => {
+  const result = await runGate({
+    "src/ok.ts": SOURCE,
+    "doc.md":
+      "# Doc\n\n```bash\n$ grep `src/gone.ts:1` log\n> ```ts\n$ grep `src/gone.ts:1` again\n```\n",
+  });
+  assert(
+    result.code === 0,
+    `expected exit 0, got ${result.code}: ${result.stderr}`,
+  );
+});
+
+Deno.test("doc-code-refs gate scans deeper literal quote markers in a non-shell fence", async () => {
+  const result = await runGate({
+    "src/ok.ts": SOURCE,
+    "doc.md": "# Doc\n\n> ```ts\n> > src/gone.ts:1\n> ```\n",
+  });
+  assert(result.code === 1, `expected exit 1, got ${result.code}: ${result.stdout}`);
+  assertStringIncludes(result.stderr, "src/gone.ts:1");
+});

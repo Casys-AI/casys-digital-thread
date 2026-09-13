@@ -15,6 +15,9 @@
  * output. A fence counts as shell output when its info-string language is one
  * of: bash, sh, shell, zsh, console, terminal, text, output, powershell, pwsh,
  * cmd, fish. Other fences (TypeScript, Python, JSON, unlabeled) stay in scope.
+ * Fences may sit inside a Markdown blockquote (`> ```bash`): the opening
+ * quote depth must match the closing one, and an unclosed quoted block ends
+ * where the quote ends instead of swallowing later locators.
  *
  * `--mode=strict` exits 1 on unresolvable locators. `--mode=warn` prints the
  * same `source:line -> target` records and exits 0. Ambiguous basenames are
@@ -227,31 +230,27 @@ function markdownCodeRefs(body: string): readonly CodeRef[] {
   let skipFence = false;
   let fenceChar = "";
   let fenceLength = 0;
+  let fenceQuoteDepth: number | null = null;
 
-  for (const [index, line] of body.split("\n").entries()) {
-    const fence = line.match(/^\s*(`{3,}|~{3,})(.*)$/u);
-    if (fence) {
-      const marker = fence[1] ?? "";
-      const rest = fence[2] ?? "";
-      if (!fenced) {
-        fenced = true;
-        fenceChar = marker[0] ?? "";
-        fenceLength = marker.length;
-        skipFence = isIllustrativeShellFence(rest);
-      } else if (
-        (marker[0] ?? "") === fenceChar &&
-        marker.length >= fenceLength &&
-        rest.trim() === ""
-      ) {
-        fenced = false;
-        skipFence = false;
-        fenceChar = "";
-        fenceLength = 0;
-      }
-      continue;
-    }
-    if (fenced && skipFence) continue;
-
+  const openFence = (marker: string, rest: string, depth: number): void => {
+    fenced = true;
+    fenceChar = marker[0] ?? "";
+    fenceLength = marker.length;
+    fenceQuoteDepth = depth > 0 ? depth : null;
+    skipFence = isIllustrativeShellFence(rest);
+  };
+  const closeFence = (): void => {
+    fenced = false;
+    skipFence = false;
+    fenceChar = "";
+    fenceLength = 0;
+    fenceQuoteDepth = null;
+  };
+  const closesFence = (marker: string, rest: string): boolean =>
+    (marker[0] ?? "") === fenceChar &&
+    marker.length >= fenceLength &&
+    rest.trim() === "";
+  const scanLine = (line: string, index: number): void => {
     for (const match of line.matchAll(CODE_REF_PATTERN)) {
       const path = match[1]!;
       const locatorText = match[2]!;
@@ -262,8 +261,71 @@ function markdownCodeRefs(body: string): readonly CodeRef[] {
         locators: parseLocators(locatorText),
       });
     }
+  };
+
+  for (const [index, line] of body.split("\n").entries()) {
+    if (line.trim() === "") continue;
+    const { depth, content } = splitBlockquotePrefix(line);
+    if (fenced && fenceQuoteDepth === null) {
+      // Unquoted fence: every line is literal code. A `>` marker changes
+      // nothing and must neither close nor reset this block.
+      const fence = line.match(/^\s*(`{3,}|~{3,})(.*)$/u);
+      if (fence) {
+        if (closesFence(fence[1] ?? "", fence[2] ?? "")) closeFence();
+        continue;
+      }
+      if (skipFence) continue;
+      scanLine(line, index);
+      continue;
+    }
+    if (fenced && fenceQuoteDepth !== null && depth !== fenceQuoteDepth) {
+      // A deeper marker is example content; a shallower or missing marker
+      // ends the quote, so an unclosed quoted block cannot swallow later
+      // locators. Reprocess the line fresh below.
+      if (depth > fenceQuoteDepth) {
+        if (!skipFence) scanLine(line, index);
+        continue;
+      }
+      closeFence();
+    }
+    if (fenced) {
+      const fence = content.match(/^\s*(`{3,}|~{3,})(.*)$/u);
+      if (fence) {
+        if (closesFence(fence[1] ?? "", fence[2] ?? "")) closeFence();
+        continue;
+      }
+      if (skipFence) continue;
+      scanLine(line, index);
+      continue;
+    }
+    const fence = content.match(/^\s*(`{3,}|~{3,})(.*)$/u);
+    if (fence) {
+      openFence(fence[1] ?? "", fence[2] ?? "", depth);
+      continue;
+    }
+    scanLine(line, index);
   }
   return refs;
+}
+
+/**
+ * Split a Markdown blockquote container prefix (`>`, `>>`, `> >`) from the
+ * line content. Depth counts `>` markers; anything else stays literal
+ * content, including `>` mid-line.
+ */
+function splitBlockquotePrefix(line: string): {
+  depth: number;
+  content: string;
+} {
+  let rest = line;
+  let depth = 0;
+  for (;;) {
+    const marker = rest.match(/^\s{0,3}>([ \t]?)/u);
+    if (!marker) break;
+    depth += 1;
+    rest = rest.slice(marker[0].length);
+  }
+  return { depth, content: rest };
 }
 
 function isIllustrativeShellFence(infoString: string): boolean {

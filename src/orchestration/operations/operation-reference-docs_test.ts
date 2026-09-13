@@ -13,7 +13,7 @@
  * of the same shape stay listed but unwatched: an unknown citation must
  * fail, and this suite does not edit those pages.
  */
-import { assert, assertEquals } from "@std/assert";
+import { assert, assertEquals, assertThrows } from "@std/assert";
 import { listRegisteredEngineeringOperationKeys } from "./registry.ts";
 
 const REPO_ROOT = new URL("../../../", import.meta.url);
@@ -207,6 +207,24 @@ function unknownLiterals(
   return literals.filter((id) => !registered.has(id)).toSorted();
 }
 
+/**
+ * Operation identities owned by the §5 table: backtick-quoted ids in the
+ * first column only. Paired accept/reject cells legitimately yield two ids;
+ * an id merely mentioned in a later column (prerequisite, bytes reopened)
+ * grants no row and must not mask a missing identity.
+ */
+function extractTableOperationIdentities(table: string): string[] {
+  const identities = new Set<string>();
+  for (const line of table.split("\n")) {
+    if (!line.startsWith("|")) continue;
+    const firstColumn = line.split("|")[1] ?? "";
+    for (const match of firstColumn.matchAll(LITERAL_OPERATION_PATTERN)) {
+      identities.add(match[1]);
+    }
+  }
+  return [...identities].toSorted();
+}
+
 function deadGlobs(
   globs: readonly string[],
   registered: readonly string[],
@@ -328,28 +346,122 @@ Deno.test(
   },
 );
 
+function assertTableOperationIdentities(
+  table: string,
+  registered: readonly string[],
+): void {
+  const cited = extractTableOperationIdentities(table);
+  assert(
+    cited.length > 0,
+    `${AGENT_WORKSPACE_REFERENCE} operations table no longer cites any ` +
+      "operation identifier, so the reverse pin protects nothing.",
+  );
+  const citedSet = new Set(cited);
+  const missing = registered.filter((key) => !citedSet.has(key)).toSorted();
+  assertEquals(
+    missing,
+    [],
+    `${AGENT_WORKSPACE_REFERENCE} operations table is missing ` +
+      `${missing.length} registry keys: ${missing.join(", ")}. ` +
+      "Add the missing rows from the registered descriptors; do not " +
+      "weaken this guard.",
+  );
+  const stale = unknownLiterals(cited, new Set(registered));
+  assertEquals(
+    stale,
+    [],
+    `${AGENT_WORKSPACE_REFERENCE} operations table cites ` +
+      `${stale.length} unknown operation ids: ${stale.join(", ")}. ` +
+      "Remove the withdrawn row; historical references outside the table " +
+      "stay untouched.",
+  );
+}
+
 Deno.test(
-  "every registered operation key is cited in the agent-workspace operations table",
+  "agent-workspace operations table cites exactly the registered operation keys",
   async () => {
     const registered = listRegisteredEngineeringOperationKeys();
     const text = await Deno.readTextFile(
       new URL(AGENT_WORKSPACE_REFERENCE, REPO_ROOT),
     );
     const table = registeredOperationsTable(text);
-    const cited = new Set(extractReferences(table).literals);
+    assertTableOperationIdentities(table, registered);
+  },
+);
+
+Deno.test(
+  "agent-workspace table authority is the first column, not description mentions",
+  () => {
+    const table = [
+      "| Operation | Execution | What a success is |",
+      "| --- | --- | --- |",
+      "| `verify.alpha-thing@1` | trusted | Mentions `verify.beta-thing@1` |",
+    ].join("\n");
+    // The whole-cell extraction still sees the mention: that is the trap.
     assert(
-      cited.size > 0,
-      `${AGENT_WORKSPACE_REFERENCE} operations table no longer cites any ` +
-        "operation identifier, so the reverse pin protects nothing.",
+      extractReferences(table).literals.includes("verify.beta-thing@1"),
     );
-    const missing = registered.filter((key) => !cited.has(key)).toSorted();
-    assertEquals(
-      missing,
-      [],
-      `${AGENT_WORKSPACE_REFERENCE} operations table is missing ` +
-        `${missing.length} registry keys: ${missing.join(", ")}. ` +
-        "Add the missing rows from the registered descriptors; do not " +
-        "weaken this guard.",
+    const identities = extractTableOperationIdentities(table);
+    assertEquals(identities, ["verify.alpha-thing@1"]);
+    const registered = ["verify.alpha-thing@1", "verify.beta-thing@1"];
+    assertThrows(
+      () => assertTableOperationIdentities(table, registered),
+      Error,
+      "missing",
     );
+  },
+);
+
+Deno.test(
+  "agent-workspace table rejects a withdrawn first-column row",
+  () => {
+    const table = [
+      "| Operation | Execution |",
+      "| --- | --- |",
+      "| `verify.alpha-thing@1` | trusted |",
+      "| `architecture.author-inspection-drone@3` | retired |",
+    ].join("\n");
+    assertThrows(
+      () => assertTableOperationIdentities(table, ["verify.alpha-thing@1"]),
+      Error,
+      "unknown operation ids",
+    );
+  },
+);
+
+Deno.test(
+  "agent-workspace table accepts paired accept/reject cells",
+  () => {
+    const table = [
+      "| Operation | Execution |",
+      "| --- | --- |",
+      "| `decide.accept-gamma-thing@1` / `decide.reject-gamma-thing@1` | trusted, **human origin** |",
+    ].join("\n");
+    assertTableOperationIdentities(table, [
+      "decide.accept-gamma-thing@1",
+      "decide.reject-gamma-thing@1",
+    ]);
+  },
+);
+
+Deno.test(
+  "agent-workspace table ignores historical references outside the table",
+  () => {
+    const document = [
+      "# Reference",
+      "",
+      "## 5. Registered operations",
+      "",
+      "| Operation | Execution |",
+      "| --- | --- |",
+      "| `verify.alpha-thing@1` | trusted |",
+      "",
+      "`architecture.author-inspection-drone@3` is retired and unregistered.",
+      "",
+      "## 6. Next",
+    ].join("\n");
+    assertTableOperationIdentities(registeredOperationsTable(document), [
+      "verify.alpha-thing@1",
+    ]);
   },
 );
