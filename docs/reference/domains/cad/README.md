@@ -1,5 +1,5 @@
 # CAD domain reference
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: 01e66897 (2026-08-28).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

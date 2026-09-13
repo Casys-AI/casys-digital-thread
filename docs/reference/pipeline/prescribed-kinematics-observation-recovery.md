@@ -1,5 +1,5 @@
 # Reference: prescribed-kinematics observation recovery
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: 75e977b6 (2026-08-31).
 
 Audience: both · Diátaxis: reference · Kind: pipeline contract
 

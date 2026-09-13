@@ -1,5 +1,5 @@
 # Reference: source map — FEA
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: 0ff72880 (2026-09-07).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

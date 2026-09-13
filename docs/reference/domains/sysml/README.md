@@ -1,5 +1,5 @@
 # Reference: SysML domain
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: afc205a5 (2026-08-26).
 
 Audience: both · Diátaxis: reference · Kind: index
 

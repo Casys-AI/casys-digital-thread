@@ -1,5 +1,5 @@
 # Reference: source map — make and DFM
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: 1054b57a (2026-09-12).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

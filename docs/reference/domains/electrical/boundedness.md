@@ -1,5 +1,5 @@
 # Electrical boundedness inventory (H01)
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: d386d5cd (2026-08-29).
 
 Audience: both · Diátaxis: reference · Kind: inventory
 

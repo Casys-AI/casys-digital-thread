@@ -1,5 +1,5 @@
 # Reference: graph data model
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: 0134f95e (2026-08-31).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

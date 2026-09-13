@@ -1,5 +1,5 @@
 # Reference: SysML language
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: d1bf53d7 (2026-08-23).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

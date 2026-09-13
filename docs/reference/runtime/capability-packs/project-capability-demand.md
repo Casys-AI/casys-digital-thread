@@ -1,5 +1,5 @@
 # Reference: project capability demand
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: a981e2e0 (2026-08-31).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

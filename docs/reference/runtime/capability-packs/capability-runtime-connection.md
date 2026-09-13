@@ -1,5 +1,5 @@
 # Reference: capability runtime connection
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: c96b49b1 (2026-08-30).
 
 Audience: both · Diátaxis: reference · Kind: boundary
 

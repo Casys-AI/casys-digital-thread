@@ -1,5 +1,5 @@
 # Reference: host runtime supervision
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: 1054b57a (2026-09-12).
 
 Audience: both · Diátaxis: reference · Kind: boundary
 

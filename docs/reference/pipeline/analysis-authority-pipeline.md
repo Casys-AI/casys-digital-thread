@@ -1,5 +1,5 @@
 # Reference: source analysis and authority pipeline
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: ec940e6e (2026-09-09).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

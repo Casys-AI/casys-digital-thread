@@ -1,5 +1,5 @@
 # Reference: Build123d workspace-closure lowering v1
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: 12b99dcc (2026-09-06).
 
 Status: active Build123d 3.0 capture, compilation and admission contract
 

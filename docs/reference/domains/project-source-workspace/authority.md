@@ -1,5 +1,5 @@
 # Project source workspace — authority
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: dc0f72a2 (2026-08-25).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

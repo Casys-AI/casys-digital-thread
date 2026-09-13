@@ -1,5 +1,5 @@
 # Reference: source map — Modelica
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: 41a9ef00 (2026-09-05).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

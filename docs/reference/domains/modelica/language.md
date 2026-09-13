@@ -1,5 +1,5 @@
 # Reference: Modelica language
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: 89074062 (2026-08-20).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

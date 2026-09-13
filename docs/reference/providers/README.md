@@ -1,5 +1,5 @@
 # Reference: engineering providers
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: 7a9c747e (2026-08-31).
 
 Audience: both · Diátaxis: reference · Kind: index
 

@@ -1,5 +1,5 @@
 # Reference: prescribed-kinematics operations
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: 06c77566 (2026-08-31).
 
 Audience: agent · Diátaxis: reference · Kind: operation and tool inventory
 

@@ -1,5 +1,5 @@
 # CAD boundedness inventory (H01)
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: 14a8fc8b (2026-09-09).
 
 Audience: both · Diátaxis: reference · Kind: inventory
 

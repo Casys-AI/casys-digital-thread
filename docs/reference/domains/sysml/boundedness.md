@@ -1,5 +1,5 @@
 # SysML boundedness inventory (H01)
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: fc55d9fe (2026-08-22).
 
 Audience: both · Diátaxis: reference · Kind: inventory
 

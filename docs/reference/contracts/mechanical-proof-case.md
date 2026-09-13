@@ -1,5 +1,5 @@
 # Reference: mechanical proof case
-> Verified-Against: 66703c1a (2026-09-13).
+> Verified-Against: 0bb648eb (2026-08-20).
 
 Audience: both · Diátaxis: reference · Kind: compatibility index
 
