@@ -1,5 +1,5 @@
 # Reference: add a registered operation
-> Verified-Against: 107fed3b (2026-09-13).
+> Verified-Against: 40007ffe (2026-09-13).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 
@@ -49,13 +49,13 @@ operation planable, queueable, executable, and projectable.
 - Do not teach a skill or how-to an identifier the registry will refuse.
   [`operation-reference-docs_test.ts`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
   watches exactly the documents in `OPERATION_CITING_DOCUMENTS`
-  ([`operation-reference-docs_test.ts:14`](../../../src/orchestration/operations/operation-reference-docs_test.ts)),
-  currently the
-  [industrial-project skill](../../../.agents/skills/guide-industrial-project/SKILL.md)
-  and this reference guide.
-  It does not pin every skill or how-to. A new
-  path document that cites operations must join that list, or the pin at
-  [`operation-reference-docs_test.ts:62`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
+  ([`operation-reference-docs_test.ts:30`](../../../src/orchestration/operations/operation-reference-docs_test.ts)),
+  including this guide, skills, how-tos and reference pages. The inventory
+  discovers operation-citing pages in those trees and requires an explicit
+  classification: pages with only live identities are watched; pages naming
+  historical or unknown identities stay explicitly inventoried as unwatched.
+  A new live path document must join the watched list, or the pin at
+  [`operation-reference-docs_test.ts:278`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
   will not see it.
 - Do not assume registry membership alone wires execution or Workbench
   persistence ordering. Those lists are explicit.
@@ -414,7 +414,7 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
 15. **Update living catalogues that name operations, then stop.** Add the row to
     [agent workspace §5](../agent/agent-workspace.md#5-registered-operations)
     (tracer at
-    [`agent-workspace.md:509`](../agent/agent-workspace.md)). If the operation
+    [`agent-workspace.md:518`](../agent/agent-workspace.md)). If the operation
     is part of the public project contract, name it in
     [engineering project](../contracts/engineering-project.md)
     (tracer at
@@ -422,13 +422,11 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
     it from a path skill only when that skill actually teaches it. Those
     citations are pinned only if the document is listed in
     `OPERATION_CITING_DOCUMENTS`
-    ([`operation-reference-docs_test.ts:14`](../../../src/orchestration/operations/operation-reference-docs_test.ts));
-    today that list includes the
-    [industrial-project skill](../../../.agents/skills/guide-industrial-project/SKILL.md)
-    and this reference guide.
+    ([`operation-reference-docs_test.ts:30`](../../../src/orchestration/operations/operation-reference-docs_test.ts));
+    that list includes live reference pages, how-tos and agent skills.
     Add any new
     operation-citing path document to that array, or
-    [`operation-reference-docs_test.ts:62`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
+    [`operation-reference-docs_test.ts:278`](../../../src/orchestration/operations/operation-reference-docs_test.ts)
     will not see it.
     File census of the owning authority stays on the matching page under
     [codebase map](../codebase/codebase-map.md)
@@ -440,7 +438,7 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
     `project_change_append` → `project_decision_propose` →
     `project_decision_approve` → `project_agent_run_queue` →
     `project_agent_run_execute`
-    ([`agent-workspace.md:550`](../agent/agent-workspace.md)).
+    ([`agent-workspace.md:559`](../agent/agent-workspace.md)).
 
 ## Tracer inventory (`ARCHIVE_LINEAGE_OPERATION`)
 
@@ -510,8 +508,8 @@ Every `file:line` was read in source.
 | Path lanes | Totality over caller-visible registry keys | [`src/orchestration/operations/path-lanes_test.ts:13`](../../../src/orchestration/operations/path-lanes_test.ts) |
 | Runtime demand | Exhaustive `none` vs required counts | [`src/orchestration/operations/runtime-demand-registry_test.ts:105`](../../../src/orchestration/operations/runtime-demand-registry_test.ts) |
 | Registry unknown | `unknown_operation`, no tool/args leak | [`src/orchestration/operations/registry_test.ts:105`](../../../src/orchestration/operations/registry_test.ts) |
-| Doc watch list | Exact documents the pin suite reads (`OPERATION_CITING_DOCUMENTS`, currently the industrial-project skill and this guide) | [`src/orchestration/operations/operation-reference-docs_test.ts:14`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
-| Doc pin | Cited ids in those watched documents must exist | [`src/orchestration/operations/operation-reference-docs_test.ts:62`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
+| Doc watch list | Exact documents the pin suite reads (`OPERATION_CITING_DOCUMENTS`, live reference pages, how-tos and skills) | [`src/orchestration/operations/operation-reference-docs_test.ts:30`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
+| Doc pin | Cited ids in those watched documents must exist | [`src/orchestration/operations/operation-reference-docs_test.ts:278`](../../../src/orchestration/operations/operation-reference-docs_test.ts) |
 
 ### Tracer-only, not a general wiring step
 

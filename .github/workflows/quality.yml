@@ -45,6 +45,8 @@ jobs:
 
       - name: Verify task catalog
         run: deno task verify:task-catalog
+      - name: Verify documentation code references
+        run: deno task verify:doc-code-refs
 
       - name: Lint
         run: deno task lint
