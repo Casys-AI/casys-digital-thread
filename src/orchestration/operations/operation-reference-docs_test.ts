@@ -342,19 +342,13 @@ Deno.test(
         "operation identifier, so the reverse pin protects nothing.",
     );
     const missing = registered.filter((key) => !cited.has(key)).toSorted();
-    // Measured gap: assembly-integrity, prescribed-kinematics, and
-    // design.prepare-geometry-module@1. Warn until the table lists them;
-    // do not invent rows from this suite.
-    if (missing.length === 0) {
-      assertEquals(missing, []);
-    } else {
-      console.warn(
-        [
-          `WARN ${AGENT_WORKSPACE_REFERENCE} operations table is missing ` +
-          `${missing.length} registry keys:`,
-          ...missing.map((key) => `  ${key}`),
-        ].join("\n"),
-      );
-    }
+    assertEquals(
+      missing,
+      [],
+      `${AGENT_WORKSPACE_REFERENCE} operations table is missing ` +
+        `${missing.length} registry keys: ${missing.join(", ")}. ` +
+        "Add the missing rows from the registered descriptors; do not " +
+        "weaken this guard.",
+    );
   },
 );

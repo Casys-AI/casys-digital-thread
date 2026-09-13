@@ -225,16 +225,28 @@ function markdownCodeRefs(body: string): readonly CodeRef[] {
   const refs: CodeRef[] = [];
   let fenced = false;
   let skipFence = false;
+  let fenceChar = "";
+  let fenceLength = 0;
 
   for (const [index, line] of body.split("\n").entries()) {
     const fence = line.match(/^\s*(`{3,}|~{3,})(.*)$/u);
     if (fence) {
+      const marker = fence[1] ?? "";
+      const rest = fence[2] ?? "";
       if (!fenced) {
         fenced = true;
-        skipFence = isIllustrativeShellFence(fence[2] ?? "");
-      } else {
+        fenceChar = marker[0] ?? "";
+        fenceLength = marker.length;
+        skipFence = isIllustrativeShellFence(rest);
+      } else if (
+        (marker[0] ?? "") === fenceChar &&
+        marker.length >= fenceLength &&
+        rest.trim() === ""
+      ) {
         fenced = false;
         skipFence = false;
+        fenceChar = "";
+        fenceLength = 0;
       }
       continue;
     }

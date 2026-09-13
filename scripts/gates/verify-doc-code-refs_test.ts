@@ -1,8 +1,9 @@
 /**
  * Fixture tests for the doc-code-refs gate. Each case builds a minimal git
  * repository in a temp dir, copies the gate next to it, and runs it as a
- * subprocess in strict mode: resolving refs pass, while missing targets,
- * absolute locators, and over-long fences behave as documented.
+ * subprocess: resolving refs pass, while missing targets, absolute
+ * locators, and over-long fences behave as documented. Strict is the
+ * default; the warn-mode production path is covered explicitly.
  */
 import { assert, assertStringIncludes } from "@std/assert";
 
@@ -16,7 +17,10 @@ interface GateResult {
   readonly stderr: string;
 }
 
-async function runGate(files: Record<string, string>): Promise<GateResult> {
+async function runGate(
+  files: Record<string, string>,
+  mode: "strict" | "warn" = "strict",
+): Promise<GateResult> {
   const dir = await Deno.makeTempDir({ prefix: "doc-code-refs-gate-" });
   try {
     for (const [rel, body] of Object.entries(files)) {
@@ -45,7 +49,7 @@ async function runGate(files: Record<string, string>): Promise<GateResult> {
         "--allow-read",
         "--allow-run=git",
         `${dir}/scripts/gates/verify-doc-code-refs.ts`,
-        "--mode=strict",
+        `--mode=${mode}`,
       ],
       cwd: dir,
       stdout: "piped",
@@ -109,4 +113,70 @@ Deno.test("doc-code-refs gate skips long shell fences", async () => {
     result.code === 0,
     `expected exit 0, got ${result.code}: ${result.stderr}`,
   );
+});
+
+Deno.test("doc-code-refs gate keeps exit 0 with a report in warn mode", async () => {
+  const result = await runGate(
+    {
+      "src/ok.ts": SOURCE,
+      "doc.md": "# Doc\n\nSee `src/gone.ts:1`.\n",
+    },
+    "warn",
+  );
+  assert(
+    result.code === 0,
+    `expected exit 0, got ${result.code}: ${result.stderr}`,
+  );
+  assertStringIncludes(result.stderr, "src/gone.ts:1");
+  assertStringIncludes(result.stdout, "1 unresolvable");
+  assertStringIncludes(result.stdout, "(warn mode)");
+});
+
+Deno.test("doc-code-refs gate ignores a shorter backtick line inside a long shell fence", async () => {
+  const result = await runGate({
+    "src/ok.ts": SOURCE,
+    "doc.md":
+      "# Doc\n\n````bash\n$ grep `src/gone.ts:1` log\n```\n$ grep `src/gone.ts:1` again\n````\n",
+  });
+  assert(
+    result.code === 0,
+    `expected exit 0, got ${result.code}: ${result.stderr}`,
+  );
+});
+
+Deno.test("doc-code-refs gate ignores a mismatched tilde line inside a backtick shell fence", async () => {
+  const result = await runGate({
+    "src/ok.ts": SOURCE,
+    "doc.md":
+      "# Doc\n\n```bash\n$ grep `src/gone.ts:1` log\n~~~\n$ grep `src/gone.ts:1` again\n```\n",
+  });
+  assert(
+    result.code === 0,
+    `expected exit 0, got ${result.code}: ${result.stderr}`,
+  );
+});
+
+Deno.test("doc-code-refs gate ignores a fence line carrying info text inside a shell fence", async () => {
+  const result = await runGate({
+    "src/ok.ts": SOURCE,
+    "doc.md":
+      "# Doc\n\n````bash\n$ grep `src/gone.ts:1` log\n````bash\n$ grep `src/gone.ts:1` again\n````\n",
+  });
+  assert(
+    result.code === 0,
+    `expected exit 0, got ${result.code}: ${result.stderr}`,
+  );
+});
+
+Deno.test("doc-code-refs gate closes a tilde shell fence with a longer matching fence", async () => {
+  const result = await runGate({
+    "src/ok.ts": SOURCE,
+    "doc.md":
+      "# Doc\n\n~~~bash\n$ grep `src/gone.ts:1` log\n~~~~\n\nSee `src/gone.ts:1`.\n",
+  });
+  assert(
+    result.code === 1,
+    `expected exit 1, got ${result.code}: ${result.stdout}`,
+  );
+  assertStringIncludes(result.stderr, "src/gone.ts:1");
 });
