@@ -18,6 +18,9 @@ import type {
   CapabilityRuntimeExecutionSession,
   CapabilityRuntimeExecutionSessionCoordinator,
 } from "../../../application/control-plane/capability-runtime-execution-session.ts";
+import type { CapabilityRuntimeLease } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
+import type { CapabilityRuntimeMaterialIdentity } from "../../../domain/capability/runtime/capability-runtime-material.ts";
+import type { CapabilityRuntimeLaunchGroupReference } from "../../../domain/capability/runtime/capability-runtime-launch-group.ts";
 import {
   IsolatedCodeOutputValidationRejectedError,
   type IsolatedCodeRunner,
@@ -243,16 +246,6 @@ export interface AnalyzeRunFeaSensitivityRunExecutorDependencies {
     "begin"
   >;
   readonly experience?: {
-    readonly coordinator: Pick<
-      SensitivityExperienceCoordinator,
-      | "compileTarget"
-      | "review"
-      | "reopenReview"
-      | "recordUnavailableReview"
-      | "createReceipt"
-      | "reopenReceipt"
-      | "admitFresh"
-    >;
     readonly attempts: Pick<
       FileSensitivityExperienceReuseAttemptStore,
       | "read"
@@ -262,9 +255,42 @@ export interface AnalyzeRunFeaSensitivityRunExecutorDependencies {
       | "recordReceipt"
       | "complete"
     >;
+    readonly bindActiveSession: (input: {
+      readonly lease: CapabilityRuntimeLease;
+      readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+      readonly material: CapabilityRuntimeMaterialIdentity;
+    }) => Promise<
+      {
+        readonly coordinator: Pick<
+          SensitivityExperienceCoordinator,
+          | "compileTarget"
+          | "review"
+          | "reopenReview"
+          | "recordUnavailableReview"
+          | "createReceipt"
+          | "reopenReceipt"
+          | "admitFresh"
+        >;
+      } | undefined
+    >;
   };
   readonly lease: EngineeringProjectRunLease;
 }
+
+type BoundSensitivityExperience = {
+  readonly coordinator: NonNullable<
+    Awaited<
+      ReturnType<
+        NonNullable<
+          AnalyzeRunFeaSensitivityRunExecutorDependencies["experience"]
+        >["bindActiveSession"]
+      >
+    >
+  >["coordinator"];
+  readonly attempts: NonNullable<
+    AnalyzeRunFeaSensitivityRunExecutorDependencies["experience"]
+  >["attempts"];
+};
 
 export class AnalyzeRunFeaSensitivityRunExecutor {
   readonly #projects: EngineeringProjectRevisionStore;
@@ -389,6 +415,11 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         launchGroup: runtime.launchGroup,
         material: runtime.material,
       });
+      const boundExperience = await this.#bindExperience({
+        lease: capabilitySession.lease,
+        launchGroup: runtime.launchGroup,
+        material: runtime.material,
+      });
       await this.#commands.claimRun(origin, {
         ...command,
         commandId: `${command.commandId}:claim`,
@@ -462,9 +493,9 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
 
       const profile = build123dProfile;
       let experienceTarget: SensitivityExperienceTarget | undefined;
-      if (this.#experience) {
+      if (boundExperience) {
         try {
-          experienceTarget = await this.#experience.coordinator.compileTarget({
+          experienceTarget = await boundExperience.coordinator.compileTarget({
             studyCase,
             admission: reopened,
             build123dProfile: profile,
@@ -539,18 +570,18 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         planDigest = existingExecutionAttempt.planDigest;
       }
       let missReview: SensitivityExperienceLookupResult | undefined;
-      if (this.#experience && experienceTarget && !existingExecutionAttempt) {
+      if (boundExperience && experienceTarget && !existingExecutionAttempt) {
         let reuseAttempt: SensitivityExperienceReuseAttempt | undefined;
         let memoizationDisabled = false;
         try {
-          reuseAttempt = await this.#experience.attempts.readForPlan({
+          reuseAttempt = await boundExperience.attempts.readForPlan({
             projectId: command.projectId,
             runId: run.id,
             planDigest,
             scientificKey: experienceTarget.scientificKey,
           });
         } catch (error) {
-          const recorded = await this.#experience.attempts.read(
+          const recorded = await boundExperience.attempts.read(
             command.projectId,
             run.id,
           );
@@ -574,12 +605,13 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
               command,
               run.id,
               reuseAttempt,
+              boundExperience,
             ),
           );
         }
         let lookup: SensitivityExperienceLookupResult | undefined;
         if (!memoizationDisabled && reuseAttempt?.status === "reviewed-miss") {
-          missReview = await this.#experience.coordinator.reopenReview({
+          missReview = await boundExperience.coordinator.reopenReview({
             fingerprint: reuseAttempt.reviewFingerprint,
             projectId: command.projectId,
             basis,
@@ -588,7 +620,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
           });
         } else if (!memoizationDisabled && reuseAttempt) {
           try {
-            lookup = await this.#experience.coordinator.reopenReview({
+            lookup = await boundExperience.coordinator.reopenReview({
               fingerprint: reuseAttempt.reviewFingerprint,
               projectId: command.projectId,
               basis,
@@ -597,28 +629,28 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
             });
           } catch (error) {
             if (reuseAttempt.status !== "reviewed-hit") throw error;
-            missReview = await this.#experience.coordinator.recordUnavailableReview({
+            missReview = await boundExperience.coordinator.recordUnavailableReview({
               projectId: command.projectId,
               basis,
               basisSnapshot,
               target: reuseTarget!,
               reviewedAt: requiredStart(run),
             });
-            reuseAttempt = await this.#experience.attempts.replaceHitWithMiss({
+            reuseAttempt = await boundExperience.attempts.replaceHitWithMiss({
               projectId: command.projectId,
               runId: run.id,
               reviewFingerprint: missReview.reviewFingerprint,
             });
           }
         } else if (!memoizationDisabled) {
-          lookup = await this.#experience.coordinator.review({
+          lookup = await boundExperience.coordinator.review({
             projectId: command.projectId,
             basis,
             basisSnapshot,
             target: reuseTarget!,
             reviewedAt: requiredStart(run),
           });
-          reuseAttempt = await this.#experience.attempts.recordReview({
+          reuseAttempt = await boundExperience.attempts.recordReview({
             projectId: command.projectId,
             runId: run.id,
             planDigest,
@@ -643,6 +675,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
               target: reuseTarget!,
               lookup,
               attempt: reuseAttempt,
+              experience: boundExperience,
             }),
           );
         }
@@ -814,9 +847,9 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
           "Sensitivity study ThreadSnapshot was not durably readable after save.",
         );
       }
-      if (this.#experience && experienceTarget) {
+      if (boundExperience && experienceTarget) {
         try {
-          await this.#experience.coordinator.admitFresh({
+          await boundExperience.coordinator.admitFresh({
             target: experienceTarget,
             capture,
             projectId: command.projectId,
@@ -988,22 +1021,23 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     readonly target: SensitivityExperienceTarget;
     readonly lookup: SensitivityExperienceLookupResult;
     readonly attempt: SensitivityExperienceReuseAttempt;
+    readonly experience: BoundSensitivityExperience;
   }): Promise<EngineeringProjectSnapshot> {
-    if (!this.#experience || !input.lookup.selected) {
+    if (!input.lookup.selected) {
       throw invalidTransition("Exact sensitivity reuse has no selected experience.");
     }
     let attempt = input.attempt;
     const receipt = attempt.status === "receipt-recorded"
-      ? await this.#experience.coordinator.reopenReceipt(
+      ? await input.experience.coordinator.reopenReceipt(
         attempt.receiptFingerprint,
       )
-      : await this.#experience.coordinator.createReceipt({
+      : await input.experience.coordinator.createReceipt({
         review: input.lookup.review,
         reviewFingerprint: input.lookup.reviewFingerprint,
         issuedAt: requiredStart(input.run),
       });
     if (attempt.status === "reviewed-hit") {
-      attempt = await this.#experience.attempts.recordReceipt({
+      attempt = await input.experience.attempts.recordReceipt({
         projectId: input.command.projectId,
         runId: input.run.id,
         receiptFingerprint: receipt.receiptFingerprint,
@@ -1054,7 +1088,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         "Sensitivity reuse ThreadSnapshot was not durably readable after save.",
       );
     }
-    await this.#experience.attempts.complete({
+    await input.experience.attempts.complete({
       projectId: input.command.projectId,
       runId: input.run.id,
       snapshot: {
@@ -1105,8 +1139,9 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     },
     runId: string,
     attempt: Extract<SensitivityExperienceReuseAttempt, { status: "completed" }>,
+    experience: BoundSensitivityExperience,
   ): Promise<EngineeringProjectSnapshot> {
-    if (!this.#experience) {
+    if (!experience) {
       throw invalidTransition("Sensitivity experience replay is unavailable.");
     }
     const snapshot = await this.#snapshots.getFresh(attempt.snapshot.snapshotId);
@@ -1157,7 +1192,7 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
         "WAL-completed sensitivity reuse result identity is divergent.",
       );
     }
-    const reopenedReceipt = await this.#experience.coordinator.reopenReceipt(
+    const reopenedReceipt = await experience.coordinator.reopenReceipt(
       attempt.receiptFingerprint,
     );
     if (
@@ -1851,6 +1886,24 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
       },
     });
     return { capabilitySession, runtime };
+  }
+
+  async #bindExperience(input: {
+    readonly lease: CapabilityRuntimeLease;
+    readonly launchGroup: CapabilityRuntimeLaunchGroupReference;
+    readonly material: CapabilityRuntimeMaterialIdentity;
+  }): Promise<BoundSensitivityExperience | undefined> {
+    if (!this.#experience) return undefined;
+    try {
+      const bound = await this.#experience.bindActiveSession(input);
+      if (!bound) return undefined;
+      return {
+        coordinator: bound.coordinator,
+        attempts: this.#experience.attempts,
+      };
+    } catch {
+      return undefined;
+    }
   }
 }
 

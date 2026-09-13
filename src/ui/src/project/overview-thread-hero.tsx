@@ -63,6 +63,8 @@ import { McpAppFrame } from "../thread/mcp-app-frame.tsx";
 import { overviewThreadSelectionConnections } from "./overview-thread-selection-model.ts";
 import { OverviewThreadSelectionNote } from "./overview-thread-selection-note.tsx";
 import { OverviewThreadRequirementsBriefTrace } from "./overview-thread-requirements-brief-trace.tsx";
+import { RequirementHistoricalUnjoinedContext } from "../thread/requirement-historical-unjoined.tsx";
+import { selectOverviewHistoricalUnjoined } from "../thread/requirement-historical-unjoined-selection.ts";
 import { OverviewThreadBriefSourceNote } from "./overview-thread-brief-source-note.tsx";
 import { OverviewSensitivityJourneyDisclosure } from "./overview-sensitivity-journey-note.tsx";
 import {
@@ -80,6 +82,10 @@ import {
   overviewCurrentBriefViewerId,
   overviewCurrentBriefViewerTitle,
 } from "./overview-thread-current-brief.ts";
+import {
+  mergeOverviewViewerAliases,
+  overviewDfmCaptureViewerAliases,
+} from "./overview-thread-dfm-viewer-discovery.ts";
 import {
   overviewCanonicalViewerNodeKey,
   overviewDefaultViewerSessions,
@@ -398,14 +404,45 @@ export function OverviewThreadHero({
       ),
     [recordView.nodes],
   );
+  const dfmAliasRecords = useMemo(
+    () =>
+      recordView.nodes.flatMap((item) =>
+        item.kind === "recorded"
+          ? [{
+            key: item.key,
+            ref: item.node.ref,
+            entityKind: item.node.entityKind,
+            artifactKind: item.node.artifactKind,
+            engineeringCaseRefs: item.node.engineeringCaseRefs,
+          }]
+          : []
+      ),
+    [recordView.nodes],
+  );
   const viewerAliases = useMemo(
     () =>
-      overviewRequirementSourceViewerAliases(
-        viewerAliasRecords,
-        thread.graph.edges,
-        viewerSessions?.sessions ?? [],
+      mergeOverviewViewerAliases(
+        overviewRequirementSourceViewerAliases(
+          viewerAliasRecords,
+          thread.graph.edges,
+          viewerSessions?.sessions ?? [],
+        ),
+        overviewDfmCaptureViewerAliases({
+          records: dfmAliasRecords,
+          artifacts: thread.artifacts,
+          edges: thread.graph.edges,
+          sessions: viewerSessions?.sessions ?? [],
+          catalog: thread.engineeringCases,
+        }),
       ),
-    [thread.graph.edges, viewerAliasRecords, viewerSessions],
+    [
+      dfmAliasRecords,
+      thread.artifacts,
+      thread.engineeringCases,
+      thread.graph.edges,
+      viewerAliasRecords,
+      viewerSessions,
+    ],
   );
   const recordNodesByKey = useMemo(
     () => new Map(recordView.nodes.map((item) => [item.key, item])),
@@ -948,6 +985,9 @@ export function OverviewThreadHero({
   const selectedSensitivityJourneys = selectedItem?.kind === "recorded"
     ? sensitivityJourneysByVerdictNodeKey.get(selectedItem.key) ?? []
     : [];
+  const selectedHistoricalUnjoined = selectedItem?.kind === "recorded"
+    ? selectOverviewHistoricalUnjoined(thread, selectedItem.node.ref)
+    : undefined;
   const selectedPresentation = selectedRowKey
     ? parseOverviewHullPresentationRowKey(selectedRowKey)
     : undefined;
@@ -1932,6 +1972,17 @@ export function OverviewThreadHero({
                   traces={requirementsBriefTraces}
                   onFollowBriefSource={(key) => selectNode(key)}
                 />
+                {selectedHistoricalUnjoined && (
+                  <RequirementHistoricalUnjoinedContext
+                    value={selectedHistoricalUnjoined.evaluations}
+                    chain={selectedHistoricalUnjoined.chain}
+                    onFollowEvidence={(reference) => {
+                      const key = overviewThreadGraphRefKey(reference);
+                      if (nodesByKey.has(key)) selectNode(key);
+                      else onOpenEvidence(reference);
+                    }}
+                  />
+                )}
                 {selectedSensitivityJourneys.map((journey) => (
                   <OverviewSensitivityJourneyDisclosure
                     key={journey.id}

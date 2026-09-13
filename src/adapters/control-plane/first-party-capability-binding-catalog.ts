@@ -4,6 +4,7 @@ import {
   GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_MODULE_IMMEDIATE_COMPOUND_CAPABILITY,
   GEOMETRY_OBSERVE_ASSEMBLY_INTEGRITY_CAPABILITY,
+  MANUFACTURING_RUN_DFM_CHECKS_CAPABILITY,
   MECHANICS_OBSERVE_PRESCRIBED_KINEMATICS_CAPABILITY,
   MECHANICS_OBSERVE_STATIC_STRUCTURAL_SENSITIVITY_CAPABILITY,
   MECHANICS_SOLVE_STATIC_STRUCTURAL_CAPABILITY,
@@ -41,6 +42,7 @@ import {
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
   MCP_CALCULIX_082_IMAGE_REFERENCE,
   MCP_CHRONO_032_IMAGE_REFERENCE,
+  MCP_DFM_010_IMAGE_REFERENCE,
 } from "./first-party-capability-runtime-identities.ts";
 import {
   type AtomicCapabilityRuntimeMaterial,
@@ -55,6 +57,7 @@ import {
   firstPartyBuild123dSandboxLaunchGroupReference,
   firstPartyCalculixLaunchGroupReference,
   firstPartyChronoLaunchGroupReference,
+  firstPartyDfmLaunchGroupReference,
   firstPartySysonLaunchGroupReference,
   MCP_BUILD123D_061_IMAGE_REFERENCE,
   MCP_SYSON_IMAGE_REFERENCE,
@@ -83,12 +86,14 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
     build123dObservationLaunchGroup,
     chronoLaunchGroup,
     calculixLaunchGroup,
+    dfmLaunchGroup,
   ] = await Promise.all([
     firstPartySysonLaunchGroupReference(),
     firstPartyBuild123dSandboxLaunchGroupReference(),
     firstPartyBuild123dObservationLaunchGroupReference(),
     firstPartyChronoLaunchGroupReference(),
     firstPartyCalculixLaunchGroupReference(),
+    firstPartyDfmLaunchGroupReference(),
   ]);
   const units = await Promise.all([
     unit("casys.syson-stack", [
@@ -218,6 +223,19 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
       ),
     ], "1.1.0"),
     unit("casys.mcp-chrono", [chronoMaterial(chronoLaunchGroup)], "0.3.2"),
+    unit("casys.mcp-dfm", [
+      composeMaterial(
+        "mcp-dfm-image",
+        MCP_DFM_010_IMAGE_REFERENCE,
+        ["linux/amd64", "linux/arm64"],
+        "mcp-dfm",
+        "loopback-only",
+        [3018],
+        [volume("dfm-exports", "read-only", "preserve")],
+        "reviewed",
+        dfmLaunchGroup,
+      ),
+    ], "0.1.0"),
   ]);
   return await validateCapabilityRuntimeCatalog({
     schemaVersion: CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION,
@@ -429,6 +447,21 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
           "The binding exposes factual prescribed-kinematics observations, not collision, contact, clearance, force, strength, safety, or product verdicts.",
         ],
         "1",
+      ),
+      binding(
+        "mcp-dfm-measured-checks",
+        MANUFACTURING_RUN_DFM_CHECKS_CAPABILITY,
+        "execution",
+        "qualified",
+        "dfm-measured-checks-adapter",
+        "1.0.0",
+        null,
+        ["casys.mcp-dfm"],
+        "src/adapters/make/dfm/industrialize-run-dfm-checks-run-executor.ts",
+        [
+          "The binding runs sealed measured envelope, thickness and overhang checks on a canonical write-geometry STEP child.",
+          "It does not observe printability, estimate FFF, select a printer SKU, or publish a product verdict beyond the fail-closed DFM evaluations.",
+        ],
       ),
     ],
   });

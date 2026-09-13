@@ -1,5 +1,9 @@
 import { assertEquals } from "@std/assert";
-import { threadRequirementsByCaptureScope } from "./requirement-definition-scope.ts";
+import {
+  overlayRequirementHistoricalEvaluations,
+  threadRequirementsByCaptureScope,
+} from "./requirement-definition-scope.ts";
+import type { ThreadRequirementHistoricalEvaluation } from "./requirement-historical-evaluation.ts";
 import { listRequirementsCaptureContainers } from "./requirements-tip.ts";
 import type {
   ThreadArtifact,
@@ -134,6 +138,111 @@ Deno.test(
         targetElementId: BASE,
       }]),
       [],
+    );
+  },
+);
+
+Deno.test(
+  "historical-unjoined facts overlay onto current unresolved attachments without changing status",
+  () => {
+    const joined = threadRequirementsByCaptureScope(tps03Thread(), [{
+      artifactId: ARTIFACT,
+      requirementUsageId: USAGE,
+      targetElementId: BACKREST,
+    }]);
+    const historical = {
+      relation: "historical-unjoined",
+      hopIndex: 1,
+      currentRequirementId: DISPLACEMENT,
+      predecessorRequirementId: "requirement-old-maxDisplacement",
+      evaluationId: "eval-old",
+      status: "pass",
+      evaluatedAt: "2026-09-11T09:00:00.000Z",
+      observations: [],
+      evidence: [],
+      predecessorCapture: {
+        id: "requirements-old",
+        fingerprint: `sha256:${"a".repeat(64)}`,
+        producerRunId: "run:old",
+      },
+      currentArchitecture: {
+        artifactId: "architecture-new",
+        fingerprint: `sha256:${"b".repeat(64)}`,
+        producerRunId: "run:new",
+      },
+      predecessorArchitecture: {
+        artifactId: "architecture-old",
+        fingerprint: `sha256:${"a".repeat(64)}`,
+        producerRunId: "run:old",
+      },
+      native: {
+        targetElementId: BACKREST,
+        requirementUsageId: USAGE,
+        constraintUsageId: "constraint-usage",
+        criterion: {
+          metric: "maxDisplacement",
+          operator: "<=",
+          limit: { value: 1, unit: "mm" },
+        },
+      },
+    } satisfies ThreadRequirementHistoricalEvaluation;
+    const overlaid = overlayRequirementHistoricalEvaluations(joined, [{
+      requirementId: DISPLACEMENT,
+      historicalEvaluations: [historical],
+    }, {
+      requirementId: DISPLACEMENT,
+      historicalEvaluations: [historical],
+    }]);
+    assertEquals(
+      overlaid.find((item) => item.requirementId === DISPLACEMENT)
+        ?.historicalEvaluations,
+      undefined,
+    );
+    const displacement = joined.find((item) => item.requirementId === DISPLACEMENT);
+    assertEquals(displacement?.requirementId, DISPLACEMENT);
+    assertEquals(
+      overlayRequirementHistoricalEvaluations(joined, [{
+        requirementId: DISPLACEMENT,
+        historicalEvaluations: [historical],
+      }]).find((item) => item.requirementId === DISPLACEMENT),
+      { ...displacement!, historicalEvaluations: [historical] },
+    );
+    assertEquals(
+      overlayRequirementHistoricalEvaluations(joined, [{
+        requirementId: DISPLACEMENT,
+        historicalEvaluations: [historical],
+      }]).find((item) => item.requirementId === STRESS)?.status,
+      "unresolved",
+    );
+    assertEquals(
+      overlayRequirementHistoricalEvaluations(joined, [{
+        requirementId: DISPLACEMENT,
+        historicalEvaluations: [historical, { ...historical }],
+      }]).find((item) => item.requirementId === DISPLACEMENT)
+        ?.historicalEvaluations,
+      undefined,
+    );
+    assertEquals(
+      overlayRequirementHistoricalEvaluations(joined, [{
+        requirementId: DISPLACEMENT,
+        historicalEvaluations: [],
+        historicalChain: {
+          status: "partial",
+          hops: 0,
+          reason: "conflicting-provenance",
+          stoppedAtRequirementId: DISPLACEMENT,
+        },
+      }]).find((item) => item.requirementId === DISPLACEMENT),
+      {
+        ...displacement!,
+        historicalEvaluations: [],
+        historicalChain: {
+          status: "partial",
+          hops: 0,
+          reason: "conflicting-provenance",
+          stoppedAtRequirementId: DISPLACEMENT,
+        },
+      },
     );
   },
 );

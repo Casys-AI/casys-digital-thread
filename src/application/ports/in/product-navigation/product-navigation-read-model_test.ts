@@ -67,3 +67,76 @@ Deno.test(
     }]);
   },
 );
+
+Deno.test(
+  "attachmentsForDefinition copies historical-unjoined context onto an existing constrained_by requirement",
+  () => {
+    const historical = {
+      relation: "historical-unjoined" as const,
+      hopIndex: 1,
+      currentRequirementId: "requirement-graph",
+      predecessorRequirementId: "requirement-old",
+      evaluationId: "eval-old",
+      status: "pass" as const,
+      evaluatedAt: "2026-09-11T09:00:00.000Z",
+      observations: [],
+      evidence: [],
+      predecessorCapture: {
+        id: "requirements-old",
+        fingerprint: `sha256:${"a".repeat(64)}`,
+        producerRunId: "run:old",
+      },
+      currentArchitecture: {
+        artifactId: "architecture-new",
+        fingerprint: `sha256:${"b".repeat(64)}`,
+        producerRunId: "run:new",
+      },
+      predecessorArchitecture: {
+        artifactId: "architecture-old",
+        fingerprint: `sha256:${"a".repeat(64)}`,
+        producerRunId: "run:old",
+      },
+      native: {
+        targetElementId: "def-rail",
+        requirementUsageId: "usage",
+        constraintUsageId: "constraint",
+        criterion: {
+          metric: "maxDisplacement",
+          operator: "<=" as const,
+          limit: { value: 1, unit: "mm" },
+        },
+      },
+    };
+    const attachments = attachmentsForDefinition(
+      {
+        nodes: [{
+          ref: { kind: "requirement", id: "requirement-graph" },
+          label: "Graph",
+        }],
+        edges: [{
+          relation: "constrained_by",
+          from: { kind: "part-definition", id: "def-rail" },
+          to: { kind: "requirement", id: "requirement-graph" },
+        }],
+      },
+      "def-rail",
+      undefined,
+      [{
+        requirementId: "requirement-graph",
+        name: "Scoped same id",
+        sourceElementId: "usage",
+        artifactId: "requirements",
+        targetElementId: "def-rail",
+        status: "unresolved",
+        historicalEvaluations: [historical],
+      }],
+    );
+    assertEquals(attachments.requirements, [{
+      group: "requirements",
+      kind: "requirement",
+      id: "requirement-graph",
+      label: "Graph",
+      historicalEvaluations: [historical],
+    }]);
+  },
+);

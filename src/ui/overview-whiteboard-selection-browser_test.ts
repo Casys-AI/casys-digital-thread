@@ -122,9 +122,7 @@ async function runPlaywright(
     `
 import { createServer } from ${JSON.stringify(VITE)};
 import { chromium } from ${JSON.stringify(PLAYWRIGHT)};
-import { runWhiteboardSelectionScenario } from ${
-      JSON.stringify(PLAYWRIGHT_SCENARIO)
-    };
+import { runWhiteboardSelectionScenario } from ${JSON.stringify(PLAYWRIGHT_SCENARIO)};
 
 const vite = await createServer({
   configFile: ${JSON.stringify(NATIVE_CONFIG)},
@@ -171,9 +169,9 @@ try {
   }).output();
   if (!output.success) {
     throw new Error(
-      `Playwright selection test failed: ${
-        new TextDecoder().decode(output.stderr)
-      }\n${new TextDecoder().decode(output.stdout)}`,
+      `Playwright selection test failed: ${new TextDecoder().decode(output.stderr)}\n${
+        new TextDecoder().decode(output.stdout)
+      }`,
     );
   }
   return JSON.parse(new TextDecoder().decode(output.stdout));

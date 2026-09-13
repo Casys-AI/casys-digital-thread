@@ -379,9 +379,7 @@ Deno.test("raw and hierarchy projections retarget the same graph ref through gra
   );
   const raw = buildOverviewHullContents([geometry], []);
   const rawRows = raw.get(GEOMETRY_HULL)!.rows;
-  const rawRow = rawRows.find((row) =>
-    row.key === `artifact:${GEOMETRY_ROOT_ID}`
-  )!;
+  const rawRow = rawRows.find((row) => row.key === `artifact:${GEOMETRY_ROOT_ID}`)!;
   assertEquals(overviewHullRowGraphRefs(rawRow), [
     `artifact:${GEOMETRY_ROOT_ID}`,
   ]);
@@ -517,4 +515,98 @@ Deno.test("records-mode graphRefs stay exact identities and never select a folde
     undefined,
   );
   assertEquals(overviewHullRowGraphRefs(folder), []);
+});
+
+Deno.test("unjoined Geometry occurrence rows keep empty graph keys and leave archived CAD on records", () => {
+  const architecture = artifact(
+    ARCHITECTURE_ID,
+    "system-model",
+    OVERVIEW_DOMAIN_GROUP_KEYS.sysmlModel,
+  );
+  const historical = artifact(
+    "geometry-historical",
+    "geometry",
+    OVERVIEW_DOMAIN_GROUP_KEYS.geometry,
+  );
+  const members = [architecture, historical];
+  const unjoined = hierarchy(
+    [
+      {
+        id: ROOT,
+        label: "InspectionDrone",
+        partDefinitionElementId: "def-root",
+        sessionIds: [],
+      },
+      {
+        id: AIRFRAME,
+        parentId: ROOT,
+        label: "airframe",
+        partDefinitionElementId: "def-airframe",
+        sessionIds: [],
+      },
+      {
+        id: "camera-bracket",
+        parentId: AIRFRAME,
+        label: "CameraMountBracket",
+        partDefinitionElementId: "def-camera-bracket",
+        sessionIds: [],
+      },
+    ],
+    { architectureArtifactId: ARCHITECTURE_ID },
+  );
+  const contents = buildOverviewHullContents(members, [], unjoined);
+  const geometry = contents.get(GEOMETRY_HULL)!;
+  const expectedRows = [
+    [ROOT, undefined, 0, "InspectionDrone"],
+    [AIRFRAME, ROOT, 1, "airframe"],
+    ["camera-bracket", AIRFRAME, 2, "CameraMountBracket"],
+  ];
+  assertEquals(geometry.mode, "tree");
+  assertEquals(
+    geometry.rows.map((row) => [row.key, row.parentKey, row.depth, row.label]),
+    expectedRows,
+  );
+  assertEquals(
+    geometry.rows.map((row) => [
+      overviewHullRowGraphRefs(row),
+      row.endpoint,
+      row.sessionIds,
+      row.detail,
+    ]),
+    expectedRows.map(() => [[], false, [], "unjoined · pending CAD"]),
+  );
+  const known = new Set([
+    `artifact:${ARCHITECTURE_ID}`,
+    "artifact:geometry-historical",
+  ]);
+  const anchors = overviewHullRowAnchors(contents, members, unjoined);
+  assertEquals(anchors[GEOMETRY_HULL], {});
+  assertEquals(anchors[SYSML_HULL], {
+    [`artifact:${ARCHITECTURE_ID}`]: 0,
+  });
+  for (const row of geometry.rows) {
+    assertEquals(
+      overviewHullMappedGraphKey(
+        GEOMETRY_HULL,
+        row,
+        anchors,
+        geometry.rows,
+        known,
+      ),
+      undefined,
+    );
+  }
+  const graphKeys = overviewHullGraphKeysByPresentationRow(contents, anchors);
+  assertEquals(
+    graphKeys.get(overviewHullPresentationRowKey(GEOMETRY_HULL, ROOT)),
+    undefined,
+  );
+  assertEquals(
+    graphKeys.get(overviewHullPresentationRowKey(SYSML_HULL, ROOT)),
+    [`artifact:${ARCHITECTURE_ID}`],
+  );
+  assertEquals(
+    geometry.records.map((row) => [row.nodeKey, row.endpoint]),
+    [["artifact:geometry-historical", true]],
+  );
 });

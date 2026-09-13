@@ -162,6 +162,55 @@ Deno.test("Overview attaches sensitivity to the exact current mechanical verdict
     false,
     "the related mechanical and study-base verdicts must stay distinct",
   );
+
+  const withHistory = structuredClone(thread);
+  const requirement = withHistory.requirements.find((item) =>
+    item.id === "REQ-MECH-014"
+  )!;
+  requirement.historicalEvaluations = [{
+    relation: "historical-unjoined",
+    hopIndex: 1,
+    currentRequirementId: "REQ-MECH-014",
+    predecessorRequirementId: "requirement-old",
+    evaluationId: "eval-old",
+    status: "pass",
+    evaluatedAt: "2026-09-11T09:00:00.000Z",
+    observations: [],
+    evidence: [],
+    predecessorCapture: {
+      id: "requirements-old",
+      fingerprint: `sha256:${"a".repeat(64)}`,
+      producerRunId: "run:old",
+    },
+    currentArchitecture: {
+      artifactId: "architecture-new",
+      fingerprint: `sha256:${"b".repeat(64)}`,
+      producerRunId: "run:new",
+    },
+    predecessorArchitecture: {
+      artifactId: "architecture-old",
+      fingerprint: `sha256:${"a".repeat(64)}`,
+      producerRunId: "run:old",
+    },
+    native: {
+      targetElementId: "part",
+      requirementUsageId: "usage",
+      constraintUsageId: "constraint",
+      criterion: {
+        metric: "max_von_mises_pa",
+        operator: "<=",
+        limit: { value: 120, unit: "MPa" },
+      },
+    },
+  }];
+  assertEquals(
+    buildOverviewSensitivityJourneys(withHistory),
+    journeys,
+  );
+  assertEquals(
+    buildOverviewSensitivityVerdictBindings(withHistory, journeys),
+    buildOverviewSensitivityVerdictBindings(thread, journeys),
+  );
 });
 
 Deno.test("Overview omits an ungrounded or ambiguous sensitivity verdict attachment", () => {
@@ -170,9 +219,7 @@ Deno.test("Overview omits an ungrounded or ambiguous sensitivity verdict attachm
   assertEquals(buildOverviewSensitivityVerdictBindings(ungrounded), []);
 
   const ambiguous = sensitivityThreadWithMechanicalVerdict();
-  const duplicateCaseKey = `verification-case:mechanical-proof:${
-    "d".repeat(64)
-  }`;
+  const duplicateCaseKey = `verification-case:mechanical-proof:${"d".repeat(64)}`;
   ambiguous.engineeringCases!.cases.push({
     key: duplicateCaseKey,
     id: "other-current-proof",

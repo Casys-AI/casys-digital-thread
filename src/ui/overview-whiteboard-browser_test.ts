@@ -122,9 +122,7 @@ Deno.test({
           run();
         } catch (error) {
           failures.push(
-            `${label}: ${
-              error instanceof Error ? error.message : String(error)
-            }`,
+            `${label}: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       };
@@ -154,16 +152,12 @@ Deno.test({
         assert(proof.afterHierarchyReady.flowItems >= 2);
         assert(proof.afterHierarchyReady.groups.length >= 2);
         assert(
-          proof.afterHierarchyReady.nodes.every((node) =>
-            node.structured && !node.raw
-          ),
+          proof.afterHierarchyReady.nodes.every((node) => node.structured && !node.raw),
           "Unavailable hierarchy must fall back through structured hull rows.",
         );
         assertEquals(proof.afterLateSessions.rawNodes, 0);
         assert(
-          proof.afterLateSessions.nodes.every((node) =>
-            node.structured && !node.raw
-          ),
+          proof.afterLateSessions.nodes.every((node) => node.structured && !node.raw),
           "Exact hierarchy must not render candidate raw FlowNodes.",
         );
       });
@@ -411,8 +405,7 @@ async function runPlaywright(
       'button.overview-thread-flow-group-label[aria-label^="Move Geometry group"]',
     geometryGroupRect:
       '.overview-thread-flow-groups rect[data-group-key="domain:geometry"]',
-    cadViewer:
-      `.overview-thread-viewer[data-viewer-id="${WHITEBOARD_CAD_VIEWER_ID}"]`,
+    cadViewer: `.overview-thread-viewer[data-viewer-id="${WHITEBOARD_CAD_VIEWER_ID}"]`,
     viewerHandle:
       `.overview-thread-viewer[data-viewer-id="${WHITEBOARD_CAD_VIEWER_ID}"] .overview-thread-viewer-title`,
     cadViewerId: WHITEBOARD_CAD_VIEWER_ID,
@@ -488,9 +481,9 @@ try {
   }).output();
   if (!output.success) {
     throw new Error(
-      `Playwright whiteboard test failed: ${
-        new TextDecoder().decode(output.stderr)
-      }\n${new TextDecoder().decode(output.stdout)}`,
+      `Playwright whiteboard test failed: ${new TextDecoder().decode(output.stderr)}\n${
+        new TextDecoder().decode(output.stdout)
+      }`,
     );
   }
   return JSON.parse(new TextDecoder().decode(output.stdout));

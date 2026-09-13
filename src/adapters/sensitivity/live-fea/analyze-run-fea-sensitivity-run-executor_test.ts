@@ -217,6 +217,19 @@ Deno.test("experience miss is journalled before four fresh calls and admitted", 
   }
 });
 
+Deno.test("session-bound experience mismatch falls back to an authorized fresh run", async () => {
+  const fixture = await createFixture({ experienceBindFails: true });
+  try {
+    const project = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(project.agentRuns[0]?.status, "completed");
+    assertEquals(fixture.runner.sources.length, 2);
+    assertEquals(fixture.solver.calls, 2);
+    assertEquals(fixture.experienceStats.admissions, 0);
+  } finally {
+    await fixture.dispose();
+  }
+});
+
 Deno.test("unavailable experience admission cannot fail a fresh registered run", async () => {
   const fixture = await createFixture({
     experienceOutcome: "miss",
@@ -531,6 +544,7 @@ async function createFixture(options: {
   readonly build123dLifecycleDigest?: string;
   readonly experienceOutcome?: "miss" | "hit" | "hit-interrupt";
   readonly experienceAdmissionFails?: boolean;
+  readonly experienceBindFails?: boolean;
   readonly rejectOutputValidation?: boolean;
   readonly loseCadRejectionAckOnce?: boolean;
   readonly failCapabilitySession?: boolean;
@@ -879,48 +893,52 @@ async function createFixture(options: {
     freshExecutionRequired: false as const,
     issuedAt: AT,
   };
-  const experience = options.experienceOutcome
+  const experience = options.experienceOutcome || options.experienceBindFails
     ? {
       attempts: reuseAttempts,
-      coordinator: {
-        compileTarget: () => Promise.resolve({ scientificKey, identity: {} as never }),
-        review: () => Promise.resolve(lookup as never),
-        reopenReview: () => Promise.resolve(lookup as never),
-        recordUnavailableReview: () => Promise.resolve(lookup as never),
-        createReceipt: () => {
-          experienceStats.receiptCalls += 1;
-          if (
-            options.experienceOutcome === "hit-interrupt" &&
-            experienceStats.receiptCalls === 1
-          ) {
-            return Promise.reject(
-              new EngineeringProjectCommandError(
-                "invalid_transition",
-                "interrupted before receipt",
-              ),
-            );
-          }
-          return Promise.resolve({
-            receipt,
-            receiptFingerprint,
-            receiptUri:
-              `casys://sensitivity-experience-reuse-receipt/sha256/${receiptFingerprint.digest}`,
-          });
-        },
-        reopenReceipt: () =>
-          Promise.resolve({
-            receipt,
-            receiptFingerprint,
-            receiptUri:
-              `casys://sensitivity-experience-reuse-receipt/sha256/${receiptFingerprint.digest}`,
-          }),
-        admitFresh: () => {
-          experienceStats.admissions += 1;
-          return options.experienceAdmissionFails
-            ? Promise.reject(new Error("private experience store unavailable"))
-            : Promise.resolve();
-        },
-      },
+      bindActiveSession: () =>
+        options.experienceBindFails ? Promise.resolve(undefined) : Promise.resolve({
+          coordinator: {
+            compileTarget: () =>
+              Promise.resolve({ scientificKey, identity: {} as never }),
+            review: () => Promise.resolve(lookup as never),
+            reopenReview: () => Promise.resolve(lookup as never),
+            recordUnavailableReview: () => Promise.resolve(lookup as never),
+            createReceipt: () => {
+              experienceStats.receiptCalls += 1;
+              if (
+                options.experienceOutcome === "hit-interrupt" &&
+                experienceStats.receiptCalls === 1
+              ) {
+                return Promise.reject(
+                  new EngineeringProjectCommandError(
+                    "invalid_transition",
+                    "interrupted before receipt",
+                  ),
+                );
+              }
+              return Promise.resolve({
+                receipt,
+                receiptFingerprint,
+                receiptUri:
+                  `casys://sensitivity-experience-reuse-receipt/sha256/${receiptFingerprint.digest}`,
+              });
+            },
+            reopenReceipt: () =>
+              Promise.resolve({
+                receipt,
+                receiptFingerprint,
+                receiptUri:
+                  `casys://sensitivity-experience-reuse-receipt/sha256/${receiptFingerprint.digest}`,
+              }),
+            admitFresh: () => {
+              experienceStats.admissions += 1;
+              return options.experienceAdmissionFails
+                ? Promise.reject(new Error("private experience store unavailable"))
+                : Promise.resolve();
+            },
+          },
+        }),
     }
     : undefined;
   const commands = new MemoryCommands(project);

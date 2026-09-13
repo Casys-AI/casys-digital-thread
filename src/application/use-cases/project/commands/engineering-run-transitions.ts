@@ -15,6 +15,8 @@ import { validateResolvedOperationPlanRef } from "../../../../domain/compile/rop
 import type { ResolvedCapabilityRuntimeOperation } from "../../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import { deepFreeze } from "../../../../domain/kernel/case-validation.ts";
 import { sha256Fingerprint } from "../../../../domain/kernel/deterministic-json.ts";
+import { INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION } from "../../../../domain/make/dfm/dfm-case.ts";
+import { recrossDfmRunAuthority } from "../../../../domain/make/dfm/dfm-run-authority.ts";
 import type { ContentFingerprint } from "../../../../domain/thread/thread-snapshot.ts";
 import type { EngineeringProjectCommandOrigin } from "../../../ports/in/engineering-project-command-origin.ts";
 import { EngineeringProjectCommandError } from "./engineering-project-command-error.ts";
@@ -313,6 +315,7 @@ async function queueV3Run(
     invalidInput("A V3 run requires a registered operation on its work item.");
   }
   const registered = assertRegisteredQueueOperation(planning, operation, basis.kind);
+  assertDfmCheckRunQueueAuthority(draft, workItem, operation, basis);
   if (registered.operation.threadEntityBindingsMustMatchBasis) {
     assertThreadEntityBindingsMatchRunBasis(registered.bindings, basis);
   }
@@ -368,6 +371,36 @@ async function queueV3Run(
     candidate.resolvedOperationPlan = validateResolvedOperationPlanRef(sealed);
   }
   return candidate;
+}
+
+/**
+ * Refuse `industrialize.run-dfm-checks@1` before eligibility or runtime lookup
+ * unless one unique human-approved decision is bound to the exact queue basis.
+ * Historical signed bases stay refused; a later successor must be approved.
+ */
+function assertDfmCheckRunQueueAuthority(
+  draft: EngineeringProjectSnapshot,
+  workItem: EngineeringWorkItem,
+  operation: EngineeringOperationRef,
+  basis: EngineeringBasisRef,
+): void {
+  if (
+    operation.id !== INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION.id ||
+    operation.version !== INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION.version
+  ) {
+    return;
+  }
+  const runBasis = basis.kind === "thread-snapshot"
+    ? {
+      snapshotId: basis.snapshotId,
+      revision: basis.revision,
+      subjectId: basis.subjectId,
+    }
+    : undefined;
+  const authority = recrossDfmRunAuthority(draft, workItem, runBasis);
+  if (authority.status !== "available") {
+    invalidTransition(authority.reason);
+  }
 }
 
 /**

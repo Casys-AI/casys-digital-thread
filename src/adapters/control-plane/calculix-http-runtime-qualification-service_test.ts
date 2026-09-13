@@ -38,7 +38,6 @@ import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { fingerprintResourceBytes } from "../../domain/compile/source/provider-resource-reader.ts";
 import {
   CALCULIX_RECORDED_RESOURCE_ORDER,
-  lowerRecordedCalculixStaticRequest,
   type RecordedCalculixSensitivityProvider,
 } from "../sensitivity/live-fea/mcp-calculix-sensitivity-solver.ts";
 import type { JsonValue } from "../../domain/compile/rop/resolved-operation-plan.ts";
@@ -521,7 +520,7 @@ async function fixture(options: {
     leases,
     states,
     host,
-    secrets: { observe: async () => new Map() },
+    secrets: { observe: () => Promise.resolve(new Map()) },
     lock: serialLock(),
     now,
   });
@@ -608,29 +607,31 @@ async function fixture(options: {
         stagedAsset: { location: `/inputs/fea-${input.fingerprint.digest}.step` },
       };
     },
-    read: async () => undefined,
+    read: () => Promise.resolve(undefined),
   };
   const stagers: CapabilitySessionSolverInputStagerFactory = {
-    forActiveCapabilitySession: async () => stager,
+    forActiveCapabilitySession: () => Promise.resolve(stager),
   };
   const service = new CalculixHttpRuntimeQualificationService({
     candidates: [candidate],
     specs: [spec],
     catalog,
     policy: {
-      read: async () => ({
-        schemaVersion: "capability-runtime-admin-policy/1.0",
-        disabledBindingIds: [],
-        preferences: [],
-      }),
+      read: () =>
+        Promise.resolve({
+          schemaVersion: "capability-runtime-admin-policy/1.0",
+          disabledBindingIds: [],
+          preferences: [],
+        }),
     },
     lock: {
-      read: async () => ({
-        schemaVersion: "capability-runtime-admin-lock/1.0",
-        revision: 0,
-        previous: null,
-        units: [],
-      }),
+      read: () =>
+        Promise.resolve({
+          schemaVersion: "capability-runtime-admin-lock/1.0",
+          revision: 0,
+          previous: null,
+          units: [],
+        }),
     },
     launchGroups,
     states,
@@ -638,14 +639,15 @@ async function fixture(options: {
     attestations,
     groups,
     host: {
-      read: async () => ({
-        platform: "linux/arm64",
-        identityFingerprint: HOST_IDENTITY,
-      }),
+      read: () =>
+        Promise.resolve({
+          platform: "linux/arm64",
+          identityFingerprint: HOST_IDENTITY,
+        }),
     },
     stagers,
     provider,
-    readResource: async (resource) => {
+    readResource: (resource) => {
       resourceReads++;
       assertEquals(Object.keys(resource).sort(), [
         "byteCount",
@@ -654,16 +656,22 @@ async function fixture(options: {
         "uri",
       ]);
       if (options.resourceRead === "throw") {
-        throw new Error("provider detail must not enter qualification WAL");
-      }
-      if (options.resourceRead === "mcp-http-rejection") {
-        throw new McpResourceReadError(
-          "http-rejection",
-          "provider secret must not enter qualification WAL",
+        return Promise.reject(
+          new Error("provider detail must not enter qualification WAL"),
         );
       }
-      if (options.resourceRead === "drift") return new Uint8Array();
-      return provider.resource(resource.sha256);
+      if (options.resourceRead === "mcp-http-rejection") {
+        return Promise.reject(
+          new McpResourceReadError(
+            "http-rejection",
+            "provider secret must not enter qualification WAL",
+          ),
+        );
+      }
+      if (options.resourceRead === "drift") {
+        return Promise.resolve(new Uint8Array());
+      }
+      return Promise.resolve().then(() => provider.resource(resource.sha256));
     },
     now,
   });
@@ -823,7 +831,7 @@ class QualificationHost implements CapabilityRuntimeHostMutator {
     private readonly states: InMemoryCapabilityRuntimeStateObserver,
     private readonly failQualificationStart = false,
   ) {}
-  async mutate(
+  mutate(
     input: { readonly authorization: AuthorizedCapabilityRuntimeHostMutation },
   ): Promise<CapabilityRuntimeJournalOutcome> {
     const entry = input.authorization.entry;
@@ -833,25 +841,25 @@ class QualificationHost implements CapabilityRuntimeHostMutator {
     ) {
       const state = { material: "installed", runtime: "degraded" } as const;
       for (const material of entry.materials) this.states.set(material, state);
-      return {
+      return Promise.resolve({
         schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
         journalEntryId: entry.id,
         recordedAt: entry.plannedAt,
         status: "failed",
         observations: entry.materials.map((material) => ({ material, state })),
         detail: "fixture terminal failed start",
-      };
+      });
     }
     const state = transitionState(entry.action);
     for (const material of entry.materials) this.states.set(material, state);
-    return {
+    return Promise.resolve({
       schemaVersion: "capability-runtime-host-mutation-outcome/1.0",
       journalEntryId: entry.id,
       recordedAt: entry.plannedAt,
       status: "succeeded",
       observations: entry.materials.map((material) => ({ material, state })),
       detail: null,
-    };
+    });
   }
 }
 
@@ -934,35 +942,37 @@ class FixtureProvider implements RecordedCalculixSensitivityProvider {
       run: this.#run(this.#requestId),
     };
   }
-  async getRun(requestId: string): Promise<unknown> {
+  getRun(requestId: string): Promise<unknown> {
     this.readbacks++;
     const readback = this.#nextReadback.shift() ?? "complete";
     if (readback === "absent") {
-      throw new Error("not_found");
+      return Promise.reject(new Error("not_found"));
     }
     if (readback === "not_found" || readback === "outcome_unknown") {
-      return { schemaVersion: "1.0", status: readback };
+      return Promise.resolve({ schemaVersion: "1.0", status: readback });
     }
-    return {
+    return Promise.resolve({
       schemaVersion: "1.0",
       status: "completed",
       lookup: { kind: "request_id", value: requestId },
       requestId,
       runId: RUN_ID,
       run: this.#run(requestId),
-    };
+    });
   }
-  async listResources(): Promise<unknown> {
+  listResources(): Promise<unknown> {
     this.resourceLists++;
-    if (this.#resourceList === "empty") return { resources: [] };
-    return {
+    if (this.#resourceList === "empty") {
+      return Promise.resolve({ resources: [] });
+    }
+    return Promise.resolve({
       resources: this.#resources.map((resource) => ({
         uri: resource.uri,
         name: resource.role,
         mimeType: resource.mediaType,
         size: resource.byteCount,
       })),
-    };
+    });
   }
   get requestId(): string {
     return this.#requestId;

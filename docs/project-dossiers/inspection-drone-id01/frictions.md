@@ -1,26 +1,45 @@
 # ID01 — remaining agent-path frictions
 
 Fact-checked on **2026-09-09** by six Terra reviewers, with final source and runtime
-readback checks by Codex. **27 confirmed-fixed entries have been removed.** This file
-retains **13 confirmed-open frictions** and **3 historical incidents whose current
-status is unverified**. Original observations remain in Git history.
+readback checks by Codex. **27 confirmed-fixed entries have been removed.** Initial
+saved-state reread **2026-09-12** for the source audit used
+`inspection-drone-id01:project:r882:2de1e90b38a35b6b`, Thread r118
+`project:inspection-drone-id01:r118:industrialize-run-dfm-checks-run:id01-queue-dfm-run-board-r1-f52c-20260912`.
+That initial r882 reference is historical after the authorized local adoption below.
+Canonical brief r7, pending r8 unconfirmed (F22), leftover r2 `ready` (F45). Preferred
+HOLD screening lead F1404+GF3016 recorded, SKU not selected. Measured DFM run recorded
+Thread r118; sensitivity **case** sealed Thread r117 (F51). Original observations remain
+in Git history.
 
-The registered read-only project snapshot returned **project r693 / Thread r95**. The
-RadialArm sensitivity study is completed; its separate SysML edge publication remains
-open under F36. Tests and runtime evidence support only their stated scope, not a
-whole-drone, flight or certification verdict.
+**Latest authorized live DFM readback 2026-09-12:** Project r892, Thread r119
+`project:inspection-drone-id01:r119:industrialize-run-dfm-checks-run:id01-yolo-queue-dfm-r118-authority-retry-jit-20260912`.
+After explicit user approval “oui oui yolo”, one registered measured DFM calculation
+completed on the exact human-approved r118 basis. Its new capture
+`dfm-check-8ceb2ffb9a7a5a920213252607f5d8849c6c02727e957bacbd01313ab79e0f44` is
+authority-available; the real local viewer opens it and shows the three recorded
+screening checks. Historical r115/r117 capture remains authority-`unavailable`. Current
+hulls are preserved. The exact admitted DFM group/image is unchanged and its container
+stopped through terminal session release. No manufacture, purchase or flight is
+authorized by the screening verdict. See F52 for exact commands and proof limits.
+
+Status groups below replace a duplicated opening total. Source-tested worktree
+candidates are not runtime adoption. Tests and runtime evidence support only their
+stated scope, not a whole-drone, flight or certification verdict.
+
+The 2026-09-09 snapshot at project r693 / Thread r95 is historical. The RadialArm
+sensitivity study and its SysML edge write completed at Thread r96 then r97. GitHub
+issues stay English trackers; they are not closed from this saved-state reread.
 
 GitHub issues are in English. They track remaining work; they do not authorize a
 provider execution, project mutation or runtime promotion. Older revision references
 inside retained entries describe the historical trigger, not the current project tip.
 
-## Confirmed-open issue index
+## Remaining product and evidence boundaries (open)
 
 | Friction | GitHub issue                                                                                                                                                    |
 | -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | F03      | [#22 — Desktop integration: expose Digital Thread project-control tools in the active Codex host](https://github.com/Casys-AI/casys-digital-thread/issues/22)   |
 | F13      | [#14 — Add a governed propulsion and energy pre-sizing capability](https://github.com/Casys-AI/casys-digital-thread/issues/14)                                  |
-| F15      | [#15 — Workbench: preserve discoverability when legacy project heads cannot reopen](https://github.com/Casys-AI/casys-digital-thread/issues/15)                 |
 | F16      | [#16 — Add exact BRep mass-property evidence for canonical geometry](https://github.com/Casys-AI/casys-digital-thread/issues/16)                                |
 | F17      | [#8 — Engineering evidence: close the F1404 KV4600 / GF3016 propeller-interface packet](https://github.com/Casys-AI/casys-digital-thread/issues/8)              |
 | F18      | [#9 — Engineering evidence: reconcile F1507 KV3800 / T3140 operating limits and bench configuration](https://github.com/Casys-AI/casys-digital-thread/issues/9) |
@@ -29,8 +48,45 @@ inside retained entries describe the historical trigger, not the current project
 | F21      | [#12 — Add a registered Thread publication path for source-backed pre-sizing worksheets](https://github.com/Casys-AI/casys-digital-thread/issues/12)            |
 | F22      | [#13 — Allow a reviewed later brief to authorize a capability-ceiling amendment](https://github.com/Casys-AI/casys-digital-thread/issues/13)                    |
 | F27      | [#17 — Wire exact sensitivity experience reuse into the production composition](https://github.com/Casys-AI/casys-digital-thread/issues/17)                     |
-| F36      | [#18 — Persist and read back ID01 RadialArm sensitivity edges after the completed study](https://github.com/Casys-AI/casys-digital-thread/issues/18)            |
 | F44      | [#19 — Add a governed generic activation path for qualified first-party microVM candidates](https://github.com/Casys-AI/casys-digital-thread/issues/19)         |
+
+## Remaining live ID01 leftover (open until human action)
+
+| Friction | Note                                                                                                                   |
+| -------- | ---------------------------------------------------------------------------------------------------------------------- |
+| F45      | Orphan `wi-proof-seal-id01-camera-bracket-bench-r2` remains `ready`. Source abandon path is a candidate, not executed. |
+
+## Source-tested corrections and local adoption
+
+Tested source deltas were adopted reversibly into the original checkouts after explicit
+user authorization. Each entry retains its narrower runtime and human-action limits;
+local source adoption does not imply provider publication or qualification.
+
+| Friction | Note                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| -------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F15      | Discoverability v2 source accepted (47 targeted tests). Offline candidate projection is `partial` on the original 10 heads; the v2 route source is adopted locally, while its live discovery behavior is not verified by the focused DFM browser check; v1 `/api/projects` was 503 at the original audit. Historical-head reopen as current remains deferred ([#15](https://github.com/Casys-AI/casys-digital-thread/issues/15)). |
+| F45      | Abandon transition reuses snapshot-validator cancellation constraints; 43 service tests and 2 MCP tests. ID01 orphan still `ready`.                                                                                                                                                                                                                                                                                               |
+| F47      | Overview hull keeps an available nonempty occurrence tree with 0 CAD joins; 37 focused tests. DFM hulls: 53 UI + 1 membership. Local hull source is adopted; the real DFM viewer opens, while the zero-CAD condition retains its targeted source proof.                                                                                                                                                                           |
+| F49      | Camera bracket 2 hops / 2 historical `PASS`; RadialArm 1 hop / 2 historical `PASS`; `historicalEvaluations` + `sourceArtifacts[]`. The historical source-audit baseline r882 bench rows were `pass`; historical evaluations do not authorize them.                                                                                                                                                                                |
+
+## Closed-in-live on this atelier
+
+GitHub trackers are not closed from this reread. F46 and F48 are specific successful
+workarounds, not generic parser or architecture-guard fixes.
+
+| Friction | Note                                                                                                                               |
+| -------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| F36      | SysML sensitivity edges persisted Thread r97. [#18](https://github.com/Casys-AI/casys-digital-thread/issues/18) may still be open. |
+| F46      | Recapture of both requirement families cleared the Thread/SysML basis `-32603` after architecture r98.                             |
+| F48      | Derived `lower_y`/`upper_y` inlined in `id01-camera-board-envelope@3` instead of rewriting architecture.                           |
+| F50      | Canonical STEP attestation accepted after focused tests; CameraBoardEnvelope DFM case sealed Thread r115.                          |
+| F51      | Case identity includes cadSource digest; case sealed Thread r117. No new study execution, reuse or speedup.                        |
+
+## Recovered DFM authority with retained historical refusal
+
+| Friction | Note                                                                                                                                                                            |
+| -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| F52      | Fresh human-approved r118 measured run completed at Thread r119, capture `dfm-check-8ceb2ffb…`, viewer available. Historical r115/r117 capture remains authority-`unavailable`. |
 
 F14, F28 and F29 remain `unverified`; no issue was created for them. Their historical
 incidents have neither been disproved nor confirmed as current failures.
@@ -51,12 +107,13 @@ host integration lacks the tools.
 **Fact-check 2026-09-09: confirmed open.** Tracked in
 [GitHub #14](https://github.com/Casys-AI/casys-digital-thread/issues/14).
 
-Project r672–r674 records the human priority and a pending brief r5 for a sourced
-mass–thrust–power–energy–endurance balance. Inspection of the current operation registry
-found no generic propulsion/energy pre-sizing route. The capability proposal returned by
-the brief review remains unchanged and still awaits confirmation: existing CAD, SysON,
-assembly-integrity and single-part static-FEA surfaces do not become an aerodynamic or
-battery-system solver merely because the new question exists.
+Project r672–r674 recorded the human priority and a then-pending brief r5 for a sourced
+mass–thrust–power–energy–endurance balance. Brief r7 later became canonical; F13 is
+unchanged as a missing registered capability. Inspection of the current operation
+registry found no generic propulsion/energy pre-sizing route. The capability proposal
+returned by the brief review remains unchanged and still awaits confirmation: existing
+CAD, SysON, assembly-integrity and single-part static-FEA surfaces do not become an
+aerodynamic or battery-system solver merely because the new question exists.
 
 This is a real product-capability gap, but not a quick-win patch. CalculiX cannot invent
 operational loads; prescribed Chrono cannot establish thrust, torque or flight dynamics;
@@ -171,40 +228,37 @@ Grok task bounded, observe live progress, stop rather than loop when it stalls, 
 targeted Terra reinforcement if needed. Diagnose and clean the global plugin set in a
 separate, explicitly scoped maintenance pass.
 
-## F15 — preview catalogue exposes historical validator drift (open, deferred)
+## F15 — preview catalogue exposes historical validator drift (discoverability source accepted; legacy reopen deferred)
 
-**Fact-check 2026-09-09: confirmed open.** Tracked in
+**Fact-check 2026-09-09: confirmed open** as all-or-nothing catalogue 503. Tracked in
 [GitHub #15](https://github.com/Casys-AI/casys-digital-thread/issues/15).
 
-A fresh read-only `GET /api/projects` still returned HTTP 503 with
-`Persisted project revisions could not be reopened exactly.`, while the registered ID01
-snapshot read succeeded.
+**Discoverability source accepted 2026-09-12** (47 targeted tests).
+`GET /api/project-discovery` returns `native-workbench-project-discovery/2.0`. Available
+entries come only from the existing `store.get`. Unavailable entries keep
+`identityAuthority=observed-storage` plus a closed reason. An offline read by the
+candidate reader over the original persisted heads returned `partial` (10 candidates):
+available inspection-drone-id01 r882, modular-sensor-mount-msm01 r97,
+two-piece-tablet-stand-tps01 r111, tps02 r128, tps03 r135; unavailable
+`validation-failure` desktop-parts-sorter-ps01, motorized-camera-slider-mcs01, mcs02,
+precision-heated-specimen-stage-hs01, spice-lifecycle-pilot-sl01. Legacy
+`GET /api/projects` (`native-workbench-project-catalog/1.0`) remains all-or-nothing HTTP
+503 on that storage, with literal
+`Persisted project revisions could not be reopened exactly.` The candidate route has not
+been runtime-adopted. A higher symlink head is refused without falling back to an older
+JSON. Same-metadata different bytes is `changed-during-read`. Preview and Desktop
+compose discovery beside v1 catalog and existing `historyEvidenceCaptures`. There is no
+`GET /projects/<id>` and no `projectId` query selector. Ask the paired assistant to
+choose the project; `cockpit_focus_set` stays the MCP routing authority. Workbench stays
+`GET` + SSE; no command UI.
 
-The pinned preview could read ID01 project r674 / Thread r93, while `GET /api/projects`
-returned HTTP 503 with `Persisted project catalog is unavailable.` Read-only inspection
-found a bounded wiring omission: the preview CLI created the validated project store but
-did not supply the project-catalog reader already used by the packaged Desktop BFF.
-
-The quick win is closed in checkpoint `033a0dc8`. The shared fail-closed reader now
-serves both entry points; 54 targeted tests, type checking, formatting and whitespace
-checks passed. After restarting the same pinned preview, `/api/projects` reached that
-reader. It then returned the more precise literal state
-`Persisted project revisions could not be reopened exactly.`
-
-The remaining failure is not an ID01 projection error. Direct store reads reopened five
-current heads, including ID01 r674, and rejected five historical project heads:
-`desktop-parts-sorter-ps01`, `motorized-camera-slider-mcs01`,
-`motorized-camera-slider-mcs02`, `precision-heated-specimen-stage-hs01` and
-`spice-lifecycle-pilot-sl01`. Their completed plan-bearing historical runs predate the
-current mandatory `resolvedOperationPlan` validation and cannot be presented as valid
-current snapshots. Because catalogue discovery is deliberately all-or-nothing, those
-entries keep the list endpoint at 503 even though the exact pinned ID01 Workbench
-remains HTTP 200 on `engineering-workbench/0.6`.
-
+Historically, checkpoint `033a0dc8` closed the preview CLI wiring omission: 54 targeted
+tests plus type, format and whitespace checks passed, and the same pinned ID01 Workbench
+on 2026-09-09 stayed HTTP 200 while `GET /api/projects` (v1 catalog) returned HTTP 503.
 Do not delete those projects, backfill signed history, skip invalid entries or weaken
-the validator as an ID01 fix. A later migration/legacy-reopen design must decide how to
-preserve the original bytes and provenance while presenting historical contracts. This
-is a real compatibility project, not another quick win; it remains open and deferred.
+the validator. Reopening historical contracts **as current** heads remains a separate
+deferred compatibility decision. F15 discoverability does not execute or migrate those
+bytes.
 
 ## F16 — canonical STEP captures omit exact BRep mass properties (open, deferred)
 
@@ -359,10 +413,12 @@ supplier or governed physical evidence.
 [GitHub #12](https://github.com/Casys-AI/casys-digital-thread/issues/12).
 
 Live inspection after project r675 confirmed the split visible to the user: the new
-mission-shape question exists exactly once and has no answer, while the latest Thread is
-still r93 and the run, approval, decision and blocker counts are unchanged. The
-read-only Workbench can therefore show the new Project revision and planning question,
-but it has no new Thread graph entity to paint on the whiteboard.
+mission-shape question exists exactly once and has no answer, while the Thread at that
+observation was still r93 and the run, approval, decision and blocker counts were
+unchanged. The read-only Workbench could therefore show the new Project revision and
+planning question, but it had no new Thread graph entity to paint on the whiteboard.
+Saved-state **2026-09-12**: Thread is now r118; the missing pre-sizing-worksheet
+publication path remains. No worksheet was promoted into a fake solver node.
 
 This is not repaired by copying the Markdown into draft CAS. `project_resource_capture`
 writes one raw draft MCP resource with `grants: none`; unknown files create neither
@@ -416,6 +472,15 @@ were appended to the published plan so the existing capability-delta route could
 their actual runtime demand. This unblocks the pilot without repairing the generic
 later-brief widening contract; that product hole remains open.
 
+**Live hit 2026-09-11.** `project_brief_propose` wrote pending brief r8
+`inspection-drone-id01:brief:r8:fb658801b1b1c693` (long-term continuation objective,
+`mutatesRuntime: false`). `project_brief_confirm` refused the exact fresh fingerprints
+with the same F22 message. Canonical brief remains r7. Do not retry confirm with those
+fingerprints, do not replace the capability ledger, and do not treat the pending r8 as
+approved. The TUI `/goal` command is a separate session driver; it is not a brief or a
+Thread document. The documentary `long-term-objective-20260911.md` page was removed once
+that `/goal` was set.
+
 ## F27 — sensitivity reuse is not wired into production (open)
 
 **Fact-check 2026-09-09: confirmed open.** Tracked in
@@ -429,9 +494,19 @@ does not inject the coordinator or persistent stores. The current run published 
 The remaining work is to compose the existing reuse path, prove exact-domain reuse and
 stale/out-of-domain refusal, and measure warm versus comparable cold execution. No
 current ID01 evidence establishes automatic reuse or saved solver time. Operation counts
-must not be presented as elapsed-time measurements.
+must not be presented as elapsed-time measurements. Do not invent reuse or comparative
+elapsed measurements from the Thread r117 case seal.
 
-Source checks: `src/adapters/sensitivity/server-composition.ts:183-210` and
+**Source accepted 2026-09-12:** session-bound factory/coordinator, 47 targeted tests,
+`deno task check` on that graph, and removal of the unused
+`docker-sensitivity-solver-runtime-authority` adapter. Behaviour tests use fake
+runtime/CAD/solver and temporary stores. No live production exact reuse, no measured
+saved solver time, and no runtime composition claim. The Thread r117 artefact remains a
+**case**, not a study execution or reuse receipt. F27 as a product boundary stays open
+until live reuse evidence exists.
+
+Source checks at the 2026-09-09 observation:
+`src/adapters/sensitivity/server-composition.ts:183-210` and
 `src/adapters/sensitivity/live-fea/analyze-run-fea-sensitivity-run-executor.ts:245-265`.
 
 ## F28 — parallel agent edit-attribution incident (historical; current status unverified)
@@ -474,21 +549,300 @@ into a contract lot, a separate review and a later integration lot; Codex keeps
 responsibility for the combined diff, live qualification and engineering claim. This
 usage limit is not a CalculiX or ID01 physics failure.
 
-## F36 — completed sensitivity study still needs persisted SysML edges (open)
+## F36 — completed sensitivity study still needs persisted SysML edges (closed-in-live)
 
-**Fact-check 2026-09-09: confirmed open.** Tracked in
+**Fact-check 2026-09-09: confirmed open at r693 / Thread r95.** Tracked in
 [GitHub #18](https://github.com/Casys-AI/casys-digital-thread/issues/18).
 
-The registered project snapshot at project r693 / Thread r95 records the completed
-`analyze.run-fea-sensitivity@1` run and its study capture. Both base and stepped CAD
-phases are published and both CalculiX solves are captured. The former case-only
-condition is therefore resolved.
+**Live reread 2026-09-11: closed-in-live.** Thread r97 records completed run
+`run:queue-sensitivity-edges-72093069-r96-r703` (`model.write-sensitivity-edges@1`,
+summary: inserted server-rendered sensitivity edges into SysON). The 2026-09-09
+sequencing hole is therefore closed on this atelier. GitHub #18 is not closed from this
+reread. The study remains a local 5–6 mm `arm_height` neighbourhood under the sealed
+load, material, mesh and boundary conditions; it is not vehicle qualification or flight
+evidence. The leftover camera-bracket r2 work item is **F45**, not this entry.
 
-No corresponding ID01 `model.write-sensitivity-edges@1` run or result is present in that
-snapshot. Close this remaining sequencing friction only after the registered writer has
-persisted and read back the exact SysML relations from the completed study. Preserve the
-distinct case, measured-study and derived-edge identities and the isolated RadialArm
-bench limitations. A whiteboard-only node cannot complete that operation.
+## F45 — leftover camera-bracket proof-seal r2 remains `ready` (open)
+
+**Observed 2026-09-11.** No GitHub issue yet. Project Path Physics 18/20 Planned is this
+orphan, not the Overview FEA classifier.
+
+`wi-proof-seal-id01-camera-bracket-bench-r2` is still `ready`. Decision
+`dec-proof-seal-id01-camera-bracket-bench-r2` is `approved`. Associated run
+`run:id01-queue-bench-r2-seal-20260907` is `cancelled` before claim (`claimedAt` /
+`startedAt` absent, `evidenceRefs: []`). Camera-bracket bench r3 later sealed, executed
+and accepted.
+
+`project_work_item_abandon` historically refused a work item that already has a run, and
+refused an approved decision in `decisionIds`. `deno task recover:work-item-successor`
+inspects the orphan with `suggestedSuccessors: []`. Applying r3 as successor is a tested
+refusal: different `activityId` and no `predecessorRevisionId`. Do not fake the Path
+count by treating `abandoned` as `completed`. Leave the leftover visible.
+
+**Source candidate 2026-09-12** in `abandon-work-items-transition.ts`: reuse the
+snapshot-validator's cancellation constraints. Allow abandonment only if every
+associated run was cancelled before claim and has no execution evidence. Preserve
+cancelled runs, receipts, history and approved decisions when `decisionIds` is empty;
+explicitly abandoning an approved decision is still refused. Focused tests: 43 service
+tests and 2 MCP tests. The live ID01 orphan remains `ready` until a separate human
+`project_work_item_abandon`. No faked successor or project completion. The source path
+is not executed in this documentation pass.
+
+## F46 — compilation preview cannot read Thread/SysML basis after architecture r98 (closed-in-live)
+
+**Observed 2026-09-11**, then recapture. No GitHub issue. Same class as historical F08,
+on architecture
+`architecture-1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9`.
+
+Camera-board source analysis passed (`parser.passed`, seven named levers including the
+four hole handles). `project_technical_compilation_preview` then returned MCP `-32603`
+`The exact Thread/SysML basis reader failed` until both requirement families were
+recaptured: CameraMountBracket `model.recapture-requirements@1` (project r722 / Thread
+r99) and RadialArm `@2` (project r729 / Thread r100). The retry was no longer that
+`-32603`. This is a successful ID01 recapture workaround, not a generic parser or
+architecture-guard fix. Do not treat the historical incident as a Build123d parser
+failure or weaken the architecture-equality guard.
+
+## F47 — Geometry hull flattens when CAD is unjoined (open, UX)
+
+**Observed 2026-09-11** on Workbench `http://127.0.0.1:5173/` Geometry hull. No GitHub
+issue yet. Presentation only; the empty CAD join after an architecture rewrite is
+correct. The defect is how Geometry shows that state.
+
+After architecture r98, SYSML still indented `InspectionDrone` → `airframe` → parts.
+Hierarchy was `available`, 29 nodes, 28 with `parentId`, **0** with
+`geometryArtifactId`. Historical CAD stayed as-assembled against architecture r70 and
+was correctly refused as current-architecture CAD (`uniqueCadPrimary` empty;
+as-assembled child does not claim current-architecture CAD). Waiting does not fill that
+join; rewriting architecture would widen it.
+
+The Geometry hull only tree-anchors when an occurrence `geometryArtifactId` is among its
+own cad-model artifacts (`buildOverviewHullContents` `anchored`). Otherwise it falls
+through to `mode: "records"` — a flat dump of STEP/GLB rows. That looks like the product
+vanished. SYSML does not: it stays architecture-anchored. Do not invent folder parents
+from labels.
+
+**Live 2026-09-11 after CAD republish** on architecture-1782bbb8 / Thread r108: 29/29
+nodes carry `geometryArtifactId` again (root `geometry-2c93a4b8…`). That restores the
+join; it does **not** close this UX. The same flatten will recur on the next
+architecture rewrite until Geometry, when unjoined, still shows the occurrence tree with
+an explicit unjoined / pending-CAD state instead of a flat record list. Close only then.
+
+Human **2026-09-11**: keep F47/F49 open; recross/UX later. Do not treat a new CalculiX
+run as the close for this flatten.
+
+**Source candidate 2026-09-12** in UI `overview/hulls/content.ts`: retain an available
+nonempty occurrence tree with 0 CAD joins, show explicit unjoined / pending-CAD detail,
+and emit no action or graph refs for those rows. Missing or `unavailable` hierarchy
+still falls back to records. Focused tests: 37. DFM hulls (53 UI + 1 membership): family
+`dfm` compact case/result/five observations, three requirements and three evaluations in
+their lanes; STEP stays Geometry; one exact capture App via identity aliases. Source
+only; not runtime adoption.
+
+## F48 — derived `lower_y`/`upper_y` blocked CameraBoardEnvelope admission (closed-in-live)
+
+**Observed 2026-09-11.** No GitHub issue. After recapture cleared F46 and
+`project_source_attachment_recross` cleared `attachment.different-basis` plus the
+non-unique `result` join, compilation stayed `unresolved` with `binding.missing` /
+`no-unique-AttributeUsage` on `lower_y` and `upper_y`. Those names were derived
+assignments, not sourced handles. Architecture r98 already declared the seven scalar
+levers. Rewriting architecture to add derived coordinates would have unjoined CAD again.
+File successor `id01-camera-board-envelope@3` inlined the same expressions (`height`,
+`inset`, `pitch_z` unchanged). Preview then `ready-for-review`; admission sealed at
+Thread r101. This is a successful expression-inlining workaround on that file, not a
+generic parser or architecture-guard fix.
+
+## F49 — recaptured requirements show `unresolved` while historical FEA `pass` still exists (open, UX)
+
+**Observed 2026-09-11** on Workbench `/api/thread/workbench` at project r783 / Thread
+r108. No GitHub issue yet. Presentation of a real empty evaluation join, not a deleted
+CalculiX run.
+
+`model.recapture-requirements` after architecture r98 published new requirement
+projection identities (`requirement-4488a613…-camera_bracket_bench_max_von_mises_pa`,
+`requirement-7f206ff76…-radial_arm_bench_max_displacement_mm`). Native SysML element ids
+are unchanged (`aa7c4627…`, `07e458ff…`). The projector joins canonical evaluations only
+to those current ids (`projectRequirement` → `No canonical evaluation recorded.`).
+
+Live Workbench therefore lists both bench requirements as `unresolved` with empty
+`observationIds`. The Thread still holds the solver results, observations (0.007638 MPa
+/ 0.129255 mm), SysON evaluation evidence, and L5 accept documents, plus current
+engineering cases `id01-camera-bracket-bench` r3 and `id01-radial-arm-bench` r2.
+Observation `requirementIds` are empty, so Physics shows measurements without a `pass`.
+Do not treat this as a new fail, and do not invent a CalculiX replay to “restore” the
+label. Close only when the current requirement projection recrosses the existing
+evaluation or shows an explicit historical-`pass` / unjoined state.
+
+Human **2026-09-11**: recross later. A new isolated run against the **current**
+requirement projection may publish a new L4/L5 join (visible Pass) without closing this
+UX: that is a new proof, not an automatic recross of r85/r89. G0 speed/energy hypotheses
+are not CalculiX `@3` loads; do not encode 2 m/s or HOLD watts as a proof-case force.
+
+**Source follow-up accepted 2026-09-12.** Read-only original ID01 Thread r118 / project
+r882: both current bench rows remain `pass` —
+`requirement-4488a613ba6ffd5baea9626302a7e97ff8d37061bfb63892f91a41ad69dd5df9-camera_bracket_bench_max_von_mises_pa`
+(complete **2 hops** / **2 historical `PASS`**) and
+`requirement-7f206ff76ab6ab232cb7293a2b8df6cccbb0c241e5bc3e1dac09df09e8e3f6db-radial_arm_bench_max_displacement_mm`
+(complete **1 hop** / **2 historical `PASS`**), including measured study `72093069…` and
+evaluation `9bf8e4d4…`. Collection is plural `historicalEvaluations`; observation
+provenance is plural `sourceArtifacts[]`. A first hop with zero evaluations is an
+explicit partial diagnostic (`hops: 0`), not an invented evaluation. 42 typed tests plus
+UI type check; current facts and source bytes unchanged. The projection preserves every
+current `pass` / `fail` / `unresolved` / observation id. Historical evaluations stay
+separate: they do not cause or authorize those current `PASS` rows. Do not recross
+automatically or imply runtime adoption. The 2026-09-11 `unresolved` incident above
+remains historical; F49 stays open for live Workbench adoption of that projection.
+
+## F50 — DFM seal refuses canonical STEP `cad-asset` (closed-in-live)
+
+**Observed 2026-09-11.** No GitHub issue. `industrialize.seal-dfm-case@1` required the
+named artefact to be `mediaType: model/step` **and**
+`producer.tool: design.write-geometry@1`. On ID01 CameraBoardEnvelope:
+
+- `geometry-b5902310…` — producer `design.write-geometry@1`, media `application/json`
+- `cad-asset-b5902310…-target-0-2572f73d…` — media `model/step`, producer
+  `build123d_export`
+
+**Closed-in-live 2026-09-11.** `attestCanonicalWriteGeometryStep` joins the STEP child
+via `cad-asset-<capture>-target-<n>-<stepDigest>` (or PartDefinition `…-definition-…`)
+to parent `geometry-<capture>` with producer `design.write-geometry@1` by exact capture
+digest, role and STEP digest. Isolated CAD stays refused. Dirty source attestation is
+accepted after focused tests. Seal r1e retry completed: Thread r115 artefact
+`dfm-case-3ab2905dcce20501f5c7563fd59bcdc03512e61cb27e67e92fa5e51a62511a37`. Measured
+run remains F52.
+
+## F51 — sensitivity study seal blocked on current tip (closed-in-live)
+
+**Observed 2026-09-11.** First review `admission-unavailable`, then
+`compiled-identities-conflict` on unsuffixed r94 ids.
+
+**Closed-in-live 2026-09-12.** Case identity includes the cadSource digest:
+`wi-sensitivity-seal-${caseId}-${cadSourceSha256.slice(0,16)}`. Historical unsuffixed
+r94 ids stay untouched as a different activity. Seal completed Thread r117 artefact
+`sensitivity-case-a737046b21c7f6e61fa479c13e60511aa1cd78e765ce0349f052cd6249e3d9ee`
+against admission `technical-compilation-admission-b0e5ba4d…`. Work item
+`wi-sensitivity-seal-id01-radial-arm-height-isolated-b0e5ba4d4a9a434b`. This is a
+**case**, not a new study execution, reuse or speedup. Not a vector-correction grant.
+Consumer run/eval is a later hop (HTTP CalculiX remains unqualified). F27 remains the
+production-reuse boundary.
+
+## F52 — exact DFM authority recovered through a valid successor; historical refusal retained
+
+**Observed 2026-09-11.** Queue refused: no trusted binding for
+`manufacturing.run-dfm-checks@1/execution`.
+
+**Historical record 2026-09-12, kept unavailable.** The trusted-binding and planner-sort
+subproblem was corrected historically: catalogue unit `casys.mcp-dfm@0.1.0`, H1 group
+`casys-mcp-dfm@1.0.0`, binding `mcp-dfm-measured-checks` `qualified`. Planner sorts
+semantic requirements, bindings and host-effect lists the same way amendment reconstruct
+does, so YOLO amend of the ID01 ceiling succeeds.
+
+The recorded capture remains readable and is not erased or upgraded to a valid exact
+approval. Decision `decision-run-dfm-id01-camera-board-envelope-mk4s-r1` and approval
+`approval:decision-run-dfm-id01-camera-board-envelope-mk4s-r1:id01-propose-dfm-run-board-r1-20260911`
+carry `baseSnapshot` Thread r115
+`project:inspection-drone-id01:r115:industrialize-seal-dfm-case-run:id01-queue-dfm-seal-board-r1e-retry-f50-20260911`.
+Completed run `run:id01-queue-dfm-run-board-r1-f52c-20260912` executed against Thread
+r117
+`project:inspection-drone-id01:r117:analyze-seal-sensitivity-study-run:id01-queue-sens-seal-arm-height-b0e5ba4d-20260912`
+and published Thread r118 artefact
+`dfm-check-a023abdcedb3bc50920af6c2d6d4e89600c0b971f0b6c55128c076a45d9b16d6`. That
+confirmed MRTR regression let an r115 approval/decision basis execute against r117.
+Treat it as an authority limitation, not a cosmetic warning and not an approval
+recovered retroactively.
+
+Source now checks exact `snapshotId` + `revision` + `subjectId` on **both** decision and
+approval, plus existing fingerprint equality. Ten executor tests passed, including
+missing/wrong revision/id/subject. The recorded DFM capture stays
+authority-`unavailable` on that historical r115/r117 mismatch. Closing authority needs
+that source **and** a **fresh** exact approval/execution; never a retroactive repair of
+the old MRTR. The three recorded `pass` values remain evidence, not restored authority.
+Previous failed attempt `run:id01-queue-dfm-run-board-r1-f52-20260912` remains history.
+
+**Source and local Workbench update 2026-09-12.** Queue, executor and viewer now share
+the domain-owned `recrossDfmRunAuthority`. The registered DFM queue refuses a stale
+approval before eligibility/runtime lookup or run publication. The targeted domain,
+queue, executor, viewer and architecture suites pass: 78 tests, 0 failures. The local
+DFM App package is installed and its real Workbench viewer opens with the literal
+r115/r117 refusal; no hull was changed for this correction.
+
+Fresh decision `decision-run-dfm-id01-camera-board-envelope-mk4s-r2-authority` is
+proposed on exact Thread r118, with input fingerprint
+`37157a666c6dc99b5ecbdbd3705ce2b8c2b4682dd1f7249eb25f134af7a0db83`. Production readers
+reopened the unchanged sealed case and canonical STEP; the seven run parameters preserve
+the declared Z-min filter. After explicit user approval “oui oui yolo”, official
+`start:yolo` recorded the human approval on this exact r118 basis and fingerprint
+(Project r885); queue recorded `run:id01-yolo-queue-dfm-r118-authority-20260912` at
+r886. That attempt is `failed` before a durable Thread write: direct HTTP could not
+reach DFM (`fetch failed`). Project r888 and Thread r118 are unchanged after the
+failure. This attempt and its dispatched WAL remain immutable.
+
+**Runtime composition correction accepted 2026-09-12.** Measured DFM now uses the
+existing authorized JIT session and fixed lease-bound MCP publication. It stages exact
+canonical STEP bytes to server-derived `/tmp/dfm-<sha256>.step` in the unique owned
+exact-image container, independently checking SHA-256 and byte count before claim and
+dispatch WAL. The sealed `/exports` volume stays read-only, with no image or
+launch-group change. The shared container ownership/staging primitive is extracted from
+CalculiX; each factory keeps its own literal topology. 61 retained targeted tests and 9
+architecture-boundary tests pass; changed-source fmt/lint/typecheck and server
+composition pass. Two new source-string snapshot tests are excluded from the delivery;
+composition is reviewed directly and dependency boundaries use the existing scanner.
+**Authorized runtime successor verified 2026-09-12.** The tested 10-path source
+successor `1ee3741763632575cbb869c8e13fd9bb6e196152` was adopted into the original
+checkout with backups, unchanged HEAD/index, 213 unrelated dirty paths preserved, and 17
+hull source files plus viewer packages unchanged. Original server/BFF typecheck passed.
+Owned MCP (`start:yolo`) and Workbench (`preview:thread`) were restarted.
+`project_agent_run_queue` recorded
+`run:id01-yolo-queue-dfm-r118-authority-retry-jit-20260912` at Project r889, using the
+same work and unchanged human approval r118. `project_agent_run_execute` completed at
+Project r892 and published Thread r119 artifact
+`dfm-check-8ceb2ffb9a7a5a920213252607f5d8849c6c02727e957bacbd01313ab79e0f44`. The first
+failed attempt and old invalid completed run remain byte-identical in their project
+records; the signed decision is unchanged. Production readers reopened and validated the
+new capture/fingerprint and exact canonical STEP (30011 bytes); all three provider
+receipts attest its SHA-256. Actual sole `dfm-exports` mount is read-only, with the
+exact admitted image, `cap_drop: ALL`, `no-new-privileges`; the owned DFM container is
+`exited` after terminal release. No manual provider start, topology change or image
+rebuild was performed.
+
+**Real viewer acceptance.** Session
+`mcp-app:db10414028aa02c42c005e7e2689c938edbf52b6c36c20f50170a1bbb658c03f` is exactly
+anchored on that new artifact/run and `available`. Its actual iframe shows Envelope,
+Minimum thickness and Overhangs, with recorded measurements and the declared Z-min
+filter; the unavailable message is absent. The historical unavailable session remains
+distinct. No page runtime error or HTTP 4xx/5xx was observed; Workbench API requests are
+GET only. The strict global browser harness is not claimed green: six CSP/font
+diagnostics (unsupported `webrtc`, blocked embedded data fonts) and one cancelled
+resource GET remain recorded. They do not replace or invalidate the exact DFM
+capture/visible measurements. Audit JSON and PNG are in
+`/Volumes/DEV/Projects/cdt-frictions-20260912-audit/dfm-jit-real-viewer-acceptance.json`
+and `dfm-success-workbench-313ab79e0f44.png`. Historical evidence is never repaired
+retroactively.
+
+Fresh successor checks (sampling / screening, printer not selected): envelope 25 × 24 ×
+11.5 mm `pass`; sampled minimum thickness 0.9149495583883871 mm against 0.8 mm `pass`;
+overhang bed-contact centroids z = 0 excluded by declared 0.2 mm Z-min filter, 0
+remaining, `pass`. Not a printer SKU. No flight, strength or manufacturing
+authorization. The earlier root Compose collision is historical; the successor used the
+owned H1 group.
+
+**DFM recorded viewer source** (unpublished):
+`/Volumes/DEV/Projects/mcp-dfm-viewer-20260912` (`io.casys.mcp-dfm.results`
+`0.3.0-local.viewer.1`, `ui://mcp-dfm/results-viewer`, `viewer.session.apply`). Local
+commit `e763d96c2c58274048d6bf35f1cfb15148cba0f0` (parent `85a62804…`); bundle 780178
+bytes, SHA-256 `2fd82bf83bbba5c01cf2848d43da968597047a6fb99b52914825c50e41c74bd1`.
+Independent `release:check`: 52 server tests, 5 model tests (native Gmsh ignored).
+Fake-host harness accepted light, dark and 480 px; screenshot is a **synthetic**
+fixture, not the saved ID01 capture. Shared build provenance:
+`mcp-view-host-context-fix-20260905` commit `b08802df353bb25d25a1c8d64b22ea61b5287ae0`
+(view 0.9.3, view-contracts 0.1.0, view-components 0.9.0). DT binding: 15 targeted tests
+plus pure provider-parser recross (exact available / historical cross-revision
+`unavailable`). Hulls: 53 UI + 1 membership. Workbench remains generic read-only `GET` +
+SSE. Production solver pin stays `0.1.0` while provider source is `0.3.0`. Legacy
+recorded `0.1` captures lack newer quality fields: show `not recorded` / `unavailable`,
+never infer quality. The local display package is installed and its real viewer is
+verified above; no provider source publication was performed. Private `stagedPath` stays
+off the App.
 
 ## F44 — candidate qualification has no generic catalogue-activation route (open, deferred)
 

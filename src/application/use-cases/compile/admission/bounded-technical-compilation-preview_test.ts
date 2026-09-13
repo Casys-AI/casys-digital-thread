@@ -403,11 +403,12 @@ Deno.test("MRTR-only detail sections are verbatim and full evidence remains expl
       (manifest.items[0] as { counts: { bindings: number } }).counts.bindings,
       result.document.inputManifest.bindings.length,
     );
-    const dense = structuredClone(result) as any;
-    dense.document.inputManifest.bindings = Array.from({ length: 256 }, (_, index) => ({
-      ...result.document.inputManifest.bindings[0],
-      id: `binding.${index}.${"x".repeat(240)}`,
-    }));
+    const dense = structuredClone(result);
+    asRecord(asRecord(dense.document, "document").inputManifest, "inputManifest")
+      .bindings = Array.from({ length: 256 }, (_, index) => ({
+        ...result.document.inputManifest.bindings[0],
+        id: `binding.${index}.${"x".repeat(240)}`,
+      }));
     const denseReader = new ReadTechnicalCompilationPreviewEvidence({
       read: () =>
         Promise.resolve({
@@ -707,6 +708,12 @@ function countByCode(items: readonly unknown[]) {
     counts[code] = (counts[code] ?? 0) + 1;
   }
   return counts;
+}
+function asRecord(value: unknown, path: string): Record<string, unknown> {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) {
+    throw new TypeError(`${path} must be an object.`);
+  }
+  return value as Record<string, unknown>;
 }
 function hasForbiddenKey(value: unknown): boolean {
   if (Array.isArray(value)) return value.some(hasForbiddenKey);

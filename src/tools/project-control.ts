@@ -143,6 +143,10 @@ import {
   registerProjectRequirementsBriefTraceReviewTools,
 } from "./project-control/requirements-brief-trace-review-tools.ts";
 import {
+  type ProjectBuyReviewToolDependencies,
+  registerProjectBuyReviewTools,
+} from "./project-control/buy-review-tools.ts";
+import {
   autoConfirms,
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   localYoloRationale,
@@ -180,7 +184,8 @@ export interface ProjectControlToolDependencies
     ProjectAssemblyIntegrityCloseoutReviewToolDependencies,
     ProjectPrescribedKinematicsReviewToolDependencies,
     ProjectRequirementsRecaptureReviewToolDependencies,
-    ProjectRequirementsBriefTraceReviewToolDependencies {
+    ProjectRequirementsBriefTraceReviewToolDependencies,
+    ProjectBuyReviewToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
   /** Optional so focused read-only tests need not construct a trusted executor. */
@@ -268,6 +273,7 @@ export function registerProjectControlTools(
   registerProjectPrescribedKinematicsReviewTools(app, dependencies);
   registerProjectRequirementsRecaptureReviewTools(app, dependencies);
   registerProjectRequirementsBriefTraceReviewTools(app, dependencies);
+  registerProjectBuyReviewTools(app, dependencies);
 
   app.registerTool(projectPlanPublishTool, async (args, context) => {
     const common = commonMutation(args);
@@ -753,7 +759,8 @@ const projectAgentRunExecuteTool: MCPTool = {
 };
 
 /**
- * Human-only governed abandonment for work items that never acquired a run.
+ * Human-only abandonment for work with no execution or evidence, including
+ * human pre-claim cancelled queued runs.
  *
  * WHY HUMAN-ONLY — abandoning a work item and its pending decisions is an
  * irreversible editorial act on the project plan. Interactive mode confirms
@@ -767,8 +774,8 @@ const projectWorkItemAbandonTool: MCPTool = {
   name: "project_work_item_abandon",
   description:
     "Ask the paired MCP host to confirm the abandonment of one or more work items and their pending decisions. " +
-    "Each work item must be in `ready` or `waiting-for-decision` status with no associated runs and no evidence refs. " +
-    "Each decision must be in `required` or `proposed` status (not `approved`). " +
+    "Each work item must be in `ready` or `waiting-for-decision` status with no evidence refs and no runs except human cancellations before claim or execution. " +
+    "Each listed decision must be in `required` or `proposed` status (not `approved`); omitted approved decisions remain intact. " +
     "In the default interactive mode, the first call requests elicitation and only a signed accepted retry records abandonment. " +
     "An explicit loopback-only --yolo startup opt-in instead records the same positive abandonment through the command service with the persisted local-yolo human origin; it never fabricates elicitation responses. " +
     "On confirmation the service marks each target as `abandoned` and revokes any pending approval for a proposed decision. " +
@@ -1037,7 +1044,7 @@ function workItemAbandonmentConfirmationRequest(
             `Abandon work item${
               workItemIds.length === 1 ? "" : "s"
             } ${itemTitles}${decisionPart}? ` +
-            `Each target must have no associated runs and no evidence. ` +
+            `Each work item must have no evidence and no runs except human cancellations before claim or execution. Existing runs, receipts and approved decisions not listed for abandonment remain unchanged. ` +
             `This records only project history: no agent run, provider call, or ThreadSnapshot will be created. ` +
             `Abandoned entities remain in history but are excluded from active views. ` +
             `Recorded rationale: ${rationale}. Confirm this exact abandonment, or decline and continue the conversation.`,

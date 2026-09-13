@@ -45,7 +45,6 @@ import type { ContentFingerprint } from "../../../domain/kernel/primitives.ts";
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
-  EngineeringDecision,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,

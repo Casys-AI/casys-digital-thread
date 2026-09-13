@@ -151,15 +151,7 @@ export class ReadTechnicalCompilationPreviewEvidence {
       readonly nextCursor: string | null;
     }
   > {
-    const x = value as any;
-    if (
-      !x || typeof x !== "object" || typeof x.projectId !== "string" ||
-      !x.evidenceRef || typeof x.section !== "string"
-    ) {
-      throw new TypeError(
-        "Preview evidence detail requires only projectId, evidenceRef and section.",
-      );
-    }
+    const x = previewEvidenceDetailQuery(value);
     const e = await this.evidence.read(x.evidenceRef);
     if (!e || e.projectId !== x.projectId) {
       throw new TypeError("Preview evidence is unavailable or foreign.");
@@ -218,11 +210,14 @@ export class ReadTechnicalCompilationPreviewEvidence {
     });
   }
   async #decode(
-    cursor: string,
+    cursor: unknown,
     reference: TechnicalCompilationPreviewEvidenceReference,
     section: string,
     length: number,
   ): Promise<number> {
+    if (typeof cursor !== "string") {
+      throw new TypeError("Preview evidence cursor is invalid or foreign.");
+    }
     const record = await this.evidence.readCursor(cursor);
     if (
       !record || record.projectId !== reference.projectId ||
@@ -317,13 +312,43 @@ function chunks(sourceId: string, text: string): readonly unknown[] {
   }
   return out;
 }
-function count(a: readonly any[]): Record<string, number> {
-  const r: Record<string, number> = {};
-  for (const x of a) {
-    const k = typeof x?.code === "string" ? x.code : "unknown";
-    r[k] = (r[k] ?? 0) + 1;
+function count(
+  items: readonly { readonly code?: unknown }[],
+): Record<string, number> {
+  const counts: Record<string, number> = {};
+  for (const item of items) {
+    const key = typeof item.code === "string" ? item.code : "unknown";
+    counts[key] = (counts[key] ?? 0) + 1;
   }
-  return r;
+  return counts;
+}
+function previewEvidenceDetailQuery(value: unknown): {
+  readonly projectId: string;
+  readonly evidenceRef: TechnicalCompilationPreviewEvidenceReference;
+  readonly section: string;
+  readonly cursor: unknown;
+} {
+  if (value === null || typeof value !== "object") {
+    throw new TypeError(
+      "Preview evidence detail requires only projectId, evidenceRef and section.",
+    );
+  }
+  const query = value as Record<string, unknown>;
+  if (
+    typeof query.projectId !== "string" ||
+    !query.evidenceRef ||
+    typeof query.section !== "string"
+  ) {
+    throw new TypeError(
+      "Preview evidence detail requires only projectId, evidenceRef and section.",
+    );
+  }
+  return {
+    projectId: query.projectId,
+    evidenceRef: query.evidenceRef as TechnicalCompilationPreviewEvidenceReference,
+    section: query.section,
+    cursor: query.cursor,
+  };
 }
 async function summaryItem(
   value: unknown,

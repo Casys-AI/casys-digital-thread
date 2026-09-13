@@ -1,0 +1,122 @@
+{
+  "schemaVersion": "mechanical-proof-case-source/1.0",
+  "id": "id01-camera-bracket-bench",
+  "revision": 4,
+  "scope": "Theoretical camera-weight-only bench screening of the exact single CameraMountBracket; not the drone or a physical experiment.",
+  "evidenceBoundary": "Approved Brief r3 camera-bracket-bench-assumptions and camera-bracket-bench-stress. Sources and calculation: casys://agent-resource-capture/sha256/f575b31476d9e45077467234f4b80b366fc462022b15d768d0cd50cb3e4e5f13. Ideal fully fixed bottom face; local -Y bench gravity; four equal nodal force patches from 4 g x conventional 9.80665 m/s2. Excludes self-weight, cable, spacers, fasteners, camera CoM moment, realistic contact, nonlinearity, vibration, landing/flight, manufacture and certification. One 1 mm target mesh is not convergence evidence. Material is a theoretical catalogue isotropic idealization, not an as-built claim. A pass does not repair the unresolved camera-to-drone interface or complete ID01. Revision 4 requests a fresh seal and isolated run on the server-selected current Thread after architecture r98 and CameraMountBracket recapture r99, so L4 can join the current requirement projection. Target, material, mesh, supports, loads, units and criterion remain identical to revision 3; no historical result is promoted or copied. This does not encode scenario-A airspeed, HOLD motor power, or flight. It does not close leftover wi-proof-seal-id01-camera-bracket-bench-r2.",
+  "project": {
+    "id": "inspection-drone-id01",
+    "subjectId": "project:inspection-drone-id01"
+  },
+  "target": {
+    "id": "CameraMountBracket",
+    "modelElementId": "e9f1d48b-666d-48ff-af6c-abf74646b68e"
+  },
+  "requirementsSource": {
+    "editingContextId": "a36e27c1-7155-435d-82c0-8acad85f1d73",
+    "elementId": "aa7c4627-203a-46e6-aa6e-7192f23f9462"
+  },
+  "analysis": {
+    "kind": "linear-static",
+    "material": {
+      "model": "isotropic-linear-elastic",
+      "basis": "Theoretical 6082-T6 catalogue model from https://www.euralliage.com/6082.htm, read 2026-09-06 UTC: E 70000 MPa, nu 0.33. No selected stock, heat-treatment preservation or batch certificate.",
+      "youngModulus": {
+        "value": 70000,
+        "unit": "MPa"
+      },
+      "poissonRatio": {
+        "value": 0.33,
+        "unit": "1"
+      }
+    },
+    "mesh": {
+      "kind": "tetrahedral-volume",
+      "targetSize": {
+        "value": 1,
+        "unit": "mm"
+      }
+    },
+    "supports": [
+      {
+        "id": "ideal-rigid-bottom-face",
+        "kind": "fixed",
+        "selection": {
+          "name": "BenchFixedBottom",
+          "box": {
+            "min": [-18, -15.5, -0.1],
+            "max": [18, 15.5, 0.1],
+            "unit": "mm"
+          }
+        }
+      }
+    ],
+    "loads": [
+      {
+        "id": "camera-hole-left-lower",
+        "kind": "force",
+        "selection": {
+          "name": "CameraHoleLeftLower",
+          "box": {
+            "min": [-12.3, 11.9, 8.2],
+            "max": [-8.7, 15.1, 11.8],
+            "unit": "mm"
+          }
+        },
+        "force": { "value": [0, -0.00980665, 0], "unit": "N" }
+      },
+      {
+        "id": "camera-hole-right-lower",
+        "kind": "force",
+        "selection": {
+          "name": "CameraHoleRightLower",
+          "box": {
+            "min": [8.7, 11.9, 8.2],
+            "max": [12.3, 15.1, 11.8],
+            "unit": "mm"
+          }
+        },
+        "force": { "value": [0, -0.00980665, 0], "unit": "N" }
+      },
+      {
+        "id": "camera-hole-left-upper",
+        "kind": "force",
+        "selection": {
+          "name": "CameraHoleLeftUpper",
+          "box": {
+            "min": [-12.3, 11.9, 20.7],
+            "max": [-8.7, 15.1, 24.3],
+            "unit": "mm"
+          }
+        },
+        "force": { "value": [0, -0.00980665, 0], "unit": "N" }
+      },
+      {
+        "id": "camera-hole-right-upper",
+        "kind": "force",
+        "selection": {
+          "name": "CameraHoleRightUpper",
+          "box": {
+            "min": [8.7, 11.9, 20.7],
+            "max": [12.3, 15.1, 24.3],
+            "unit": "mm"
+          }
+        },
+        "force": { "value": [0, -0.00980665, 0], "unit": "N" }
+      }
+    ]
+  },
+  "requirements": [
+    {
+      "id": "camera-bracket-bench-stress",
+      "name": "CameraBracketBenchStressLimit",
+      "metric": "maximum-von-mises-stress",
+      "feature": "camera_bracket_bench_max_von_mises_pa",
+      "operator": "<=",
+      "limit": {
+        "value": 260000000,
+        "unit": "Pa"
+      }
+    }
+  ]
+}

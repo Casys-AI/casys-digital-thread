@@ -48,7 +48,6 @@ import { requirementEvaluationIdentity } from "../../../domain/thread/requiremen
 import type {
   EngineeringAgentRun,
   EngineeringApproval,
-  EngineeringDecision,
   EngineeringProjectSnapshot,
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,

@@ -50,10 +50,14 @@ export {
 } from "./current-brief.ts";
 export {
   applyOverviewHullAdapters,
+  buildOverviewCurrentDfmCasesContent,
   buildOverviewCurrentEngineeringCasesContent,
+  currentDfmCasesAdapter,
   currentEngineeringCasesAdapter,
+  OVERVIEW_CURRENT_DFM_CASES_ADAPTER_ID,
   OVERVIEW_CURRENT_ENGINEERING_CASES_ADAPTER_ID,
   OVERVIEW_HULL_ADAPTERS,
+  withOverviewCurrentDfmCases,
   withOverviewCurrentEngineeringCases,
 } from "./adapters/index.ts";
 export type {

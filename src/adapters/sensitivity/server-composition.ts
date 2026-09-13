@@ -11,6 +11,7 @@ import type { EngineeringProjectRevisionStore } from "../../application/ports/ou
 import type {
   CapabilityRuntimeExecutionEligibility,
   CapabilityRuntimeLaunchGroupRegistry,
+  CapabilityRuntimeStateObserver,
 } from "../../application/ports/out/capability/capability-runtime-supervisor.ts";
 import type { CapabilityRuntimeExecutionSessionCoordinator } from "../../application/control-plane/capability-runtime-execution-session.ts";
 import type { EngineeringProjectCommandService } from "../../application/use-cases/project/engineering-project-command-service.ts";
@@ -27,6 +28,7 @@ import type { Build123dExecutionComposition } from "../cad/isolated/build123d-ex
 
 import type { CaptureBackedTechnicalCompilationAdmissionReader } from "../compile/admission/capture-backed-technical-compilation-admission-reader.ts";
 import {
+  type CaptureStoreDescriptor,
   CORRECTION_PROPOSAL_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR,
@@ -52,6 +54,9 @@ import {
   AnalyzeRunFeaSensitivityRunExecutor,
 } from "./live-fea/analyze-run-fea-sensitivity-run-executor.ts";
 import { FileFeaSensitivityAttemptStore } from "./live-fea/file-fea-sensitivity-attempt-store.ts";
+import { FileSensitivityExperienceRepository } from "./experience/file-sensitivity-experience-repository.ts";
+import { FileSensitivityExperienceReuseAttemptStore } from "./experience/file-sensitivity-experience-reuse-attempt-store.ts";
+import { createSensitivityExperienceExecutorBinding } from "./experience/session-bound-sensitivity-experience.ts";
 import {
   createFixedMcpCalculixSensitivitySolver,
 } from "./live-fea/mcp-calculix-sensitivity-solver.ts";
@@ -100,8 +105,19 @@ export interface SensitivityCompositionOptions {
   >;
   /** Exact server-owned registry, used only after the JIT lease is active. */
   readonly capabilityRuntimeLaunchGroups?: CapabilityRuntimeLaunchGroupRegistry;
+  /**
+   * Read-only Compose host observer for the sealed casys-mcp-calculix group.
+   * Experience reuse is composed only when this observer is present.
+   */
+  readonly capabilityRuntimeObserver?: CapabilityRuntimeStateObserver;
   readonly sysonMcpUrl?: string;
   readonly sensitivityStepCacheDirectory: string;
+  /**
+   * Temporary test root for private experience/WAL/capture stores. Production
+   * keeps the durable state/local defaults. Never point this at active atelier
+   * state during development.
+   */
+  readonly privateStateRoot?: string;
 }
 
 export interface SensitivityComposition {
@@ -126,11 +142,15 @@ export interface SensitivityComposition {
 export function createSensitivityComposition(
   options: SensitivityCompositionOptions,
 ): SensitivityComposition {
-  const sensitivityCaseCaptures = new FileCaptureStore(
+  const sensitivityCaseCaptures = privateCaptureStore(
     SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
+    options.privateStateRoot,
+    "sensitivity-study-case-captures",
   );
-  const sensitivityStudyCaptures = new FileCaptureStore(
+  const sensitivityStudyCaptures = privateCaptureStore(
     SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
+    options.privateStateRoot,
+    "sensitivity-study-captures",
   );
   const sensitivityEdgesCaptures = new FileCaptureStore(
     SENSITIVITY_EDGES_CAPTURE_DESCRIPTOR,
@@ -189,7 +209,35 @@ export function createSensitivityComposition(
     catalog: catalogReader,
     lease: options.lease,
   });
-  const feaSensitivityAttempts = new FileFeaSensitivityAttemptStore();
+  const feaSensitivityAttempts = options.privateStateRoot === undefined
+    ? new FileFeaSensitivityAttemptStore()
+    : new FileFeaSensitivityAttemptStore(
+      `${options.privateStateRoot}/fea-sensitivity-attempts`,
+    );
+  const experienceRoot = options.privateStateRoot === undefined
+    ? undefined
+    : `${options.privateStateRoot}/sensitivity-experience`;
+  const experience = options.capabilityRuntimeLaunchGroups !== undefined &&
+      options.capabilityRuntimeObserver !== undefined
+    ? createSensitivityExperienceExecutorBinding({
+      repository: experienceRoot === undefined
+        ? new FileSensitivityExperienceRepository()
+        : new FileSensitivityExperienceRepository(experienceRoot),
+      projects: options.projects,
+      snapshots: options.snapshots,
+      caseCaptures: sensitivityCaseCaptures,
+      studyCaptures: sensitivityStudyCaptures,
+      admissions: options.admissions,
+      executionAttempts: feaSensitivityAttempts,
+      groups: options.capabilityRuntimeLaunchGroups,
+      observer: options.capabilityRuntimeObserver,
+      reuseAttempts: experienceRoot === undefined
+        ? new FileSensitivityExperienceReuseAttemptStore()
+        : new FileSensitivityExperienceReuseAttemptStore(
+          `${experienceRoot}/reuse-attempts`,
+        ),
+    })
+    : undefined;
   const analyzeRunFeaSensitivity =
     options.build123dExecution?.execution !== undefined &&
       options.capabilityRuntime !== undefined &&
@@ -201,8 +249,10 @@ export function createSensitivityComposition(
         snapshots: options.snapshots,
         caseCaptures: sensitivityCaseCaptures,
         studyCaptures: sensitivityStudyCaptures,
-        runtimeProvenanceCaptures: new FileCaptureStore(
+        runtimeProvenanceCaptures: privateCaptureStore(
           SENSITIVITY_RUNTIME_PROVENANCE_CAPTURE_DESCRIPTOR,
+          options.privateStateRoot,
+          "sensitivity-runtime-provenance-captures",
         ),
         admissions: options.admissions,
         profiles: options.build123dExecution.profiles,
@@ -215,6 +265,7 @@ export function createSensitivityComposition(
         attempts: feaSensitivityAttempts,
         capabilityRuntime: options.capabilityRuntime,
         capabilityRuntimeSession: options.capabilityRuntimeSession,
+        ...(experience ? { experience } : {}),
         lease: options.lease,
       })
       : undefined;
@@ -292,4 +343,17 @@ export function createSensitivityComposition(
     verifyEvaluateSensitivityBase,
     modelWriteSensitivityEdges,
   };
+}
+
+function privateCaptureStore<Kind extends string>(
+  descriptor: CaptureStoreDescriptor<Kind>,
+  privateStateRoot: string | undefined,
+  child: string,
+): FileCaptureStore<Kind> {
+  if (privateStateRoot === undefined) return new FileCaptureStore(descriptor);
+  return new FileCaptureStore({
+    ...descriptor,
+    directory: `${privateStateRoot}/${child}`,
+    syncBoundary: privateStateRoot,
+  });
 }

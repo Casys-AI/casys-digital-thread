@@ -32,7 +32,31 @@ import { createFirstPartyCapabilityRuntimeQualificationCandidates } from "./firs
 import { createFirstPartyCapabilityRuntimeQualificationSpecifications } from "./first-party-capability-runtime-qualification-specifications.ts";
 import { createFirstPartyCalculixHttpRuntimeQualificationCandidates } from "./first-party-calculix-http-runtime-qualification-candidates.ts";
 import { createFirstPartyCalculixHttpRuntimeQualificationSpecifications } from "./first-party-calculix-http-runtime-qualification-specifications.ts";
-import { createFirstPartyCapabilityRuntimeLaunchGroupRegistry } from "./first-party-capability-runtime-launch-groups.ts";
+import { createFirstPartyCapabilityRuntimeLaunchGroups } from "./first-party-capability-runtime-launch-groups.ts";
+import { FixedCapabilityRuntimeLaunchGroupRegistry } from "../../application/control-plane/capability-runtime-launch-group-registry.ts";
+import {
+  loadLocalErpnextBuyInstallationProfile,
+} from "./local-erpnext-buy-installation-profile.ts";
+import {
+  loadLocalErpnextBuyQualificationFixture,
+} from "./local-erpnext-buy-qualification-fixture.ts";
+import {
+  catalogWithErpnextBuyRuntime,
+  createErpnextBuyRuntimeContribution,
+  type ErpnextBuyRuntimeContribution,
+  launchGroupRegistryWithErpnextBuyRuntime,
+} from "./local-erpnext-buy-runtime-contribution.ts";
+import {
+  createErpnextBuyRuntimeQualificationCandidates,
+  type ErpnextBuyRuntimeQualificationCandidate,
+} from "./first-party-erpnext-buy-runtime-qualification-candidates.ts";
+import { createErpnextBuyRuntimeQualificationSpecifications } from "./first-party-erpnext-buy-runtime-qualification-specifications.ts";
+import {
+  LocalErpnextBuyRuntimeSecretResolver,
+  overlaySecretObserver,
+} from "./local-erpnext-buy-runtime-secret-resolver.ts";
+import { capabilityRuntimeLaunchGroupReference } from "../../domain/capability/runtime/capability-runtime-launch-group.ts";
+import type { LocalErpnextBuyQualificationFixture } from "./local-erpnext-buy-qualification-fixture.ts";
 import { GroupCapabilityRuntimeHostObservationReader } from "./group-capability-runtime-host-observation-reader.ts";
 import { FileCapabilityRuntimeHostIdentityStore } from "./file-capability-runtime-host-identity-store.ts";
 import {
@@ -96,15 +120,23 @@ export interface LocalCapabilityRuntimeReadCompositionOptions {
     readonly imageDigest: ContentFingerprint;
     readonly profileFingerprint: ContentFingerprint;
   };
+  /**
+   * Trusted local ERP Buy installation profile. Missing is a non-qualified
+   * absence. A malformed supplied file is rejected closed.
+   */
+  readonly erpnextBuyInstallationProfilePath?: string;
+  /**
+   * Trusted local ERP Buy qualification fixture. Missing leaves the installed
+   * material unqualified. Probe tools/args are never read from this file.
+   */
+  readonly erpnextBuyQualificationFixturePath?: string;
 }
 
 export interface LocalCapabilityRuntimeReadComposition {
   readonly catalog: Awaited<
     ReturnType<typeof createFirstPartyCapabilityRuntimeCatalog>
   >;
-  readonly launchGroups: Awaited<
-    ReturnType<typeof createFirstPartyCapabilityRuntimeLaunchGroupRegistry>
-  >;
+  readonly launchGroups: FixedCapabilityRuntimeLaunchGroupRegistry;
   readonly journal: FileCapabilityRuntimeJournal;
   readonly secrets: CapabilityRuntimeSecretSlotObserver;
   readonly composeObserver: ReturnType<typeof createCapabilityRuntimeHostObserver>;
@@ -116,7 +148,7 @@ export interface LocalCapabilityRuntimeReadComposition {
   readonly hostIdentity: FileCapabilityRuntimeHostIdentityStore;
   readonly qualifications: FileCapabilityRuntimeQualificationAttestationStore;
   readonly qualificationAttempts: FileCapabilityRuntimeQualificationAttemptStore;
-  /** Deterministic Chrono then CalculiX attestation reconstruction inputs. */
+  /** Deterministic Chrono then CalculiX then optional ERP attestation inputs. */
   readonly qualificationCandidates:
     readonly import("../../domain/capability/runtime/capability-runtime-qualification-candidate.ts").CapabilityRuntimeAttestableQualificationCandidate[];
   readonly qualificationSpecs:
@@ -124,6 +156,13 @@ export interface LocalCapabilityRuntimeReadComposition {
   readonly ledgers: FileProjectCapabilityLedgerStore;
   readonly contexts: ProjectCapabilityRuntimeContextCompiler;
   readonly workbench: ProjectCapabilityWorkbenchProjector;
+  readonly erpnextBuy: {
+    readonly contribution: ErpnextBuyRuntimeContribution;
+    readonly fixture: LocalErpnextBuyQualificationFixture | undefined;
+    readonly secrets: LocalErpnextBuyRuntimeSecretResolver | undefined;
+    readonly qualificationCandidates:
+      readonly ErpnextBuyRuntimeQualificationCandidate[];
+  } | undefined;
 }
 
 /**
@@ -134,36 +173,79 @@ export interface LocalCapabilityRuntimeReadComposition {
 export async function createLocalCapabilityRuntimeReadComposition(
   options: LocalCapabilityRuntimeReadCompositionOptions = {},
 ): Promise<LocalCapabilityRuntimeReadComposition> {
+  const erpInstallation = await loadLocalErpnextBuyInstallationProfile({
+    path: options.erpnextBuyInstallationProfilePath,
+  });
+  const erpFixtureLoad = await loadLocalErpnextBuyQualificationFixture({
+    path: options.erpnextBuyQualificationFixturePath,
+  });
+  const erpContribution = erpInstallation.status === "present"
+    ? await createErpnextBuyRuntimeContribution(erpInstallation.profile)
+    : undefined;
+  const erpFixture = erpFixtureLoad.status === "present"
+    ? erpFixtureLoad.fixture
+    : undefined;
   const [
-    catalog,
-    launchGroups,
+    baseCatalog,
+    firstPartyGroups,
     chronoQualificationCandidates,
     chronoQualificationSpecs,
     calculixQualificationCandidates,
     calculixQualificationSpecs,
   ] = await Promise.all([
     createFirstPartyCapabilityRuntimeCatalog(),
-    createFirstPartyCapabilityRuntimeLaunchGroupRegistry(),
+    createFirstPartyCapabilityRuntimeLaunchGroups(),
     createFirstPartyCapabilityRuntimeQualificationCandidates(),
     createFirstPartyCapabilityRuntimeQualificationSpecifications(),
     createFirstPartyCalculixHttpRuntimeQualificationCandidates(),
     createFirstPartyCalculixHttpRuntimeQualificationSpecifications(),
   ]);
+  const catalog = erpContribution
+    ? await catalogWithErpnextBuyRuntime(baseCatalog, erpContribution)
+    : baseCatalog;
+  const launchGroups = erpContribution
+    ? launchGroupRegistryWithErpnextBuyRuntime(firstPartyGroups, erpContribution)
+    : new FixedCapabilityRuntimeLaunchGroupRegistry(firstPartyGroups);
+  const erpQualificationCandidates = erpContribution && erpFixture
+    ? await createErpnextBuyRuntimeQualificationCandidates({
+      catalog,
+      launchGroup: erpContribution.launchGroup,
+      profile: erpContribution.profile,
+      fixture: erpFixture,
+    })
+    : [];
+  const erpQualificationSpecs = erpQualificationCandidates.length === 0
+    ? []
+    : await createErpnextBuyRuntimeQualificationSpecifications(
+      erpQualificationCandidates,
+    );
   const qualificationCandidates = Object.freeze([
     ...chronoQualificationCandidates,
     ...calculixQualificationCandidates,
+    ...erpQualificationCandidates,
   ]);
   const qualificationSpecs = Object.freeze([
     ...chronoQualificationSpecs,
     ...calculixQualificationSpecs,
+    ...erpQualificationSpecs,
   ]);
+  const erpSecrets = erpContribution &&
+      erpContribution.profile.launchGroup.secretSlots.length > 0
+    ? new LocalErpnextBuyRuntimeSecretResolver({
+      profile: erpContribution.profile,
+      group: capabilityRuntimeLaunchGroupReference(erpContribution.launchGroup),
+    })
+    : undefined;
   const journal = new FileCapabilityRuntimeJournal();
-  const secrets: CapabilityRuntimeSecretSlotObserver = options.secrets ?? {
-    observe: (slots) =>
-      Promise.resolve(
-        new Map(slots.map((slot) => [slot, "unavailable" as const])),
-      ),
-  };
+  const secrets: CapabilityRuntimeSecretSlotObserver = overlaySecretObserver(
+    options.secrets ?? {
+      observe: (slots) =>
+        Promise.resolve(
+          new Map(slots.map((slot) => [slot, "unavailable" as const])),
+        ),
+    },
+    erpSecrets,
+  );
   const composeObserver = createCapabilityRuntimeHostObserver({
     registry: launchGroups,
     journal,
@@ -240,6 +322,14 @@ export async function createLocalCapabilityRuntimeReadComposition(
     ledgers,
     contexts,
     workbench: new ProjectCapabilityWorkbenchProjector({ contexts, states }),
+    erpnextBuy: erpContribution
+      ? {
+        contribution: erpContribution,
+        fixture: erpFixture,
+        secrets: erpSecrets,
+        qualificationCandidates: erpQualificationCandidates,
+      }
+      : undefined,
   };
 }
 

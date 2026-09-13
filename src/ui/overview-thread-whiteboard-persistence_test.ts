@@ -447,8 +447,7 @@ Deno.test("view-switched hulls persist without a schema bump or sizesByView", ()
 
 Deno.test("legacy hull geometry migrates to v4 while retired native viewers are discarded", () => {
   const storage = new MemoryStorage();
-  const legacyKey =
-    "casys.project-whiteboard.presentation:v1:project%2Fdemo%20alpha";
+  const legacyKey = "casys.project-whiteboard.presentation:v1:project%2Fdemo%20alpha";
   const legacyState = {
     layoutMode: "radial",
     groupPlacements: {
@@ -513,8 +512,7 @@ Deno.test("legacy hull geometry migrates to v4 while retired native viewers are 
 Deno.test("v2 migration keeps only exact current MCP App sessions", () => {
   const storage = new MemoryStorage();
   const state = completeState();
-  const legacyKey =
-    "casys.project-whiteboard.presentation:v2:project%2Fdemo%20alpha";
+  const legacyKey = "casys.project-whiteboard.presentation:v2:project%2Fdemo%20alpha";
   storage.setItem(
     legacyKey,
     JSON.stringify({

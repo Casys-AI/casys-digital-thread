@@ -134,15 +134,58 @@ Deno.test("sensitivity-study seal review emits no paste-ready hop from a histori
   assertEquals(result.diagnostics.map((item) => item.code), ["basis-not-current"]);
 });
 
+Deno.test(
+  "sensitivity-study seal review compiles a new activity when the unsuffixed historical seal exists",
+  async () => {
+    const fixture = await signedCatalogOfferFixture();
+    const project = {
+      ...projectState(fixture.snapshot),
+      workItems: [{
+        id: "wi-sensitivity-seal-desk-lamp-dl06-arm-cantilever-arm_thickness",
+        status: "completed",
+      }],
+      decisions: [{
+        id: "dec-sensitivity-seal-desk-lamp-dl06-arm-cantilever-arm_thickness",
+        status: "approved",
+      }],
+    } as unknown as EngineeringProjectSnapshot;
+    const review = new PrepareProjectSensitivityStudySealReview({
+      snapshots: new MemorySnapshots(fixture.snapshot),
+      projects: { get: () => Promise.resolve(project) },
+      catalogReader: REAL_CATALOG,
+      admissions: fixture.admissions,
+      catalogOffers: fixture.catalogOffers,
+      proofCaptures: fixture.proofCaptures,
+    });
+    const result = await review.execute({
+      projectId: PROJECT_ID,
+      caseId: CASE_ID,
+      basis: fixture.basis,
+    });
+    assertEquals(result.status, "resolved");
+    if (result.status !== "resolved") return;
+    assertEquals(
+      result.next.append.arguments.workItems[0]?.id,
+      "wi-sensitivity-seal-desk-lamp-dl06-arm-cantilever-arm_thickness-aaaaaaaaaaaaaaaa",
+    );
+    assertEquals(
+      result.next.append.arguments.workItems[0]?.predecessorRevisionId,
+      undefined,
+    );
+  },
+);
+
 Deno.test("sensitivity-study seal review is unresolved when compiled identities already exist", async () => {
   const fixture = await signedCatalogOfferFixture();
   const project = {
     ...projectState(fixture.snapshot),
     workItems: [{
-      id: "wi-sensitivity-seal-desk-lamp-dl06-arm-cantilever-arm_thickness",
+      id:
+        "wi-sensitivity-seal-desk-lamp-dl06-arm-cantilever-arm_thickness-aaaaaaaaaaaaaaaa",
     }],
     decisions: [{
-      id: "dec-sensitivity-seal-desk-lamp-dl06-arm-cantilever-arm_thickness",
+      id:
+        "dec-sensitivity-seal-desk-lamp-dl06-arm-cantilever-arm_thickness-aaaaaaaaaaaaaaaa",
     }],
   } as unknown as EngineeringProjectSnapshot;
   const review = new PrepareProjectSensitivityStudySealReview({
@@ -198,7 +241,7 @@ Deno.test(
     assertEquals(parsed.cadSource.artifactUri, fixture.cadSource.artifactUri);
     assertEquals(
       result.next.append.arguments.workItems[0]?.id,
-      "wi-sensitivity-seal-desk-lamp-dl06-arm-cantilever-arm_thickness",
+      "wi-sensitivity-seal-desk-lamp-dl06-arm-cantilever-arm_thickness-aaaaaaaaaaaaaaaa",
     );
   },
 );
@@ -478,6 +521,10 @@ Deno.test(
     if (result.status !== "resolved") return;
     assertEquals(result.caseId, caseId);
     assertEquals(result.selected.authority, "catalog");
+    assertEquals(
+      result.selected.workItemId,
+      "wi-sensitivity-seal-id01-radial-arm-height-isolated-aaaaaaaaaaaaaaaa",
+    );
     const parsed = parseSensitivityStudyDecisionParameters(
       result.decisionParameters,
     );

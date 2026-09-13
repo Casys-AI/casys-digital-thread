@@ -161,6 +161,12 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
     assertEquals(source.includes("calculixMcpUrl"), false);
     assertEquals(source.includes("calculixRuntimeImage"), false);
     assertEquals(source.includes("DockerVolumeAssetStager"), false);
+    assertEquals(source.includes("DockerSensitivitySolverRuntimeAuthority"), false);
+    assertEquals(
+      source.includes("createSensitivityExperienceExecutorBinding"),
+      true,
+    );
+    assertEquals(source.includes("capabilityRuntimeObserver"), true);
   } finally {
     await Deno.remove(root, { recursive: true });
   }

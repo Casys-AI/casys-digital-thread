@@ -1,0 +1,46 @@
+{
+  "schemaVersion": "dfm-check-case/1.0",
+  "id": "id01-camera-board-envelope-mk4s-r1",
+  "revision": 1,
+  "scope": "Measured DFM screening of the canonical CameraBoardEnvelope hole-counterpart STEP against an Original Prusa MK4S build volume. Not a purchase, not a selected printer, not flight.",
+  "evidenceBoundary": "Build volume 250 x 210 x 220 mm from https://www.prusa3d.com/product/original-prusa-mk4s-3d-printer/ inspected 2026-09-11. Overhang 75 deg from the same MK4S product claim (print steep overhangs without supports). First-layer 0.20 mm from PrusaSlicer official layers article used as Z-min bed-contact tolerance, not a manufacturer Z-min spec. Min thickness 0.80 mm = two 0.40 mm default-nozzle perimeters (MK4S default nozzle 0.4 mm on the same product page). Mesh 1.0 mm is a DFM sampling size, not a print spec. STEP sha256 2572f73d… is the sealed CameraBoardEnvelope write-geometry@1 file. Isolated CAD is not the target. Does not select a printer SKU.",
+  "project": {
+    "id": "inspection-drone-id01",
+    "subjectId": "project:inspection-drone-id01"
+  },
+  "target": {
+    "componentKey": "CameraBoardEnvelope",
+    "artifactUri": "thread-artifact://inspection-drone-id01/cad-asset-b59023102670e06b4e33e534d05008c0fe2440ae91dafbaa9c256c92a4ebe3e8-target-0-2572f73de4a8607fbd963642778019cfa742d6e06d9dd01a37294c0d3e7d8b5f",
+    "sha256": "2572f73de4a8607fbd963642778019cfa742d6e06d9dd01a37294c0d3e7d8b5f",
+    "mediaType": "model/step"
+  },
+  "buildVolumeMm": {
+    "x": { "value": 250, "unit": "mm" },
+    "y": { "value": 210, "unit": "mm" },
+    "z": { "value": 220, "unit": "mm" }
+  },
+  "minThicknessMm": { "value": 0.8, "unit": "mm" },
+  "maxOverhangAngleDeg": { "value": 75, "unit": "deg" },
+  "meshSizeMm": { "value": 1, "unit": "mm" },
+  "buildDirection": [0, 0, 1],
+  "zMinFilter": {
+    "enabled": true,
+    "planeZMm": { "value": 0, "unit": "mm" },
+    "toleranceMm": { "value": 0.2, "unit": "mm" }
+  },
+  "provider": {
+    "envelopeTool": "dfm_check_envelope",
+    "thicknessTool": "dfm_check_min_thickness",
+    "overhangTool": "dfm_check_overhangs"
+  },
+  "limitations": [
+    "Printer is a sourced screening envelope, not a selected ID01 machine.",
+    "Z-min tolerance is PrusaSlicer first-layer 0.20 mm, not a Prusa Z-min specification.",
+    "Mesh 1 mm is DFM sampling only.",
+    "Does not authorize manufacture, purchase, or flight."
+  ],
+  "provenance": {
+    "status": "provisional",
+    "note": "Screening DFM case authored 2026-09-11 from official MK4S volume and CameraBoardEnvelope canonical STEP. HOLD propulsion unrelated."
+  }
+}

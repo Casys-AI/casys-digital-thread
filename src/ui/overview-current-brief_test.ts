@@ -311,9 +311,7 @@ Deno.test("actual r3 trace stays a visible referenced-source row under r4 curren
   const currentItem = content.rows.find((row) =>
     row.key === overviewBriefItemRowKey(brief.id, CLAIMED_ITEM_ID)
   )!;
-  const referencedSource = content.rows.find((row) =>
-    row.key === r3Source.key
-  )!;
+  const referencedSource = content.rows.find((row) => row.key === r3Source.key)!;
   assertEquals(currentItem.kind, "navigation");
   assertEquals(currentItem.endpoint, false);
   assertEquals(currentItem.nodeKey, undefined);
@@ -361,9 +359,7 @@ Deno.test("r3 claim cable docks the visible referenced-source row, never the r4 
   const referencedRoot = content.rows.find((row) =>
     row.key === overviewBriefSnapshotGroupKey(r3Source.brief)
   )!;
-  const referencedSource = content.rows.find((row) =>
-    row.key === r3Source.key
-  )!;
+  const referencedSource = content.rows.find((row) => row.key === r3Source.key)!;
   assertEquals(content.rows[0]!.label, overviewBriefRootLabel(brief));
   assertEquals(
     content.rows[0]!.label,
@@ -547,7 +543,7 @@ Deno.test("Current Brief is a registered generic hull adapter, not a hero specia
   });
   assertEquals(
     OVERVIEW_HULL_ADAPTERS.map((adapter) => adapter.id),
-    ["current-brief", "current-engineering-cases"],
+    ["current-brief", "current-engineering-cases", "current-dfm-cases"],
   );
   assertEquals(
     OVERVIEW_HULL_ADAPTERS[0]?.id,

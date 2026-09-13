@@ -27,6 +27,10 @@ import {
   type RequirementsCaptureReader,
 } from "./requirements-target-workbench-enricher.ts";
 import {
+  composeHistoryCaptureReaders,
+  enrichThreadWorkbenchWithRequirementsHistory,
+} from "./requirements-history-workbench-enricher.ts";
+import {
   type EngineeringCaseWorkbenchEnricherDependencies,
   enrichThreadWorkbenchWithEngineeringCases,
 } from "./verification-case-workbench-enricher.ts";
@@ -36,6 +40,8 @@ export interface ProductNavigationWorkbenchDependencies {
   readonly workspace?:
     ProductNavigationTechnicalAdmissionSourceDependencies["workspace"];
   readonly requirementsCaptures?: RequirementsCaptureReader;
+  /** Optional extra CAS reopen for historical study/case/base-evaluation bytes. */
+  readonly historyEvidenceCaptures?: RequirementsCaptureReader;
   readonly engineeringCases?: EngineeringCaseWorkbenchEnricherDependencies;
 }
 
@@ -83,6 +89,20 @@ export class WorkbenchProductNavigationEvidenceAttachmentReader
         },
       )
       : undefined;
+    const requirementHistoricalEvaluations = projected.requirements.flatMap(
+      (requirement) =>
+        requirement.historicalChain ||
+          (requirement.historicalEvaluations &&
+            requirement.historicalEvaluations.length > 0)
+          ? [{
+            requirementId: requirement.id,
+            historicalEvaluations: requirement.historicalEvaluations ?? [],
+            ...(requirement.historicalChain
+              ? { historicalChain: requirement.historicalChain }
+              : {}),
+          }]
+          : [],
+    );
     return {
       nodes: [
         ...projected.graph.nodes.map((node) => ({
@@ -106,6 +126,9 @@ export class WorkbenchProductNavigationEvidenceAttachmentReader
         workspaceRevision: file.workspaceRevision,
       })),
       ...(requirementScopes ? { requirementScopes } : {}),
+      ...(requirementHistoricalEvaluations.length > 0
+        ? { requirementHistoricalEvaluations }
+        : {}),
     };
   }
 }
@@ -120,6 +143,14 @@ export async function projectProductNavigationWorkbench(
     projected = await enrichThreadWorkbenchWithRequirementsTargets(
       projected,
       dependencies.requirementsCaptures,
+      snapshot,
+    );
+    projected = await enrichThreadWorkbenchWithRequirementsHistory(
+      projected,
+      composeHistoryCaptureReaders(
+        dependencies.requirementsCaptures,
+        dependencies.historyEvidenceCaptures,
+      ),
       snapshot,
     );
   }

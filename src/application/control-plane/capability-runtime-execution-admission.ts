@@ -13,7 +13,10 @@ import type {
   EngineeringWorkItem,
 } from "../../domain/project/engineering-project.ts";
 import type { ResolvedCapabilityRuntimeOperation } from "../../domain/capability/runtime/capability-runtime-supervision.ts";
-import type { CapabilityRuntimeExecutionEligibility } from "../ports/out/capability/capability-runtime-supervisor.ts";
+import type {
+  CapabilityRuntimeExecutionEligibility,
+  CapabilityRuntimeSecretSnapshot,
+} from "../ports/out/capability/capability-runtime-supervisor.ts";
 import {
   type CapabilityRuntimeExecutionSession,
   type CapabilityRuntimeExecutionSessionCoordinator,
@@ -69,6 +72,7 @@ export function beginConfiguredCapabilityRuntimeSession(input: {
   readonly runId: string;
   readonly operationalCapability: ResolvedCapabilityRuntimeOperation;
   readonly recheck: () => Promise<ResolvedCapabilityRuntimeOperation>;
+  readonly secretSnapshot?: CapabilityRuntimeSecretSnapshot;
 }): Promise<CapabilityRuntimeExecutionSession> {
   return input.session.begin({
     project: input.project,
@@ -76,6 +80,9 @@ export function beginConfiguredCapabilityRuntimeSession(input: {
     operationalCapability: input.operationalCapability,
     microsandboxExecutionProfiles: [],
     recheck: input.recheck,
+    ...(input.secretSnapshot === undefined
+      ? {}
+      : { secretSnapshot: input.secretSnapshot }),
   });
 }
 

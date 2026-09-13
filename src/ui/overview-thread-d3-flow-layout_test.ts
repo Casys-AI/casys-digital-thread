@@ -77,12 +77,8 @@ Deno.test(
     );
     assertEquals(layout, reversed, "Input order must not affect the layout");
 
-    const requirements = layout.nodes.filter((node) =>
-      node.lane === "requirements"
-    );
-    const geometryParts = layout.nodes.filter((node) =>
-      node.lane === "geometry"
-    );
+    const requirements = layout.nodes.filter((node) => node.lane === "requirements");
+    const geometryParts = layout.nodes.filter((node) => node.lane === "geometry");
     assertEquals(requirements.length, REQUIREMENT_COUNT);
     assertEquals(geometryParts.length, GEOMETRY_PART_COUNT);
     assert(
@@ -223,9 +219,7 @@ Deno.test(
       assertEquals(route.pathCount, inputEdge.pathCount);
       assertEquals(route.pathKeys, inputEdge.pathKeys);
       assertEquals(
-        route.segmentKeys.map((segmentKey) =>
-          segmentByKey.get(segmentKey)?.kind
-        ),
+        route.segmentKeys.map((segmentKey) => segmentByKey.get(segmentKey)?.kind),
         ["node-branch", "bundle-trunk", "node-branch"],
         `Route ${route.edgeKey} must use the unified three-segment topology`,
       );
@@ -317,9 +311,7 @@ Deno.test(
     );
     assert(
       layout.viewBox[3] <= 420,
-      `One compact 100-part group must not create a ${
-        layout.viewBox[3]
-      }px canvas`,
+      `One compact 100-part group must not create a ${layout.viewBox[3]}px canvas`,
     );
     assertNoNodeBoxOverlap(layout.nodes);
 
@@ -446,9 +438,7 @@ Deno.test(
       geometryIdentity !== requirementGroupIdentity,
       "The same literal group key in another lane must retain a distinct identity",
     );
-    const geometryGroup = moved.groups.find((group) =>
-      group.key === geometryIdentity
-    );
+    const geometryGroup = moved.groups.find((group) => group.key === geometryIdentity);
     const baselineGeometryGroup = baseline.groups.find((group) =>
       group.key === geometryIdentity
     );
@@ -782,9 +772,7 @@ Deno.test(
         `placement ${index} hubs must not coincide`,
       );
       assertRouteJoinsC1(layout, "trace:same-lane", 0.97);
-      const trunk = layout.segments.find((segment) =>
-        segment.kind === "bundle-trunk"
-      );
+      const trunk = layout.segments.find((segment) => segment.kind === "bundle-trunk");
       assert(trunk);
       assert(trunk.d.includes("C") && !/[LQAS]/.test(trunk.d));
     }
@@ -886,9 +874,7 @@ Deno.test(
       [edge],
       { groupPlacements: { ...endpointPlacements, ...foreignPlacements } },
     );
-    const trunk = layout.segments.find((segment) =>
-      segment.kind === "bundle-trunk"
-    );
+    const trunk = layout.segments.find((segment) => segment.kind === "bundle-trunk");
     assert(trunk);
     assertEquals(layout.unroutedEdgeKeys, []);
     assertEquals(layout, reversed);
@@ -1031,18 +1017,14 @@ Deno.test(
       const targetGroup = layout.groups.find((group) =>
         group.key === targetGroupIdentity
       );
-      const sourceNode = layout.nodes.find((node) =>
-        node.key === "req:movable"
-      );
+      const sourceNode = layout.nodes.find((node) => node.key === "req:movable");
       const targetNode = layout.nodes.find((node) => node.key === "cad:fixed");
       assert(sourceGroup);
       assert(targetGroup);
       assert(sourceNode);
       assert(targetNode);
       const routeSegments = route.segmentKeys.map((key) => {
-        const segment = layout.segments.find((candidate) =>
-          candidate.key === key
-        );
+        const segment = layout.segments.find((candidate) => candidate.key === key);
         assert(segment);
         return segment;
       });
@@ -1232,9 +1214,7 @@ Deno.test(
     const requirementNode = layout.nodes.find((node) =>
       node.key === "node:requirement"
     );
-    const geometryNode = layout.nodes.find((node) =>
-      node.key === "node:geometry"
-    );
+    const geometryNode = layout.nodes.find((node) => node.key === "node:geometry");
     assert(requirementGroup);
     assert(geometryGroup);
     assert(requirementNode);
@@ -1266,9 +1246,7 @@ Deno.test(
     ]);
 
     for (const [edgeKey, expectation] of expected) {
-      const route = layout.routes.find((candidate) =>
-        candidate.edgeKey === edgeKey
-      );
+      const route = layout.routes.find((candidate) => candidate.edgeKey === edgeKey);
       assert(route, `Missing exact crossed route ${edgeKey}`);
       assertEquals(
         {
@@ -1449,9 +1427,7 @@ Deno.test(
     assertEquals(layout.nodes, placementOnly.nodes);
     const foreignObstacles = [foreignAIdentity, foreignBIdentity].map(
       (identity) => {
-        const group = layout.groups.find((candidate) =>
-          candidate.key === identity
-        );
+        const group = layout.groups.find((candidate) => candidate.key === identity);
         assert(group);
         return {
           key: group.key,
@@ -1468,9 +1444,7 @@ Deno.test(
       ),
       "The regression fixture must cover an interior point of the baseline cable",
     );
-    const trunk = layout.segments.find((segment) =>
-      segment.kind === "bundle-trunk"
-    );
+    const trunk = layout.segments.find((segment) => segment.kind === "bundle-trunk");
     assert(trunk);
     assert(
       overviewThreadD3CableSvgPathClear(trunk.d, foreignObstacles),
@@ -1486,14 +1460,10 @@ Deno.test(
       baselineTrunk.points.at(-1)!,
       "target hub",
     );
-    const route = layout.routes.find((candidate) =>
-      candidate.edgeKey === edge.key
-    );
+    const route = layout.routes.find((candidate) => candidate.edgeKey === edge.key);
     assert(route);
     for (const segmentKey of route.segmentKeys) {
-      const segment = layout.segments.find((candidate) =>
-        candidate.key === segmentKey
-      );
+      const segment = layout.segments.find((candidate) => candidate.key === segmentKey);
       assert(segment);
       if (segment.kind === "node-branch") continue;
       assert(
@@ -1593,9 +1563,7 @@ Deno.test(
     const layoutSourceGroup = layout.groups.find((group) =>
       group.groupKey === sourceNode.groupKey
     );
-    const foreignGroup = layout.groups.find((group) =>
-      group.key === foreignIdentity
-    );
+    const foreignGroup = layout.groups.find((group) => group.key === foreignIdentity);
     assert(layoutSourceGroup);
     assert(foreignGroup);
     assert(
@@ -1671,9 +1639,7 @@ Deno.test(
       const targetGroup = layout.groups.find((group) => group.key === targetId);
       assert(sourceGroup, `${label} source hull`);
       assert(targetGroup, `${label} target hull`);
-      const trunk = layout.segments.find((segment) =>
-        segment.kind === "bundle-trunk"
-      );
+      const trunk = layout.segments.find((segment) => segment.kind === "bundle-trunk");
       assert(trunk, `${label} trunk`);
       assert(trunk.d.includes("C") && !/[LQAS]/.test(trunk.d));
       const owners = [sourceGroup, targetGroup].map((group) => ({
@@ -1795,9 +1761,7 @@ Deno.test(
         [secondNodeKey]: { offsetX: 10_000, offsetY: 10_000 },
       },
     });
-    const group = layout.groups.find((candidate) =>
-      candidate.key === groupIdentity
-    );
+    const group = layout.groups.find((candidate) => candidate.key === groupIdentity);
     const firstNode = layout.nodes.find((node) => node.key === firstNodeKey);
     const secondNode = layout.nodes.find((node) => node.key === secondNodeKey);
     assert(group);
@@ -2344,15 +2308,9 @@ Deno.test(
     );
     assertEquals(layout, reversed);
 
-    const sourceGroup = layout.groups.find((group) =>
-      group.key === sourceIdentity
-    );
-    const obstacleGroup = layout.groups.find((group) =>
-      group.key === obstacleIdentity
-    );
-    const targetGroup = layout.groups.find((group) =>
-      group.key === targetIdentity
-    );
+    const sourceGroup = layout.groups.find((group) => group.key === sourceIdentity);
+    const obstacleGroup = layout.groups.find((group) => group.key === obstacleIdentity);
+    const targetGroup = layout.groups.find((group) => group.key === targetIdentity);
     assert(sourceGroup);
     assert(obstacleGroup);
     assert(targetGroup);
@@ -2365,9 +2323,7 @@ Deno.test(
       "Obstacle avoidance must not move the blocking node or its hull",
     );
 
-    const backbone = layout.segments.find((segment) =>
-      segment.kind === "bundle-trunk"
-    );
+    const backbone = layout.segments.find((segment) => segment.kind === "bundle-trunk");
     assert(backbone);
     const inflatedObstacle = {
       key: obstacleGroup.key,
@@ -2540,8 +2496,7 @@ Deno.test(
       "The local same-lane return must be an actual smooth cubic field curve",
     );
     const localSegments = unobstructedSameLane.routes[0]!.segmentKeys.map(
-      (key) =>
-        unobstructedSameLane.segments.find((segment) => segment.key === key)!,
+      (key) => unobstructedSameLane.segments.find((segment) => segment.key === key)!,
     );
     assertDirectionDotAtLeast(
       localSegments[0]!.points.at(-2)!,
@@ -2658,9 +2613,7 @@ function assertMagneticGroupY(
       const prefix = lane === "requirements" ? "source" : "target";
       const groupKey = `magnetic-${prefix}-group:${id}`;
       const identity = overviewThreadD3FlowGroupIdentity(lane, groupKey);
-      const group = layout.groups.find((candidate) =>
-        candidate.key === identity
-      );
+      const group = layout.groups.find((candidate) => candidate.key === identity);
       const node = layout.nodes.find((candidate) =>
         candidate.key === `magnetic-${prefix}:${id}`
       );
@@ -2679,9 +2632,7 @@ function assertMagneticGroupY(
 function corridorSizes(
   layout: ReturnType<typeof buildOverviewThreadD3FlowLayout>,
 ): readonly number[] {
-  return layout.nextRoutingState.corridors.map((corridor) =>
-    corridor.pairKeys.length
-  )
+  return layout.nextRoutingState.corridors.map((corridor) => corridor.pairKeys.length)
     .toSorted((left, right) => left - right);
 }
 
@@ -2892,9 +2843,7 @@ function assertMonotoneX(
   key: string,
 ): void {
   assert(
-    points.every((point) =>
-      Number.isFinite(point.x) && Number.isFinite(point.y)
-    ),
+    points.every((point) => Number.isFinite(point.x) && Number.isFinite(point.y)),
     `Non-finite point in ${key}`,
   );
   for (let index = 1; index < points.length; index++) {
@@ -2910,9 +2859,7 @@ function assertRouteJoinsC1(
   edgeKey: string,
   minimumDot: number,
 ): void {
-  const route = layout.routes.find((candidate) =>
-    candidate.edgeKey === edgeKey
-  );
+  const route = layout.routes.find((candidate) => candidate.edgeKey === edgeKey);
   assert(route, `Missing route ${edgeKey}`);
   const segments = route.segmentKeys.map((key) => {
     const segment = layout.segments.find((candidate) => candidate.key === key);
@@ -3048,8 +2995,7 @@ function assertRoundedPathHasNoOrthogonalLinearElbow(
     const length = Math.hypot(direction.x, direction.y);
     if (length > EPSILON && previousLinear) {
       const previousLength = Math.hypot(previousLinear.x, previousLinear.y);
-      const dot =
-        (previousLinear.x * direction.x + previousLinear.y * direction.y) /
+      const dot = (previousLinear.x * direction.x + previousLinear.y * direction.y) /
         (previousLength * length);
       assert(
         Math.abs(dot) > 0.08,
@@ -3227,9 +3173,7 @@ function assertLateralRoutePorts(
   edgeKey: string,
 ): { source: "left" | "right"; target: "left" | "right" } {
   const points = collectRoutePoints(layout, edgeKey);
-  const route = layout.routes.find((candidate) =>
-    candidate.edgeKey === edgeKey
-  );
+  const route = layout.routes.find((candidate) => candidate.edgeKey === edgeKey);
   assert(route, `Missing route ${edgeKey}`);
   const source = layout.nodes.find((node) => node.key === route.fromKey);
   const target = layout.nodes.find((node) => node.key === route.toKey);
@@ -3287,9 +3231,7 @@ function assertConnectedRoute(
   layout: ReturnType<typeof buildOverviewThreadD3FlowLayout>,
   edgeKey: string,
 ): readonly OverviewThreadD3FlowPoint[] {
-  const route = layout.routes.find((candidate) =>
-    candidate.edgeKey === edgeKey
-  );
+  const route = layout.routes.find((candidate) => candidate.edgeKey === edgeKey);
   assert(route, `Missing route ${edgeKey}`);
   const segmentByKey = new Map(
     layout.segments.map((segment) => [segment.key, segment]),

@@ -19,7 +19,10 @@ import { FileThreadSnapshotStore } from "../shared/stores/file-thread-snapshot-s
 import {
   APPROVED_BRIEF_CAPTURE_DESCRIPTOR,
   ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  BUY_SEAL_CAPTURE_DESCRIPTOR,
   type CaptureStoreDescriptor,
+  DFM_CASE_CAPTURE_DESCRIPTOR,
+  DFM_CHECK_CAPTURE_DESCRIPTOR,
   FileCaptureStore,
   GEOMETRY_CAPTURE_DESCRIPTOR,
   PART_DEFINITIONS_CAPTURE_DESCRIPTOR,
@@ -56,6 +59,15 @@ import {
   MODELICA_VIEWER_SESSION_SCHEMA,
 } from "./modelica-viewer-binding.ts";
 import {
+  buildDfmViewerBinding,
+  DFM_VIEWER_SESSION_SCHEMA,
+} from "./dfm-viewer-binding.ts";
+import {
+  buildBuyViewerBinding,
+  BUY_VIEWER_SESSION_SCHEMA,
+  isExactBuySealArtifact,
+} from "./buy-viewer-binding.ts";
+import {
   PROJECT_RECORDS_APP_ID,
   PROJECT_RECORDS_SESSION_SCHEMA,
   PROJECT_RECORDS_WHOLE_VIEW_URI,
@@ -72,6 +84,8 @@ const MANAGED_SESSION_SCHEMAS = new Set([
   "io.casys.mcp-syson.recorded-authored-requirements-session/1.0",
   CALCULIX_VIEWER_SESSION_SCHEMA,
   MODELICA_VIEWER_SESSION_SCHEMA,
+  DFM_VIEWER_SESSION_SCHEMA,
+  BUY_VIEWER_SESSION_SCHEMA,
 ]);
 
 /** Must track the server composition, not the legacy standalone store default. */
@@ -341,6 +355,25 @@ export class FileThreadViewerAppRegistrar {
         captures: this.#captures.modelica,
       });
     }
+    if (artifact.producer.tool === "industrialize.run-dfm-checks@1") {
+      return await buildDfmViewerBinding({
+        project,
+        thread,
+        artifactId: artifact.id,
+        packages,
+        checks: this.#captures.dfmCheck,
+        cases: this.#captures.dfmCase,
+      });
+    }
+    if (artifact.producer.tool === "buy.seal-configuration-cost@1") {
+      return await buildBuyViewerBinding({
+        project,
+        thread,
+        artifactId: artifact.id,
+        packages,
+        seals: this.#captures.buySeal,
+      });
+    }
     if (artifact.producer.tool === "design.write-geometry@1") {
       return await buildGeometryViewerBinding({
         project,
@@ -419,6 +452,13 @@ function supportedRegistrationArtifact(artifact: ThreadArtifact): boolean {
       artifact.producer.tool === "simulate.run-admitted-modelica@1" &&
       artifact.kind === "solver-result" &&
       artifact.id === `modelica-admitted-result-${artifact.fingerprint.digest}`) ||
+    (artifact.producer.serverId === "digital-thread" &&
+      artifact.producer.tool === "industrialize.run-dfm-checks@1" &&
+      artifact.kind === "evidence") ||
+    (artifact.producer.serverId === "digital-thread" &&
+      artifact.producer.tool === "buy.seal-configuration-cost@1" &&
+      artifact.kind === "document" &&
+      isExactBuySealArtifact(artifact)) ||
     (artifact.producer.serverId === "casys-digital-thread" &&
       artifact.producer.tool === "baseline_from_approved_brief" &&
       artifact.kind === "document");
@@ -452,6 +492,9 @@ function registrationCaptureStores(root: string) {
       uriNamespace: "modelica-admitted-execution-capture",
       label: "Admitted Modelica execution capture",
     }),
+    dfmCheck: at(DFM_CHECK_CAPTURE_DESCRIPTOR),
+    dfmCase: at(DFM_CASE_CAPTURE_DESCRIPTOR),
+    buySeal: at(BUY_SEAL_CAPTURE_DESCRIPTOR),
   };
 }
 

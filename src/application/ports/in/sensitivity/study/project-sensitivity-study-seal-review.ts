@@ -65,6 +65,7 @@ export interface SensitivityStudySealReviewNext {
         readonly owner: "agent";
         readonly dependsOnWorkItemIds: readonly string[];
         readonly decisionIds: readonly string[];
+        readonly predecessorRevisionId?: string;
         readonly operation: EngineeringOperationRef;
         readonly gateClaims: readonly [];
       }[];

@@ -120,13 +120,9 @@ Deno.test("expanding one hull restores exact historical refs without unfolding t
     nodeIds(projection.displayedGraph).includes("geometry-r1"),
     false,
   );
-  const historical = graph.nodes.find((node) =>
-    node.ref.id === "architecture-r1"
-  )!;
+  const historical = graph.nodes.find((node) => node.ref.id === "architecture-r1")!;
   assertStrictEquals(
-    projection.displayedGraph.nodes.find((node) =>
-      node.ref.id === "architecture-r1"
-    ),
+    projection.displayedGraph.nodes.find((node) => node.ref.id === "architecture-r1"),
     historical,
   );
 });
@@ -158,9 +154,7 @@ Deno.test("expansion keeps the original viewer target on the historical member",
     true,
   );
   assertEquals(
-    expanded.displayedGraph.nodes.some((node) =>
-      node.ref.id === "requirements-old"
-    ),
+    expanded.displayedGraph.nodes.some((node) => node.ref.id === "requirements-old"),
     true,
   );
   assertEquals(
@@ -178,9 +172,7 @@ Deno.test("expansion keeps the original viewer target on the historical member",
     { kind: "artifact", id: "requirements-old" },
   );
   assertEquals(
-    collapsed.displayedGraph.edges.some((edge) =>
-      edge.from.id === "requirements-old"
-    ),
+    collapsed.displayedGraph.edges.some((edge) => edge.from.id === "requirements-old"),
     false,
   );
 });
@@ -303,9 +295,7 @@ Deno.test("a new requirements capture stays visible beside a declared family", (
     true,
   );
   assertEquals(
-    projection.displayedGraph.nodes.some((node) =>
-      node.ref.id === "REQ-RADIAL-ARM"
-    ),
+    projection.displayedGraph.nodes.some((node) => node.ref.id === "REQ-RADIAL-ARM"),
     true,
   );
 });
@@ -392,9 +382,7 @@ Deno.test("Brief analysis nodes stay when history folds, and Overview never uses
   );
 
   assertEquals(
-    projection.displayedGraph.nodes.some((node) =>
-      node.ref.id === "brief-analysis"
-    ),
+    projection.displayedGraph.nodes.some((node) => node.ref.id === "brief-analysis"),
     true,
   );
   assertEquals(helper.includes("graphWithoutAnalysisOverlay"), false);
@@ -461,9 +449,7 @@ Deno.test("buildOverviewThreadHero still classifies the full raw graph", () => {
     true,
   );
   assertEquals(
-    projection.displayedGraph.nodes.some((node) =>
-      node.ref.id === "architecture-r1"
-    ),
+    projection.displayedGraph.nodes.some((node) => node.ref.id === "architecture-r1"),
     false,
   );
   assertEquals(JSON.stringify(thread), before);

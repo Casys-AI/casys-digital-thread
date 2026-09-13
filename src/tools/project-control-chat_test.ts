@@ -1236,6 +1236,14 @@ Deno.test(
       (request.params as Record<string, unknown>).message as string,
       "no agent run, provider call, or ThreadSnapshot will be created",
     );
+    assertStringIncludes(
+      (request.params as Record<string, unknown>).message as string,
+      "no runs except human cancellations before claim or execution",
+    );
+    assertStringIncludes(
+      (request.params as Record<string, unknown>).message as string,
+      "Existing runs, receipts and approved decisions not listed for abandonment remain unchanged",
+    );
     assertEquals(abandonments, []);
 
     await assertRejects(

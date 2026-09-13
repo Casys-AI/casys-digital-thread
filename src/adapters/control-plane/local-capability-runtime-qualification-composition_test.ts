@@ -9,7 +9,7 @@ Deno.test("qualification composition constructs one secret resolver and routes o
     [...text.matchAll(/new LocalChronoRuntimeSecretResolver/g)].length,
     1,
   );
-  assertEquals(text.includes("secretInjector: secrets"), true);
+  assertEquals(text.includes("overlaySecretInjector("), true);
   assertEquals(text.includes("secretResolver: secrets"), true);
   assertEquals(
     text.includes("createLocalCapabilityRuntimeReadComposition({ secrets })"),
@@ -17,6 +17,11 @@ Deno.test("qualification composition constructs one secret resolver and routes o
   );
   assertEquals(
     text.includes("CALCULIX_HTTP_ARM64_NATIVE_QUALIFICATION_CANDIDATE_ID"),
+    true,
+  );
+  assertEquals(text.includes("ErpnextBuyRuntimeQualificationService"), true);
+  assertEquals(
+    text.includes("capability.erpnextBuy?.qualificationCandidates"),
     true,
   );
   assertEquals(text.includes("createFixedRecordedCalculixSensitivityProvider()"), true);

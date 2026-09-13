@@ -90,35 +90,31 @@ export class FileEngineeringProjectRevisionStore
     private readonly io: EngineeringProjectRevisionFileIo = DENO_REVISION_FILE_IO,
   ) {}
 
-  async get(projectId: string): Promise<EngineeringProjectSnapshot | undefined> {
+  async get(
+    projectId: string,
+  ): Promise<EngineeringProjectSnapshot | undefined> {
     validateProjectId(projectId);
-    let entries: EngineeringProjectRevisionFileEntry[] = [];
+    const entries: EngineeringProjectRevisionFileEntry[] = [];
     try {
-      for await (const entry of this.io.readDir(this.projectDirectory(projectId))) {
+      for await (
+        const entry of this.io.readDir(this.projectDirectory(projectId))
+      ) {
         entries.push(entry);
       }
     } catch (error) {
       if (isNotFound(error)) return undefined;
       throw error;
     }
-    const revisionEntries = entries.filter((entry) =>
-      entry.isFile && /^\d{10}\.(?:json|claim)$/.test(entry.name)
-    );
-    const highestClaim = highestRevision(revisionEntries, "claim");
-    const highestJson = highestRevision(revisionEntries, "json");
-    if (highestClaim !== undefined && highestClaim > (highestJson ?? 0)) {
+    const head = selectPhysicalProjectRevisionHead(entries);
+    if (head.kind === "unpublished-claim") {
       throw new EngineeringProjectStoreConflictError(
-        `Engineering project ${projectId} revision ${highestClaim} is claimed but not durably published.`,
+        `Engineering project ${projectId} revision ${head.claimRevision} is claimed but not durably published.`,
       );
     }
-    entries = entries.filter((entry) =>
-      entry.isFile && /^\d{10}\.json$/.test(entry.name)
-    ).sort((left, right) => right.name.localeCompare(left.name));
-    const highest = entries[0];
-    if (!highest) return undefined;
+    if (head.kind === "absent") return undefined;
     // The highest claimed revision is authoritative. Corruption or permission
     // errors fail closed instead of presenting an older revision as current.
-    return await this.readRevision(projectId, Number(highest.name.slice(0, 10)));
+    return await this.readRevision(projectId, head.revision);
   }
 
   async getRevision(
@@ -185,7 +181,9 @@ export class FileEngineeringProjectRevisionStore
   ): Promise<EngineeringProjectSnapshot | undefined> {
     try {
       const snapshot = validateEngineeringProjectSnapshot(
-        JSON.parse(await this.io.readTextFile(this.revisionPath(projectId, revision))),
+        JSON.parse(
+          await this.io.readTextFile(this.revisionPath(projectId, revision)),
+        ),
       );
       if (snapshot.project.id !== projectId || snapshot.revision !== revision) {
         throw new Error(
@@ -199,7 +197,9 @@ export class FileEngineeringProjectRevisionStore
     }
   }
 
-  private async writeExclusive(snapshot: EngineeringProjectSnapshot): Promise<void> {
+  private async writeExclusive(
+    snapshot: EngineeringProjectSnapshot,
+  ): Promise<void> {
     validateProjectId(snapshot.project.id);
     const projectDirectory = this.projectDirectory(snapshot.project.id);
     await this.io.mkdir(projectDirectory);
@@ -216,7 +216,10 @@ export class FileEngineeringProjectRevisionStore
         `Engineering project ${snapshot.project.id} revision ${snapshot.revision} is already claimed by another process.`,
       );
     }
-    const revisionPath = this.revisionPath(snapshot.project.id, snapshot.revision);
+    const revisionPath = this.revisionPath(
+      snapshot.project.id,
+      snapshot.revision,
+    );
     const pendingPath = `${revisionPath}.pending-${crypto.randomUUID()}`;
     await this.io.writeTextFileCreateNew(
       pendingPath,
@@ -254,6 +257,71 @@ export class FileEngineeringProjectRevisionStore
   }
 }
 
+const REVISION_FILE_NAME = /^\d{10}\.(?:json|claim)$/;
+const JSON_REVISION_FILE_NAME = /^\d{10}\.json$/;
+
+/**
+ * Read-only physical head of one project directory.
+ *
+ * This is storage-state inspection, not qualification: a higher unpublished
+ * `.claim` never licenses the previous `.json`. `get` keeps the same fail-closed
+ * selection; discovery may observe the same head without parsing rejected JSON.
+ */
+export type PhysicalProjectRevisionHead =
+  | {
+    readonly kind: "published-json";
+    readonly revision: number;
+    readonly filename: string;
+  }
+  | {
+    readonly kind: "unpublished-claim";
+    readonly claimRevision: number;
+    readonly claimFilename: string;
+    readonly jsonRevision?: number;
+    readonly jsonFilename?: string;
+  }
+  | {
+    readonly kind: "absent";
+  };
+
+export function selectPhysicalProjectRevisionHead(
+  entries: readonly EngineeringProjectRevisionFileEntry[],
+): PhysicalProjectRevisionHead {
+  const revisionEntries = entries.filter((entry) =>
+    entry.isFile && REVISION_FILE_NAME.test(entry.name)
+  );
+  const highestClaim = highestRevision(revisionEntries, "claim");
+  const highestJson = highestRevision(revisionEntries, "json");
+  if (highestClaim !== undefined && highestClaim > (highestJson ?? 0)) {
+    return {
+      kind: "unpublished-claim",
+      claimRevision: highestClaim,
+      claimFilename: paddedRevisionFilename(highestClaim, "claim"),
+      jsonRevision: highestJson,
+      jsonFilename: highestJson === undefined
+        ? undefined
+        : paddedRevisionFilename(highestJson, "json"),
+    };
+  }
+  const jsonEntries = entries.filter((entry) =>
+    entry.isFile && JSON_REVISION_FILE_NAME.test(entry.name)
+  ).sort((left, right) => right.name.localeCompare(left.name));
+  const highest = jsonEntries[0];
+  if (!highest) return { kind: "absent" };
+  return {
+    kind: "published-json",
+    revision: Number(highest.name.slice(0, 10)),
+    filename: highest.name,
+  };
+}
+
+function paddedRevisionFilename(
+  revision: number,
+  extension: "json" | "claim",
+): string {
+  return `${String(revision).padStart(10, "0")}.${extension}`;
+}
+
 function highestRevision(
   entries: readonly EngineeringProjectRevisionFileEntry[],
   extension: "json" | "claim",
@@ -264,7 +332,9 @@ function highestRevision(
 }
 
 function validateProjectId(projectId: string): void {
-  if (!projectId.trim()) throw new TypeError("Engineering project id cannot be empty.");
+  if (!projectId.trim()) {
+    throw new TypeError("Engineering project id cannot be empty.");
+  }
   if (!/^[A-Za-z0-9]/.test(projectId)) {
     throw new TypeError(
       "Engineering project id must begin with an ASCII alphanumeric character.",
@@ -277,7 +347,9 @@ function validateProjectId(projectId: string): void {
 
 function validateRevision(revision: number): void {
   if (!Number.isInteger(revision) || revision < 1) {
-    throw new TypeError("Engineering project revision must be a positive integer.");
+    throw new TypeError(
+      "Engineering project revision must be a positive integer.",
+    );
   }
 }
 
@@ -288,5 +360,6 @@ function joinPath(directory: string, name: string): string {
 function isAlreadyExists(error: unknown): boolean {
   return error instanceof Deno.errors.AlreadyExists ||
     (error instanceof Error &&
-      (error.name === "AlreadyExists" || /already exists/i.test(error.message)));
+      (error.name === "AlreadyExists" ||
+        /already exists/i.test(error.message)));
 }

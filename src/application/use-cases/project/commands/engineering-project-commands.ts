@@ -149,19 +149,22 @@ export interface ReconcileWorkItemWithSuccessorCommand
 }
 
 /**
- * Human-only governed abandonment for work items that never acquired a
- * provider run and their associated pending or required decisions.
+ * Human-only governed abandonment for work with no execution or evidence,
+ * including runs cancelled by a human before claim, and pending decisions.
  *
  * WHY HUMAN-ONLY — abandonment is an intentional, irreversible editorial act
  * on the project plan. An agent must never mark its own work items as
  * abandoned without explicit human oversight.
  *
  * Guards:
- *  - Each work item must be in `ready` (never queued) or `waiting-for-decision`
- *    (never queued) and must have no associated runs.
- *  - Each decision must be in `required` or `proposed` (not `approved`).
+ *  - Each work item must be `ready` or `waiting-for-decision`, with no runs
+ *    except validated human pre-claim cancellations. Runs and receipts remain.
+ *  - Empty `decisionIds` leaves approved decisions untouched; an explicitly
+ *    listed approved decision is refused. Listed decisions must be `required`
+ *    or `proposed`.
  *  - Evidence-carrying work items are ineligible: abandonment is only for
- *    noise, not for a run that already wrote to the thread.
+ *    leftover plan noise, not for a run that already wrote to the thread.
+ *  - Abandoned work is not completed and does not unlock dependents.
  */
 export interface AbandonWorkItemsCommand extends EngineeringProjectCommandInput {
   /** One or more work item IDs to abandon (minimum 1). */

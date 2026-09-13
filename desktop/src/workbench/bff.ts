@@ -14,6 +14,8 @@ import {
   PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
   PRINTABILITY_CASE_CAPTURE_DESCRIPTOR,
   REQUIREMENTS_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR,
+  SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR,
   SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
   SOURCE_ANALYSIS_CAPTURE_DESCRIPTOR,
   SYSML_SOURCE_CAPTURE_DESCRIPTOR,
@@ -23,6 +25,7 @@ import {
   type SysmlSourceAnalysisReader,
 } from "../../../src/adapters/architecture/renderer/sysml-source-analysis-capture.ts";
 import { FileEngineeringProjectRevisionStore } from "../../../src/adapters/shared/stores/engineering-project-store.ts";
+import { readNativeWorkbenchProjectDiscovery } from "../../../src/adapters/thread/native-workbench-project-discovery.ts";
 import { FileThreadSnapshotStore } from "../../../src/adapters/shared/stores/file-thread-snapshot-store.ts";
 import {
   FileExactThreadSnapshotDirectory,
@@ -39,6 +42,7 @@ import { FileThreadViewerAppRegistry } from "../../../src/adapters/thread/file-t
 import type { ProductNavigationTechnicalAdmissionReader } from "../../../src/adapters/thread/product-navigation-technical-admission-source-reader.ts";
 import type { EngineeringCaseWorkbenchEnricherDependencies } from "../../../src/adapters/thread/verification-case-workbench-enricher.ts";
 import type { RequirementsCaptureReader } from "../../../src/adapters/thread/requirements-target-workbench-enricher.ts";
+import { composeHistoryCaptureReaders } from "../../../src/adapters/thread/requirements-history-workbench-enricher.ts";
 import { FileProjectSourceWorkspaceStore } from "../../../src/adapters/project-source-workspace/file-project-source-workspace-store.ts";
 import { DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY } from "../../../src/adapters/project-source-workspace/server-composition.ts";
 import { readDeclaredCockpitFleet } from "../../../src/adapters/thread/cockpit-fleet-projector.ts";
@@ -62,7 +66,10 @@ export function createPackagedWorkbenchBff(
   accessToken: string,
   controlPlaneRoot: string,
 ): (request: Request) => Promise<Response> {
-  const activeProjectDirectory = rooted(controlPlaneRoot, ACTIVE_PROJECT_DIRECTORY);
+  const activeProjectDirectory = rooted(
+    controlPlaneRoot,
+    ACTIVE_PROJECT_DIRECTORY,
+  );
   const projectBaselineDirectory = rooted(
     controlPlaneRoot,
     PROJECT_BASELINE_DIRECTORY,
@@ -71,7 +78,10 @@ export function createPackagedWorkbenchBff(
     controlPlaneRoot,
     PROJECT_BASELINE_ASSET_DIRECTORY,
   );
-  const threadSnapshotDirectory = rooted(controlPlaneRoot, THREAD_SNAPSHOT_DIRECTORY);
+  const threadSnapshotDirectory = rooted(
+    controlPlaneRoot,
+    THREAD_SNAPSHOT_DIRECTORY,
+  );
   const threadAssetDirectory = rooted(controlPlaneRoot, THREAD_ASSET_DIRECTORY);
   const liveUpdateDirectory = rooted(controlPlaneRoot, LIVE_UPDATE_DIRECTORY);
   const focusDirectory = rooted(controlPlaneRoot, FOCUS_DIRECTORY);
@@ -88,8 +98,14 @@ export function createPackagedWorkbenchBff(
     new FileExactThreadSnapshotDirectory(projectBaselineDirectory),
   ]);
   const focus = new FileCockpitFocusStore(focusDirectory);
-  const archCaptures = captureAt(controlPlaneRoot, ARCHITECTURE_CAPTURE_DESCRIPTOR);
-  const geometryCaptures = captureAt(controlPlaneRoot, GEOMETRY_CAPTURE_DESCRIPTOR);
+  const archCaptures = captureAt(
+    controlPlaneRoot,
+    ARCHITECTURE_CAPTURE_DESCRIPTOR,
+  );
+  const geometryCaptures = captureAt(
+    controlPlaneRoot,
+    GEOMETRY_CAPTURE_DESCRIPTOR,
+  );
   const sysmlSourceCaptures = captureAt(
     controlPlaneRoot,
     SYSML_SOURCE_CAPTURE_DESCRIPTOR,
@@ -126,9 +142,15 @@ export function createPackagedWorkbenchBff(
     REQUIREMENTS_CAPTURE_DESCRIPTOR,
   );
   const engineeringCaseCaptures: EngineeringCaseWorkbenchEnricherDependencies = {
-    mechanicalProof: captureAt(controlPlaneRoot, FEA_PROOF_CASE_CAPTURE_DESCRIPTOR),
+    mechanicalProof: captureAt(
+      controlPlaneRoot,
+      FEA_PROOF_CASE_CAPTURE_DESCRIPTOR,
+    ),
     sensitivityStudy: new FileCaptureStore(
-      rootedCapture(controlPlaneRoot, SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR),
+      rootedCapture(
+        controlPlaneRoot,
+        SENSITIVITY_STUDY_CASE_CAPTURE_DESCRIPTOR,
+      ),
     ),
     printabilityCheck: captureAt(
       controlPlaneRoot,
@@ -140,6 +162,11 @@ export function createPackagedWorkbenchBff(
     ),
     dfmCheck: captureAt(controlPlaneRoot, DFM_CASE_CAPTURE_DESCRIPTOR),
   };
+  const historyEvidenceCaptures = composeHistoryCaptureReaders(
+    captureAt(controlPlaneRoot, SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR),
+    engineeringCaseCaptures.sensitivityStudy,
+    captureAt(controlPlaneRoot, SENSITIVITY_BASE_EVALUATION_CAPTURE_DESCRIPTOR),
+  );
   const assetReader = new OrderedEngineeringAssetReader([
     new FileEngineeringAssetReader(threadAssetDirectory),
     new Base64EngineeringAssetReader(projectBaselineAssetDirectory),
@@ -166,6 +193,7 @@ export function createPackagedWorkbenchBff(
     technicalCompilationAdmissions,
     projectSourceWorkspace,
     requirementsCaptures,
+    historyEvidenceCaptures,
     productStructureCaptures: archCaptures,
     geometryCaptures,
     sysmlSourceAnalysis,
@@ -174,9 +202,13 @@ export function createPackagedWorkbenchBff(
     viewerAppRegistry,
     assetReader: (filename) => assetReader.read(filename),
     cockpitFleet: () =>
-      readDeclaredCockpitFleet(rooted(controlPlaneRoot, "config/mcp-fleet.json")),
+      readDeclaredCockpitFleet(
+        rooted(controlPlaneRoot, "config/mcp-fleet.json"),
+      ),
     projectCatalog: () =>
       readPersistedProjectCatalog(projectStore, activeProjectDirectory),
+    projectDiscovery: () =>
+      readNativeWorkbenchProjectDiscovery(projectStore, activeProjectDirectory),
   });
   const focused = createFocusedWorkspaceHandler({
     focus,
@@ -184,6 +216,8 @@ export function createPackagedWorkbenchBff(
     native,
     projectCatalog: () =>
       readPersistedProjectCatalog(projectStore, activeProjectDirectory),
+    projectDiscovery: () =>
+      readNativeWorkbenchProjectDiscovery(projectStore, activeProjectDirectory),
   });
   return async (request) => {
     if (request.headers.get(WORKBENCH_ACCESS_HEADER) !== accessToken) {

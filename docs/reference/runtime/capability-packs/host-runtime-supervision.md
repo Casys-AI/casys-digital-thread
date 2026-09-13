@@ -4,10 +4,10 @@ Audience: both · Diátaxis: reference · Kind: boundary
 
 H1 governs server-owned local runtime state. It does not select a provider, admit an
 engineering method, or interpret an engineering result. The first-party launch-group
-registry enrolls five persistent topologies: `casys-syson@1.0.1` (Postgres, SysON and
+registry enrolls six persistent topologies: `casys-syson@1.0.1` (Postgres, SysON and
 `mcp-syson`, with only `127.0.0.1:3009` published), `casys-build123d-sandbox@1.0.0`,
-`casys-build123d-observation@1.0.0`, `casys-chrono@1.0.0`, and
-`casys-mcp-calculix@1.0.0`. Enrollment is candidacy. It does not start a service. The
+`casys-build123d-observation@1.0.0`, `casys-chrono@1.0.0`,
+`casys-mcp-calculix@1.0.0`, and `casys-mcp-dfm@1.0.0`. Enrollment is candidacy. It does not start a service. The
 historical SysON UI port 8180 is not part of `casys-syson`.
 
 `casys-chrono@1.0.0` is a one-service topology. The topology itself does not carry a

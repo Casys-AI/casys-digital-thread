@@ -1591,6 +1591,31 @@ function queueRunCommand(
   };
 }
 
+async function queueThenHumanCancel(
+  service: EngineeringProjectCommandService,
+  project: EngineeringProjectSnapshot,
+  ids: {
+    readonly commandPrefix: string;
+    readonly runId: string;
+    readonly summary: string;
+  },
+): Promise<EngineeringProjectSnapshot> {
+  const queued = await service.queueRun(
+    AGENT,
+    queueRunCommand(`${ids.commandPrefix}-queue`, project, {
+      runId: ids.runId,
+      workItemId: "verify-current-mechanical-design",
+      summary: ids.summary,
+    }),
+  );
+  return await service.cancelQueuedRun(HUMAN, {
+    ...context(`${ids.commandPrefix}-cancel`, queued.revision),
+    runId: ids.runId,
+    rationale:
+      "This queued run is superseded before any agent claim or provider execution.",
+  });
+}
+
 function proposal(value: string) {
   return {
     summary: "Test-only reviewed input.",
@@ -2544,8 +2569,9 @@ Deno.test(
   "abandonWorkItems rejects a work item that has an associated run",
   async () => {
     /** reconciliableProject() adds run:mechanical-r2-failed to the work item
-     *  "verify-current-mechanical-design". A work item with associated runs has
-     *  produced durable trace and cannot be silently abandoned.
+     *  "verify-current-mechanical-design". A failed or claimed run is durable
+     *  trace and cannot be abandoned; only a validated human pre-claim
+     *  cancellation may remain on leftover ready work.
      */
     const project = await reconciliableProject();
     const store = new MemoryRevisionStore(project);
@@ -2651,6 +2677,233 @@ Deno.test(
           rationale: "Should be rejected: the decision is already approved.",
         }),
       "invalid_transition",
+    );
+  },
+);
+
+Deno.test(
+  "abandonWorkItems closes leftover ready work after one human pre-claim cancellation without touching the approved decision",
+  async () => {
+    const store = await memoryStoreWithVerificationDependent();
+    const service = serviceFor(store);
+    const approved = await approveAll(service, store);
+    const queued = await service.queueRun(
+      AGENT,
+      queueRunCommand("queue-before-abandon-refusal", approved, {
+        runId: "verify-run-abandon-after-cancel",
+        workItemId: "verify-current-mechanical-design",
+        summary: "Queue reviewed verification inputs before a human cancel.",
+      }),
+    );
+    await assertCommandError(
+      () =>
+        service.abandonWorkItems(HUMAN, {
+          ...context("abandon-still-queued-run-rejected", queued.revision),
+          workItemIds: ["verify-current-mechanical-design"],
+          decisionIds: [],
+          rationale: "A still-queued run is active work and cannot be abandoned.",
+        }),
+      "invalid_transition",
+    );
+    assertEquals((await store.get(PROJECT_ID))?.revision, queued.revision);
+
+    const cancelled = await service.cancelQueuedRun(HUMAN, {
+      ...context("human-cancel-before-abandon", queued.revision),
+      runId: "verify-run-abandon-after-cancel",
+      rationale:
+        "This queued run is superseded before any agent claim or provider execution.",
+    });
+    const before = structuredClone(cancelled);
+    const command: AbandonWorkItemsCommand = {
+      ...context("abandon-cancelled-queued-run", cancelled.revision),
+      workItemIds: ["verify-current-mechanical-design"],
+      decisionIds: [],
+      rationale: "The leftover ready work never executed; keep the approved decision.",
+    };
+    const abandoned = await service.abandonWorkItems(HUMAN, command);
+
+    assertEquals(
+      findWorkItem(abandoned, "verify-current-mechanical-design").status,
+      "abandoned",
+    );
+    assertEquals(
+      findWorkItem(abandoned, "verify-current-mechanical-design").evidenceRefs,
+      [],
+    );
+    assertEquals(
+      findWorkItem(abandoned, "verify-current-mechanical-design").reconciliation,
+      undefined,
+    );
+    assertEquals(
+      findWorkItem(abandoned, "observe-erp-definition").status,
+      "planned",
+    );
+    assertEquals(
+      findDecision(abandoned, "review-mechanical-proof-case").status,
+      "approved",
+    );
+    assertEquals(abandoned.agentRuns, before.agentRuns);
+    assertEquals(abandoned.decisions, before.decisions);
+    assertEquals(abandoned.approvals, before.approvals);
+    assertEquals(abandoned.threadSnapshots, before.threadSnapshots);
+    assertEquals(
+      abandoned.commandReceipts?.slice(0, -1),
+      before.commandReceipts,
+    );
+    assertEquals(abandoned.commandReceipts?.at(-1)?.type, "work-item.abandon");
+    assertEquals(abandoned.commandReceipts?.at(-1)?.commandId, command.commandId);
+    assertEquals(abandoned.revision, before.revision + 1);
+    assertEquals(abandoned.previous, {
+      snapshotId: before.id,
+      revision: before.revision,
+    });
+    assertEquals(
+      deriveEngineeringPhaseStatus(abandoned, "verification"),
+      "planned",
+    );
+    assert(
+      deriveEngineeringProjectStatus(abandoned) !== "completed",
+      "abandoned leftover work must not complete the project",
+    );
+
+    const replay = await service.abandonWorkItems(HUMAN, command);
+    assertEquals(replay.id, abandoned.id);
+
+    await assertCommandError(
+      () =>
+        service.queueRun(
+          AGENT,
+          queueRunCommand("requeue-abandoned-work", abandoned, {
+            runId: "verify-run-after-abandon",
+            workItemId: "verify-current-mechanical-design",
+            summary: "Must not requeue abandoned leftover work.",
+          }),
+        ),
+      "invalid_transition",
+    );
+  },
+);
+
+Deno.test(
+  "abandonWorkItems preserves multiple human pre-claim cancellations then abandons leftover ready work",
+  async () => {
+    const store = await memoryStoreWithVerificationDependent();
+    const service = serviceFor(store);
+    const approved = await approveAll(service, store);
+    const first = await queueThenHumanCancel(service, approved, {
+      commandPrefix: "multi-cancel-1",
+      runId: "verify-run-cancelled-cycle-1",
+      summary: "First reviewed queue that a human cancels before claim.",
+    });
+    const second = await queueThenHumanCancel(service, first, {
+      commandPrefix: "multi-cancel-2",
+      runId: "verify-run-cancelled-cycle-2",
+      summary: "Second reviewed queue that a human cancels before claim.",
+    });
+    assertEquals(
+      second.agentRuns.filter((run) =>
+        run.workItemId === "verify-current-mechanical-design"
+      ).map((run) => run.status),
+      ["cancelled", "cancelled"],
+    );
+    const before = structuredClone(second);
+    const abandoned = await service.abandonWorkItems(HUMAN, {
+      ...context("abandon-after-two-cancel-cycles", second.revision),
+      workItemIds: ["verify-current-mechanical-design"],
+      decisionIds: [],
+      rationale:
+        "Both queues were cancelled before claim; abandon the leftover ready work.",
+    });
+
+    assertEquals(
+      findWorkItem(abandoned, "verify-current-mechanical-design").status,
+      "abandoned",
+    );
+    assertEquals(abandoned.agentRuns, before.agentRuns);
+    assertEquals(abandoned.decisions, before.decisions);
+    assertEquals(abandoned.approvals, before.approvals);
+    assertEquals(abandoned.threadSnapshots, before.threadSnapshots);
+    assertEquals(
+      findWorkItem(abandoned, "observe-erp-definition").status,
+      "planned",
+    );
+    assertEquals(
+      abandoned.commandReceipts?.slice(0, -1),
+      before.commandReceipts,
+    );
+    assertEquals(abandoned.commandReceipts?.at(-1)?.type, "work-item.abandon");
+    assertEquals(abandoned.revision, before.revision + 1);
+  },
+);
+
+Deno.test(
+  "abandonWorkItems cannot persist a malformed cancelled run injected into the store",
+  async () => {
+    const seedStore = await memoryStore();
+    const seedService = serviceFor(seedStore);
+    const approved = await approveAll(seedService, seedStore);
+    const cancelled = await queueThenHumanCancel(seedService, approved, {
+      commandPrefix: "malformed-cancel-seed",
+      runId: "verify-run-malformed-cancel-seed",
+      summary:
+        "Queue reviewed verification inputs before a forged cancellation record.",
+    });
+
+    const withClaim = structuredClone(cancelled) as Mutable<
+      EngineeringProjectSnapshot
+    >;
+    withClaim.agentRuns.find((run) => run.id === "verify-run-malformed-cancel-seed")!
+      .claimedAt = cancelled.generatedAt;
+    const laterClock = new Date(Date.parse(cancelled.generatedAt) + 1_000)
+      .toISOString();
+    const claimedStore = new MemoryRevisionStore(withClaim);
+    const claimedService = serviceFor(
+      claimedStore,
+      undefined,
+      undefined,
+      laterClock,
+    );
+    await assertRejects(
+      () =>
+        claimedService.abandonWorkItems(HUMAN, {
+          ...context("abandon-claimed-cancelled-run", withClaim.revision),
+          workItemIds: ["verify-current-mechanical-design"],
+          decisionIds: [],
+          rationale: "Should not persist a cancelled run that was claimed.",
+        }),
+      EngineeringProjectValidationError,
+    );
+    assertEquals(
+      (await claimedStore.get(PROJECT_ID))?.revision,
+      withClaim.revision,
+    );
+
+    const forgedReceipt = structuredClone(cancelled) as Mutable<
+      EngineeringProjectSnapshot
+    >;
+    forgedReceipt.commandReceipts!.find((receipt) =>
+      receipt.type === "agent-run.cancel"
+    )!.actor = { id: "agent-forger", origin: "agent" };
+    const forgedStore = new MemoryRevisionStore(forgedReceipt);
+    const forgedService = serviceFor(
+      forgedStore,
+      undefined,
+      undefined,
+      laterClock,
+    );
+    await assertRejects(
+      () =>
+        forgedService.abandonWorkItems(HUMAN, {
+          ...context("abandon-forged-cancel-receipt", forgedReceipt.revision),
+          workItemIds: ["verify-current-mechanical-design"],
+          decisionIds: [],
+          rationale: "Should not persist a forged human cancellation receipt.",
+        }),
+      EngineeringProjectValidationError,
+    );
+    assertEquals(
+      (await forgedStore.get(PROJECT_ID))?.revision,
+      forgedReceipt.revision,
     );
   },
 );

@@ -191,6 +191,38 @@ export function isTracedRequirementsCapture(
     capture.schemaVersion === REQUIREMENTS_TRACED_RECAPTURE_SCHEMA;
 }
 
+export interface RequirementsCaptureThreadArtifactRef {
+  readonly id: string;
+  readonly fingerprint: ContentFingerprint;
+  readonly producer: { readonly runId: string };
+}
+
+/**
+ * Exact recapture.predecessor identity/digest/run against one Thread artifact.
+ * Parsing a capture cannot establish this pair; the named artifact must match.
+ */
+export function recapturePredecessorArtifactMatches(
+  capture: ExactRequirementsCapture,
+  artifact: RequirementsCaptureThreadArtifactRef,
+): boolean {
+  return isRecaptureRequirementsCapture(capture) &&
+    capture.predecessor.artifactId === artifact.id &&
+    fingerprintsEqual(capture.predecessor.fingerprint, artifact.fingerprint) &&
+    capture.predecessor.producerRunId === artifact.producer.runId;
+}
+
+/**
+ * Exact capture.architecture identity/digest/run against one Thread artifact.
+ */
+export function requirementsCaptureArchitectureMatches(
+  capture: ExactRequirementsCapture,
+  artifact: RequirementsCaptureThreadArtifactRef,
+): boolean {
+  return capture.architecture.artifactId === artifact.id &&
+    fingerprintsEqual(capture.architecture.fingerprint, artifact.fingerprint) &&
+    capture.architecture.producerRunId === artifact.producer.runId;
+}
+
 /**
  * Keep a recapture inside the same provenance era as its exact requirements
  * predecessor.  This is deliberately a readback guard: parsing a capture in
@@ -261,11 +293,7 @@ export async function assertTracedRequirementsRecaptureThreadContinuity(
       predecessorId === currentArtifact.id ||
       !currentArtifact.inputArtifactIds.includes(predecessorId) ||
       !predecessor ||
-      predecessor.producer.runId !== currentCapture.predecessor.producerRunId ||
-      !fingerprintsEqual(
-        predecessor.fingerprint,
-        currentCapture.predecessor.fingerprint,
-      )
+      !recapturePredecessorArtifactMatches(currentCapture, predecessor)
     ) {
       throw new Error(
         "Traced requirements recapture predecessor is not its exact Thread input.",

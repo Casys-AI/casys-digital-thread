@@ -18,7 +18,6 @@ import {
   positiveInteger,
   safeId,
 } from "../../../../domain/kernel/case-validation.ts";
-import type { EngineeringThreadSnapshotBasis } from "../../../../domain/project/engineering-project.ts";
 import type {
   FeaReviewProjectReader,
   FeaReviewSnapshotStore,

@@ -2,19 +2,124 @@
 
 Audience: both · Diátaxis: none · Kind: dated project tracking note
 
-Observation **2026-09-08**, primary atelier, **local**. This page is documentary and
+Dated project tracking. Primary atelier, **local**. This page is documentary and
 non-authoritative: it does not replace project state, Thread evidence, or signed human
-decisions. Re-read the control plane before continuing.
+decisions. The **2026-09-12** block below is a saved-state reread of persisted latest
+`0000000882.json`. It is not a server restart or live `GET` today.
 
 ## Current project truth
 
-Latest resumption: project r675 / Thread r93. Project r672 proposed the bounded
-propulsion/energy priority question, r673 recorded the human-sourced
+Saved-state reread **2026-09-12**, original atelier file
+`state/local/engineering-projects/inspection-drone-id01/0000000882.json`, persisted
+latest `inspection-drone-id01:project:r882:2de1e90b38a35b6b`. Thread last revision 118,
+`project:inspection-drone-id01:r118:industrialize-run-dfm-checks-run:id01-queue-dfm-run-board-r1-f52c-20260912`.
+Canonical brief remains r7, `inspection-drone-id01:brief:r7:22fb5d1b598dbd41`. Proposed
+brief r8 `inspection-drone-id01:brief:r8:fb658801b1b1c693` is still unconfirmed (F22).
+Mission shape A stays documentary **HOLD** screening: preferred lead F1404+GF3016 is
+recorded, SKU not selected. Source provenance and the 1 mm nominal spacer / attachment
+gaps remain unmodeled limitations. Numeric mission cells stay `unresolved`.
+
+Recorded DFM capture
+`dfm-check-a023abdcedb3bc50920af6c2d6d4e89600c0b971f0b6c55128c076a45d9b16d6` from
+completed run `run:id01-queue-dfm-run-board-r1-f52c-20260912` (project r882 / Thread
+r118). Three recorded checks `pass`: envelope 25 × 24 × 11.5 mm; sampled minimum
+thickness 0.9149495583883871 mm against 0.8 mm (500 samples); overhang bed-contact
+centroids at z = 0 excluded by the declared 0.2 mm Z-min filter, 0 remaining. Mesh 1 mm
+is DFM sampling. The printer is a sourced screening envelope, not a selected machine.
+This is not flight, strength or manufacturing authorization. The previous failed attempt
+`run:id01-queue-dfm-run-board-r1-f52-20260912` remains history. The recorded capture is
+readable; it is not upgraded to a valid exact-basis approval (F52).
+
+Sensitivity artefact at Thread r117 is a **case**,
+`sensitivity-case-a737046b21c7f6e61fa479c13e60511aa1cd78e765ce0349f052cd6249e3d9ee`
+against admission `b0e5ba4d…`. It is not a new study execution, reuse or speedup.
+Leftover work item `wi-proof-seal-id01-camera-bracket-bench-r2` remains `ready` (F45)
+until a separate human `project_work_item_abandon`. The F45 abandon **source** path
+exists; that orphan was not abandoned.
+
+Read-only historical projection on this saved Thread (42 typed tests plus UI type check;
+original bytes unchanged). Both current bench rows stay `pass` on project r882 / Thread
+r118:
+`requirement-4488a613ba6ffd5baea9626302a7e97ff8d37061bfb63892f91a41ad69dd5df9-camera_bracket_bench_max_von_mises_pa`
+(complete 2 hops / 2 historical `PASS`) and
+`requirement-7f206ff76ab6ab232cb7293a2b8df6cccbb0c241e5bc3e1dac09df09e8e3f6db-radial_arm_bench_max_displacement_mm`
+(complete 1 hop / 2 historical `PASS`), including measured study
+`sensitivity-study-72093069ff760744dc7726bef90005c18de2977790fc8e2e026b49699928d8a9` and
+base evaluation
+`sensitivity-base-evaluation-9bf8e4d4cd0f2993297902226bdfeba70e854d68e08dfa21c6ce40812b0514da`.
+The collection is plural `historicalEvaluations`; observation provenance is plural
+`sourceArtifacts[]`. A first hop with zero evaluations stays an explicit partial
+diagnostic. The projection preserves every current `pass` / `fail` / `unresolved` /
+observation id. Historical evaluations stay separate: they do not cause or authorize
+those current `PASS` rows. The 2026-09-11 F49 `unresolved` incident is history, not a
+claim about r882. F27 reuse **source** (factory, coordinator, 47 tests, orphan Docker
+coordinator removed) does not claim live interproject reuse or saved solver time. See
+the [friction journal](frictions.md).
+
+DFM recorded viewer **source** is unpublished: `io.casys.mcp-dfm.results`
+`0.3.0-local.viewer.1`, `ui://mcp-dfm/results-viewer`, `text/html;profile=mcp-app`,
+`viewer.session.apply`. Provider commit `e763d96c2c58274048d6bf35f1cfb15148cba0f0`
+(parent `85a62804…`); bundle `src/ui/dist/results-viewer/index.html` 780178 bytes,
+SHA-256 `2fd82bf83bbba5c01cf2848d43da968597047a6fb99b52914825c50e41c74bd1`. Independent
+`release:check`: 52 server tests, 5 model tests (native Gmsh ignored). Fake-host browser
+proof (light/dark/480, all states) is a **synthetic** fixture, not the saved ID01
+capture. DT binding: 15 targeted tests plus a pure provider-parser recross (exact
+available / historical cross-revision `unavailable`). Hulls: 53 UI tests plus 1 typed
+server membership test; family `dfm` keeps compact case/result/five observation rows,
+three requirements and three evaluations in their lanes; STEP stays Geometry. A single
+exact capture App is reachable through identity aliases; ambiguous or cross-context
+sessions are refused. Production solver pin remains `0.1.0` while provider source is
+`0.3.0`. Legacy `0.1` captures do not invent quality fields. F52 recorded `pass` values
+are evidence; the r115 approval / r117 run remains authority-`unavailable`. No viewer
+install, publication or runtime adoption.
+
+Workbench discovery **source candidate** defines `GET /api/project-discovery` with
+`native-workbench-project-discovery/2.0`. An offline read by the candidate reader over
+the original persisted heads returned `partial` (10 candidates): available ID01 r882,
+msm01 r97, tps01 r111, tps02 r128, tps03 r135; unavailable `validation-failure` ps01,
+mcs01, mcs02, hs01, sl01. Legacy `GET /api/projects`
+(`native-workbench-project-catalog/1.0`) stays all-or-nothing HTTP 503 on that storage.
+The candidate route has not been runtime-adopted. There is no `GET /projects/<id>` and
+no `projectId` query selector. Ask the paired assistant to choose the project;
+`cockpit_focus_set` remains the MCP routing authority. Workbench stays `GET` + SSE
+read-only.
+
+French entry points (plain speech; the assistant maps them — do not author envelopes or
+self-approve):
+
+- « Guide-moi pour vérifier un nouveau design. » — the existing
+  [Behave from-scratch guide](../../how-to/verify-design/verify-a-new-design-from-scratch.md);
+  do not open Make/Buy from that loop.
+- « Prépare la revue des contrôles de fabrication de cette pièce. » / « Montre les
+  preuves DFM enregistrées. » — measured DFM reviews then
+  `industrialize.run-dfm-checks@1`, and the recorded DFM App, not a live solver UI.
+- « Prépare la capture des coûts de cette configuration. » / « Montre les preuves de
+  coût enregistrées. » —
+  [Buy configuration and dated cost](../../reference/domains/buy/README.md).
+
+The 2026-09-11 block (Thread r98 / project r714–r715) and the 2026-09-08 resumption
+(project r675 / Thread r93) below are **historical**. They are not the current tip.
+
+### Historical 2026-09-11 (Thread r98 / project r714–r715)
+
+Live reread **2026-09-11**: Thread r98
+`project:inspection-drone-id01:r98:model-write-architecture-1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9`
+(CameraBoardEnvelope hole handles). Last Thread-writing project snapshot r714; project
+r715 has **pending unconfirmed** brief r8 (F22 refusal). Canonical brief remains r7.
+Workspace r128: `id01-camera-board-envelope@2`. Mission shape A is recorded; numeric
+cells stay `unresolved`. F36 closed-in-live; leftover r2 is F45; compilation preview
+after r98 is F46. The 2026-09-08 resumption below (r675 / Thread r93, pending brief r5)
+is historical.
+
+### Historical 2026-09-08 resumption (project r675 / Thread r93)
+
+Latest 2026-09-08 resumption: project r675 / Thread r93. Project r672 proposed the
+bounded propulsion/energy priority question, r673 recorded the human-sourced
 `presize-before-simulations` answer, r674 proposed brief r5, and r675 proposed the one
-unanswered mission-shape question `mission-sizing-scenario-shape-r1`. That brief is
-still pending; no human answer, new Thread evidence or capability was authorized. The
-fresh Airframe `RadialArm` ↔ `CentralDeck` assembly-integrity chain published L3
-observation
+unanswered mission-shape question `mission-sizing-scenario-shape-r1`. That brief was
+still pending at that resumption; no human answer, new Thread evidence or capability was
+authorized then. The fresh Airframe `RadialArm` ↔ `CentralDeck` assembly-integrity chain
+published L3 observation
 `assembly-integrity-observation-958ef913155ff5f8a6ab115003b00ff996f382b95becb408833fe68ce9a78704`
 at r91, L4 `pass` evaluation
 `assembly-integrity-evaluation-83f3d7926589703b5a34856240821c5906176f13ec69d02a8244057f66b86b8e`
@@ -32,9 +137,11 @@ bounded human-origin L5 acceptance published at r86. Both runs are `completed`. 
 collision at project r603 remains documented as F11 rather than erased.
 
 - Project: `inspection-drone-id01`.
-- Observed project revision: r675,
-  `inspection-drone-id01:project:r675:8b9a15b705ec6c99`. The current Thread is r93,
+- Observed project revision at that 2026-09-08 resumption: r675,
+  `inspection-drone-id01:project:r675:8b9a15b705ec6c99`. Thread was r93,
   `project:inspection-drone-id01:r93:decide-accept-assembly-integrity-evaluation-run:queue-assembly-integrity-accept-83f3d7926589703b-r92-r667`.
+  Those identities are historical; saved-state 2026-09-12 tip is project r882 / Thread
+  r118.
 - The first provider-free requirements-to-brief claim at project r591 / Thread r83
   remains historical evidence; it did not execute an FEA solver or a native requirements
   writer. The subsequent bench branch preserved that documentary basis.
@@ -254,11 +361,13 @@ hardware. The retained pack pages also do not provide the exact current, cutoff,
 temperature and age evidence needed for usable energy. F20 keeps that external-or-bench
 gap explicit; nameplate Wh and C-rate are not endurance evidence.
 
-The [mission sizing decision sheet](mission-sizing-decision-sheet-20260908.md) now keeps
+The [mission sizing decision sheet](mission-sizing-decision-sheet-20260908.md) keeps
 three reversible workflow shapes separate from human decisions and deliberately leaves
-every numeric mission cell blank. Project r675 presents those shapes as one durable
-A/B/C framing question, recommends the smallest local façade pass only as a reversible
-first screen, and records no answer. A separate
+every numeric mission cell blank. Historical **2026-09-08**: project r675 presented
+those shapes as one durable A/B/C framing question, recommended the smallest local
+façade pass only as a reversible first screen, and recorded no answer. Shape A was later
+recorded and brief r7 canonizes `mission-sizing-screen`; B and C are not retained.
+Numeric cells and the configuration-matrix **HOLD** remain. A separate
 [camera-to-target geometry basis](camera-mission-geometry-basis-20260908.md) uses the
 official Camera Module 3 Standard `66° × 41°` full-resolution field angles to publish a
 unit-distance footprint and nominal object-plane sampling lookup. It selects no
@@ -284,7 +393,8 @@ extended to all ten solids. Neither value enters the vehicle sum or selects a ma
 The avionics candidates likewise remain outside every vehicle sum until their exact
 variant, installed cable/mount scope and position are frozen. Total vehicle mass and CG
 remain unresolved. The documents preserve the calculation contract and still-missing
-input packets. They are documentary drafts against pending brief r5, not a component
+input packets. They began as documentary drafts against pending brief r5. Brief r7 is
+now canonical; proposed r8 remains unconfirmed (F22). They are still not a component
 selection or a new proof.
 
 The [configuration pre-selection matrix](configuration-preselection-matrix-20260908.md)
@@ -307,14 +417,15 @@ article and protocol; it is not automatically persisted as sensitivity. Its new 
 gate keeps source-backed optical geometry separate from a human-owned inspection
 criterion and later measured image quality.
 
-The freshly restarted read-only BFF now projects project r675 / Thread r93 under
-`engineering-workbench/0.6` and `engineering-cases/1.1`. The accepted assembly-integrity
-closeout is projected as a fresh artifact, and the RadialArm r2 case and project
-activity join remain present without the stale pre-`nm` `capture-invalid` symptom. This
-is current projection adoption, not a new visual UX audit. Revision r675 changes the
-Project snapshot and exposes the unanswered question on the planning surface, but it
-cannot create a whiteboard graph node while Thread remains r93. The operation registry
-has no pre-sizing-worksheet publication contract;
+Historical **2026-09-08** Workbench observation: the freshly restarted read-only BFF
+then projected project r675 / Thread r93 under `engineering-workbench/0.6` and
+`engineering-cases/1.1`. The accepted assembly-integrity closeout was projected as a
+fresh artifact, and the RadialArm r2 case and project activity join remained present
+without the stale pre-`nm` `capture-invalid` symptom. That was projection adoption at
+that tip, not a new visual UX audit, and it is not the 2026-09-12 saved tip. Revision
+r675 changed the Project snapshot and exposed the unanswered question on the planning
+surface, but it could not create a whiteboard graph node while Thread remained r93. The
+operation registry still has no pre-sizing-worksheet publication contract;
 [F21](frictions.md#f21--pre-sizing-worksheets-have-no-registered-thread-publication-path-open-deferred)
 records that deferred product boundary. The latest separate-profile browser interaction
 audit remains project r591 / Thread r83; no later visual audit is claimed here. The
@@ -328,7 +439,7 @@ unsupported `webrtc` CSP-directive warning remains. The Product tab remains remo
 requested; 3D stays on Project. The older r69 presentation ledger remains historical.
 Source attachments may be `different-basis`; preserved captures and historical
 admissions are not silently rewritten. Recross only through a registered surface when a
-current authoring capture or closure requires it. The BFF now declares the available v1
+current authoring capture or closure requires it. That BFF declared the available v1
 requirements-to-brief claim while retaining the original `TRACE GAP` separately. A fresh
 separate-profile headless browser audit of project r591 / Thread r83 selected the native
 camera-bracket requirement with no page errors and no non-GET API requests. It found the

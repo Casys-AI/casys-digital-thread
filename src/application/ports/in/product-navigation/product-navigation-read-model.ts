@@ -26,6 +26,10 @@ import type {
   ProjectSourceAttachmentSourceStatus,
   ProjectSourceAttachmentTarget,
 } from "../../../../domain/project-source-workspace/types.ts";
+import type {
+  ThreadRequirementHistoricalChain,
+  ThreadRequirementHistoricalEvaluation,
+} from "../../../../domain/thread/requirement-historical-evaluation.ts";
 import type { ThreadRequirementDefinitionAttachment } from "../../../../domain/thread/requirement-definition-scope.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
 
@@ -136,6 +140,8 @@ export interface ProductNavigationAttachment {
   kind: "source-file" | "artifact" | "requirement";
   id: string;
   label: string;
+  historicalEvaluations?: readonly ThreadRequirementHistoricalEvaluation[];
+  historicalChain?: ThreadRequirementHistoricalChain;
 }
 
 export interface ProductNavigationAttachments {
@@ -695,8 +701,49 @@ export function attachmentsForDefinition(
       kind: "requirement",
       id: requirement.requirementId,
       label: requirement.name,
+      ...historicalAttachmentFields(requirement),
     });
   }
+  const historicalById = new Map(
+    (requirementScopes ?? []).flatMap((requirement) =>
+      requirement.historicalEvaluations &&
+        requirement.historicalEvaluations.length > 0
+        ? [[requirement.requirementId, requirement] as const]
+        : []
+    ),
+  );
+  attachments.requirements = attachments.requirements.map((item) => {
+    if (item.historicalEvaluations || !historicalById.has(item.id)) return item;
+    const scoped = historicalById.get(item.id);
+    return scoped ? { ...item, ...historicalAttachmentFields(scoped) } : item;
+  });
   attachments.requirements.sort((left, right) => left.id.localeCompare(right.id));
   return attachments;
+}
+
+function historicalAttachmentFields(
+  requirement: ThreadRequirementDefinitionAttachment,
+): Pick<
+  ProductNavigationAttachment,
+  "historicalEvaluations" | "historicalChain"
+> {
+  if (
+    requirement.historicalEvaluations === undefined &&
+    requirement.historicalChain === undefined
+  ) {
+    return {};
+  }
+  if (
+    (requirement.historicalEvaluations === undefined ||
+      requirement.historicalEvaluations.length === 0) &&
+    requirement.historicalChain?.status !== "partial"
+  ) {
+    return {};
+  }
+  return {
+    historicalEvaluations: requirement.historicalEvaluations ?? [],
+    ...(requirement.historicalChain
+      ? { historicalChain: requirement.historicalChain }
+      : {}),
+  };
 }
