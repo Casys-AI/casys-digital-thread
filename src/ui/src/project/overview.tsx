@@ -20,6 +20,8 @@ import type {
 import { activityFeedNodes } from "../thread/feed-model.ts";
 import type { ThreadViewerSessionsProjection } from "../thread/viewer-sessions-client.ts";
 import { OverviewThreadHero } from "./overview-thread-hero.tsx";
+import { OverviewResponseIndex } from "./overview-response-index.tsx";
+import type { ProjectResponseBasis } from "./overview-response-index-model.ts";
 import type { OverviewThreadStageSummary } from "./overview-thread-d3-flow.tsx";
 import { cn } from "../lib/utils.ts";
 import {
@@ -75,6 +77,12 @@ export interface ProjectOverviewProps {
   /** Server-sealed, read-only clause provenance for requirements captures. */
   readonly requirementsBriefTraces?:
     readonly EngineeringWorkbenchRequirementsBriefTrace[];
+  /**
+   * Server-owned `project-response/1.0` payload. Absent on older hosts, in
+   * which case the response index stays out of the way and the old view is
+   * preserved. Validated strictly at render; never cast blindly.
+   */
+  readonly projectResponse?: unknown;
   /** Exact browser-safe session descriptors from the read-only Workbench BFF. */
   readonly viewerSessions?: ThreadViewerSessionsProjection;
   readonly viewerSessionsReady?: boolean;
@@ -98,6 +106,7 @@ export function ProjectOverview({
   activities,
   caseActivityJoins,
   requirementsBriefTraces,
+  projectResponse,
   viewerSessions,
   viewerSessionsReady,
   viewerHierarchyPending,
@@ -131,6 +140,28 @@ export function ProjectOverview({
       count: `${group.satisfiedGates}/${group.totalGates}`,
     }),
   );
+  const currentBrief = project.framing?.currentBrief;
+  /**
+   * Basis of this exact view for the response index. A received index bound
+   * to another project, brief revision or thread revision renders an
+   * explicit mismatch state instead of cross-basis links.
+   */
+  const expectedResponseBasis: ProjectResponseBasis | undefined = currentBrief
+    ? {
+      projectId: project.project.id,
+      projectRevision: project.revision,
+      brief: {
+        briefId: currentBrief.briefId,
+        snapshotId: currentBrief.id,
+        revision: currentBrief.revision,
+      },
+      thread: {
+        snapshotId: thread.evidenceFamilyGraph.asOf.snapshotId,
+        revision: thread.evidenceFamilyGraph.asOf.revision,
+        subjectId: thread.subject.id,
+      },
+    }
+    : undefined;
   const openOverviewEvidence = (reference: ThreadGraphRef) => {
     if (onOpenEvidence) {
       onOpenEvidence(reference);
@@ -298,6 +329,11 @@ export function ProjectOverview({
             stages={overviewStages}
             onOpenEvidence={openOverviewEvidence}
             onOpenActivity={openOverviewActivity}
+          />
+          <OverviewResponseIndex
+            response={projectResponse}
+            expectedBasis={expectedResponseBasis}
+            onOpenEvidence={openOverviewEvidence}
           />
           <div className="project-thread-bottom-hud">
             <div className="project-thread-now-hud">

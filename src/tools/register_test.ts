@@ -747,6 +747,7 @@ Deno.test(
       assertEquals(names.includes("project_product_inspect"), true);
       assertEquals(names.includes("project_product_search"), true);
       assertEquals(names.includes("project_source_closure"), true);
+      assertEquals(names.includes("project_response_read"), true);
       assertEquals(names.includes("project_product_navigation_roots"), false);
       assertEquals(names.includes("project_product_source_closure"), false);
     } finally {
@@ -963,6 +964,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
     "project_requirements_brief_trace_review",
     "project_requirements_recapture_review",
     "project_resource_capture",
+    "project_response_read",
     "project_sensitivity_base_evaluation_review",
     "project_sensitivity_edges_review",
     "project_sensitivity_study_seal_review",
@@ -1067,6 +1069,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
       "project_requirements_brief_trace_review",
       "project_requirements_recapture_review",
       "project_resource_capture",
+      "project_response_read",
       "project_sensitivity_base_evaluation_review",
       "project_sensitivity_edges_review",
       "project_sensitivity_study_seal_review",
@@ -1347,6 +1350,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_brief_requirements_review" ||
           tool.name === "project_requirements_brief_trace_review" ||
           tool.name === "project_requirements_recapture_review" ||
+          tool.name === "project_response_read" ||
           tool.name === "project_brief_architecture_review" ||
           tool.name === "project_thermal_method_sheet_seal_review" ||
           tool.name === "project_admitted_modelica_evaluation_closeout_review" ||
@@ -1379,6 +1383,7 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_brief_requirements_review" ||
           tool.name === "project_requirements_brief_trace_review" ||
           tool.name === "project_requirements_recapture_review" ||
+          tool.name === "project_response_read" ||
           tool.name === "project_brief_architecture_review" ||
           tool.name === "project_start" ||
           tool.name === "project_question_propose" ||

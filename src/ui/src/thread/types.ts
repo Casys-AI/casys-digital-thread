@@ -245,6 +245,7 @@ function isEvidenceWorkbenchSnapshot(
       "caseActivityJoins",
       "unresolvedEvidenceReferences",
       "requirementsBriefTraces",
+      "response",
     ]) || !hasRequiredKeys(candidate, [
       "schemaVersion",
       "surface",
@@ -271,7 +272,13 @@ function isEvidenceWorkbenchSnapshot(
       !isRequirementsBriefTraceList(
         candidate.requirementsBriefTraces,
         candidate.thread,
-      ))
+      )) ||
+    // The server-owned project response index (`project-response/1.0`) rides
+    // along as an optional record. A non-record here refuses the whole
+    // projection loudly; a malformed record stays admissible so the page
+    // survives and the index panel reports its own explicit unreadable
+    // state instead of silently dropping coverage.
+    (candidate.response !== undefined && !isRecord(candidate.response))
   ) {
     return false;
   }

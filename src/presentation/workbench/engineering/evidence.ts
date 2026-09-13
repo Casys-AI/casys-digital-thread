@@ -5,6 +5,7 @@ import type {
   RequirementsBriefRevisionIdentity,
   RequirementsBriefSourceImpactState,
 } from "../../../domain/architecture/requirements/requirements-brief-impact.ts";
+import type { ProjectResponseReadModel } from "../../../application/ports/in/project-response/project-response-read-model.ts";
 import type { LiveThreadWorkbenchSnapshot } from "./live-overlay.ts";
 import type { ENGINEERING_WORKBENCH_SCHEMA } from "./schema.ts";
 
@@ -35,6 +36,13 @@ export interface EngineeringEvidenceWorkbenchSnapshot
    */
   readonly requirementsBriefTraces?:
     readonly EngineeringWorkbenchRequirementsBriefTrace[];
+  /**
+   * Optional server-owned index of every approved brief item against recorded
+   * evidence. Populated only by a BFF that already resolved this Project and
+   * Thread. Absence is not a browser-side fallback. `available` means the
+   * index was readable, never that the response is ready.
+   */
+  readonly response?: ProjectResponseReadModel;
 }
 
 /** Literal historical-source state. It never authorizes a retry or rewrite. */

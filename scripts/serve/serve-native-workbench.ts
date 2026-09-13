@@ -118,6 +118,9 @@ import {
 import { CaptureProductStructureTraversal } from "../../src/adapters/architecture/renderer/capture-product-structure-traversal.ts";
 import { ProjectProductNavigation } from "../../src/application/use-cases/product-navigation/project-product-navigation.ts";
 import type { ProductNavigationUseCase } from "../../src/application/ports/in/product-navigation/product-navigation.ts";
+import type { ProjectResponseUseCase } from "../../src/application/ports/in/project-response/project-response.ts";
+import { ReadProjectResponse } from "../../src/application/use-cases/project-response/read-project-response.ts";
+import { ThreadProjectResponseEvidenceReader } from "../../src/adapters/thread/project-response-evidence-reader.ts";
 import { WorkbenchProductNavigationEvidenceAttachmentReader } from "../../src/adapters/thread/product-navigation-workbench.ts";
 import { ProjectSourceWorkspaceAuthoringAttachmentReader } from "../../src/adapters/project-source-workspace/product-navigation-authoring-attachment-reader.ts";
 import {
@@ -198,6 +201,11 @@ export interface NativeWorkbenchHandlerOptions {
   historyEvidenceCaptures?: RequirementsCaptureReader;
   /** Read-only store for independently versioned documentary correspondence claims. */
   requirementsBriefTraceCaptures?: RequirementsCaptureReader;
+  /**
+   * Same project-response use case as MCP. Workbench calls `.project` on the
+   * already-resolved GET/SSE snapshots and never selects a newer tip.
+   */
+  projectResponse?: ProjectResponseUseCase;
   /**
    * Optional exact architecture-capture/4.0 reopen for the standalone
    * product-navigation GET query. Same application port as MCP read tools.
@@ -1139,33 +1147,54 @@ async function projectWorkbenchSnapshot(
     unresolvedEvidenceReferences,
     REGISTERED_ENGINEERING_OPERATION_PATH_LANE_RESOLVER,
   );
-  if (
-    projected.surface !== "evidence" || !options.requirementsCaptures ||
-    !options.projectStore.getRevision
-  ) return projected;
-  return await enrichEngineeringEvidenceWorkbenchWithRequirementsBriefTraces(
-    projected,
-    {
-      sourceThread: snapshot,
-      projects: {
-        getRevision: options.projectStore.getRevision.bind(options.projectStore),
-      },
-      captures: options.requirementsCaptures,
-      ...(options.requirementsBriefTraceCaptures
-        ? {
-          claimHistory: {
-            projects: {
-              get: options.projectStore.get.bind(options.projectStore),
-              getRevision: options.projectStore.getRevision.bind(options.projectStore),
+  if (projected.surface !== "evidence") return projected;
+  const withTraces = options.requirementsCaptures && options.projectStore.getRevision
+    ? await enrichEngineeringEvidenceWorkbenchWithRequirementsBriefTraces(
+      projected,
+      {
+        sourceThread: snapshot,
+        projects: {
+          getRevision: options.projectStore.getRevision.bind(
+            options.projectStore,
+          ),
+        },
+        captures: options.requirementsCaptures,
+        ...(options.requirementsBriefTraceCaptures
+          ? {
+            claimHistory: {
+              projects: {
+                get: options.projectStore.get.bind(options.projectStore),
+                getRevision: options.projectStore.getRevision.bind(
+                  options.projectStore,
+                ),
+              },
+              snapshots: options.projectSnapshots ?? options.store,
+              captures: options.requirementsCaptures,
+              traces: options.requirementsBriefTraceCaptures,
             },
-            snapshots: options.projectSnapshots ?? options.store,
-            captures: options.requirementsCaptures,
-            traces: options.requirementsBriefTraceCaptures,
-          },
-        }
-        : {}),
-    },
+          }
+          : {}),
+      },
+    )
+    : projected;
+  return await enrichEngineeringEvidenceWorkbenchWithProjectResponse(
+    withTraces,
+    snapshot,
+    options,
   );
+}
+
+async function enrichEngineeringEvidenceWorkbenchWithProjectResponse(
+  projected: Extract<EngineeringWorkbenchSnapshot, { surface: "evidence" }>,
+  snapshot: ThreadSnapshot,
+  options: NativeWorkbenchHandlerOptions,
+): Promise<Extract<EngineeringWorkbenchSnapshot, { surface: "evidence" }>> {
+  if (!options.projectResponse) return projected;
+  const response = await options.projectResponse.project({
+    project: projected.project,
+    thread: snapshot,
+  });
+  return { ...projected, response };
 }
 
 async function resolveDeclaredProjectHead(
@@ -1923,6 +1952,23 @@ if (import.meta.main) {
     new Base64EngineeringAssetReader(projectBaselineAssetDirectory),
   ]);
   const liveUpdates = new FileLiveThreadUpdateStore(liveUpdateDirectory);
+  const requirementsBriefTraceCaptures = createRequirementsBriefTraceStore(
+    REQUIREMENTS_CAPTURE_DESCRIPTOR.directory,
+  );
+  const projectResponse = new ReadProjectResponse({
+    projects: projectStore,
+    snapshots: projectSnapshots ?? store,
+    evidence: new ThreadProjectResponseEvidenceReader({
+      projects: projectStore,
+      captures: requirementsCaptures,
+      claimHistory: {
+        projects: projectStore,
+        snapshots: projectSnapshots ?? store,
+        captures: requirementsCaptures,
+        traces: requirementsBriefTraceCaptures,
+      },
+    }),
+  });
   const handler = createNativeWorkbenchHandler({
     store,
     projectStore,
@@ -1937,9 +1983,8 @@ if (import.meta.main) {
     projectSourceWorkspace,
     requirementsCaptures,
     historyEvidenceCaptures,
-    requirementsBriefTraceCaptures: createRequirementsBriefTraceStore(
-      REQUIREMENTS_CAPTURE_DESCRIPTOR.directory,
-    ),
+    requirementsBriefTraceCaptures,
+    projectResponse,
     productStructureCaptures: archCaptures,
     geometryCaptures,
     sysmlSourceAnalysis,

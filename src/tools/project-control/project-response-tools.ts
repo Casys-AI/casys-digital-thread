@@ -1,0 +1,684 @@
+/**
+ * Read-only MCP surface for the server-owned project-response index.
+ *
+ * Default payload is a bounded canonical summary. Named item detail and
+ * full evidence require the exact expected basis. Workbench keeps the full
+ * internal result through ProjectResponseUseCase.project.
+ */
+
+import type { McpApp, MCPTool } from "@casys/mcp-server";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import type { ProjectBriefItemKind } from "../../domain/project/project-brief.ts";
+import type {
+  ProjectResponseItem,
+  ProjectResponseReadModel,
+  ProjectResponseReadQuery,
+  ProjectResponseUseCase,
+} from "../../application/ports/in/project-response/project-response.ts";
+import {
+  parseProjectResponseBasis,
+  PROJECT_RESPONSE_SCHEMA,
+} from "../../application/ports/in/project-response/project-response.ts";
+import { PROJECT_ID, READ_ONLY_ANNOTATIONS } from "./mcp-tool-schemas.ts";
+
+export interface ProjectResponseToolDependencies {
+  readonly projectResponse?: ProjectResponseUseCase;
+}
+
+export const PROJECT_RESPONSE_SUMMARY_MAX_BYTES = 8192;
+
+export const PROJECT_RESPONSE_TOOL_NAME = "project_response_read" as const;
+
+const ID = {
+  type: "string",
+  minLength: 1,
+  maxLength: 256,
+  pattern: "^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$",
+  not: { const: "latest" },
+} as const;
+
+const BRIEF_ITEM_KINDS = [
+  "objective",
+  "primary-user",
+  "mission-scenario",
+  "operating-environment",
+  "success-criterion",
+  "constraint",
+  "exclusion",
+  "intended-market",
+  "manufacturing-jurisdiction",
+  "operating-jurisdiction",
+  "compliance-target",
+  "verification-activity",
+  "manufacturing-evidence",
+  "observed-fact",
+  "assumption",
+  "open-question",
+  "proposed-decision",
+] as const satisfies readonly ProjectBriefItemKind[];
+
+const CORRESPONDENCE = [
+  "native",
+  "documentary",
+  "unresolved",
+  "TRACE GAP",
+] as const;
+
+const DIAGNOSTIC = {
+  type: "object",
+  properties: {
+    code: { type: "string", minLength: 1 },
+    message: { type: "string", minLength: 1 },
+  },
+  required: ["code", "message"],
+  additionalProperties: false,
+} as const;
+
+const BRIEF_IDENTITY = {
+  type: "object",
+  properties: {
+    briefId: ID,
+    snapshotId: ID,
+    revision: { type: "integer", minimum: 1 },
+  },
+  required: ["briefId", "snapshotId", "revision"],
+  additionalProperties: false,
+} as const;
+
+const THREAD_IDENTITY = {
+  type: "object",
+  properties: {
+    snapshotId: ID,
+    revision: { type: "integer", minimum: 1 },
+    subjectId: ID,
+  },
+  required: ["snapshotId", "revision", "subjectId"],
+  additionalProperties: false,
+} as const;
+
+const BASIS = {
+  type: "object",
+  properties: {
+    projectId: PROJECT_ID,
+    projectRevision: { type: "integer", minimum: 1 },
+    brief: BRIEF_IDENTITY,
+    thread: THREAD_IDENTITY,
+  },
+  required: ["projectId", "projectRevision", "brief"],
+  additionalProperties: false,
+} as const;
+
+const COUNTS = {
+  type: "object",
+  properties: {
+    items: { type: "integer", minimum: 0 },
+    included: { type: "integer", minimum: 0 },
+    omitted: { type: "integer", minimum: 0 },
+    gaps: { type: "integer", minimum: 0 },
+    byKind: {
+      type: "object",
+      additionalProperties: { type: "integer", minimum: 0 },
+    },
+    byCorrespondence: {
+      type: "object",
+      additionalProperties: { type: "integer", minimum: 0 },
+    },
+  },
+  required: [
+    "items",
+    "included",
+    "omitted",
+    "gaps",
+    "byKind",
+    "byCorrespondence",
+  ],
+  additionalProperties: false,
+} as const;
+
+const OMISSION = {
+  type: "object",
+  properties: {
+    declared: { const: true },
+    omittedItemCount: { type: "integer", minimum: 1 },
+    afterItemId: ID,
+    retrieval: {
+      type: "object",
+      properties: {
+        tool: { const: PROJECT_RESPONSE_TOOL_NAME },
+        arguments: {
+          type: "object",
+          properties: {
+            projectId: PROJECT_ID,
+            expectedBasis: BASIS,
+            afterItemId: ID,
+            evidence: { enum: ["summary", "full-evidence"] },
+          },
+          required: [
+            "projectId",
+            "expectedBasis",
+            "afterItemId",
+            "evidence",
+          ],
+          additionalProperties: false,
+        },
+      },
+      required: ["tool", "arguments"],
+      additionalProperties: false,
+    },
+  },
+  required: ["declared", "omittedItemCount", "afterItemId", "retrieval"],
+  additionalProperties: false,
+} as const;
+
+const SUMMARY_ROW = {
+  type: "object",
+  properties: {
+    itemId: ID,
+    kind: { type: "string", enum: BRIEF_ITEM_KINDS },
+    correspondence: { type: "string", enum: CORRESPONDENCE },
+    requirementCount: { type: "integer", minimum: 0 },
+    currentEvaluationCount: { type: "integer", minimum: 0 },
+    historicalEvaluationCount: { type: "integer", minimum: 0 },
+    gapCount: { type: "integer", minimum: 0 },
+  },
+  required: [
+    "itemId",
+    "kind",
+    "correspondence",
+    "requirementCount",
+    "currentEvaluationCount",
+    "historicalEvaluationCount",
+    "gapCount",
+  ],
+  additionalProperties: false,
+} as const;
+
+const ENVELOPE = {
+  schemaVersion: { const: PROJECT_RESPONSE_SCHEMA },
+  status: { enum: ["available", "unavailable", "unresolved"] },
+  basis: BASIS,
+  diagnostics: { type: "array", items: DIAGNOSTIC },
+  grants: { const: "none" },
+} as const;
+
+const SUMMARY_OUTPUT = {
+  type: "object",
+  properties: {
+    ...ENVELOPE,
+    view: { const: "summary" },
+    counts: COUNTS,
+    items: { type: "array", items: SUMMARY_ROW },
+    omission: OMISSION,
+  },
+  required: [
+    "schemaVersion",
+    "status",
+    "view",
+    "counts",
+    "items",
+    "diagnostics",
+    "grants",
+  ],
+  additionalProperties: false,
+} as const;
+
+const ITEM_OUTPUT = {
+  type: "object",
+  properties: {
+    ...ENVELOPE,
+    view: { const: "item" },
+    itemId: ID,
+    items: { type: "array", maxItems: 1 },
+  },
+  required: [
+    "schemaVersion",
+    "status",
+    "view",
+    "items",
+    "diagnostics",
+    "grants",
+  ],
+  additionalProperties: false,
+} as const;
+
+const FULL_OUTPUT = {
+  type: "object",
+  properties: {
+    ...ENVELOPE,
+    view: { const: "full-evidence" },
+    counts: COUNTS,
+    items: { type: "array" },
+    omission: OMISSION,
+  },
+  required: [
+    "schemaVersion",
+    "status",
+    "view",
+    "counts",
+    "items",
+    "diagnostics",
+    "grants",
+  ],
+  additionalProperties: false,
+} as const;
+
+const projectResponseReadTool: MCPTool = {
+  name: PROJECT_RESPONSE_TOOL_NAME,
+  description:
+    "Read-only index of every current human-approved brief item against recorded evidence. Default is a bounded canonical summary (≤8KiB) of exact item ids, kinds, independent correspondence and gap counts; statements, full brief text and solver bytes are omitted. available means the index was readable, never that the response is ready or a clause is satisfied. Named item detail (itemId) and full-evidence require the exact expectedBasis from that summary. Rows omitted to stay in budget are declared; retrieve them without loss with the same expectedBasis and afterItemId of the last included item. No provider, runtime, config or GET command. Grants none. Workbench stays GET/SSE.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      projectId: PROJECT_ID,
+      expectedBasis: BASIS,
+      itemId: ID,
+      afterItemId: ID,
+      evidence: { enum: ["summary", "full-evidence"] },
+    },
+    required: ["projectId"],
+    additionalProperties: false,
+    dependentRequired: {
+      itemId: ["expectedBasis"],
+      afterItemId: ["expectedBasis"],
+    },
+    allOf: [
+      {
+        if: {
+          properties: { evidence: { const: "full-evidence" } },
+          required: ["evidence"],
+        },
+        then: { required: ["expectedBasis"] },
+      },
+      {
+        not: { required: ["itemId", "afterItemId"] },
+      },
+      {
+        not: {
+          required: ["itemId", "evidence"],
+          properties: { evidence: { const: "full-evidence" } },
+        },
+      },
+    ],
+  },
+  outputSchema: {
+    oneOf: [SUMMARY_OUTPUT, ITEM_OUTPUT, FULL_OUTPUT],
+  },
+  annotations: READ_ONLY_ANNOTATIONS,
+};
+
+export function registerProjectResponseTools(
+  app: McpApp,
+  dependencies: ProjectResponseToolDependencies,
+): void {
+  const useCase = dependencies.projectResponse;
+  if (!useCase) return;
+  app.registerTool(projectResponseReadTool, async (args) => {
+    const request = parseProjectResponseReadArgs(args);
+    const model = await useCase.read(request.query);
+    const presented = presentProjectResponse(model, request);
+    return {
+      content: contentFor(presented),
+      structuredContent: presented as unknown as Record<string, unknown>,
+    };
+  });
+}
+
+interface ProjectResponseReadArgs {
+  readonly query: ProjectResponseReadQuery;
+  readonly itemId?: string;
+  readonly afterItemId?: string;
+  readonly evidence: "summary" | "full-evidence";
+}
+
+export interface ProjectResponseSummaryRow {
+  readonly itemId: string;
+  readonly kind: ProjectBriefItemKind;
+  readonly correspondence: ProjectResponseItem["correspondence"];
+  readonly requirementCount: number;
+  readonly currentEvaluationCount: number;
+  readonly historicalEvaluationCount: number;
+  readonly gapCount: number;
+}
+
+interface ProjectResponseCounts {
+  readonly items: number;
+  readonly included: number;
+  readonly omitted: number;
+  readonly gaps: number;
+  readonly byKind: Readonly<Record<string, number>>;
+  readonly byCorrespondence: Readonly<Record<string, number>>;
+}
+
+interface ProjectResponseOmission {
+  readonly declared: true;
+  readonly omittedItemCount: number;
+  readonly afterItemId: string;
+  readonly retrieval: {
+    readonly tool: typeof PROJECT_RESPONSE_TOOL_NAME;
+    readonly arguments: {
+      readonly projectId: string;
+      readonly expectedBasis: NonNullable<ProjectResponseReadModel["basis"]>;
+      readonly afterItemId: string;
+      readonly evidence: "summary" | "full-evidence";
+    };
+  };
+}
+
+export interface ProjectResponseToolResult {
+  readonly schemaVersion: typeof PROJECT_RESPONSE_SCHEMA;
+  readonly status: ProjectResponseReadModel["status"];
+  readonly view: "summary" | "item" | "full-evidence";
+  readonly basis?: ProjectResponseReadModel["basis"];
+  readonly itemId?: string;
+  readonly counts?: ProjectResponseCounts;
+  readonly items: readonly unknown[];
+  readonly omission?: ProjectResponseOmission;
+  readonly diagnostics: ProjectResponseReadModel["diagnostics"];
+  readonly grants: "none";
+}
+
+export function parseProjectResponseReadArgs(
+  args: Record<string, unknown>,
+): ProjectResponseReadArgs {
+  const projectId = String(args.projectId);
+  if (projectId === "latest") {
+    throw new TypeError("projectId cannot use a latest alias.");
+  }
+  const itemId = optionalId(args.itemId, "itemId");
+  const afterItemId = optionalId(args.afterItemId, "afterItemId");
+  const evidence = args.evidence === "full-evidence" ? "full-evidence" : "summary";
+  if (itemId && afterItemId) {
+    throw new TypeError("itemId and afterItemId cannot be combined.");
+  }
+  if (itemId && evidence === "full-evidence") {
+    throw new TypeError("itemId cannot be combined with full-evidence.");
+  }
+  const expectedBasis = args.expectedBasis === undefined
+    ? undefined
+    : parseProjectResponseBasis(args.expectedBasis, "expectedBasis");
+  if ((itemId || afterItemId || evidence === "full-evidence") && !expectedBasis) {
+    throw new TypeError(
+      "expectedBasis is required for named item detail, continuation and full-evidence.",
+    );
+  }
+  return {
+    query: {
+      projectId,
+      ...(expectedBasis ? { expectedBasis } : {}),
+    },
+    ...(itemId ? { itemId } : {}),
+    ...(afterItemId ? { afterItemId } : {}),
+    evidence,
+  };
+}
+
+export function presentProjectResponse(
+  model: ProjectResponseReadModel,
+  request: ProjectResponseReadArgs,
+): ProjectResponseToolResult {
+  const envelope = {
+    schemaVersion: PROJECT_RESPONSE_SCHEMA,
+    status: model.status,
+    ...(model.basis ? { basis: model.basis } : {}),
+    diagnostics: model.diagnostics,
+    grants: "none" as const,
+  };
+  if (request.itemId) {
+    const item = model.status === "available"
+      ? model.items.find((candidate) => candidate.item.id === request.itemId)
+      : undefined;
+    return {
+      ...envelope,
+      view: "item",
+      itemId: request.itemId,
+      items: item ? [item] : [],
+      diagnostics: item || model.status !== "available" ? model.diagnostics : [
+        ...model.diagnostics,
+        {
+          code: "item.unknown",
+          message:
+            `Approved brief item ${request.itemId} is not present on this exact basis.`,
+        },
+      ],
+      status: item || model.status !== "available" ? model.status : "unresolved",
+    };
+  }
+  const start = sliceStart(model.items, request.afterItemId);
+  const remaining = model.items.slice(start);
+  if (request.evidence === "full-evidence") {
+    const included = takeFitting(
+      remaining,
+      (items) =>
+        fullPage(
+          envelope,
+          model,
+          remaining,
+          items,
+          request.query.projectId,
+        ),
+      PROJECT_RESPONSE_SUMMARY_MAX_BYTES,
+      "oversized-single",
+    );
+    return fullPage(
+      envelope,
+      model,
+      remaining,
+      included,
+      request.query.projectId,
+    );
+  }
+  const rows = remaining.map(summaryRow);
+  const included = takeFitting(
+    rows,
+    (items) =>
+      summaryPage(
+        envelope,
+        model,
+        remaining,
+        items,
+        request.query.projectId,
+      ),
+    PROJECT_RESPONSE_SUMMARY_MAX_BYTES,
+    "strict",
+  );
+  return summaryPage(
+    envelope,
+    model,
+    remaining,
+    included,
+    request.query.projectId,
+  );
+}
+
+function summaryPage(
+  envelope: Omit<ProjectResponseToolResult, "view" | "items">,
+  model: ProjectResponseReadModel,
+  remaining: readonly ProjectResponseItem[],
+  included: readonly ProjectResponseSummaryRow[],
+  projectId: string,
+): ProjectResponseToolResult {
+  return {
+    ...envelope,
+    view: "summary",
+    counts: countsFor(model.items, remaining, included.length),
+    items: included,
+    ...omissionFor(
+      model,
+      remaining,
+      included,
+      projectId,
+      "summary",
+      (row) => row.itemId,
+    ),
+  };
+}
+
+function fullPage(
+  envelope: Omit<ProjectResponseToolResult, "view" | "items">,
+  model: ProjectResponseReadModel,
+  remaining: readonly ProjectResponseItem[],
+  included: readonly ProjectResponseItem[],
+  projectId: string,
+): ProjectResponseToolResult {
+  return {
+    ...envelope,
+    view: "full-evidence",
+    counts: countsFor(model.items, remaining, included.length),
+    items: included,
+    ...omissionFor(
+      model,
+      remaining,
+      included,
+      projectId,
+      "full-evidence",
+      (item) => item.item.id,
+    ),
+  };
+}
+
+function omissionFor<T>(
+  model: ProjectResponseReadModel,
+  remaining: readonly ProjectResponseItem[],
+  included: readonly T[],
+  projectId: string,
+  evidence: "summary" | "full-evidence",
+  idOf: (row: T) => string,
+): { readonly omission: ProjectResponseOmission } | Record<string, never> {
+  const omittedItemCount = remaining.length - included.length;
+  if (omittedItemCount <= 0 || included.length === 0 || !model.basis) {
+    return {};
+  }
+  const afterItemId = idOf(included[included.length - 1]!);
+  return {
+    omission: {
+      declared: true,
+      omittedItemCount,
+      afterItemId,
+      retrieval: {
+        tool: PROJECT_RESPONSE_TOOL_NAME,
+        arguments: {
+          projectId,
+          expectedBasis: model.basis,
+          afterItemId,
+          evidence,
+        },
+      },
+    },
+  };
+}
+
+function countsFor(
+  all: readonly ProjectResponseItem[],
+  remaining: readonly ProjectResponseItem[],
+  included: number,
+): ProjectResponseCounts {
+  const byKind: Record<string, number> = {};
+  const byCorrespondence: Record<string, number> = {};
+  let gaps = 0;
+  for (const item of all) {
+    byKind[item.item.kind] = (byKind[item.item.kind] ?? 0) + 1;
+    byCorrespondence[item.correspondence] =
+      (byCorrespondence[item.correspondence] ?? 0) + 1;
+    gaps += item.gaps.length;
+  }
+  return {
+    items: all.length,
+    included,
+    omitted: remaining.length - included,
+    gaps,
+    byKind,
+    byCorrespondence,
+  };
+}
+
+function summaryRow(item: ProjectResponseItem): ProjectResponseSummaryRow {
+  let currentEvaluationCount = 0;
+  let historicalEvaluationCount = 0;
+  for (const requirement of item.requirements) {
+    for (const evaluation of requirement.evaluations) {
+      if (evaluation.applicability === "current") currentEvaluationCount++;
+      if (evaluation.applicability === "historical") historicalEvaluationCount++;
+    }
+  }
+  return {
+    itemId: item.item.id,
+    kind: item.item.kind,
+    correspondence: item.correspondence,
+    requirementCount: item.requirements.length,
+    currentEvaluationCount,
+    historicalEvaluationCount,
+    gapCount: item.gaps.length,
+  };
+}
+
+function sliceStart(
+  items: readonly ProjectResponseItem[],
+  afterItemId: string | undefined,
+): number {
+  if (!afterItemId) return 0;
+  const index = items.findIndex((item) => item.item.id === afterItemId);
+  if (index === -1) {
+    throw new TypeError(
+      "afterItemId is not an item on this exact project-response basis.",
+    );
+  }
+  return index + 1;
+}
+
+function takeFitting<T>(
+  remaining: readonly T[],
+  page: (items: readonly T[]) => unknown,
+  maxBytes: number,
+  overflow: "strict" | "oversized-single",
+): readonly T[] {
+  let count = remaining.length;
+  while (count > 0) {
+    const included = remaining.slice(0, count);
+    if (byteLength(page(included)) <= maxBytes) return included;
+    count--;
+  }
+  const empty = remaining.slice(0, 0);
+  if (byteLength(page(empty)) > maxBytes) {
+    throw new TypeError("Project response metadata exceeds its fixed bound.");
+  }
+  if (remaining.length === 0) return empty;
+  if (overflow === "oversized-single") {
+    return remaining.slice(0, 1);
+  }
+  throw new TypeError(
+    "Project response summary row exceeds its fixed 8KiB bound.",
+  );
+}
+
+function byteLength(value: unknown): number {
+  return new TextEncoder().encode(deterministicJson(value)).byteLength;
+}
+
+function optionalId(value: unknown, path: string): string | undefined {
+  if (value === undefined) return undefined;
+  const id = String(value);
+  if (!id || id === "latest") {
+    throw new TypeError(`${path} cannot use a latest alias.`);
+  }
+  return id;
+}
+
+function contentFor(result: ProjectResponseToolResult): string {
+  if (result.status !== "available") {
+    return `Project response is ${result.status}. The expected basis was not mixed with a newer tip. Correspondence is recorded evidence, not clause satisfaction. Grants none.`;
+  }
+  if (result.view === "item") {
+    return `Project response item ${result.itemId} on the exact expected basis. Correspondence is recorded evidence, not clause satisfaction. Grants none.`;
+  }
+  const omitted = result.omission
+    ? ` ${result.omission.omittedItemCount} later items are omitted; retrieve them with the returned expectedBasis and afterItemId.`
+    : "";
+  if (result.view === "full-evidence") {
+    return `Project response full evidence for ${
+      result.counts?.included ?? 0
+    } approved brief items on the exact expected basis.${omitted} Artifact bytes, source texts and solver outputs stay omitted. Grants none.`;
+  }
+  return `Project response summary for ${result.counts?.included ?? 0} of ${
+    result.counts?.items ?? 0
+  } approved brief items on the exact current basis.${omitted} Correspondence is recorded evidence, not clause satisfaction. Grants none.`;
+}
