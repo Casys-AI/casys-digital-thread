@@ -324,8 +324,8 @@ export class RecordSealDocumentaryClauseResponseRunExecutor {
         `Documentary clause-response run ${command.runId} has no unique exact completion receipt bound to its immutable project revision and Thread result.`,
       );
     }
-    const basis = requireBasis(run);
-    const result = run.resultSnapshot;
+    const basis = requireBasis(completedRun);
+    const result = completedRun.resultSnapshot;
     if (!result) {
       throw invalidTransition(
         "The completed clause-response run has no exact Thread result snapshot.",
@@ -343,18 +343,21 @@ export class RecordSealDocumentaryClauseResponseRunExecutor {
       );
     }
     const base = await exactSnapshot(this.#d.snapshots, basis);
-    const approval = await requireDocumentaryClauseResponseApproval(project, run);
+    const approval = await requireDocumentaryClauseResponseApproval(
+      completedProject,
+      completedRun,
+    );
     const inputs = await this.assertReviewedInputs(
-      project,
-      run,
+      completedProject,
+      completedRun,
       base,
       approval.decision,
       approval.proposal,
       "historical",
     );
     const expected = await buildMaterialization(
-      project,
-      run,
+      completedProject,
+      completedRun,
       base,
       approval.decision,
       approval.proposal,
@@ -363,7 +366,8 @@ export class RecordSealDocumentaryClauseResponseRunExecutor {
     if (
       deterministicJson(snapshot) !== deterministicJson(expected.successor) ||
       !sameSnapshotRef(result, snapshotRef(expected.successor)) ||
-      deterministicJson(run.evidenceRefs) !== deterministicJson(expected.evidenceRefs)
+      deterministicJson(completedRun.evidenceRefs) !==
+        deterministicJson(expected.evidenceRefs)
     ) {
       throw invalidTransition(
         "The completed clause-response run no longer equals its exact reconstructed documentary successor.",
@@ -375,7 +379,7 @@ export class RecordSealDocumentaryClauseResponseRunExecutor {
         "The completed clause-response run's canonical CAS record is unavailable or changed.",
       );
     }
-    assertExactCompletedAttachment(project, run, snapshot, expected);
+    assertExactCompletedAttachment(completedProject, completedRun, snapshot, expected);
     await this.#d.commands.completeRun(
       origin,
       completionCommand(command, completedProject.revision - 1, expected),

@@ -29,6 +29,7 @@ import type {
   ProjectResponseV1Item,
 } from "../../../domain/project/project-response.ts";
 import { DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX } from "../../../domain/record/documentary-clause-response.ts";
+import { AGENT_RESOURCE_URI_PATTERN } from "../../../domain/resource/agent-resource-reference.ts";
 import {
   isProjectResponseV2,
   parseProjectResponseBasis,
@@ -107,6 +108,11 @@ const SOURCE_STATE: readonly string[] = [
   "unchanged",
   "changed",
   "removed",
+  "brief-unavailable",
+];
+const CURRENT_CLAUSE_RESPONSE_SOURCE_STATE: readonly string[] = [
+  "unchanged",
+  "changed",
   "brief-unavailable",
 ];
 const FRESHNESS_STATUS: readonly ThreadFreshnessStatus[] = [
@@ -514,6 +520,7 @@ function parseClauseResponse(
   value: unknown,
   path: string,
   issues: ProjectResponseDiagnostic[],
+  allowRemoved = false,
 ): ProjectResponseClauseResponse | undefined {
   if (!isRecord(value)) {
     issues.push(issue("response.invalid-shape", `${path} must be an object.`));
@@ -528,7 +535,7 @@ function parseClauseResponse(
   );
   checkLiteral(
     value.sourceState,
-    SOURCE_STATE,
+    allowRemoved ? SOURCE_STATE : CURRENT_CLAUSE_RESPONSE_SOURCE_STATE,
     `${path}.sourceState`,
     issues,
   );
@@ -691,11 +698,14 @@ function parseClauseSourceRef(
       );
       return undefined;
     }
-    if (!isNonEmptyString(value.uri)) {
+    if (
+      !isNonEmptyString(value.uri) ||
+      !AGENT_RESOURCE_URI_PATTERN.test(value.uri)
+    ) {
       issues.push(
         issue(
           "response.invalid-shape",
-          `${path} agent-resource must carry uri.`,
+          `${path} agent-resource must carry a canonical resource uri.`,
         ),
       );
       return undefined;
@@ -813,6 +823,7 @@ export function parseProjectResponse(
           entry,
           `historicalClauseResponses[${index}]`,
           issues,
+          true,
         );
         if (!parsed) break;
         if (

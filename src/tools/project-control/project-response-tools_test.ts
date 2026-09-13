@@ -943,6 +943,7 @@ Deno.test("public clause source schema requires exactly the discriminator's iden
       {},
       { kind: "future" },
       { kind: "agent-resource" },
+      { kind: "agent-resource", uri: "casys://synthetic/source" },
       { kind: "thread-artifact" },
       { kind: "agent-resource", artifactId: "artifact.synthetic.source" },
       { kind: "thread-artifact", uri: "casys://synthetic/source" },
@@ -1065,6 +1066,22 @@ Deno.test("removed clause-response answers stay out of default summary and appea
     app.tool(PROJECT_RESPONSE_TOOL_NAME).outputSchema!,
   );
   assertEquals(validate.validate({ ...full }).valid, true);
+  const currentItem = full.items[0] as ProjectResponseItem;
+  assertEquals(
+    validate.validate({
+      ...full,
+      items: [{
+        ...currentItem,
+        clauseResponses: [{
+          ...full.historicalClauseResponses?.[0],
+          sourceItemId: currentItem.item.id,
+          sourceState: "removed",
+          applicability: "current",
+        }],
+      }],
+    }).valid,
+    false,
+  );
   for (
     const changed of [
       { applicability: "current" },

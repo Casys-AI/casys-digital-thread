@@ -15,6 +15,7 @@ import {
   type ProjectResponseTraceFact,
 } from "../../application/ports/out/project-response/project-response-evidence-reader.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
+import { DOCUMENTARY_CLAUSE_RESPONSE_URI_PREFIX } from "../../domain/record/documentary-clause-response.ts";
 import {
   archivedRefKeys,
   type ThreadSnapshot,
@@ -164,7 +165,22 @@ async function readClauseResponses(input: {
   readonly records: readonly ProjectResponseClauseResponseFact[];
   readonly failure?: ProjectResponseClauseResponseFailure;
 }> {
-  if (!input.captures) return { records: [] };
+  if (!input.captures) {
+    if (
+      !input.thread.artifacts.some((artifact) =>
+        artifact.uri?.startsWith(DOCUMENTARY_CLAUSE_RESPONSE_URI_PREFIX)
+      )
+    ) return { records: [] };
+    return {
+      records: [],
+      failure: {
+        status: "unavailable",
+        code: "clause-response.unavailable",
+        message:
+          "Declared documentary clause-response history cannot be reopened without its exact CAS store.",
+      },
+    };
+  }
   if (!input.snapshots) {
     return {
       records: [],

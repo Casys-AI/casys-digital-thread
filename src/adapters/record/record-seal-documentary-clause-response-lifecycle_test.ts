@@ -177,6 +177,54 @@ Deno.test({
         "no unique exact completion receipt",
       );
 
+      const historyExecutor = (
+        projects: Pick<
+          typeof baseline.projects,
+          "get" | "getRevision"
+        >,
+      ) =>
+        new RecordSealDocumentaryClauseResponseRunExecutor({
+          projects,
+          snapshots: baseline.snapshots,
+          captures,
+          resources: persisted.reopen,
+          commands: baseline.commands,
+          lease: new FileEngineeringProjectRunLease(`${root}/history-leases`),
+        });
+      const withoutAttachment = (project: EngineeringProjectSnapshot) => ({
+        ...project,
+        workItems: project.workItems.map((item) =>
+          item.id === "seal-exclusion-r1" ? { ...item, evidenceRefs: [] } : item
+        ),
+      });
+      const replayCommand = {
+        commandId: "execute-first",
+        projectId: PROJECT_ID,
+        expectedRevision: first.queuedRevision,
+        issuedAt: "2026-09-13T10:00:00.000Z",
+        runId: "run:clause-r1",
+      };
+      const historicalAttachment = historyExecutor({
+        get: async (id) => {
+          const current = await baseline.projects.get(id);
+          return current ? withoutAttachment(current) : undefined;
+        },
+        getRevision: (id, revision) => baseline.projects.getRevision(id, revision),
+      });
+      await historicalAttachment.execute(AGENT, replayCommand);
+      const missingHistoricalAttachment = historyExecutor({
+        get: (id) => baseline.projects.get(id),
+        getRevision: async (id, revision) => {
+          const historical = await baseline.projects.getRevision(id, revision);
+          return historical ? withoutAttachment(historical) : undefined;
+        },
+      });
+      await assertRejects(
+        () => missingHistoricalAttachment.execute(AGENT, replayCommand),
+        EngineeringProjectCommandError,
+        "not attached to exactly one declared successor",
+      );
+
       const second = await sealClauseResponse({
         baseline,
         review,
@@ -373,6 +421,29 @@ Deno.test({
         })),
       });
       assertRefused(sourceIdentityMismatch, "clause-response.unavailable");
+
+      const changedSuccessorSource = await readerFor({
+        snapshots: snapshotOverride(baseline, thread.id, (snapshot) => ({
+          ...snapshot,
+          artifacts: snapshot.artifacts.map((artifact) =>
+            artifact.id === sourceRef.artifactId
+              ? { ...artifact, name: "Different source in the published successor" }
+              : artifact
+          ),
+        })),
+      });
+      assertRefused(changedSuccessorSource, "clause-response.unavailable");
+      const uncomposedCas = await new ReadProjectResponse({
+        projects: baseline.projects,
+        snapshots: baseline.snapshots,
+        evidence: new ThreadProjectResponseEvidenceReader({
+          projects: baseline.projects,
+          snapshots: baseline.snapshots,
+          captures: { read: () => Promise.resolve(undefined) },
+          resources: persisted.reopen,
+        }),
+      }).project({ project, thread });
+      assertRefused(uncomposedCas, "clause-response.unavailable");
 
       const declaredFirst = thread.artifacts.find((artifact) =>
         artifact.uri?.startsWith(DOCUMENTARY_CLAUSE_RESPONSE_URI_PREFIX)

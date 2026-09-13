@@ -165,7 +165,25 @@ export async function readDocumentaryClauseResponseHistory(input: {
     }
     validateThreadSnapshot(base);
     validateThreadSnapshot(result);
-    await reopenExactCaptureSources(capture.sources, base, d.resources);
+    const threadInputs: DocumentaryClauseResponseCapture["sources"] = [
+      ...capture.sources,
+      ...(capture.claim.predecessor
+        ? [{ kind: "thread-artifact" as const, ...capture.claim.predecessor }]
+        : []),
+    ];
+    await reopenExactCaptureSources(threadInputs, base, d.resources);
+    for (const id of inputIds) {
+      const historical = base.artifacts.find((item) => item.id === id);
+      const published = result.artifacts.find((item) => item.id === id);
+      if (
+        !historical ||
+        deterministicJson(historical) !== deterministicJson(published)
+      ) {
+        reject(
+          "A clause-response Thread input was not preserved unchanged from its reviewed basis.",
+        );
+      }
+    }
     if (
       deterministicJson(result.artifacts.find((item) => item.id === artifact.id)) !==
         deterministicJson(artifact)

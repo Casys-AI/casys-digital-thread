@@ -24,6 +24,7 @@ import {
   PROJECT_RESPONSE_SCHEMA,
 } from "../../application/ports/in/project-response/project-response.ts";
 import { DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX } from "../../domain/record/documentary-clause-response.ts";
+import { AGENT_RESOURCE_REFERENCE_SCHEMA } from "../../domain/resource/agent-resource-reference.ts";
 import { PROJECT_ID, READ_ONLY_ANNOTATIONS } from "./mcp-tool-schemas.ts";
 
 export interface ProjectResponseToolDependencies {
@@ -59,6 +60,12 @@ const SOURCE_STATE = [
   "unchanged",
   "changed",
   "removed",
+  "brief-unavailable",
+] as const;
+
+const CURRENT_CLAUSE_RESPONSE_SOURCE_STATE = [
+  "unchanged",
+  "changed",
   "brief-unavailable",
 ] as const;
 
@@ -319,7 +326,10 @@ const CLAUSE_SOURCE_REF = {
   oneOf: [
     {
       type: "object",
-      properties: { kind: { const: "agent-resource" }, uri: STRING },
+      properties: {
+        kind: { const: "agent-resource" },
+        uri: AGENT_RESOURCE_REFERENCE_SCHEMA.properties.uri,
+      },
       required: ["kind", "uri"],
       additionalProperties: false,
     },
@@ -339,7 +349,10 @@ const CLAUSE_RESPONSE = {
     revision: { type: "integer", minimum: 1 },
     sourceItemId: ID,
     sourceBrief: BRIEF_IDENTITY,
-    sourceState: { type: "string", enum: SOURCE_STATE },
+    sourceState: {
+      type: "string",
+      enum: CURRENT_CLAUSE_RESPONSE_SOURCE_STATE,
+    },
     applicability: { type: "string", enum: APPLICABILITY },
     recordingStatus: { const: "proposal" },
     authorKind: { const: "agent" },

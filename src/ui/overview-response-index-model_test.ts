@@ -248,6 +248,7 @@ Deno.test("malformed clause-response sourceRefs make the V2 payload unreadable",
     [null],
     [{ kind: "proof", uri: valid[0]!.uri }],
     [{ kind: "agent-resource" }],
+    [{ kind: "agent-resource", uri: "casys://synthetic/source" }],
     [{ kind: "thread-artifact" }],
     [{ kind: "agent-resource", uri: valid[0]!.uri, artifactId: "model" }],
     [{ kind: "thread-artifact", artifactId: "model", uri: valid[0]!.uri }],
@@ -285,6 +286,30 @@ Deno.test("malformed clause-response sourceRefs make the V2 payload unreadable",
       );
     }
   }
+});
+
+Deno.test("V2 current clause responses reject removed source state", () => {
+  const parsed = parseProjectResponse(v2AvailablePayload([
+    v2Row({
+      clauseResponses: [{
+        artifactId: "documentary-clause-response-removed",
+        revision: 1,
+        sourceItemId: "item-1",
+        sourceBrief: { briefId: "brief-1", snapshotId: "snap-7", revision: 7 },
+        sourceState: "removed",
+        applicability: "current",
+        recordingStatus: "proposal",
+        authorKind: "agent",
+        scope: "context",
+        answer: "Removed answers belong only in historicalClauseResponses.",
+        sourceRefs: [{
+          kind: "agent-resource",
+          uri: "casys://agent-resource-capture/sha256/" + "a".repeat(64),
+        }],
+      }],
+    }),
+  ]));
+  assertEquals(parsed.ok, false);
 });
 
 Deno.test("malformed predecessorArtifactId makes the V2 payload unreadable", () => {
