@@ -27,6 +27,7 @@ command is `deno task verify`; see [CONTRIBUTING.md](../../../CONTRIBUTING.md) a
 | `test`                                          | Full Deno test suite, including source-alpha inventory and OS-lock tests.              |
 | `verify:docs`                                   | Local Markdown links and anchors against the repository candidate.                     |
 | `verify:task-catalog`                           | Fail if any `deno.json` task is missing from this catalog.                             |
+| `verify:doc-code-refs` | Resolve Markdown code locators and line bounds; CI reports historical unresolved references in warn mode. |
 | `report:doc-freshness` | Report missing or unknown page-baseline headers and commit age over eight weeks; always exits 0. |
 | `verify:evidence`                               | Check committed console evidence fixtures.                                             |
 | `verify:thread:presentation`                    | Build and verify the native Workbench presentation bundle.                             |

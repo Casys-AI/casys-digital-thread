@@ -384,11 +384,11 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
 15. **Update living catalogues that name operations, then stop.** Add the row to
     [agent workspace §5](../agent/agent-workspace.md#5-registered-operations)
     (tracer at
-    [`agent-workspace.md:508`](../agent/agent-workspace.md)). If the operation
+    [`agent-workspace.md:518`](../agent/agent-workspace.md)). If the operation
     is part of the public project contract, name it in
     [engineering project](../contracts/engineering-project.md)
     (tracer at
-    [`engineering-project.md:159`](../contracts/engineering-project.md)). Cite
+    [`engineering-project.md:160`](../contracts/engineering-project.md)). Cite
     it from a path skill only when that skill actually teaches it. Those
     citations are pinned only if the document is listed in
     `OPERATION_CITING_DOCUMENTS`
@@ -404,12 +404,12 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
     (tracer executor already listed in
     [project, Thread, and record](../codebase/project-thread-record.md)
     at
-    [`project-thread-record.md:222`](../codebase/project-thread-record.md)).
+    [`project-thread-record.md:223`](../codebase/project-thread-record.md)).
     Queueing sequence for any trusted consequential op remains
     `project_change_append` → `project_decision_propose` →
     `project_decision_approve` → `project_agent_run_queue` →
     `project_agent_run_execute`
-    ([`agent-workspace.md:549`](../agent/agent-workspace.md)).
+    ([`agent-workspace.md:559`](../agent/agent-workspace.md)).
 
 ## Tracer inventory (`ARCHIVE_LINEAGE_OPERATION`)
 
@@ -492,9 +492,9 @@ them is not how a new operation is added.
 | [`src/adapters/shared/stores/engineering-project-store_test.ts:686`](../../../src/adapters/shared/stores/engineering-project-store_test.ts) | Store fixture work-item id |
 | [`src/domain/project/engineering-project-extension_test.ts:373`](../../../src/domain/project/engineering-project-extension_test.ts) | Extension fixture work-item id |
 | [`scripts/probes/probe-archive-cascade.ts:1`](../../../scripts/probes/probe-archive-cascade.ts) | Diagnostic cascade probe; no project command |
-| [`docs/reference/contracts/engineering-project.md:299`](../contracts/engineering-project.md) | Contract narrative of this operation |
-| [`docs/reference/pipeline/analysis-authority-pipeline.md:426`](../pipeline/analysis-authority-pipeline.md) | Provenance-retirement narrative |
-| [`docs/reference/codebase/project-thread-record.md:40`](../codebase/project-thread-record.md) | File census of the record adapters |
+| [`docs/reference/contracts/engineering-project.md:300`](../contracts/engineering-project.md) | Contract narrative of this operation |
+| [`docs/reference/pipeline/analysis-authority-pipeline.md:427`](../pipeline/analysis-authority-pipeline.md) | Provenance-retirement narrative |
+| [`docs/reference/codebase/project-thread-record.md:41`](../codebase/project-thread-record.md) | File census of the record adapters |
 
 `computeArchiveCascade` is also imported by other Thread writers (requirements,
 geometry, compilation tests). That reuse is cascade math, not operation
