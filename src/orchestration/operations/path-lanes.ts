@@ -86,6 +86,7 @@ const PATH_LANE_BY_OPERATION: Readonly<
   "buy.seal-configuration-cost@1": fixed("physics"),
   "record.reconcile-uncertain-writer@1": fixed("system-model"),
   "record.seal-requirements-brief-trace@1": fixed("requirements"),
+  "record.seal-documentary-clause-response@1": fixed("requirements"),
   "record.archive-lineage@1": fixed("system-model"),
 };
 

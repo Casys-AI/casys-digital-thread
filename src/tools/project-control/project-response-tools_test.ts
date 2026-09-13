@@ -76,7 +76,19 @@ Deno.test("project_response_read is a closed read-only tool without provider arg
   assertEquals(itemView.properties.items.items, fullView.properties.items.items);
   assertEquals(
     (itemView.properties.items.items as { required: string[] }).required,
-    ["item", "correspondence", "requirements", "gaps"],
+    ["item", "correspondence", "requirements", "clauseResponses", "gaps"],
+  );
+  const summaryView = output.oneOf.find((entry) =>
+    entry.properties.view.const === "summary"
+  )!;
+  const summaryProperties = summaryView.properties as unknown as {
+    schemaVersion: { const: string };
+    items: { items: { required: string[] } };
+  };
+  assertEquals(summaryProperties.schemaVersion.const, "project-response/2.0");
+  assertEquals(
+    summaryProperties.items.items.required.includes("clauseResponseCount"),
+    true,
   );
   assertStringIncludes(tool.description, "8KiB");
   assertStringIncludes(tool.description, "afterItemId");
@@ -657,7 +669,12 @@ Deno.test("project_response_read published results match the declared outputSche
   for (const result of published) {
     const checked = compiled.validate(result.structuredContent);
     assertEquals(checked.valid, true, JSON.stringify(checked.errors));
+    assertEquals(
+      result.structuredContent.schemaVersion,
+      PROJECT_RESPONSE_SCHEMA,
+    );
   }
+  assertEquals(PROJECT_RESPONSE_SCHEMA, "project-response/2.0");
   const missingItemId = { ...published[1].structuredContent };
   delete missingItemId.itemId;
   assertEquals(compiled.validate(missingItemId).valid, false);
@@ -824,6 +841,7 @@ function responseItem(
         }],
       }]
       : [],
+    clauseResponses: [],
     gaps: correspondence === "unresolved"
       ? [{ code: "correspondence.missing", message: "No exact mapping." }]
       : [],

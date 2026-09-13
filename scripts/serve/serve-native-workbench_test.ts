@@ -11,6 +11,7 @@ import { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "../../src/domain/arch
 import { MODEL_RECAPTURE_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-recapture-proposal.ts";
 import { MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION } from "../../src/domain/architecture/requirements/requirements-traced-recapture-proposal.ts";
 import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../src/domain/record/requirements-brief-trace.ts";
+import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "../../src/domain/record/documentary-clause-response.ts";
 import { COMPILE_SEAL_ADMISSION_OPERATION } from "../../src/domain/compile/admission/technical-compilation-proposal.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../src/domain/cad/isolated/build123d-execution-proposal.ts";
 import {
@@ -943,6 +944,7 @@ Deno.test("native Workbench evidence GET enriches the already-resolved project a
           item,
           correspondence: "unresolved" as const,
           requirements: [],
+          clauseResponses: [],
           gaps: [{
             code: "correspondence.missing",
             message: "No exact mapping.",
@@ -1630,6 +1632,7 @@ Deno.test("native Workbench hides durable unattached generic requirements and ge
       MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
       MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
       RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
+      RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
       DESIGN_WRITE_GEOMETRY_OPERATION,
     ]
   ) {
@@ -1715,6 +1718,7 @@ Deno.test("native Workbench classifies every known durable writer before attachm
     MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
     MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
     RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
+    RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
     VERIFY_SEAL_PROOF_CASE_OPERATION,
     VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
     COMPILE_SEAL_ADMISSION_OPERATION,

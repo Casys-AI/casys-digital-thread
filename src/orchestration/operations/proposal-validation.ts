@@ -70,6 +70,10 @@ import {
   RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
 } from "../../domain/record/requirements-brief-trace.ts";
 import {
+  parseDocumentaryClauseResponseParameters,
+  RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
+} from "../../domain/record/documentary-clause-response.ts";
+import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   parseTechnicalCompilationAdmissionParameters,
 } from "../../domain/compile/admission/technical-compilation-proposal.ts";
@@ -337,6 +341,12 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION),
     (parameters) => {
       parseRequirementsBriefTraceParameters(parameters);
+    },
+  ],
+  [
+    keyOf(RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION),
+    (parameters) => {
+      parseDocumentaryClauseResponseParameters(parameters);
     },
   ],
   [

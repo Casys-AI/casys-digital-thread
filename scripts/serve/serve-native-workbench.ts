@@ -36,6 +36,8 @@ import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/s
 import { enrichEngineeringEvidenceWorkbenchWithRequirementsBriefTraces } from "../../src/adapters/thread/requirements-brief-trace-workbench.ts";
 import { createRequirementsBriefTraceStore } from "../../src/adapters/record/requirements-brief-trace-store.ts";
 import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../src/domain/record/requirements-brief-trace.ts";
+import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "../../src/domain/record/documentary-clause-response.ts";
+import { createDocumentaryClauseResponseStore } from "../../src/adapters/record/documentary-clause-response-store.ts";
 import { isExplicitLoopbackHostname } from "../../src/adapters/loopback-host.ts";
 import {
   type EngineeringWorkbenchSnapshot,
@@ -1279,6 +1281,7 @@ const DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
   MODEL_RECAPTURE_REQUIREMENTS_OPERATION,
   MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
   RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
+  RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
   DESIGN_WRITE_GEOMETRY_OPERATION,
   VERIFY_SEAL_PROOF_CASE_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,
@@ -1955,11 +1958,15 @@ if (import.meta.main) {
   const requirementsBriefTraceCaptures = createRequirementsBriefTraceStore(
     REQUIREMENTS_CAPTURE_DESCRIPTOR.directory,
   );
+  const documentaryClauseResponseCaptures = createDocumentaryClauseResponseStore(
+    `${REQUIREMENTS_CAPTURE_DESCRIPTOR.directory}/clause-responses`,
+  );
   const projectResponse = new ReadProjectResponse({
     projects: projectStore,
     snapshots: projectSnapshots ?? store,
     evidence: new ThreadProjectResponseEvidenceReader({
       projects: projectStore,
+      snapshots: projectSnapshots ?? store,
       captures: requirementsCaptures,
       claimHistory: {
         projects: projectStore,
@@ -1967,6 +1974,7 @@ if (import.meta.main) {
         captures: requirementsCaptures,
         traces: requirementsBriefTraceCaptures,
       },
+      clauseResponses: documentaryClauseResponseCaptures,
     }),
   });
   const handler = createNativeWorkbenchHandler({

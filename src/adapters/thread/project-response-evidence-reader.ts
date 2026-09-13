@@ -8,6 +8,8 @@ import type { EngineeringProjectRevisionStore } from "../../application/ports/ou
 import {
   emptyProjectResponseEvidenceFacts,
   type ProjectResponseAvailableTraceFact,
+  type ProjectResponseClauseResponseFact,
+  type ProjectResponseClauseResponseFailure,
   type ProjectResponseEvidenceFacts,
   type ProjectResponseEvidenceReader,
   type ProjectResponseTraceFact,
@@ -17,6 +19,7 @@ import {
   archivedRefKeys,
   type ThreadSnapshot,
 } from "../../domain/thread/thread-snapshot.ts";
+import type { ThreadSnapshotStore } from "../../domain/thread/thread-snapshot-store.ts";
 import type {
   RequirementsBriefTraceHistoryDependencies,
 } from "../record/requirements-brief-trace-history.ts";
@@ -26,26 +29,45 @@ import {
   type RequirementsBriefTraceProjectHistory,
 } from "./requirements-brief-trace-workbench.ts";
 import type { EngineeringWorkbenchRequirementsBriefTrace } from "../../presentation/workbench/engineering/evidence.ts";
+import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
+import {
+  readDocumentaryClauseResponseHistory,
+  type ReopenedDocumentaryClauseResponseRecord,
+} from "../record/documentary-clause-response-history.ts";
 
 export interface ThreadProjectResponseEvidenceReaderDependencies {
   readonly projects: Pick<
     EngineeringProjectRevisionStore,
     "get" | "getRevision"
   >;
+  readonly snapshots?: Pick<ThreadSnapshotStore, "get">;
   readonly captures: RequirementsBriefTraceCaptureReader;
   readonly claimHistory?: RequirementsBriefTraceHistoryDependencies;
+  readonly clauseResponses?: {
+    read(fingerprint: ContentFingerprint): Promise<string | undefined>;
+  };
 }
 
 export class ThreadProjectResponseEvidenceReader
   implements ProjectResponseEvidenceReader {
-  readonly #projects: RequirementsBriefTraceProjectHistory;
+  readonly #projects:
+    & RequirementsBriefTraceProjectHistory
+    & Pick<EngineeringProjectRevisionStore, "get" | "getRevision">;
+  readonly #snapshots:
+    | ThreadProjectResponseEvidenceReaderDependencies["snapshots"]
+    | undefined;
   readonly #captures: RequirementsBriefTraceCaptureReader;
   readonly #claimHistory: RequirementsBriefTraceHistoryDependencies | undefined;
+  readonly #clauseResponses:
+    | ThreadProjectResponseEvidenceReaderDependencies["clauseResponses"]
+    | undefined;
 
   constructor(dependencies: ThreadProjectResponseEvidenceReaderDependencies) {
     this.#projects = dependencies.projects;
+    this.#snapshots = dependencies.snapshots;
     this.#captures = dependencies.captures;
     this.#claimHistory = dependencies.claimHistory;
+    this.#clauseResponses = dependencies.clauseResponses;
   }
 
   async read(input: {
@@ -60,8 +82,17 @@ export class ThreadProjectResponseEvidenceReader
       captures: this.#captures,
       claimHistory: this.#claimHistory,
     });
+    const clause = await readClauseResponses({
+      project: input.project,
+      thread: input.thread,
+      projects: this.#projects,
+      snapshots: this.#snapshots,
+      captures: this.#clauseResponses,
+    });
     return {
       traces: traces.map(mapTrace),
+      clauseResponses: clause.records,
+      ...(clause.failure ? { clauseResponseFailure: clause.failure } : {}),
       ...threadFacts(input.thread),
     };
   }
@@ -112,9 +143,98 @@ function mapTrace(
   return mapped;
 }
 
+async function readClauseResponses(input: {
+  readonly project: EngineeringProjectSnapshot;
+  readonly thread: ThreadSnapshot;
+  readonly projects: Pick<EngineeringProjectRevisionStore, "get" | "getRevision">;
+  readonly snapshots: Pick<ThreadSnapshotStore, "get"> | undefined;
+  readonly captures:
+    | { read(fingerprint: ContentFingerprint): Promise<string | undefined> }
+    | undefined;
+}): Promise<{
+  readonly records: readonly ProjectResponseClauseResponseFact[];
+  readonly failure?: ProjectResponseClauseResponseFailure;
+}> {
+  if (!input.captures) return { records: [] };
+  if (!input.snapshots) {
+    return {
+      records: [],
+      failure: {
+        status: "unavailable",
+        code: "clause-response.unavailable",
+        message:
+          "Documentary clause-response history cannot be reopened without the exact Thread snapshot store.",
+      },
+    };
+  }
+  try {
+    const history = await readDocumentaryClauseResponseHistory({
+      project: input.project,
+      thread: input.thread,
+      dependencies: {
+        captures: input.captures,
+        projects: input.projects,
+        snapshots: input.snapshots,
+      },
+    });
+    const archived = archivedRefKeys(input.thread);
+    return {
+      records: history.flatMap((record) => {
+        if (archived.has(`artifact:${record.artifact.id}`)) return [];
+        return [mapClauseResponse(record)];
+      }),
+    };
+  } catch (error) {
+    return { records: [], failure: clauseResponseFailure(error) };
+  }
+}
+
+function mapClauseResponse(
+  record: ReopenedDocumentaryClauseResponseRecord,
+): ProjectResponseClauseResponseFact {
+  const { capture, reference } = record;
+  return {
+    artifactId: reference.artifactId,
+    revision: capture.claim.revision,
+    sourceItemId: capture.claim.sourceItemId,
+    sourceBrief: {
+      briefId: capture.briefBasis.briefId,
+      snapshotId: capture.briefBasis.briefSnapshotId,
+      revision: capture.briefBasis.briefRevision,
+    },
+    sourceItem: structuredClone(capture.sourceItem),
+    recordingStatus: capture.recording.status,
+    authorKind: capture.recording.authorKind,
+    scope: capture.scope,
+    answer: capture.answer,
+    sourceRefs: capture.sources.map((source) =>
+      source.kind === "agent-resource"
+        ? { kind: "agent-resource", uri: source.resourceRef.uri }
+        : { kind: "thread-artifact", artifactId: source.artifactId }
+    ),
+    ...(capture.claim.predecessor
+      ? { predecessorArtifactId: capture.claim.predecessor.artifactId }
+      : {}),
+  };
+}
+
+function clauseResponseFailure(
+  error: unknown,
+): ProjectResponseClauseResponseFailure {
+  const message = error instanceof Error ? error.message : String(error);
+  const unresolved =
+    /split head|predecessor|previous version|initial version|cycle|retired/i
+      .test(message);
+  return {
+    status: unresolved ? "unresolved" : "unavailable",
+    code: unresolved ? "clause-response.unresolved" : "clause-response.unavailable",
+    message,
+  };
+}
+
 function threadFacts(thread: ThreadSnapshot): Omit<
   ProjectResponseEvidenceFacts,
-  "traces"
+  "traces" | "clauseResponses" | "clauseResponseFailure"
 > {
   return {
     requirements: thread.requirements.map((requirement) => ({

@@ -193,6 +193,10 @@ import { PrepareProjectRequirementsBriefTraceReview } from "./src/adapters/recor
 import { RecordSealRequirementsBriefTraceRunExecutor } from "./src/adapters/record/record-seal-requirements-brief-trace-run-executor.ts";
 import { createRequirementsBriefTraceStore } from "./src/adapters/record/requirements-brief-trace-store.ts";
 import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "./src/domain/record/requirements-brief-trace.ts";
+import { PrepareProjectDocumentaryClauseResponseReview } from "./src/adapters/record/capture-backed-documentary-clause-response-reviewer.ts";
+import { RecordSealDocumentaryClauseResponseRunExecutor } from "./src/adapters/record/record-seal-documentary-clause-response-run-executor.ts";
+import { createDocumentaryClauseResponseStore } from "./src/adapters/record/documentary-clause-response-store.ts";
+import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "./src/domain/record/documentary-clause-response.ts";
 import { FileLiveThreadUpdateStore } from "./src/adapters/shared/stores/live-thread-update-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./src/adapters/shared/stores/engineering-project-store.ts";
 import {
@@ -395,6 +399,8 @@ const DEFAULT_PART_DEFINITIONS_PUBLICATION_DIRECTORY =
 const DEFAULT_GEOMETRY_DRAFT_CAPTURE_DIRECTORY = "state/local/geometry-draft-captures";
 const DEFAULT_GEOMETRY_CAPTURE_DIRECTORY = "state/local/geometry-captures";
 const DEFAULT_REQUIREMENTS_CAPTURE_DIRECTORY = "state/local/requirements-captures";
+const DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY =
+  "state/local/documentary-clause-responses";
 const DEFAULT_REQUIREMENTS_ATTEMPT_DIRECTORY = "state/local/requirements-attempts";
 const DEFAULT_REQUIREMENTS_RECAPTURE_PUBLICATION_DIRECTORY =
   "state/local/requirements-recapture-publications";
@@ -1425,11 +1431,30 @@ async function createProjectControl(
     commands: runtime.commands,
     lease,
   });
+  const documentaryClauseResponseStore = createDocumentaryClauseResponseStore(
+    DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
+  );
+  const documentaryClauseResponseInputs = {
+    projects: runtime.projects,
+    snapshots: activeThreadSnapshots,
+    captures: documentaryClauseResponseStore,
+    resources: reopenAgentResource,
+  };
+  const documentaryClauseResponseReview =
+    new PrepareProjectDocumentaryClauseResponseReview(
+      documentaryClauseResponseInputs,
+    );
+  const documentaryClauseResponse = new RecordSealDocumentaryClauseResponseRunExecutor({
+    ...documentaryClauseResponseInputs,
+    commands: runtime.commands,
+    lease,
+  });
   const projectResponse = new ReadProjectResponse({
     projects: runtime.projects,
     snapshots: threadSnapshots,
     evidence: new ThreadProjectResponseEvidenceReader({
       projects: runtime.projects,
+      snapshots: threadSnapshots,
       captures: architectureFoundation.requirementsCaptures,
       claimHistory: {
         projects: runtime.projects,
@@ -1437,6 +1462,7 @@ async function createProjectControl(
         captures: architectureFoundation.requirementsCaptures,
         traces: requirementsBriefTraceStore,
       },
+      clauseResponses: documentaryClauseResponseStore,
     }),
   });
   // Reconcile-uncertain-writer requires no provider — always available.
@@ -1798,6 +1824,7 @@ async function createProjectControl(
       briefRequirementsReview: architectureProject.briefRequirementsReview,
       requirementsRecaptureReview: architectureProject.requirementsRecaptureReview,
       requirementsBriefTraceReview,
+      documentaryClauseResponseReview,
       projectResponse,
       feaProofCaseCapture: feaProject.feaProofCaseCapture,
       feaProofSealReview: feaProject.feaProofSealReview,
@@ -2033,6 +2060,10 @@ async function createProjectControl(
           {
             operation: RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
             executor: requirementsBriefTrace,
+          },
+          {
+            operation: RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
+            executor: documentaryClauseResponse,
           },
           {
             operation: RECONCILE_UNCERTAIN_WRITER_OPERATION,

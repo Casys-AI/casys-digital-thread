@@ -18,6 +18,164 @@ const FRESH = {
   invalidatedByChangeIds: [],
 };
 
+Deno.test("a source-backed documentary clause-response does not add a requirement or pass", async () => {
+  const { project } = await approvedProject();
+  const brief = project.framing!.currentBrief!;
+  const thread = listedThread(project, 1);
+  const facts = factsWithTraces([], {
+    clauseResponses: [{
+      artifactId: "documentary-clause-response-exclusion",
+      revision: 1,
+      sourceItemId: "exclusion",
+      sourceBrief: {
+        briefId: brief.briefId,
+        snapshotId: brief.id,
+        revision: brief.revision,
+      },
+      sourceItem: brief.items.find((item) => item.id === "exclusion")!,
+      recordingStatus: "proposal",
+      authorKind: "agent",
+      scope: "context",
+      answer: "Outdoor use remains excluded.",
+      sourceRefs: [{
+        kind: "agent-resource",
+        uri: `casys://agent-resource-capture/sha256/${"a".repeat(64)}`,
+      }],
+    }],
+  });
+  const result = await usecase(facts).project({
+    project: withThread(project, thread),
+    thread,
+  });
+  const exclusion = result.items.find((row) => row.item.id === "exclusion")!;
+  assertEquals(exclusion.requirements, []);
+  assertEquals(exclusion.clauseResponses.length, 1);
+  assertEquals(exclusion.clauseResponses[0]!.recordingStatus, "proposal");
+  assertEquals(exclusion.clauseResponses[0]!.authorKind, "agent");
+  assertEquals(exclusion.clauseResponses[0]!.applicability, "current");
+  assertEquals("pass" in exclusion, false);
+  assertEquals(exclusion.correspondence, "unresolved");
+});
+
+Deno.test("a documentary answer on a verification clause leaves the proof gap", async () => {
+  const { project } = await approvedProject();
+  const brief = project.framing!.currentBrief!;
+  const thread = listedThread(project, 1);
+  const facts = factsWithTraces([], {
+    clauseResponses: [{
+      artifactId: "documentary-clause-response-success",
+      revision: 1,
+      sourceItemId: "success",
+      sourceBrief: {
+        briefId: brief.briefId,
+        snapshotId: brief.id,
+        revision: brief.revision,
+      },
+      sourceItem: brief.items.find((item) => item.id === "success")!,
+      recordingStatus: "proposal",
+      authorKind: "agent",
+      scope: "criterion",
+      answer: "A textual answer cannot replace the static proof.",
+      sourceRefs: [{
+        kind: "agent-resource",
+        uri: `casys://agent-resource-capture/sha256/${"a".repeat(64)}`,
+      }],
+    }],
+  });
+  const result = await usecase(facts).project({
+    project: withThread(project, thread),
+    thread,
+  });
+  const success = result.items.find((row) => row.item.id === "success")!;
+  assertEquals(success.clauseResponses.length, 1);
+  assertEquals(
+    success.gaps.some((item) => item.code === "clause-response.not-proof"),
+    true,
+  );
+  assertEquals(success.requirements, []);
+});
+
+Deno.test("historical clause-responses stay visible after the brief item changes", async () => {
+  const { project } = await approvedProject();
+  const brief = project.framing!.currentBrief!;
+  const thread = listedThread(project, 1);
+  const current = brief.items.find((item) => item.id === "exclusion")!;
+  const facts = factsWithTraces([], {
+    clauseResponses: [{
+      artifactId: "documentary-clause-response-exclusion-old",
+      revision: 1,
+      sourceItemId: "exclusion",
+      sourceBrief: {
+        briefId: brief.briefId,
+        snapshotId: "brief-old",
+        revision: 1,
+      },
+      sourceItem: { ...current, statement: "Older exclusion text." },
+      recordingStatus: "proposal",
+      authorKind: "agent",
+      scope: "context",
+      answer: "Historical answer.",
+      sourceRefs: [{
+        kind: "agent-resource",
+        uri: `casys://agent-resource-capture/sha256/${"a".repeat(64)}`,
+      }],
+    }],
+  });
+  const result = await usecase(facts).project({
+    project: withThread(project, thread),
+    thread,
+  });
+  const exclusion = result.items.find((row) => row.item.id === "exclusion")!;
+  assertEquals(exclusion.clauseResponses[0]!.applicability, "historical");
+  assertEquals(exclusion.clauseResponses[0]!.sourceState, "changed");
+  assertEquals(exclusion.item.statement, current.statement);
+});
+
+Deno.test("an invalid declared clause-response stays unavailable without a fabricated answer", async () => {
+  const { project } = await approvedProject();
+  const brief = project.framing!.currentBrief!;
+  const thread = listedThread(project, 1);
+  const facts = factsWithTraces([], {
+    clauseResponseFailure: {
+      status: "unavailable",
+      code: "clause-response.unavailable",
+      message: "A declared clause-response capture is unavailable.",
+    },
+    clauseResponses: [{
+      artifactId: "documentary-clause-response-forged",
+      revision: 1,
+      sourceItemId: "exclusion",
+      sourceBrief: {
+        briefId: brief.briefId,
+        snapshotId: brief.id,
+        revision: brief.revision,
+      },
+      sourceItem: brief.items.find((item) => item.id === "exclusion")!,
+      recordingStatus: "proposal",
+      authorKind: "agent",
+      scope: "context",
+      answer: "This forged answer must not be projected.",
+      sourceRefs: [{
+        kind: "agent-resource",
+        uri: `casys://agent-resource-capture/sha256/${"a".repeat(64)}`,
+      }],
+    }],
+  });
+  const result = await usecase(facts).project({
+    project: withThread(project, thread),
+    thread,
+  });
+  const exclusion = result.items.find((row) => row.item.id === "exclusion")!;
+  assertEquals(result.status, "unavailable");
+  assertEquals(
+    result.diagnostics.some((item) => item.code === "clause-response.unavailable"),
+    true,
+  );
+  assertEquals(exclusion.clauseResponses, []);
+  assertEquals(exclusion.requirements, []);
+  assertEquals("pass" in result, false);
+});
+
 Deno.test("available index enumerates every approved item including untraced non-verification kinds", async () => {
   const { project } = await approvedProject();
   const result = await usecase().project({ project });
@@ -776,11 +934,15 @@ function factsWithTraces(
 ): ProjectResponseEvidenceFacts {
   return {
     traces,
+    clauseResponses: extra.clauseResponses ?? [],
     requirements: extra.requirements ?? [],
     evaluations: extra.evaluations ?? [],
     observations: extra.observations ?? [],
     artifacts: extra.artifacts ?? [],
     archivedRefKeys: extra.archivedRefKeys ?? [],
+    ...(extra.clauseResponseFailure
+      ? { clauseResponseFailure: extra.clauseResponseFailure }
+      : {}),
   };
 }
 

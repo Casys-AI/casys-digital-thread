@@ -183,6 +183,7 @@ export function createPackagedWorkbenchBff(
     snapshots: projectSnapshots,
     evidence: new ThreadProjectResponseEvidenceReader({
       projects: projectStore,
+      snapshots: projectSnapshots,
       captures: requirementsCaptures,
       claimHistory: {
         projects: projectStore,

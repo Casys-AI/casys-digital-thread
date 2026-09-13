@@ -38,6 +38,7 @@ const OPERATION_CITING_DOCUMENTS = [
   "docs/how-to/compile/compile-brief-parameters.md",
   "docs/how-to/extend/extend-cad-closed-subset.md",
   "docs/how-to/extend/qualify-nested-cad-modules.md",
+  "docs/how-to/extend/qualify-documentary-clause-response.md",
   "docs/how-to/extend/qualify-requirements-brief-trace.md",
   "docs/how-to/extend/qualify-requirements-recapture.md",
   "docs/how-to/run/recover-a-quarantined-provider-run.md",

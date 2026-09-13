@@ -104,7 +104,7 @@ const DEMANDING_OPERATIONS = new Map<string, readonly ReturnType<typeof qualifie
 
 Deno.test("runtime demand is an exhaustive provider-neutral registry projection", async () => {
   const operations = engineeringOperationRegistry.list();
-  assertEquals(operations.length, 59);
+  assertEquals(operations.length, 60);
   assertEquals(Object.isFrozen(operations), true);
   assertEquals(operations.every((operation) => Object.isFrozen(operation)), true);
   assertEquals(
@@ -139,7 +139,7 @@ Deno.test("runtime demand is an exhaustive provider-neutral registry projection"
     [...seenDemanding].toSorted(),
     [...DEMANDING_OPERATIONS.keys()].toSorted(),
   );
-  assertEquals(noneCount, 35);
+  assertEquals(noneCount, 36);
 
   const preparation = engineeringOperationRegistry.require(
     DESIGN_PREPARE_GEOMETRY_MODULE_OPERATION,

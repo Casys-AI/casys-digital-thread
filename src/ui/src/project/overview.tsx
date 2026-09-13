@@ -78,7 +78,8 @@ export interface ProjectOverviewProps {
   readonly requirementsBriefTraces?:
     readonly EngineeringWorkbenchRequirementsBriefTrace[];
   /**
-   * Server-owned `project-response/1.0` payload. Absent on older hosts, in
+   * Server-owned `project-response/2.0` payload (historical `/1.0` still
+   * parsed). Absent on older hosts, in
    * which case the response index stays out of the way and the old view is
    * preserved. Validated strictly at render; never cast blindly.
    */

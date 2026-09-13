@@ -6,8 +6,11 @@ import {
   DEFAULT_RESPONSE_FILTER,
   freshnessLabel,
   hasResponseGap,
+  isProjectResponseV2,
   isResponseBasisMatch,
   parseProjectResponse,
+  PROJECT_RESPONSE_SCHEMA,
+  PROJECT_RESPONSE_SCHEMA_V1,
   type ProjectResponseBasis,
   type ProjectResponseItem,
   requirementEvidenceRefs,
@@ -83,7 +86,7 @@ function availablePayload(
   items: readonly unknown[] = [row()],
 ): Record<string, unknown> {
   return {
-    schemaVersion: "project-response/1.0",
+    schemaVersion: PROJECT_RESPONSE_SCHEMA_V1,
     status: "available",
     basis: basis(),
     items,
@@ -91,6 +94,74 @@ function availablePayload(
     grants: "none",
   };
 }
+
+function v2Row(overrides: Record<string, unknown> = {}): unknown {
+  const base = row(overrides) as Record<string, unknown>;
+  return {
+    ...base,
+    clauseResponses: overrides.clauseResponses ?? [],
+  };
+}
+
+function v2AvailablePayload(
+  items: readonly unknown[] = [v2Row()],
+): Record<string, unknown> {
+  return {
+    ...availablePayload(items),
+    schemaVersion: PROJECT_RESPONSE_SCHEMA,
+  };
+}
+
+Deno.test("a genuine historical V1 payload parses without clauseResponses", () => {
+  const parsed = parseProjectResponse(availablePayload());
+  assert(parsed.ok, JSON.stringify(parsed));
+  assertEquals(parsed.model.schemaVersion, PROJECT_RESPONSE_SCHEMA_V1);
+  assertEquals(isProjectResponseV2(parsed.model), false);
+  assertEquals("clauseResponses" in parsed.model.items[0]!, false);
+});
+
+Deno.test("V1 payloads that carry V2 clauseResponses are refused", () => {
+  const parsed = parseProjectResponse(availablePayload([
+    row({ clauseResponses: [] }),
+  ]));
+  assertEquals(parsed.ok, false);
+});
+
+Deno.test("a V2 documentary clause-response proposal parses without becoming a pass", () => {
+  const parsed = parseProjectResponse(v2AvailablePayload([
+    v2Row({
+      item: briefItem("exclusion-1", "exclusion"),
+      correspondence: "unresolved",
+      requirements: [],
+      clauseResponses: [{
+        artifactId: "documentary-clause-response-1",
+        revision: 1,
+        sourceItemId: "exclusion-1",
+        sourceBrief: { briefId: "brief-1", snapshotId: "snap-7", revision: 7 },
+        sourceState: "unchanged",
+        applicability: "current",
+        recordingStatus: "proposal",
+        authorKind: "agent",
+        scope: "context",
+        answer: "Outdoor use remains excluded.",
+        sourceRefs: [{
+          kind: "agent-resource",
+          uri: "casys://agent-resource-capture/sha256/" + "a".repeat(64),
+        }],
+      }],
+    }),
+  ]));
+  assert(parsed.ok, JSON.stringify(parsed));
+  assertEquals(parsed.model.schemaVersion, PROJECT_RESPONSE_SCHEMA);
+  assert(isProjectResponseV2(parsed.model));
+  if (isProjectResponseV2(parsed.model)) {
+    assertEquals(
+      parsed.model.items[0]!.clauseResponses[0]!.recordingStatus,
+      "proposal",
+    );
+  }
+  assertEquals("pass" in parsed.model.items[0]!, false);
+});
 
 Deno.test("available payload with native current pass parses and has no gap", () => {
   const parsed = parseProjectResponse(availablePayload());

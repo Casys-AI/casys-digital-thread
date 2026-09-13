@@ -312,15 +312,59 @@ const REQUIREMENT = {
   additionalProperties: false,
 } as const;
 
+const CLAUSE_SOURCE_REF = {
+  type: "object",
+  properties: {
+    kind: { type: "string", enum: ["agent-resource", "thread-artifact"] },
+    artifactId: ID,
+    uri: STRING,
+  },
+  required: ["kind"],
+  additionalProperties: false,
+} as const;
+
+const CLAUSE_RESPONSE = {
+  type: "object",
+  properties: {
+    artifactId: ID,
+    revision: { type: "integer", minimum: 1 },
+    sourceItemId: ID,
+    sourceBrief: BRIEF_IDENTITY,
+    sourceState: { type: "string", enum: SOURCE_STATE },
+    applicability: { type: "string", enum: APPLICABILITY },
+    recordingStatus: { const: "proposal" },
+    authorKind: { const: "agent" },
+    scope: STRING,
+    answer: STRING,
+    sourceRefs: { type: "array", items: CLAUSE_SOURCE_REF },
+    predecessorArtifactId: ID,
+  },
+  required: [
+    "artifactId",
+    "revision",
+    "sourceItemId",
+    "sourceBrief",
+    "sourceState",
+    "applicability",
+    "recordingStatus",
+    "authorKind",
+    "scope",
+    "answer",
+    "sourceRefs",
+  ],
+  additionalProperties: false,
+} as const;
+
 const RESPONSE_ITEM = {
   type: "object",
   properties: {
     item: BRIEF_ITEM,
     correspondence: { type: "string", enum: CORRESPONDENCE },
     requirements: { type: "array", items: REQUIREMENT },
+    clauseResponses: { type: "array", items: CLAUSE_RESPONSE },
     gaps: { type: "array", items: DIAGNOSTIC },
   },
-  required: ["item", "correspondence", "requirements", "gaps"],
+  required: ["item", "correspondence", "requirements", "clauseResponses", "gaps"],
   additionalProperties: false,
 } as const;
 
@@ -333,6 +377,9 @@ const SUMMARY_ROW = {
     requirementCount: { type: "integer", minimum: 0 },
     currentEvaluationCount: { type: "integer", minimum: 0 },
     historicalEvaluationCount: { type: "integer", minimum: 0 },
+    clauseResponseCount: { type: "integer", minimum: 0 },
+    currentClauseResponseCount: { type: "integer", minimum: 0 },
+    historicalClauseResponseCount: { type: "integer", minimum: 0 },
     gapCount: { type: "integer", minimum: 0 },
   },
   required: [
@@ -342,6 +389,9 @@ const SUMMARY_ROW = {
     "requirementCount",
     "currentEvaluationCount",
     "historicalEvaluationCount",
+    "clauseResponseCount",
+    "currentClauseResponseCount",
+    "historicalClauseResponseCount",
     "gapCount",
   ],
   additionalProperties: false,
@@ -493,6 +543,9 @@ export interface ProjectResponseSummaryRow {
   readonly requirementCount: number;
   readonly currentEvaluationCount: number;
   readonly historicalEvaluationCount: number;
+  readonly clauseResponseCount: number;
+  readonly currentClauseResponseCount: number;
+  readonly historicalClauseResponseCount: number;
   readonly gapCount: number;
 }
 
@@ -871,6 +924,12 @@ function summaryRow(item: ProjectResponseItem): ProjectResponseSummaryRow {
       if (evaluation.applicability === "historical") historicalEvaluationCount++;
     }
   }
+  let currentClauseResponseCount = 0;
+  let historicalClauseResponseCount = 0;
+  for (const record of item.clauseResponses) {
+    if (record.applicability === "current") currentClauseResponseCount++;
+    if (record.applicability === "historical") historicalClauseResponseCount++;
+  }
   return {
     itemId: item.item.id,
     kind: item.item.kind,
@@ -878,6 +937,9 @@ function summaryRow(item: ProjectResponseItem): ProjectResponseSummaryRow {
     requirementCount: item.requirements.length,
     currentEvaluationCount,
     historicalEvaluationCount,
+    clauseResponseCount: item.clauseResponses.length,
+    currentClauseResponseCount,
+    historicalClauseResponseCount,
     gapCount: item.gaps.length,
   };
 }

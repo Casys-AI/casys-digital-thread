@@ -2,6 +2,7 @@ import { assertEquals, assertThrows } from "@std/assert";
 import {
   parseProjectResponseBasis,
   PROJECT_RESPONSE_SCHEMA,
+  PROJECT_RESPONSE_SCHEMA_V1,
   projectResponseBasesEqual,
   unavailableProjectResponse,
 } from "./project-response.ts";
@@ -54,6 +55,15 @@ Deno.test("project-response basis equality is exact and does not mix a missing T
       projectRevision: BASIS.projectRevision,
       brief: BASIS.brief,
     }),
+    false,
+  );
+});
+
+Deno.test("current project-response schema is V2 and keeps historical V1 distinct", () => {
+  assertEquals(PROJECT_RESPONSE_SCHEMA, "project-response/2.0");
+  assertEquals(PROJECT_RESPONSE_SCHEMA_V1, "project-response/1.0");
+  assertEquals(
+    (PROJECT_RESPONSE_SCHEMA as string) === PROJECT_RESPONSE_SCHEMA_V1,
     false,
   );
 });

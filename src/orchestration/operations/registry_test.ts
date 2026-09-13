@@ -22,6 +22,7 @@ import { MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/arch
 import { MODEL_WRITE_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-proposal.ts";
 import { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-proposal.ts";
 import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../domain/record/requirements-brief-trace.ts";
+import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "../../domain/record/documentary-clause-response.ts";
 import { DESIGN_EXECUTE_BUILD123D_OPERATION } from "../../domain/cad/isolated/build123d-execution-proposal.ts";
 import { DESIGN_SEAL_ISOLATED_GEOMETRY_OPERATION } from "../../domain/cad/sealed-isolated/isolated-geometry-seal-proposal.ts";
 import { VERIFY_OBSERVE_ASSEMBLY_INTEGRITY_OPERATION } from "../../domain/cad/assembly-integrity/assembly-integrity-observation.ts";
@@ -480,6 +481,24 @@ Deno.test(
     }]);
   },
 );
+
+Deno.test("documentary clause-response is a provider-free append with approvedBrief only", () => {
+  const operation = getRegisteredEngineeringOperation(
+    RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
+  )!;
+  assertEquals(operation.workItemKind, "review");
+  assertEquals(operation.riskClass, "consequential");
+  assertEquals(operation.execution, "trusted");
+  assertEquals(operation.runtimeDemand, { kind: "none" });
+  assertEquals(operation.requiresAdditiveChange, true);
+  assertEquals(operation.decisionEvidenceScope, undefined);
+  assertEquals(operation.threadEntityBindingsMustMatchBasis, true);
+  assertEquals(operation.allowedBasisKinds, ["thread-snapshot"]);
+  assertEquals(operation.bindings, [{
+    name: "approvedBrief",
+    allowedSourceKinds: ["approved-brief"],
+  }]);
+});
 
 Deno.test("assembly-integrity observation is trusted and binds exactly one canonical geometry module artifact", () => {
   const registered = getRegisteredEngineeringOperation(
