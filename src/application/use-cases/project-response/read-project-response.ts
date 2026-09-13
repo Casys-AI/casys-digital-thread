@@ -17,6 +17,7 @@ import {
   projectResponseBasesEqual,
   type ProjectResponseBasis,
   type ProjectResponseClauseResponse,
+  type ProjectResponseClauseSourceRef,
   type ProjectResponseCorrespondence,
   type ProjectResponseDiagnostic,
   type ProjectResponseGap,
@@ -405,7 +406,12 @@ function projectClauseResponses(
         authorKind: record.authorKind,
         scope: record.scope,
         answer: record.answer,
-        sourceRefs: record.sourceRefs.map((ref) => ({ ...ref })),
+        sourceRefs: record.sourceRefs.map(
+          (ref): ProjectResponseClauseSourceRef =>
+            ref.kind === "agent-resource"
+              ? { kind: "agent-resource", uri: ref.uri }
+              : { kind: "thread-artifact", artifactId: ref.artifactId },
+        ),
         ...(record.predecessorArtifactId
           ? { predecessorArtifactId: record.predecessorArtifactId }
           : {}),

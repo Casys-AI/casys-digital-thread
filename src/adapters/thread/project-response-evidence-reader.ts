@@ -30,6 +30,7 @@ import {
 } from "./requirements-brief-trace-workbench.ts";
 import type { EngineeringWorkbenchRequirementsBriefTrace } from "../../presentation/workbench/engineering/evidence.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
+import type { ProjectResponseClauseSourceRef } from "../../domain/project/project-response.ts";
 import {
   readDocumentaryClauseResponseHistory,
   type ReopenedDocumentaryClauseResponseRecord,
@@ -207,7 +208,7 @@ function mapClauseResponse(
     authorKind: capture.recording.authorKind,
     scope: capture.scope,
     answer: capture.answer,
-    sourceRefs: capture.sources.map((source) =>
+    sourceRefs: capture.sources.map((source): ProjectResponseClauseSourceRef =>
       source.kind === "agent-resource"
         ? { kind: "agent-resource", uri: source.resourceRef.uri }
         : { kind: "thread-artifact", artifactId: source.artifactId }

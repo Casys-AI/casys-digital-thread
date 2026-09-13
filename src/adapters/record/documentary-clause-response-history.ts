@@ -11,6 +11,7 @@ import {
   DOCUMENTARY_CLAUSE_RESPONSE_URI_PREFIX,
   documentaryClauseResponseArtifactId,
   type DocumentaryClauseResponseCapture,
+  documentaryClauseResponseClaimId,
   documentaryClauseResponseItemFingerprint,
   type DocumentaryClauseResponseRecordReference,
   documentaryClauseResponseUri,
@@ -103,6 +104,15 @@ export async function readDocumentaryClauseResponseHistory(input: {
     ) {
       reject("A clause-response belongs to another project or subject.");
     }
+    const expectedClaimId = await documentaryClauseResponseClaimId(
+      project.project.id,
+      capture.claim.sourceItemId,
+    );
+    if (capture.claim.id !== expectedClaimId) {
+      reject(
+        "The clause-response claim does not equal its project and approved brief item identity.",
+      );
+    }
     const run = project.agentRuns.find((item) => item.id === capture.trustedRunId);
     if (
       !run || run.status !== "completed" || !run.resultSnapshot ||
@@ -152,6 +162,7 @@ export async function readDocumentaryClauseResponseHistory(input: {
     }
     validateThreadSnapshot(base);
     validateThreadSnapshot(result);
+    reopenExactThreadArtifactSources(capture, base);
     if (
       deterministicJson(result.artifacts.find((item) => item.id === artifact.id)) !==
         deterministicJson(artifact)
@@ -229,6 +240,39 @@ export async function readDocumentaryClauseResponseHistory(input: {
     selectDocumentaryClauseResponseHead(records, thread, claimId);
   }
   return records;
+}
+
+/**
+ * History keeps this read-side equivalent of the writer's source reopening
+ * local: importing documentary-clause-response-inputs would form a cycle
+ * because that resolver itself reads history to select the predecessor.
+ */
+function reopenExactThreadArtifactSources(
+  capture: DocumentaryClauseResponseCapture,
+  basis: ThreadSnapshot,
+): void {
+  const archived = archivedRefKeys(basis);
+  for (const source of capture.sources) {
+    if (source.kind !== "thread-artifact") continue;
+    const matches = basis.artifacts.filter((artifact) =>
+      artifact.id === source.artifactId &&
+      !archived.has(`artifact:${artifact.id}`)
+    );
+    if (matches.length !== 1) {
+      reject(
+        `Thread artifact ${source.artifactId} is absent, archived, or ambiguous on the clause-response basis.`,
+      );
+    }
+    const artifact = matches[0]!;
+    if (
+      !fingerprintsEqual(artifact.fingerprint, source.fingerprint) ||
+      artifact.producer.runId !== source.producerRunId
+    ) {
+      reject(
+        "The clause-response Thread source does not match its sealed identity.",
+      );
+    }
+  }
 }
 
 export function selectDocumentaryClauseResponseHead(

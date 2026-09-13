@@ -193,6 +193,78 @@ Deno.test("clause-response parameters refuse a partial predecessor", () => {
   );
 });
 
+Deno.test("clause-response parameters refuse extra and skipped source groups", () => {
+  assertThrows(
+    () =>
+      parseDocumentaryClauseResponseParameters([
+        ...parameters(),
+        parameter("clause.unknown", "ignored"),
+      ]),
+    TypeError,
+    "closed grammar",
+  );
+  assertThrows(
+    () =>
+      parseDocumentaryClauseResponseParameters([
+        ...parameters(),
+        parameter("clause.source.0.artifactId", "model"),
+      ]),
+    TypeError,
+    "closed grammar",
+  );
+  assertThrows(
+    () =>
+      parseDocumentaryClauseResponseParameters([
+        ...parameters(),
+        parameter("clause.source.1.kind", "thread-artifact"),
+        parameter("clause.source.1.artifactId", "model"),
+        parameter("clause.source.1.fingerprint", `sha256:${A}`),
+        parameter("clause.source.1.producerRunId", "run:model"),
+      ]),
+    TypeError,
+    "closed grammar",
+  );
+});
+
+Deno.test("clause-response parameters refuse duplicate Thread artifacts and predecessor-as-source", () => {
+  const twice = [
+    ...parameters().filter((item) =>
+      item.key !== "clause.sourceCount" && !item.key.startsWith("clause.source.")
+    ),
+    parameter("clause.sourceCount", 2),
+    parameter("clause.source.0.kind", "thread-artifact"),
+    parameter("clause.source.0.artifactId", "model"),
+    parameter("clause.source.0.fingerprint", `sha256:${A}`),
+    parameter("clause.source.0.producerRunId", "run:model"),
+    parameter("clause.source.1.kind", "thread-artifact"),
+    parameter("clause.source.1.artifactId", "model"),
+    parameter("clause.source.1.fingerprint", `sha256:${A}`),
+    parameter("clause.source.1.producerRunId", "run:model"),
+  ];
+  assertThrows(
+    () => parseDocumentaryClauseResponseParameters(twice),
+    TypeError,
+    "Thread artifact sources must be unique",
+  );
+  const predecessorAsSource = [
+    ...parameters(true).map((item) =>
+      item.key === "clause.sourceCount" ? parameter(item.key, 2) : item
+    ),
+    parameter("clause.source.1.kind", "thread-artifact"),
+    parameter(
+      "clause.source.1.artifactId",
+      "documentary-clause-response-prior",
+    ),
+    parameter("clause.source.1.fingerprint", `sha256:${D}`),
+    parameter("clause.source.1.producerRunId", "run:prior"),
+  ];
+  assertThrows(
+    () => parseDocumentaryClauseResponseParameters(predecessorAsSource),
+    TypeError,
+    "must not repeat the predecessor artifact",
+  );
+});
+
 Deno.test("clause-response capture parses a first documentary proposal", () => {
   const parsed = parseDocumentaryClauseResponseCapture(capture());
   assertEquals(parsed.recording.status, "proposal");

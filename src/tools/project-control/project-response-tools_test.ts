@@ -882,3 +882,68 @@ function capturingApp() {
     },
   };
 }
+
+Deno.test("public clause source schema requires exactly the discriminator's identity", () => {
+  const app = capturingApp();
+  registerProjectResponseTools(app as unknown as McpApp, {
+    projectResponse: stubUseCase(),
+  });
+  const output = app.tool(PROJECT_RESPONSE_TOOL_NAME).outputSchema as {
+    oneOf: Array<
+      {
+        properties: {
+          view: { const: string };
+          items: {
+            items: {
+              properties: {
+                clauseResponses: {
+                  items: {
+                    properties: { sourceRefs: { items: Record<string, unknown> } };
+                  };
+                };
+              };
+            };
+          };
+        };
+      }
+    >;
+  };
+  const full = output.oneOf.find((entry) =>
+    entry.properties.view.const === "full-evidence"
+  );
+  const schema =
+    full!.properties.items.items.properties.clauseResponses.items.properties.sourceRefs
+      .items;
+  const validate = new SchemaValidator().compileSchema({
+    type: "object",
+    properties: { source: schema },
+    required: ["source"],
+    additionalProperties: false,
+  });
+  for (
+    const source of [
+      {
+        kind: "agent-resource",
+        uri: "casys://agent-resource-capture/sha256/" + "a".repeat(64),
+      },
+      { kind: "thread-artifact", artifactId: "artifact.synthetic.source" },
+    ]
+  ) assertEquals(validate.validate({ source }).valid, true);
+  for (
+    const source of [
+      null,
+      {},
+      { kind: "future" },
+      { kind: "agent-resource" },
+      { kind: "thread-artifact" },
+      { kind: "agent-resource", artifactId: "artifact.synthetic.source" },
+      { kind: "thread-artifact", uri: "casys://synthetic/source" },
+      {
+        kind: "agent-resource",
+        uri: "casys://synthetic/source",
+        artifactId: "artifact.synthetic.source",
+      },
+      { kind: "thread-artifact", artifactId: "artifact.synthetic.source", extra: true },
+    ]
+  ) assertEquals(validate.validate({ source }).valid, false);
+});

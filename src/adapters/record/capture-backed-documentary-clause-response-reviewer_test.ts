@@ -118,6 +118,27 @@ Deno.test("review is unresolved for a missing item, URL+digest shortcut, and unk
       }],
     });
     assertEquals(unknown.status, "unresolved");
+
+    const duplicateArtifact = await review.execute({
+      projectId: project.project.id,
+      sourceItemId: "exclusion",
+      answer: "Duplicate Thread artifact sources must not resolve.",
+      scope: "context",
+      sourceRefs: [{
+        kind: "thread-artifact",
+        artifactId: "model",
+      }, {
+        kind: "thread-artifact",
+        artifactId: "model",
+      }],
+    });
+    assertEquals(duplicateArtifact.status, "unresolved");
+    assertEquals(
+      duplicateArtifact.diagnostics.some((item) =>
+        item.message.includes("Thread artifact sources must be unique")
+      ),
+      true,
+    );
   } finally {
     await Deno.remove(root, { recursive: true });
   }

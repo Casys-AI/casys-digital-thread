@@ -14,6 +14,7 @@ import {
 } from "../../domain/kernel/case-validation.ts";
 import { selectCurrentThreadTip } from "../../domain/project/thread-tip.ts";
 import {
+  assertUniqueThreadArtifactSources,
   DOCUMENTARY_CLAUSE_RESPONSE_ANSWER_MAX,
   DOCUMENTARY_CLAUSE_RESPONSE_SCOPE_MAX,
   DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX,
@@ -78,6 +79,8 @@ export class PrepareProjectDocumentaryClauseResponseReview
         dependencies: this.d,
       });
       const previous = selectDocumentaryClauseResponseHead(history, base, claimId);
+      const sources = reopenDeclaredSources(command.sourceRefs, base);
+      assertUniqueThreadArtifactSources(sources, previous?.reference.artifactId);
       const proposal = {
         sourceItemId: sourceItem.id,
         answer: command.answer,
@@ -85,7 +88,7 @@ export class PrepareProjectDocumentaryClauseResponseReview
         briefBasis,
         itemKind: sourceItem.kind,
         itemFingerprint: await documentaryClauseResponseItemFingerprint(sourceItem),
-        sources: reopenDeclaredSources(command.sourceRefs, base),
+        sources,
         ...(previous ? { predecessor: previous.reference } : {}),
       };
       const inputs = await resolveDocumentaryClauseResponseInputs({
@@ -156,7 +159,7 @@ function parseSourceRefs(
       `$clauseResponseReview.sourceRefs must contain 1 to ${DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX} sources.`,
     );
   }
-  return value.map((entry, index) => {
+  const refs = value.map((entry, index) => {
     const path = `$clauseResponseReview.sourceRefs[${index}]`;
     const root = closedRecord(
       entry,
@@ -182,6 +185,15 @@ function parseSourceRefs(
     }
     throw new TypeError(`${path}.kind must be agent-resource or thread-artifact.`);
   });
+  const artifactIds = refs.flatMap((ref) =>
+    ref.kind === "thread-artifact" ? [ref.artifactId] : []
+  );
+  if (new Set(artifactIds).size !== artifactIds.length) {
+    throw new TypeError(
+      "Documentary clause-response Thread artifact sources must be unique.",
+    );
+  }
+  return refs;
 }
 
 function reopenDeclaredSources(

@@ -144,6 +144,8 @@ export function parseDocumentaryClauseResponseParameters(
     sources.push(parseSourceFromParameters(map, index));
   }
   const predecessor = parsePredecessorFromParameters(map);
+  assertClosedParameterKeys(map, sources, predecessor !== undefined);
+  assertUniqueThreadArtifactSources(sources, predecessor?.artifactId);
   const proposal: DocumentaryClauseResponseProposal = {
     sourceItemId: idValue(map, "clause.sourceItemId"),
     answer: boundedText(
@@ -587,6 +589,84 @@ function sourceParameters(
     ),
     parameter(`clause.source.${index}.producerRunId`, source.producerRunId),
   ];
+}
+
+function assertClosedParameterKeys(
+  map: ReadonlyMap<string, EngineeringDecisionProposalParameter>,
+  sources: readonly DocumentaryClauseResponseSource[],
+  hasPredecessor: boolean,
+): void {
+  const expected = new Set<string>([
+    "clause.sourceItemId",
+    "clause.answer",
+    "clause.scope",
+    "clause.brief.kind",
+    "clause.brief.projectId",
+    "clause.brief.projectSnapshotId",
+    "clause.brief.projectRevision",
+    "clause.brief.briefId",
+    "clause.brief.briefSnapshotId",
+    "clause.brief.briefRevision",
+    "clause.brief.approvedBriefFingerprint",
+    "clause.itemKind",
+    "clause.itemFingerprint",
+    "clause.sourceCount",
+  ]);
+  for (const [index, source] of sources.entries()) {
+    if (source.kind === "agent-resource") {
+      for (
+        const field of [
+          "kind",
+          "uri",
+          "name",
+          "mimeType",
+          "representation",
+          "byteCount",
+          "fingerprint",
+        ]
+      ) {
+        expected.add(`clause.source.${index}.${field}`);
+      }
+    } else {
+      for (
+        const field of ["kind", "artifactId", "fingerprint", "producerRunId"]
+      ) {
+        expected.add(`clause.source.${index}.${field}`);
+      }
+    }
+  }
+  if (hasPredecessor) {
+    expected.add("clause.predecessorArtifactId");
+    expected.add("clause.predecessorFingerprint");
+    expected.add("clause.predecessorRunId");
+  }
+  const extra = [...map.keys()].filter((key) => !expected.has(key)).toSorted();
+  if (extra.length > 0) {
+    throw new TypeError(
+      `Documentary clause-response parameter "${
+        extra[0]
+      }" is not part of the closed grammar implied by sourceCount, source kind and predecessor presence.`,
+    );
+  }
+}
+
+export function assertUniqueThreadArtifactSources(
+  sources: readonly DocumentaryClauseResponseSource[],
+  predecessorArtifactId?: string,
+): void {
+  const ids = sources.flatMap((source) =>
+    source.kind === "thread-artifact" ? [source.artifactId] : []
+  );
+  if (new Set(ids).size !== ids.length) {
+    throw new TypeError(
+      "Documentary clause-response Thread artifact sources must be unique.",
+    );
+  }
+  if (predecessorArtifactId && ids.includes(predecessorArtifactId)) {
+    throw new TypeError(
+      "Documentary clause-response sources must not repeat the predecessor artifact.",
+    );
+  }
 }
 
 function parsePredecessorFromParameters(

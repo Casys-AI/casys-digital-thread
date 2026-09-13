@@ -426,10 +426,10 @@ async function buildMaterialization(
   parseDocumentaryClauseResponseCapture(capture);
   const text = deterministicJson(capture);
   const fingerprint = await sha256Fingerprint(capture);
-  const inputArtifactIds = [
-    ...inputs.threadSourceArtifacts.map((artifact) => artifact.id),
-    ...(claim.predecessor ? [claim.predecessor.artifactId] : []),
-  ];
+  const inputArtifactIds = requireUniqueClauseResponseInputArtifactIds(
+    inputs.threadSourceArtifacts.map((artifact) => artifact.id),
+    claim.predecessor?.artifactId,
+  );
   const artifact: ThreadArtifact = {
     id: documentaryClauseResponseArtifactId(fingerprint),
     name: `Documentary clause-response proposal for ${claim.sourceItemId}`,
@@ -522,6 +522,22 @@ export function applyDocumentaryClauseResponseDocumentExtension(input: {
     }]),
     proposedActions: [],
   }, { appliedAt: input.capturedAt });
+}
+
+function requireUniqueClauseResponseInputArtifactIds(
+  sourceIds: readonly string[],
+  predecessorArtifactId?: string,
+): readonly string[] {
+  const ids = [
+    ...sourceIds,
+    ...(predecessorArtifactId ? [predecessorArtifactId] : []),
+  ];
+  if (new Set(ids).size !== ids.length) {
+    throw invalidTransition(
+      "Documentary clause-response input artifacts must be unique.",
+    );
+  }
+  return ids;
 }
 
 function requireThreadBasis(run: EngineeringAgentRun): void {

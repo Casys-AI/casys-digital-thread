@@ -163,6 +163,104 @@ Deno.test("a V2 documentary clause-response proposal parses without becoming a p
   assertEquals("pass" in parsed.model.items[0]!, false);
 });
 
+Deno.test("malformed clause-response sourceRefs make the V2 payload unreadable", () => {
+  const valid = [{
+    kind: "agent-resource",
+    uri: "casys://agent-resource-capture/sha256/" + "a".repeat(64),
+  }];
+  const cases: readonly unknown[] = [
+    [null],
+    [{ kind: "proof", uri: valid[0]!.uri }],
+    [{ kind: "agent-resource" }],
+    [{ kind: "thread-artifact" }],
+    [{ kind: "agent-resource", uri: valid[0]!.uri, artifactId: "model" }],
+    [{ kind: "thread-artifact", artifactId: "model", uri: valid[0]!.uri }],
+    [{ kind: "agent-resource", uri: valid[0]!.uri, extra: true }],
+  ];
+  for (const sourceRefs of cases) {
+    const parsed = parseProjectResponse(v2AvailablePayload([
+      v2Row({
+        item: briefItem("exclusion-1", "exclusion"),
+        correspondence: "unresolved",
+        requirements: [],
+        clauseResponses: [{
+          artifactId: "documentary-clause-response-1",
+          revision: 1,
+          sourceItemId: "exclusion-1",
+          sourceBrief: { briefId: "brief-1", snapshotId: "snap-7", revision: 7 },
+          sourceState: "unchanged",
+          applicability: "current",
+          recordingStatus: "proposal",
+          authorKind: "agent",
+          scope: "context",
+          answer: "Outdoor use remains excluded.",
+          sourceRefs,
+        }],
+      }),
+    ]));
+    assertEquals(parsed.ok, false, JSON.stringify(sourceRefs));
+    if (!parsed.ok) {
+      assertEquals(parsed.issues.length > 0, true);
+      assertEquals(
+        parsed.issues.every((item) => item.code === "response.invalid-shape"),
+        true,
+      );
+    }
+  }
+});
+
+Deno.test("response parser requires positive clause revisions and exact source brief identities", () => {
+  const clause = (overrides: Record<string, unknown> = {}) => ({
+    artifactId: "documentary-clause-response-1",
+    revision: 1,
+    sourceItemId: "exclusion-1",
+    sourceBrief: { briefId: "brief-1", snapshotId: "snap-7", revision: 7 },
+    sourceState: "unchanged",
+    applicability: "current",
+    recordingStatus: "proposal",
+    authorKind: "agent",
+    scope: "context",
+    answer: "Outdoor use remains excluded.",
+    sourceRefs: [{
+      kind: "agent-resource",
+      uri: "casys://agent-resource-capture/sha256/" + "a".repeat(64),
+    }],
+    ...overrides,
+  });
+  for (const revision of [0, -1, 1.5]) {
+    assertEquals(
+      parseProjectResponse(v2AvailablePayload([
+        v2Row({ clauseResponses: [clause({ revision })] }),
+      ])).ok,
+      false,
+      `clause revision ${revision}`,
+    );
+  }
+  for (
+    const sourceBrief of [
+      { briefId: "latest", snapshotId: "snap-7", revision: 7 },
+      { briefId: "brief-1", snapshotId: "latest", revision: 7 },
+      { briefId: "brief-1", snapshotId: "snap-7", revision: 0 },
+      { briefId: "brief-1", snapshotId: "snap-7", revision: 7, extra: true },
+    ]
+  ) {
+    assertEquals(
+      parseProjectResponse(availablePayload([
+        row({ requirements: [requirement({ sourceBrief })] }),
+      ])).ok,
+      false,
+      `requirement sourceBrief ${JSON.stringify(sourceBrief)}`,
+    );
+    assertEquals(
+      parseProjectResponse(v2AvailablePayload([
+        v2Row({ clauseResponses: [clause({ sourceBrief })] }),
+      ])).ok,
+      false,
+      `clause sourceBrief ${JSON.stringify(sourceBrief)}`,
+    );
+  }
+});
+
 Deno.test("available payload with native current pass parses and has no gap", () => {
   const parsed = parseProjectResponse(availablePayload());
   assert(parsed.ok, JSON.stringify(parsed));

@@ -14,7 +14,10 @@ import type {
   ThreadFreshness,
   ThreadSnapshot,
 } from "../../../../domain/thread/thread-snapshot.ts";
-import type { ProjectResponseBriefIdentity } from "../../../../domain/project/project-response.ts";
+import type {
+  ProjectResponseBriefIdentity,
+  ProjectResponseClauseSourceRef,
+} from "../../../../domain/project/project-response.ts";
 
 export interface ProjectResponseTraceRequirementFact {
   readonly threadRequirementId: string;
@@ -91,11 +94,7 @@ export interface ProjectResponseClauseResponseFact {
   readonly authorKind: "agent";
   readonly scope: string;
   readonly answer: string;
-  readonly sourceRefs: readonly {
-    readonly kind: "agent-resource" | "thread-artifact";
-    readonly artifactId?: string;
-    readonly uri?: string;
-  }[];
+  readonly sourceRefs: readonly ProjectResponseClauseSourceRef[];
   readonly predecessorArtifactId?: string;
 }
 

@@ -7,6 +7,7 @@ import {
 } from "../../domain/kernel/deterministic-json.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import {
+  assertUniqueThreadArtifactSources,
   documentaryClauseResponseClaimId,
   documentaryClauseResponseItemFingerprint,
   type DocumentaryClauseResponseProposal,
@@ -64,6 +65,10 @@ export async function resolveDocumentaryClauseResponseInputs(input: {
   if (!fingerprintsEqual(itemFingerprint, proposal.itemFingerprint)) {
     reject("The named brief item no longer equals its signed fingerprint.");
   }
+  assertUniqueThreadArtifactSources(
+    proposal.sources,
+    proposal.predecessor?.artifactId,
+  );
   const sources = await Promise.all(
     proposal.sources.map((source) => reopenSource(source, base, d)),
   );

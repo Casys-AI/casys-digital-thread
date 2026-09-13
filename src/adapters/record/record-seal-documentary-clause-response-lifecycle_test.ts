@@ -15,12 +15,22 @@ import { ReadProjectResponse } from "../../application/use-cases/project-respons
 import { ThreadProjectResponseEvidenceReader } from "../thread/project-response-evidence-reader.ts";
 import { FileEngineeringProjectRunLease } from "../shared/stores/file-engineering-project-run-lease.ts";
 
-import { DOCUMENTARY_CLAUSE_RESPONSE_URI_PREFIX } from "../../domain/record/documentary-clause-response.ts";
-import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "../../domain/record/documentary-clause-response.ts";
+import {
+  DOCUMENTARY_CLAUSE_RESPONSE_URI_PREFIX,
+  documentaryClauseResponseArtifactId,
+  documentaryClauseResponseUri,
+  RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
+} from "../../domain/record/documentary-clause-response.ts";
+import {
+  deterministicJson,
+  sha256Fingerprint,
+} from "../../domain/kernel/deterministic-json.ts";
 import { PROJECT_RESPONSE_SCHEMA } from "../../domain/project/project-response.ts";
+import type { ProjectDocumentaryClauseResponseReviewSourceRef } from "../../application/ports/in/record/project-documentary-clause-response-review.ts";
 import { PrepareProjectDocumentaryClauseResponseReview } from "./capture-backed-documentary-clause-response-reviewer.ts";
 import { createDocumentaryClauseResponseStore } from "./documentary-clause-response-store.ts";
 import { RecordSealDocumentaryClauseResponseRunExecutor } from "./record-seal-documentary-clause-response-run-executor.ts";
+import { readDocumentaryClauseResponseHistory } from "./documentary-clause-response-history.ts";
 import type { EngineeringProjectSnapshot } from "../../domain/project/engineering-project.ts";
 import type { AgentResourceReference } from "../../domain/resource/agent-resource-capture.ts";
 import type { ThreadSnapshot } from "../../domain/thread/thread-snapshot.ts";
@@ -29,6 +39,10 @@ import type { ProjectResponseReadModel } from "../../domain/project/project-resp
 const PROJECT_ID = "synthetic-clause-response";
 const AGENT = SYNTHETIC_BASELINE_AGENT;
 const HUMAN = SYNTHETIC_BASELINE_HUMAN;
+type ThreadArtifactSourceRef = Extract<
+  ProjectDocumentaryClauseResponseReviewSourceRef,
+  { readonly kind: "thread-artifact" }
+>;
 
 Deno.test({
   name:
@@ -232,6 +246,7 @@ Deno.test({
         commands: baseline.commands,
         lease: new FileEngineeringProjectRunLease(`${root}/writer-leases`),
       });
+      const sourceRef = await exactBaselineThreadArtifactSource(baseline);
       await sealClauseResponse({
         baseline,
         review,
@@ -242,6 +257,7 @@ Deno.test({
         runId: "run:clause-r1",
         commandPrefix: "first",
         answer: "Outdoor use remains excluded from this bench record.",
+        sourceRefs: [sourceRef],
       });
 
       const project = (await baseline.projects.get(PROJECT_ID))!;
@@ -255,6 +271,7 @@ Deno.test({
               fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
             ): Promise<string | undefined>;
           };
+          readonly snapshots?: Pick<typeof baseline.snapshots, "get">;
         } = {},
       ) =>
         new ReadProjectResponse({
@@ -262,7 +279,7 @@ Deno.test({
           snapshots: baseline.snapshots,
           evidence: new ThreadProjectResponseEvidenceReader({
             projects: baseline.projects,
-            snapshots: baseline.snapshots,
+            snapshots: overrides.snapshots ?? baseline.snapshots,
             captures: { read: () => Promise.resolve(undefined) },
             clauseResponses: overrides.captures ?? captures,
           }),
@@ -277,6 +294,108 @@ Deno.test({
         valid.items.find((row) => row.item.id === "exclusion")!.clauseResponses
           .length,
         1,
+      );
+
+      const sourceIdentityMismatch = await readerFor({
+        snapshots: snapshotOverride(baseline, baseline.threadRef.snapshotId, (
+          snapshot,
+        ) => ({
+          ...snapshot,
+          artifacts: snapshot.artifacts.map((artifact) =>
+            artifact.id === sourceRef.artifactId
+              ? {
+                ...artifact,
+                fingerprint: {
+                  algorithm: "sha256" as const,
+                  digest: "0".repeat(64),
+                },
+              }
+              : artifact
+          ),
+        })),
+      });
+      assertRefused(sourceIdentityMismatch, "clause-response.unavailable");
+
+      const declaredFirst = thread.artifacts.find((artifact) =>
+        artifact.uri?.startsWith(DOCUMENTARY_CLAUSE_RESPONSE_URI_PREFIX)
+      )!;
+      const originalCapture = JSON.parse(
+        (await captures.read(declaredFirst.fingerprint))!,
+      );
+      const forgedClaimCapture = {
+        ...originalCapture,
+        claim: {
+          ...originalCapture.claim,
+          id: `documentary-clause-response-${"f".repeat(64)}`,
+        },
+      };
+      const forgedFingerprint = await sha256Fingerprint(forgedClaimCapture);
+      const forgedArtifactId = documentaryClauseResponseArtifactId(
+        forgedFingerprint,
+      );
+      const forgedThread = replaceString(
+        thread,
+        declaredFirst.id,
+        forgedArtifactId,
+      );
+      const forgedFingerprintThread = replaceFingerprint(
+        forgedThread,
+        declaredFirst.fingerprint.digest,
+        forgedFingerprint,
+      );
+      const coherentForgedThread: ThreadSnapshot = {
+        ...forgedFingerprintThread,
+        artifacts: forgedFingerprintThread.artifacts.map((artifact) =>
+          artifact.id === forgedArtifactId
+            ? {
+              ...artifact,
+              fingerprint: forgedFingerprint,
+              version: forgedFingerprint.digest,
+              uri: documentaryClauseResponseUri(forgedFingerprint),
+            }
+            : artifact
+        ),
+      };
+      const forgedProject: EngineeringProjectSnapshot = {
+        ...project,
+        agentRuns: project.agentRuns.map((run) =>
+          run.id === "run:clause-r1"
+            ? {
+              ...run,
+              evidenceRefs: [{
+                snapshotId: run.resultSnapshot!.snapshotId,
+                snapshotRevision: run.resultSnapshot!.revision,
+                kind: "artifact" as const,
+                id: forgedArtifactId,
+              }],
+            }
+            : run
+        ),
+      };
+      await assertRejects(
+        () =>
+          readDocumentaryClauseResponseHistory({
+            project: forgedProject,
+            thread: coherentForgedThread,
+            dependencies: {
+              captures: {
+                read: (fingerprint) =>
+                  Promise.resolve(
+                    fingerprint.digest === forgedFingerprint.digest
+                      ? deterministicJson(forgedClaimCapture)
+                      : undefined,
+                  ),
+              },
+              projects: baseline.projects,
+              snapshots: snapshotOverride(
+                baseline,
+                thread.id,
+                () => coherentForgedThread,
+              ),
+            },
+          }),
+        TypeError,
+        "claim does not equal its project and approved brief item identity",
       );
 
       const absent = await readerFor({
@@ -625,6 +744,66 @@ async function currentSnapshot(
   return snapshot;
 }
 
+async function exactBaselineThreadArtifactSource(
+  baseline: Awaited<ReturnType<typeof startSyntheticApprovedBriefBaseline>>,
+): Promise<ThreadArtifactSourceRef> {
+  const snapshot = await baseline.snapshots.get(baseline.threadRef.snapshotId);
+  const artifact = snapshot?.artifacts[0];
+  if (!artifact) {
+    throw new Error("The synthetic approved-brief baseline has no source artifact.");
+  }
+  return { kind: "thread-artifact", artifactId: artifact.id };
+}
+
+function snapshotOverride(
+  baseline: Awaited<ReturnType<typeof startSyntheticApprovedBriefBaseline>>,
+  snapshotId: string,
+  change: (snapshot: ThreadSnapshot) => ThreadSnapshot,
+): Pick<typeof baseline.snapshots, "get"> {
+  return {
+    get: async (id) => {
+      const snapshot = await baseline.snapshots.get(id);
+      return snapshot && id === snapshotId ? change(snapshot) : snapshot;
+    },
+  };
+}
+
+function replaceString<T>(value: T, from: string, to: string): T {
+  if (typeof value === "string") return (value === from ? to : value) as T;
+  if (Array.isArray(value)) {
+    return value.map((item) => replaceString(item, from, to)) as T;
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, replaceString(item, from, to)]),
+    ) as T;
+  }
+  return value;
+}
+
+function replaceFingerprint<T>(
+  value: T,
+  digest: string,
+  replacement: { readonly algorithm: "sha256"; readonly digest: string },
+): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => replaceFingerprint(item, digest, replacement)) as T;
+  }
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (record.algorithm === "sha256" && record.digest === digest) {
+      return replacement as T;
+    }
+    return Object.fromEntries(
+      Object.entries(record).map(([key, item]) => [
+        key,
+        replaceFingerprint(item, digest, replacement),
+      ]),
+    ) as T;
+  }
+  return value;
+}
+
 async function currentThreadRef(
   baseline: Awaited<ReturnType<typeof startSyntheticApprovedBriefBaseline>>,
 ) {
@@ -649,6 +828,7 @@ async function sealClauseResponse(input: {
   readonly runId: string;
   readonly commandPrefix: string;
   readonly answer: string;
+  readonly sourceRefs?: readonly ProjectDocumentaryClauseResponseReviewSourceRef[];
   readonly dependsOnWorkItemIds?: readonly string[];
 }): Promise<{
   readonly status: "resolved" | "unresolved";
@@ -663,6 +843,7 @@ async function sealClauseResponse(input: {
     runId: input.runId,
     commandPrefix: input.commandPrefix,
     answer: input.answer,
+    sourceRefs: input.sourceRefs,
     dependsOnWorkItemIds: input.dependsOnWorkItemIds ?? ["record-brief"],
   });
   await input.executor.execute(AGENT, {
@@ -684,6 +865,7 @@ async function queueSuccessor(input: {
   readonly runId: string;
   readonly commandPrefix: string;
   readonly answer: string;
+  readonly sourceRefs?: readonly ProjectDocumentaryClauseResponseReviewSourceRef[];
   readonly dependsOnWorkItemIds: readonly string[];
 }): Promise<EngineeringProjectSnapshot> {
   const reviewed = await input.review.execute({
@@ -691,7 +873,7 @@ async function queueSuccessor(input: {
     sourceItemId: "exclusion",
     answer: input.answer,
     scope: "context",
-    sourceRefs: [{
+    sourceRefs: input.sourceRefs ?? [{
       kind: "agent-resource",
       resourceRef: input.resource,
     }],

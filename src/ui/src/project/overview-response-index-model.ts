@@ -31,6 +31,7 @@ import type {
 import {
   isProjectResponseV2,
   parseProjectResponseBasis,
+  parseProjectResponseBriefIdentity,
   PROJECT_RESPONSE_SCHEMA,
   PROJECT_RESPONSE_SCHEMA_V1,
   projectResponseBasesEqual,
@@ -378,16 +379,11 @@ function parseRequirement(
       ),
     );
   }
-  const sourceBrief = isRecord(value.sourceBrief) &&
-      isNonEmptyString(value.sourceBrief.briefId) &&
-      isNonEmptyString(value.sourceBrief.snapshotId) &&
-      Number.isInteger(value.sourceBrief.revision)
-    ? {
-      briefId: value.sourceBrief.briefId as string,
-      snapshotId: value.sourceBrief.snapshotId as string,
-      revision: value.sourceBrief.revision as number,
-    }
-    : undefined;
+  const sourceBrief = parseResponseBriefIdentity(
+    value.sourceBrief,
+    `${path}.sourceBrief`,
+    issues,
+  );
   if (!sourceBrief) {
     issues.push(
       issue(
@@ -541,7 +537,8 @@ function parseClauseResponse(
   }
   if (
     !isNonEmptyString(value.artifactId) ||
-    !Number.isInteger(value.revision) ||
+    typeof value.revision !== "number" ||
+    !Number.isSafeInteger(value.revision) || value.revision < 1 ||
     !isNonEmptyString(value.sourceItemId) ||
     !isNonEmptyString(value.scope) ||
     !isNonEmptyString(value.answer) ||
@@ -554,16 +551,11 @@ function parseClauseResponse(
       ),
     );
   }
-  const sourceBrief = isRecord(value.sourceBrief) &&
-      isNonEmptyString(value.sourceBrief.briefId) &&
-      isNonEmptyString(value.sourceBrief.snapshotId) &&
-      Number.isInteger(value.sourceBrief.revision)
-    ? {
-      briefId: value.sourceBrief.briefId as string,
-      snapshotId: value.sourceBrief.snapshotId as string,
-      revision: value.sourceBrief.revision as number,
-    }
-    : undefined;
+  const sourceBrief = parseResponseBriefIdentity(
+    value.sourceBrief,
+    `${path}.sourceBrief`,
+    issues,
+  );
   if (!sourceBrief) {
     issues.push(
       issue(
@@ -572,7 +564,14 @@ function parseClauseResponse(
       ),
     );
   }
-  if (issues.length !== before || !sourceBrief) return undefined;
+  const sourceRefs = Array.isArray(value.sourceRefs)
+    ? parseClauseSourceRefs(
+      value.sourceRefs,
+      `${path}.sourceRefs`,
+      issues,
+    )
+    : undefined;
+  if (issues.length !== before || !sourceBrief || !sourceRefs) return undefined;
   return {
     artifactId: value.artifactId as string,
     revision: value.revision as number,
@@ -585,21 +584,120 @@ function parseClauseResponse(
     authorKind: "agent",
     scope: value.scope as string,
     answer: value.answer as string,
-    sourceRefs: (value.sourceRefs as readonly unknown[]).map((ref) => {
-      const record = isRecord(ref) ? ref : {};
-      return {
-        kind: record
-          .kind as ProjectResponseClauseResponse["sourceRefs"][number]["kind"],
-        ...(typeof record.artifactId === "string"
-          ? { artifactId: record.artifactId }
-          : {}),
-        ...(typeof record.uri === "string" ? { uri: record.uri } : {}),
-      };
-    }),
+    sourceRefs,
     ...(typeof value.predecessorArtifactId === "string"
       ? { predecessorArtifactId: value.predecessorArtifactId }
       : {}),
   };
+}
+
+function parseClauseSourceRefs(
+  value: readonly unknown[],
+  path: string,
+  issues: ProjectResponseDiagnostic[],
+): readonly ProjectResponseClauseResponse["sourceRefs"][number][] | undefined {
+  const refs: ProjectResponseClauseResponse["sourceRefs"][number][] = [];
+  const before = issues.length;
+  for (const [index, entry] of value.entries()) {
+    const parsed = parseClauseSourceRef(entry, `${path}[${index}]`, issues);
+    if (!parsed) return undefined;
+    refs.push(parsed);
+  }
+  return issues.length === before ? refs : undefined;
+}
+
+function parseResponseBriefIdentity(
+  value: unknown,
+  path: string,
+  issues: ProjectResponseDiagnostic[],
+): ProjectResponseBasis["brief"] | undefined {
+  try {
+    return parseProjectResponseBriefIdentity(value, path);
+  } catch (error) {
+    issues.push(
+      issue(
+        "response.invalid-shape",
+        `${path} is not an exact brief identity: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      ),
+    );
+    return undefined;
+  }
+}
+
+function parseClauseSourceRef(
+  value: unknown,
+  path: string,
+  issues: ProjectResponseDiagnostic[],
+): ProjectResponseClauseResponse["sourceRefs"][number] | undefined {
+  if (!isRecord(value)) {
+    issues.push(
+      issue("response.invalid-shape", `${path} must be an object.`),
+    );
+    return undefined;
+  }
+  const extra = Object.keys(value).filter((key) =>
+    key !== "kind" && key !== "artifactId" && key !== "uri"
+  );
+  if (extra.length > 0) {
+    issues.push(
+      issue(
+        "response.invalid-shape",
+        `${path} has unsupported field "${extra[0]}".`,
+      ),
+    );
+    return undefined;
+  }
+  if (value.kind === "agent-resource") {
+    if (value.artifactId !== undefined) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          `${path} agent-resource must not name artifactId.`,
+        ),
+      );
+      return undefined;
+    }
+    if (!isNonEmptyString(value.uri)) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          `${path} agent-resource must carry uri.`,
+        ),
+      );
+      return undefined;
+    }
+    return { kind: "agent-resource", uri: value.uri };
+  }
+  if (value.kind === "thread-artifact") {
+    if (value.uri !== undefined) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          `${path} thread-artifact must not carry uri.`,
+        ),
+      );
+      return undefined;
+    }
+    if (!isNonEmptyString(value.artifactId)) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          `${path} thread-artifact must carry artifactId.`,
+        ),
+      );
+      return undefined;
+    }
+    return { kind: "thread-artifact", artifactId: value.artifactId };
+  }
+  issues.push(
+    issue(
+      "response.invalid-shape",
+      `${path}.kind must be agent-resource or thread-artifact.`,
+    ),
+  );
+  return undefined;
 }
 
 /**

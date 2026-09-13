@@ -95,11 +95,9 @@ export interface ProjectResponseRequirementEvidence {
 export type ProjectResponseClauseRecordingStatus = "proposal";
 export type ProjectResponseClauseAuthorKind = "agent";
 
-export interface ProjectResponseClauseSourceRef {
-  readonly kind: "agent-resource" | "thread-artifact";
-  readonly artifactId?: string;
-  readonly uri?: string;
-}
+export type ProjectResponseClauseSourceRef =
+  | { readonly kind: "agent-resource"; readonly uri: string }
+  | { readonly kind: "thread-artifact"; readonly artifactId: string };
 
 export interface ProjectResponseClauseResponse {
   readonly artifactId: string;

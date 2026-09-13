@@ -313,14 +313,20 @@ const REQUIREMENT = {
 } as const;
 
 const CLAUSE_SOURCE_REF = {
-  type: "object",
-  properties: {
-    kind: { type: "string", enum: ["agent-resource", "thread-artifact"] },
-    artifactId: ID,
-    uri: STRING,
-  },
-  required: ["kind"],
-  additionalProperties: false,
+  oneOf: [
+    {
+      type: "object",
+      properties: { kind: { const: "agent-resource" }, uri: STRING },
+      required: ["kind", "uri"],
+      additionalProperties: false,
+    },
+    {
+      type: "object",
+      properties: { kind: { const: "thread-artifact" }, artifactId: ID },
+      required: ["kind", "artifactId"],
+      additionalProperties: false,
+    },
+  ],
 } as const;
 
 const CLAUSE_RESPONSE = {

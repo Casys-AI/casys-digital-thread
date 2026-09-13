@@ -37,7 +37,11 @@ import { enrichEngineeringEvidenceWorkbenchWithRequirementsBriefTraces } from ".
 import { createRequirementsBriefTraceStore } from "../../src/adapters/record/requirements-brief-trace-store.ts";
 import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../src/domain/record/requirements-brief-trace.ts";
 import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "../../src/domain/record/documentary-clause-response.ts";
-import { createDocumentaryClauseResponseStore } from "../../src/adapters/record/documentary-clause-response-store.ts";
+import {
+  createDocumentaryClauseResponseStore,
+  DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
+} from "../../src/adapters/record/documentary-clause-response-store.ts";
+export { DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY };
 import { isExplicitLoopbackHostname } from "../../src/adapters/loopback-host.ts";
 import {
   type EngineeringWorkbenchSnapshot,
@@ -1959,7 +1963,7 @@ if (import.meta.main) {
     REQUIREMENTS_CAPTURE_DESCRIPTOR.directory,
   );
   const documentaryClauseResponseCaptures = createDocumentaryClauseResponseStore(
-    `${REQUIREMENTS_CAPTURE_DESCRIPTOR.directory}/clause-responses`,
+    DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
   );
   const projectResponse = new ReadProjectResponse({
     projects: projectStore,
