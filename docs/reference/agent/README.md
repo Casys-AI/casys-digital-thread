@@ -1,4 +1,5 @@
 # Reference: agent control
+> Verified-Against: 3795b8d6 (2026-09-06).
 
 Audience: agent · Diátaxis: reference · Kind: index
 

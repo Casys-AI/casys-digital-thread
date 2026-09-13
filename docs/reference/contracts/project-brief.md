@@ -1,4 +1,5 @@
 # Reference: living project brief
+> Verified-Against: bec52a07 (2026-08-31).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

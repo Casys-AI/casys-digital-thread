@@ -1,4 +1,5 @@
 # Reference: circuit-only SPICE closed subset v1
+> Verified-Against: 66703c1a (2026-09-13).
 
 Audience: both · Diátaxis: reference · Kind: contract
 
@@ -127,7 +128,7 @@ Planned observables, in source order then sorted by `nativeName` for JSON:
 Named runtime proof: MCS-02 admitted an attachment-rooted motor-phase circuit, observed
 `@rphase[i] = 1.92 A`, evaluated the exact reviewed current interval and reached L5 at
 Thread r20. See
-[MCS-02 electrical](../../../project-dossiers/motorized-camera-slider-mcs02/domains/electrical.md).
+[MCS-02 electrical](../../../annex/project-dossiers/motorized-camera-slider-mcs02/domains/electrical.md).
 This remains the circuit-only operating-point surface; it is not stepper-drive,
 transient, thermal, EMC or safety coverage.
 - diode `@name[id]`; BJT `@name[ib|ic|ie]`; MOSFET `@name[id|ig|is|ib]`, unit `A`

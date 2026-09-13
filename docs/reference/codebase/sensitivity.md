@@ -1,4 +1,5 @@
 # Reference: source map — sensitivity
+> Verified-Against: 6dd2fd1b (2026-09-09).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

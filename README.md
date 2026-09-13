@@ -114,7 +114,7 @@ task-specific how-to guide state the exact boundary for each path.
 | `docs/how-to/`                  | Goal-oriented procedures                                                                                   |
 | `docs/reference/`               | Exact contracts, runtime facts, providers, and code locations                                              |
 | `docs/explanations/`            | Product and architecture reasoning                                                                         |
-| `docs/project-dossiers/`        | Dated, non-authoritative observations from engineering projects                                            |
+| `docs/annex/project-dossiers/`  | Dated, non-authoritative observations from engineering projects                                            |
 
 Engineering provider servers are maintained in separate repositories and run here from
 reviewed images. Related public building blocks include

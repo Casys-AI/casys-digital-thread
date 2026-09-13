@@ -1,4 +1,5 @@
 # Reference: Modelica execution
+> Verified-Against: e27470c8 (2026-08-25).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

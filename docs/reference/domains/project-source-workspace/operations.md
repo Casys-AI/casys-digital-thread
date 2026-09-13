@@ -1,4 +1,5 @@
 # Project source workspace — operations
+> Verified-Against: 37b8b91a (2026-09-01).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

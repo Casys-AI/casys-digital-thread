@@ -1,4 +1,5 @@
 # Reference: atomic runtime boundaries
+> Verified-Against: b8ff8135 (2026-09-09).
 
 Audience: both · Diátaxis: reference · Kind: boundary
 

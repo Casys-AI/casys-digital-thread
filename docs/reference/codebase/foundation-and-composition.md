@@ -1,4 +1,5 @@
 # Reference: source map — foundation and composition
+> Verified-Against: 3808ba59 (2026-09-09).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

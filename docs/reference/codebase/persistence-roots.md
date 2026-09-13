@@ -1,4 +1,5 @@
 # Reference: source map — persistence roots
+> Verified-Against: 9671648f (2026-09-05).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

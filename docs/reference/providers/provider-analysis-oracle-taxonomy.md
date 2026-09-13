@@ -1,4 +1,5 @@
 # Reference: engines, analyses, evidence and evaluations
+> Verified-Against: 8d3aa085 (2026-08-29).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

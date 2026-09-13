@@ -1,4 +1,5 @@
 # Reference: project capability intent
+> Verified-Against: 074042d2 (2026-09-04).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

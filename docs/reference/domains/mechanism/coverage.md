@@ -1,4 +1,5 @@
 # Reference: mechanism coverage
+> Verified-Against: 66703c1a (2026-09-13).
 
 Audience: both · Diátaxis: reference · Kind: implementation inventory
 
@@ -26,13 +27,13 @@ frames and literal local `+Z` axes.
 
 ## Evidence status
 
-The [CL01 capability-lamp dossier](../../../project-dossiers/capability-lamp-cl01/README.md)
+The [CL01 capability-lamp dossier](../../../annex/project-dossiers/capability-lamp-cl01/README.md)
 records one fresh end-to-end L1→L5 mechanism walk through the public Digital Thread
 MCP: a real SysON Product Structure, a multi-file project workspace, one exact
 single-file mechanism closure, inspected capability authorization and ROP, one L3
 Chrono dispatch, a separate method, deterministic L4 and human L5. Its exact local
 runtime and Thread identities are listed in the [runtime evidence
-sheet](../../../project-dossiers/capability-lamp-cl01/runtime-evidence.md).
+sheet](../../../annex/project-dossiers/capability-lamp-cl01/runtime-evidence.md).
 
 That project proof does not replace host qualification or widen the admitted language.
 It proves the current integration path on the recorded local host only; provider

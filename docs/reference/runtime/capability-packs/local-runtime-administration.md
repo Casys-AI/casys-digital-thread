@@ -1,4 +1,5 @@
 # Reference: local runtime administration
+> Verified-Against: bb43e766 (2026-09-09).
 
 Audience: maintainer · Diátaxis: reference · Kind: contract
 

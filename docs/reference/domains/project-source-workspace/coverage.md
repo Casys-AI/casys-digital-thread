@@ -1,4 +1,5 @@
 # Project source workspace — coverage
+> Verified-Against: 66703c1a (2026-09-13).
 
 Audience: both · Diátaxis: reference · Kind: coverage
 
@@ -84,7 +85,7 @@ Attachment-rooted, single-root SPICE and Modelica sources were admitted and exec
 Thread r5–r8; the single-root Frame CAD source was admitted at r9 and published
 canonical PartDefinition geometry at r10. The separate Diverter multi-file CAD closure
 stays explicitly `source.dependency-lowering-unavailable`. See
-[PS-01 source workspace](../../../project-dossiers/desktop-parts-sorter-ps01/domains/source-workspace.md).
+[PS-01 source workspace](../../../annex/project-dossiers/desktop-parts-sorter-ps01/domains/source-workspace.md).
 
 MSM01 exercised the product-navigation and immediate-module path on 2026-08-26. Its
 workspace contains five active files and six active authoring attachments: three CAD
@@ -113,7 +114,7 @@ BRep reopening and the observer's intersection result. It does **not** evaluate 
 clearance, motion, loads, fabricability or safety. That is a real module and provenance
 proof, not a claim that arbitrary multi-file Build123d or mechanism analysis is
 supported. See the compact
-[MSM01 workspace dossier](../../../project-dossiers/modular-sensor-mount-msm01/domains/workspace.md)
+[MSM01 workspace dossier](../../../annex/project-dossiers/modular-sensor-mount-msm01/domains/workspace.md)
 for the exact observed files, attachments and literal lowering boundary.
 
 ## Not implemented yet

@@ -1,4 +1,5 @@
 # Reference: project capability authorization
+> Verified-Against: 567ab915 (2026-08-31).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

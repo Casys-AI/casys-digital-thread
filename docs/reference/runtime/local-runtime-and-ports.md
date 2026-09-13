@@ -1,4 +1,5 @@
 # Reference: local runtime and ports
+> Verified-Against: 1054b57a (2026-09-12).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

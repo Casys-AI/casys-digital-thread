@@ -1,4 +1,5 @@
 # Reference: source map — CAD
+> Verified-Against: 683a3c0a (2026-09-09).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

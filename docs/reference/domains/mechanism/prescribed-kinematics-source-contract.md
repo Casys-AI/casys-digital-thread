@@ -1,4 +1,5 @@
 # Reference: prescribed-kinematics source contract
+> Verified-Against: 37b8b91a (2026-09-01).
 
 Audience: agent · Diátaxis: reference · Kind: closed source contract
 

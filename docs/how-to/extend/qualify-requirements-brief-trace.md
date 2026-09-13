@@ -83,7 +83,7 @@ The first authorized ID01 canary established a real composed review, normal
 project-change/MRTR/queue ceremony, first documentary append, exact public-MCP replay,
 no-op refusal, and strict preservation of prior evidence. Its exact identities and
 boundaries are recorded in the
-[ID01 first-claim ledger](../../project-dossiers/inspection-drone-id01/requirements-brief-claim-20260907.md).
+[ID01 first-claim ledger](../../annex/project-dossiers/inspection-drone-id01/requirements-brief-claim-20260907.md).
 
 Further authorized qualification must retain separate evidence for:
 

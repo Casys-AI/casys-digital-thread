@@ -1,4 +1,5 @@
 # Reference: source analysis and authority pipeline
+> Verified-Against: ec940e6e (2026-09-09).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

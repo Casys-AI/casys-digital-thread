@@ -1,4 +1,5 @@
 # Reference: local runtime qualification
+> Verified-Against: 6e39f641 (2026-09-09).
 
 Audience: maintainer · Diátaxis: reference · Kind: contract
 

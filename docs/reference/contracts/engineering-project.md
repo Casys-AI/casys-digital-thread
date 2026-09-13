@@ -1,4 +1,5 @@
 # Reference: `EngineeringProjectSnapshot` contract
+> Verified-Against: be7714f8 (2026-09-08).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

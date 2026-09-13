@@ -1,4 +1,5 @@
 # Reference: assembly integrity
+> Verified-Against: 5429a854 (2026-09-07).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

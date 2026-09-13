@@ -1,4 +1,5 @@
 # Reference: FEA coverage
+> Verified-Against: 66703c1a (2026-09-13).
 
 Audience: both · Diátaxis: reference · Kind: scope
 
@@ -45,12 +46,12 @@ The detailed source, declaration and execution contracts remain
 MCP FEA operations are not registered product alternatives. Preinstalled desk-lamp, dl,
 CA or cantilever Git cases are not live production authority. A local AL01 static
 walk is tracking evidence, not a catalog specimen:
-[AL01 runtime evidence](../../../project-dossiers/articulated-led-desk-lamp/runtime-evidence.md).
+[AL01 runtime evidence](../../../annex/project-dossiers/articulated-led-desk-lamp/runtime-evidence.md).
 
 MCS-02 is the current-contract part-level proving run: its attachment-rooted canonical
 RailFrame STEP fed `verify.run-fea-static-proof@3`, both declared criteria passed, and
 the exact branch reached L5 at Thread r12. See
-[MCS-02 FEA](../../../project-dossiers/motorized-camera-slider-mcs02/domains/fea.md). It does not
+[MCS-02 FEA](../../../annex/project-dossiers/motorized-camera-slider-mcs02/domains/fea.md). It does not
 advance assembly FEA coverage.
 
 ## Outside the current surface

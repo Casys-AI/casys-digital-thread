@@ -1,4 +1,5 @@
 # Impact boundedness inventory
+> Verified-Against: 7766ff99 (2026-08-25).
 
 Audience: both · Diátaxis: reference · Kind: inventory
 

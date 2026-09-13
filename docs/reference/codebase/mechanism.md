@@ -1,4 +1,5 @@
 # Reference: source map — mechanism
+> Verified-Against: 75e977b6 (2026-08-31).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

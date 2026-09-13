@@ -1,4 +1,5 @@
 # Reference: prescribed-kinematics method and evaluation
+> Verified-Against: 06c77566 (2026-08-31).
 
 Audience: both · Diátaxis: reference · Kind: L4 contract
 

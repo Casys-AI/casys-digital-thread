@@ -1,4 +1,5 @@
 # Domain reference: isolated CalculiX static proof V3
+> Verified-Against: de308db0 (2026-09-08).
 
 Audience: both · Diátaxis: reference · Kind: domain contract
 

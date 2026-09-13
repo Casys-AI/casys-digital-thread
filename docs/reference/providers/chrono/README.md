@@ -1,4 +1,5 @@
 # Reference: Chrono provider boundary
+> Verified-Against: 080fe5aa (2026-08-31).
 
 Audience: both · Diátaxis: reference · Kind: provider boundary
 

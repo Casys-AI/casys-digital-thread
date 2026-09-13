@@ -1,4 +1,5 @@
 # Project source workspace — persistence
+> Verified-Against: c97f902f (2026-08-26).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

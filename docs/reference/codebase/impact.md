@@ -1,4 +1,5 @@
 # Reference: source map — impact
+> Verified-Against: afc205a5 (2026-08-26).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

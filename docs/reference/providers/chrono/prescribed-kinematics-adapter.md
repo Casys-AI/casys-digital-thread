@@ -1,4 +1,5 @@
 # Reference: Chrono prescribed-kinematics adapter
+> Verified-Against: 080fe5aa (2026-08-31).
 
 Audience: maintainer · Diátaxis: reference · Kind: provider contract
 
