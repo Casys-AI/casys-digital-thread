@@ -1,5 +1,5 @@
 /**
- * The industrial-project skill and the golden-path how-to both teach agents
+ * The industrial-project skill and operation-wiring guide both teach agents
  * to plan with registered operations. A document that cites an operation the
  * registry does not know is worse than silence: the agent will confidently
  * propose an identifier the server must refuse (the dead inspection-drone
