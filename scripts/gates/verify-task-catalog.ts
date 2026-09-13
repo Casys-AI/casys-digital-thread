@@ -4,7 +4,7 @@
  *
  * The gate deliberately uses only built-in APIs. A task is cited when its exact
  * name appears as a Markdown code span in docs/reference/runtime/task-catalog.md.
- * The reverse direction only trusts top-level catalog bullets (`- `name``), so
+ * The reverse direction only trusts catalog table rows (`| `name` | ...`), so
  * prose code spans never fail the gate when a task is renamed or removed.
  */
 
@@ -32,11 +32,12 @@ for (const task of tasks) {
   }
 }
 
-for (const claimed of collectBulletClaims(body)) {
+for (const claimed of collectTableClaims(body)) {
   if (!taskSet.has(claimed)) {
     failures.push({
       task: claimed,
-      reason: `claimed by a ${CATALOG_PATH} bullet but missing from ${DENO_JSON_PATH}`,
+      reason:
+        `claimed by a ${CATALOG_PATH} table row but missing from ${DENO_JSON_PATH}`,
     });
   }
 }
@@ -89,10 +90,10 @@ function collectCodeSpans(body: string): ReadonlySet<string> {
   return cited;
 }
 
-function collectBulletClaims(body: string): readonly string[] {
+function collectTableClaims(body: string): readonly string[] {
   const claimed: string[] = [];
-  const bullet = /^- `([^`\n]+)`/gmu;
-  for (const match of body.matchAll(bullet)) {
+  const tableRow = /^\| `([^`\n]+)`/gmu;
+  for (const match of body.matchAll(tableRow)) {
     claimed.push(match[1]!.trim());
   }
   return claimed;

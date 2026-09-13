@@ -54,8 +54,11 @@ const PASS_DENO_JSON = JSON.stringify({
 const PASS_CATALOG = [
   "# Task catalog",
   "",
-  "- `alpha` — first fixture task.",
-  "- `beta:task` — second fixture task.",
+  "| Task | Role |",
+  "| ---- | ---- |",
+  "- prose mention of `alpha` must not fail the reverse check.",
+  "| `alpha` | First fixture task. |",
+  "| `beta:task` | Second fixture task. |",
   "",
 ].join("\n");
 
@@ -72,7 +75,9 @@ Deno.test("task-catalog gate fails on an uncited task", async () => {
   const catalog = [
     "# Task catalog",
     "",
-    "- `alpha` — first fixture task.",
+    "| Task | Role |",
+    "| ---- | ---- |",
+    "| `alpha` | First fixture task. |",
     "",
   ].join("\n");
   const result = await runGate(PASS_DENO_JSON, catalog);
@@ -87,9 +92,11 @@ Deno.test("task-catalog gate fails on a stale bullet", async () => {
   const catalog = [
     "# Task catalog",
     "",
-    "- `alpha` — first fixture task.",
-    "- `beta:task` — second fixture task.",
-    "- `removed:task` — stale row for a deleted task.",
+    "| Task | Role |",
+    "| ---- | ---- |",
+    "| `alpha` | First fixture task. |",
+    "| `beta:task` | Second fixture task. |",
+    "| `removed:task` | Stale row for a deleted task. |",
     "",
   ].join("\n");
   const result = await runGate(PASS_DENO_JSON, catalog);
