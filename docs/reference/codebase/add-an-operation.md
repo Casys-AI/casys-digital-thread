@@ -1,5 +1,5 @@
 # Reference: add a registered operation
-> Verified-Against: 0d03fd8a (2026-09-13).
+> Verified-Against: 40007ffe (2026-09-13).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 
