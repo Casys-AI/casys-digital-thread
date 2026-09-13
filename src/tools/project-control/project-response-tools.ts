@@ -8,7 +8,11 @@
 
 import type { McpApp, MCPTool } from "@casys/mcp-server";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
-import type { ProjectBriefItemKind } from "../../domain/project/project-brief.ts";
+import {
+  PROJECT_BRIEF_ITEM_KINDS,
+  PROJECT_BRIEF_SOURCE_KINDS,
+  type ProjectBriefItemKind,
+} from "../../domain/project/project-brief.ts";
 import type {
   ProjectResponseItem,
   ProjectResponseReadModel,
@@ -37,32 +41,29 @@ const ID = {
   not: { const: "latest" },
 } as const;
 
-const BRIEF_ITEM_KINDS = [
-  "objective",
-  "primary-user",
-  "mission-scenario",
-  "operating-environment",
-  "success-criterion",
-  "constraint",
-  "exclusion",
-  "intended-market",
-  "manufacturing-jurisdiction",
-  "operating-jurisdiction",
-  "compliance-target",
-  "verification-activity",
-  "manufacturing-evidence",
-  "observed-fact",
-  "assumption",
-  "open-question",
-  "proposed-decision",
-] as const satisfies readonly ProjectBriefItemKind[];
-
 const CORRESPONDENCE = [
   "native",
   "documentary",
   "unresolved",
   "TRACE GAP",
 ] as const;
+
+const ORIGIN = ["native", "documentary"] as const;
+
+const APPLICABILITY = ["current", "historical", "unresolved"] as const;
+
+const EVALUATION_STATUS = ["pass", "fail", "unresolved", "error"] as const;
+
+const SOURCE_STATE = [
+  "unchanged",
+  "changed",
+  "removed",
+  "brief-unavailable",
+] as const;
+
+const FRESHNESS_STATUS = ["fresh", "stale", "running", "failed"] as const;
+
+const STRING = { type: "string", minLength: 1 } as const;
 
 const DIAGNOSTIC = {
   type: "object",
@@ -204,11 +205,130 @@ const DIAGNOSTIC_OMISSION = {
   additionalProperties: false,
 } as const;
 
+const SOURCE_REF = {
+  type: "object",
+  properties: {
+    kind: { type: "string", enum: PROJECT_BRIEF_SOURCE_KINDS },
+    reference: STRING,
+  },
+  required: ["kind", "reference"],
+  additionalProperties: false,
+} as const;
+
+const VERIFICATION_AUTHORITY = {
+  type: "object",
+  properties: {
+    id: STRING,
+    version: STRING,
+  },
+  required: ["id", "version"],
+  additionalProperties: false,
+} as const;
+
+const BRIEF_ITEM = {
+  type: "object",
+  properties: {
+    id: ID,
+    kind: { type: "string", enum: PROJECT_BRIEF_ITEM_KINDS },
+    statement: { type: "string" },
+    sourceRefs: { type: "array", items: SOURCE_REF },
+    owner: STRING,
+    reviewTrigger: STRING,
+    dependsOnItemIds: { type: "array", items: ID },
+    verificationAuthority: VERIFICATION_AUTHORITY,
+  },
+  required: ["id", "kind", "statement", "sourceRefs"],
+  additionalProperties: false,
+} as const;
+
+const FRESHNESS = {
+  type: "object",
+  properties: {
+    status: { type: "string", enum: FRESHNESS_STATUS },
+    changedAt: STRING,
+    reason: STRING,
+    invalidatedByChangeIds: { type: "array", items: { type: "string" } },
+  },
+  required: ["status", "changedAt", "invalidatedByChangeIds"],
+  additionalProperties: false,
+  allOf: [
+    {
+      if: {
+        properties: { status: { enum: ["stale", "failed"] } },
+        required: ["status"],
+      },
+      then: { required: ["reason"] },
+    },
+  ],
+} as const;
+
+const EVALUATION = {
+  type: "object",
+  properties: {
+    evaluationId: ID,
+    status: { type: "string", enum: EVALUATION_STATUS },
+    applicability: { type: "string", enum: APPLICABILITY },
+    observationIds: { type: "array", items: STRING },
+    evidenceArtifactIds: { type: "array", items: STRING },
+    evaluatedAt: STRING,
+    freshness: FRESHNESS,
+  },
+  required: [
+    "evaluationId",
+    "status",
+    "applicability",
+    "observationIds",
+    "evidenceArtifactIds",
+    "evaluatedAt",
+    "freshness",
+  ],
+  additionalProperties: false,
+} as const;
+
+const REQUIREMENT = {
+  type: "object",
+  properties: {
+    threadRequirementId: ID,
+    requirementsArtifactId: ID,
+    traceArtifactId: ID,
+    origin: { type: "string", enum: ORIGIN },
+    sourceBrief: BRIEF_IDENTITY,
+    sourceItemId: ID,
+    sourceState: { type: "string", enum: SOURCE_STATE },
+    applicability: { type: "string", enum: APPLICABILITY },
+    evaluations: { type: "array", items: EVALUATION },
+  },
+  required: [
+    "threadRequirementId",
+    "requirementsArtifactId",
+    "traceArtifactId",
+    "origin",
+    "sourceBrief",
+    "sourceItemId",
+    "sourceState",
+    "applicability",
+    "evaluations",
+  ],
+  additionalProperties: false,
+} as const;
+
+const RESPONSE_ITEM = {
+  type: "object",
+  properties: {
+    item: BRIEF_ITEM,
+    correspondence: { type: "string", enum: CORRESPONDENCE },
+    requirements: { type: "array", items: REQUIREMENT },
+    gaps: { type: "array", items: DIAGNOSTIC },
+  },
+  required: ["item", "correspondence", "requirements", "gaps"],
+  additionalProperties: false,
+} as const;
+
 const SUMMARY_ROW = {
   type: "object",
   properties: {
     itemId: ID,
-    kind: { type: "string", enum: BRIEF_ITEM_KINDS },
+    kind: { type: "string", enum: PROJECT_BRIEF_ITEM_KINDS },
     correspondence: { type: "string", enum: CORRESPONDENCE },
     requirementCount: { type: "integer", minimum: 0 },
     currentEvaluationCount: { type: "integer", minimum: 0 },
@@ -263,12 +383,13 @@ const ITEM_OUTPUT = {
     ...ENVELOPE,
     view: { const: "item" },
     itemId: ID,
-    items: { type: "array", maxItems: 1 },
+    items: { type: "array", maxItems: 1, items: RESPONSE_ITEM },
   },
   required: [
     "schemaVersion",
     "status",
     "view",
+    "itemId",
     "items",
     "diagnostics",
     "grants",
@@ -282,7 +403,7 @@ const FULL_OUTPUT = {
     ...ENVELOPE,
     view: { const: "full-evidence" },
     counts: COUNTS,
-    items: { type: "array" },
+    items: { type: "array", items: RESPONSE_ITEM },
     omission: OMISSION,
   },
   required: [
@@ -300,7 +421,7 @@ const FULL_OUTPUT = {
 const projectResponseReadTool: MCPTool = {
   name: PROJECT_RESPONSE_TOOL_NAME,
   description:
-    "Read-only index of every current human-approved brief item against recorded evidence. Default is a bounded canonical summary (≤8KiB) of exact item ids, kinds, independent correspondence, gap counts and a bounded diagnostic prefix; statements, full brief text and solver bytes are omitted. available means the index was readable, never that the response is ready or a clause is satisfied. Named item detail (itemId) and full-evidence require the exact expectedBasis from that summary. Omitted item rows are retrieved with the same expectedBasis and afterItemId. Omitted diagnostic text is declared as diagnosticOmission and retrieved with that expectedBasis and evidence full-evidence, which may exceed 8KiB to return complete diagnostic facts. Without an exact basis, diagnostic omission is declared without a retrieval handle. No provider, runtime, config or GET command. Grants none. Workbench stays GET/SSE.",
+    "Read-only index of every current human-approved brief item against recorded evidence. Default is a bounded canonical summary (≤8KiB) of exact item ids, kinds, independent correspondence, gap counts and a bounded diagnostic prefix; statements, full brief text and solver bytes are omitted. available means the index was readable, never that the response is ready or a clause is satisfied. Named item detail (itemId) and full-evidence require the exact expectedBasis from that summary. Omitted item rows are retrieved with the same expectedBasis and afterItemId. Omitted diagnostic text is declared as diagnosticOmission. An available model retrieves complete diagnostic facts with that expectedBasis and evidence full-evidence, a documented soft budget that may exceed 8KiB. A non-available or request-refused model, including basis.stale, declares the omission and count without a retrieval handle; following the current model.basis would drop the request-scoped refusal. Without an exact available basis, diagnostic omission is declared without a retrieval handle. No provider, runtime, config or GET command. Grants none. Workbench stays GET/SSE.",
   inputSchema: {
     type: "object",
     properties: {
@@ -724,7 +845,7 @@ function diagnosticOmissionFor(
   projectId: string,
 ): ProjectResponseDiagnosticOmission | undefined {
   if (omittedDiagnosticCount <= 0) return undefined;
-  if (!model.basis) {
+  if (model.status !== "available" || !model.basis) {
     return { declared: true, omittedDiagnosticCount };
   }
   return {
@@ -827,7 +948,9 @@ function contentFor(result: ProjectResponseToolResult): string {
     ? ` ${result.omission.omittedItemCount} later items are omitted; retrieve them with the returned expectedBasis and afterItemId.`
     : "";
   const omittedDiagnostics = result.diagnosticOmission
-    ? ` ${result.diagnosticOmission.omittedDiagnosticCount} diagnostics are omitted; retrieve exact text with evidence full-evidence on the returned expectedBasis.`
+    ? result.diagnosticOmission.retrieval
+      ? ` ${result.diagnosticOmission.omittedDiagnosticCount} diagnostics are omitted; retrieve exact text with evidence full-evidence on the returned expectedBasis.`
+      : ` ${result.diagnosticOmission.omittedDiagnosticCount} diagnostics are omitted.`
     : "";
   if (result.view === "full-evidence") {
     return `Project response full evidence for ${

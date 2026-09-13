@@ -144,7 +144,7 @@ function checkLiteral(
 
 function checkGap(value: unknown): ProjectResponseGap | undefined {
   if (!isRecord(value)) return undefined;
-  if (!isNonEmptyString(value.code) || typeof value.message !== "string") {
+  if (!isNonEmptyString(value.code) || !isNonEmptyString(value.message)) {
     return undefined;
   }
   return { code: value.code, message: value.message };
@@ -298,6 +298,17 @@ function parseFreshness(
       issue(
         "response.invalid-shape",
         `${path}.reason must be a string when present.`,
+      ),
+    );
+  }
+  if (
+    (value.status === "stale" || value.status === "failed") &&
+    !isNonEmptyString(value.reason)
+  ) {
+    issues.push(
+      issue(
+        "response.invalid-shape",
+        `${path}.reason is required for ${value.status}.`,
       ),
     );
   }

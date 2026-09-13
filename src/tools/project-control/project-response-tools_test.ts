@@ -1,5 +1,10 @@
 import { assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
+import {
+  type McpApp,
+  type MCPTool,
+  SchemaValidator,
+  type ToolHandler,
+} from "@casys/mcp-server";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type {
   ProjectResponseItem,
@@ -50,10 +55,35 @@ Deno.test("project_response_read is a closed read-only tool without provider arg
   assertEquals("snapshotId" in schema.properties, false);
   assertEquals(schema.dependentRequired.itemId, ["expectedBasis"]);
   assertEquals(schema.dependentRequired.afterItemId, ["expectedBasis"]);
+  const output = tool.outputSchema as {
+    oneOf: Array<{
+      required: string[];
+      properties: {
+        view: { const: string };
+        itemId?: unknown;
+        items: { items?: unknown; maxItems?: number };
+      };
+    }>;
+  };
+  const itemView = output.oneOf.find((entry) =>
+    entry.properties.view.const === "item"
+  )!;
+  const fullView = output.oneOf.find((entry) =>
+    entry.properties.view.const === "full-evidence"
+  )!;
+  assertEquals(itemView.required.includes("itemId"), true);
+  assertEquals(itemView.properties.items.maxItems, 1);
+  assertEquals(itemView.properties.items.items, fullView.properties.items.items);
+  assertEquals(
+    (itemView.properties.items.items as { required: string[] }).required,
+    ["item", "correspondence", "requirements", "gaps"],
+  );
   assertStringIncludes(tool.description, "8KiB");
   assertStringIncludes(tool.description, "afterItemId");
   assertStringIncludes(tool.description, "expectedBasis");
   assertStringIncludes(tool.description, "Grants none");
+  assertStringIncludes(tool.description, "soft budget");
+  assertStringIncludes(tool.description, "without a retrieval handle");
 });
 
 Deno.test("project_response_read default summary omits statements and stays under 8KiB", async () => {
@@ -443,6 +473,57 @@ Deno.test("project_response_read summary bounds many TRACE GAP diagnostics witho
   assertEquals(full.structuredContent.diagnostics, model.diagnostics);
 });
 
+Deno.test("project_response_read stale model with many diagnostics does not advertise current-basis retrieval", () => {
+  const current = sampleAvailableModel();
+  const presented = presentProjectResponse({
+    schemaVersion: PROJECT_RESPONSE_SCHEMA,
+    status: "unavailable",
+    basis: current.basis,
+    items: [],
+    diagnostics: [
+      {
+        code: "basis.stale",
+        message:
+          "The expected project-response basis does not match the current readable basis.",
+      },
+      ...traceGapDiagnostics(40, "z".repeat(400)),
+    ],
+    grants: "none",
+  }, {
+    query: {
+      projectId: "project.response",
+      expectedBasis: { ...sampleBasis(), projectRevision: 1 },
+    },
+    evidence: "summary",
+  });
+  assertEquals(presented.status, "unavailable");
+  assertEquals(presented.basis, current.basis);
+  assertEquals(presented.view, "summary");
+  assertEquals(presented.items, []);
+  assertEquals(
+    presented.diagnostics.some((item) => item.code === "basis.stale"),
+    true,
+  );
+  assertEquals(
+    new TextEncoder().encode(deterministicJson(presented)).byteLength <=
+      PROJECT_RESPONSE_SUMMARY_MAX_BYTES,
+    true,
+  );
+  assertEquals(
+    (presented.diagnosticOmission?.omittedDiagnosticCount ?? 0) >= 1,
+    true,
+  );
+  assertEquals(presented.diagnosticOmission?.retrieval, undefined);
+  assertEquals(
+    JSON.stringify(presented).includes('"tool":"project_response_read"'),
+    false,
+  );
+  assertEquals(
+    presented.counts?.diagnosticsOmitted,
+    presented.diagnosticOmission?.omittedDiagnosticCount,
+  );
+});
+
 Deno.test("project_response_read unavailable summary does not fabricate a diagnostic retrieval basis", () => {
   const presented = presentProjectResponse({
     schemaVersion: PROJECT_RESPONSE_SCHEMA,
@@ -517,6 +598,73 @@ Deno.test("project_response_read full-evidence continuation keeps the requested 
   const nextIds = next.structuredContent.items.map((row) => row.item.id);
   assertEquals(nextIds.length >= 1, true);
   assertEquals(nextIds.some((id) => firstIds.has(id)), false);
+});
+
+Deno.test("project_response_read published results match the declared outputSchema", async () => {
+  const app = capturingApp();
+  const model = sampleAvailableModel();
+  registerProjectResponseTools(app as unknown as McpApp, {
+    projectResponse: {
+      ...stubUseCase(),
+      read: (query) => {
+        if (
+          query.expectedBasis &&
+          query.expectedBasis.projectRevision !== model.basis?.projectRevision
+        ) {
+          return Promise.resolve({
+            schemaVersion: PROJECT_RESPONSE_SCHEMA,
+            status: "unavailable",
+            basis: model.basis,
+            items: [],
+            diagnostics: [
+              {
+                code: "basis.stale",
+                message:
+                  "The expected project-response basis does not match the current readable basis.",
+              },
+              ...traceGapDiagnostics(40, "z".repeat(400)),
+            ],
+            grants: "none",
+          });
+        }
+        return Promise.resolve(model);
+      },
+    },
+  });
+  const schema = app.tool(PROJECT_RESPONSE_TOOL_NAME).outputSchema;
+  const compiled = new SchemaValidator().compileSchema(
+    schema as Record<string, unknown>,
+  );
+  const published = [
+    await app.handle(PROJECT_RESPONSE_TOOL_NAME, {
+      projectId: "project.response",
+    }),
+    await app.handle(PROJECT_RESPONSE_TOOL_NAME, {
+      projectId: "project.response",
+      expectedBasis: sampleBasis(),
+      itemId: "objective",
+    }),
+    await app.handle(PROJECT_RESPONSE_TOOL_NAME, {
+      projectId: "project.response",
+      expectedBasis: sampleBasis(),
+      evidence: "full-evidence",
+    }),
+    await app.handle(PROJECT_RESPONSE_TOOL_NAME, {
+      projectId: "project.response",
+      expectedBasis: { ...sampleBasis(), projectRevision: 1 },
+    }),
+  ] as Array<{ structuredContent: Record<string, unknown> }>;
+  for (const result of published) {
+    const checked = compiled.validate(result.structuredContent);
+    assertEquals(checked.valid, true, JSON.stringify(checked.errors));
+  }
+  const missingItemId = { ...published[1].structuredContent };
+  delete missingItemId.itemId;
+  assertEquals(compiled.validate(missingItemId).valid, false);
+  const invalidNested = structuredClone(published[2].structuredContent);
+  const rows = invalidNested.items as Array<{ item: { kind: string } }>;
+  rows[0].item.kind = "invented-kind";
+  assertEquals(compiled.validate(invalidNested).valid, false);
 });
 
 Deno.test("project_response_read rejects latest aliases and mixed continuation keys", async () => {

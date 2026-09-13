@@ -517,6 +517,69 @@ Deno.test("non-record index value refuses the whole projection loudly", () => {
   assertEquals(isEngineeringWorkbenchSnapshot(workbench), false);
 });
 
+Deno.test("empty gap or diagnostic messages and stale/failed freshness without reason are unreadable", () => {
+  const emptyGap = availablePayload([
+    row({
+      correspondence: "unresolved",
+      requirements: [],
+      gaps: [{ code: "correspondence.missing", message: "" }],
+    }),
+  ]);
+  const emptyDiagnostic = {
+    ...availablePayload(),
+    diagnostics: [{ code: "basis.unavailable", message: "" }],
+  };
+  const staleWithoutReason = availablePayload([
+    row({
+      requirements: [
+        requirement({
+          evaluations: [{
+            ...(currentPassEvaluation() as Record<string, unknown>),
+            freshness: {
+              status: "stale",
+              changedAt: "2026-09-13T10:00:00Z",
+              invalidatedByChangeIds: ["change-9"],
+            },
+          }],
+        }),
+      ],
+    }),
+  ]);
+  const failedEmptyReason = availablePayload([
+    row({
+      requirements: [
+        requirement({
+          evaluations: [{
+            ...(currentPassEvaluation() as Record<string, unknown>),
+            freshness: {
+              status: "failed",
+              changedAt: "2026-09-13T10:00:00Z",
+              reason: "",
+              invalidatedByChangeIds: [],
+            },
+          }],
+        }),
+      ],
+    }),
+  ]);
+  for (
+    const payload of [
+      emptyGap,
+      emptyDiagnostic,
+      staleWithoutReason,
+      failedEmptyReason,
+    ]
+  ) {
+    const parsed = parseProjectResponse(payload);
+    assertEquals(parsed.ok, false, JSON.stringify(payload).slice(0, 200));
+    if (!parsed.ok) {
+      assert(
+        parsed.issues.some((issue) => issue.code === "response.invalid-shape"),
+      );
+    }
+  }
+});
+
 Deno.test("malformed nested brief source refuses the index before rendering", () => {
   const malformed = availablePayload([
     row({
