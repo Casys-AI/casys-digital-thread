@@ -160,6 +160,25 @@ Deno.test("a V2 documentary clause-response proposal parses without becoming a p
       parsed.model.items[0]!.clauseResponses[0]!.recordingStatus,
       "proposal",
     );
+    const misattributed = parseProjectResponse({
+      ...parsed.model,
+      items: parsed.model.items.map((item) => ({
+        ...item,
+        clauseResponses: item.clauseResponses.map((response) => ({
+          ...response,
+          sourceItemId: "another-clause",
+        })),
+      })),
+    });
+    assertEquals(misattributed.ok, false);
+    if (!misattributed.ok) {
+      assertEquals(
+        misattributed.issues.some((issue) =>
+          issue.message.includes("sourceItemId must match item.id")
+        ),
+        true,
+      );
+    }
   }
   assertEquals("pass" in parsed.model.items[0]!, false);
 });
@@ -272,7 +291,7 @@ Deno.test("malformed predecessorArtifactId makes the V2 payload unreadable", () 
   const clause = (overrides: Record<string, unknown> = {}) => ({
     artifactId: "documentary-clause-response-1",
     revision: 1,
-    sourceItemId: "exclusion-1",
+    sourceItemId: "item-1",
     sourceBrief: { briefId: "brief-1", snapshotId: "snap-7", revision: 7 },
     sourceState: "unchanged",
     applicability: "current",

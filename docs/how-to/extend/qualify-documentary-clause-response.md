@@ -60,3 +60,8 @@ History reopens every agent resource through the existing exact resource port; m
 or changed bytes make the documentary evidence unavailable. Replaying a completed
 recording reopens its original immutable project receipt and exact Thread result,
 including after subsequent project or brief revisions.
+
+For an embedded server on durable storage, set
+`CreateConsoleServerOptions.documentaryClauseResponseDirectory` alongside the project,
+Thread and agent-resource directories. The writer and history reader share that
+configured store; the default remains `state/local/documentary-clause-responses`.

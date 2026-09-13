@@ -488,6 +488,15 @@ function parseResponseItem(
         issues,
       );
       if (!parsed) break;
+      if (item && parsed.sourceItemId !== item.id) {
+        issues.push(
+          issue(
+            "response.invalid-shape",
+            `${path}.clauseResponses[${index}].sourceItemId must match item.id.`,
+          ),
+        );
+        break;
+      }
       clauseResponses.push(parsed);
     }
   }

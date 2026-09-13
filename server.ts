@@ -523,6 +523,8 @@ export interface CreateConsoleServerOptions {
   requirementsAttemptDirectory?: string;
   /** Generic model.recapture-requirements@1 publication WAL directory. */
   requirementsRecapturePublicationDirectory?: string;
+  /** Immutable documentary clause-response CAS; shared by writer and reader. */
+  documentaryClauseResponseDirectory?: string;
   printabilityCaseCaptureDirectory?: string;
   printabilityAttemptDirectory?: string;
   printabilityObservationCaptureDirectory?: string;
@@ -1435,7 +1437,8 @@ async function createProjectControl(
     lease,
   });
   const documentaryClauseResponseStore = createDocumentaryClauseResponseStore(
-    DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
+    options.documentaryClauseResponseDirectory ??
+      DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
   );
   const documentaryClauseResponseInputs = {
     projects: runtime.projects,
