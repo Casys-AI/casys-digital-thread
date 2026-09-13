@@ -109,6 +109,7 @@ function v2AvailablePayload(
   return {
     ...availablePayload(items),
     schemaVersion: PROJECT_RESPONSE_SCHEMA,
+    historicalClauseResponses: [],
   };
 }
 
@@ -163,6 +164,62 @@ Deno.test("a V2 documentary clause-response proposal parses without becoming a p
   assertEquals("pass" in parsed.model.items[0]!, false);
 });
 
+Deno.test("V2 historicalClauseResponses are required and stay off current items", () => {
+  const missing = parseProjectResponse({
+    ...v2AvailablePayload(),
+    historicalClauseResponses: undefined,
+  });
+  assertEquals(missing.ok, false);
+  const v1Historical = parseProjectResponse({
+    ...availablePayload(),
+    historicalClauseResponses: [],
+  });
+  assertEquals(v1Historical.ok, false);
+  const parsed = parseProjectResponse({
+    ...v2AvailablePayload(),
+    historicalClauseResponses: [{
+      artifactId: "documentary-clause-response-retired",
+      revision: 1,
+      sourceItemId: "retired-exclusion",
+      sourceBrief: { briefId: "brief-1", snapshotId: "snap-7", revision: 7 },
+      sourceState: "removed",
+      applicability: "historical",
+      recordingStatus: "proposal",
+      authorKind: "agent",
+      scope: "context",
+      answer: "Historical retired answer.",
+      sourceRefs: [{
+        kind: "agent-resource",
+        uri: "casys://agent-resource-capture/sha256/" + "a".repeat(64),
+      }],
+    }],
+  });
+  assert(parsed.ok, JSON.stringify(parsed));
+  if (parsed.ok && isProjectResponseV2(parsed.model)) {
+    assertEquals(parsed.model.historicalClauseResponses.length, 1);
+    assertEquals(
+      parsed.model.historicalClauseResponses[0]!.sourceItemId,
+      "retired-exclusion",
+    );
+    assertEquals(parsed.model.items[0]!.clauseResponses, []);
+    for (
+      const changed of [
+        { applicability: "current" },
+        { sourceState: "unchanged" },
+      ]
+    ) {
+      const malformed = parseProjectResponse({
+        ...parsed.model,
+        historicalClauseResponses: [{
+          ...parsed.model.historicalClauseResponses[0],
+          ...changed,
+        }],
+      });
+      assertEquals(malformed.ok, false);
+    }
+  }
+});
+
 Deno.test("malformed clause-response sourceRefs make the V2 payload unreadable", () => {
   const valid = [{
     kind: "agent-resource",
@@ -176,6 +233,8 @@ Deno.test("malformed clause-response sourceRefs make the V2 payload unreadable",
     [{ kind: "agent-resource", uri: valid[0]!.uri, artifactId: "model" }],
     [{ kind: "thread-artifact", artifactId: "model", uri: valid[0]!.uri }],
     [{ kind: "agent-resource", uri: valid[0]!.uri, extra: true }],
+    [],
+    Array.from({ length: 9 }, () => valid[0]!),
   ];
   for (const sourceRefs of cases) {
     const parsed = parseProjectResponse(v2AvailablePayload([
@@ -201,6 +260,64 @@ Deno.test("malformed clause-response sourceRefs make the V2 payload unreadable",
     assertEquals(parsed.ok, false, JSON.stringify(sourceRefs));
     if (!parsed.ok) {
       assertEquals(parsed.issues.length > 0, true);
+      assertEquals(
+        parsed.issues.every((item) => item.code === "response.invalid-shape"),
+        true,
+      );
+    }
+  }
+});
+
+Deno.test("malformed predecessorArtifactId makes the V2 payload unreadable", () => {
+  const clause = (overrides: Record<string, unknown> = {}) => ({
+    artifactId: "documentary-clause-response-1",
+    revision: 1,
+    sourceItemId: "exclusion-1",
+    sourceBrief: { briefId: "brief-1", snapshotId: "snap-7", revision: 7 },
+    sourceState: "unchanged",
+    applicability: "current",
+    recordingStatus: "proposal",
+    authorKind: "agent",
+    scope: "context",
+    answer: "Outdoor use remains excluded.",
+    sourceRefs: [{
+      kind: "agent-resource",
+      uri: "casys://agent-resource-capture/sha256/" + "a".repeat(64),
+    }],
+    ...overrides,
+  });
+  const parsedAbsent = parseProjectResponse(v2AvailablePayload([
+    v2Row({ clauseResponses: [clause()] }),
+  ]));
+  assert(parsedAbsent.ok, JSON.stringify(parsedAbsent));
+  if (parsedAbsent.ok && isProjectResponseV2(parsedAbsent.model)) {
+    assertEquals(
+      parsedAbsent.model.items[0]!.clauseResponses[0]!.predecessorArtifactId,
+      undefined,
+    );
+  }
+  const parsedValid = parseProjectResponse(v2AvailablePayload([
+    v2Row({
+      clauseResponses: [clause({ predecessorArtifactId: "documentary-prior" })],
+    }),
+  ]));
+  assert(parsedValid.ok, JSON.stringify(parsedValid));
+  if (parsedValid.ok && isProjectResponseV2(parsedValid.model)) {
+    assertEquals(
+      parsedValid.model.items[0]!.clauseResponses[0]!.predecessorArtifactId,
+      "documentary-prior",
+    );
+  }
+  for (const predecessorArtifactId of [null, 12, ""]) {
+    const parsed = parseProjectResponse(v2AvailablePayload([
+      v2Row({ clauseResponses: [clause({ predecessorArtifactId })] }),
+    ]));
+    assertEquals(
+      parsed.ok,
+      false,
+      `predecessorArtifactId ${JSON.stringify(predecessorArtifactId)}`,
+    );
+    if (!parsed.ok) {
       assertEquals(
         parsed.issues.every((item) => item.code === "response.invalid-shape"),
         true,

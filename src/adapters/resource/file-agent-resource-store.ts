@@ -27,6 +27,9 @@ const DIGEST_FILE = /^[a-f0-9]{64}$/;
 
 export const AGENT_RESOURCE_BYTES_KIND = "agent-resource" as const;
 export const AGENT_RESOURCE_URI_NAMESPACE = "agent-resource-capture" as const;
+/** Writer and native Workbench reader share this CAS root. */
+export const DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY =
+  "state/local/agent-resource-captures";
 
 export class FileAgentResourceStore implements AgentResourceStore {
   readonly #bytes: FileByteStore<"agent-resource">;

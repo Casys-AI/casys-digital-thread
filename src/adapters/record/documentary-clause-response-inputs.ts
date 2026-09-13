@@ -1,5 +1,4 @@
 /** Exact source reopening for documentary clause-response records. */
-import type { ReopenAgentResource } from "../../application/use-cases/resource/reopen-agent-resource.ts";
 import { EngineeringProjectCommandError } from "../../application/use-cases/project/engineering-project-command-service.ts";
 import {
   deterministicJson,
@@ -30,10 +29,8 @@ import {
 
 export { reopenSignedApprovedBrief } from "./documentary-clause-response-brief.ts";
 
-export interface DocumentaryClauseResponseInputDependencies
-  extends DocumentaryClauseResponseHistoryDependencies {
-  readonly resources: ReopenAgentResource;
-}
+export type DocumentaryClauseResponseInputDependencies =
+  DocumentaryClauseResponseHistoryDependencies;
 
 export async function resolveDocumentaryClauseResponseInputs(input: {
   readonly project: EngineeringProjectSnapshot;
@@ -136,13 +133,7 @@ async function reopenSource(
 > {
   if (source.kind === "agent-resource") {
     const expected = parseAgentResourceReference(source.resourceRef);
-    const reopened = await dependencies.resources.reopenExact(expected);
-    if (
-      !fingerprintsEqual(reopened.reference.fingerprint, expected.fingerprint) ||
-      reopened.reference.uri !== expected.uri
-    ) {
-      reject("The named agent resource is not the exact persisted capture.");
-    }
+    await dependencies.resources.reopenExact(expected);
     return { kind: "agent-resource", source };
   }
   const archived = archivedRefKeys(base);

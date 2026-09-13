@@ -31,6 +31,7 @@ import {
 import type { EngineeringWorkbenchRequirementsBriefTrace } from "../../presentation/workbench/engineering/evidence.ts";
 import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { ProjectResponseClauseSourceRef } from "../../domain/project/project-response.ts";
+import type { AgentResourceExactReopener } from "../../application/ports/out/resource/agent-resource-exact-reopener.ts";
 import {
   readDocumentaryClauseResponseHistory,
   type ReopenedDocumentaryClauseResponseRecord,
@@ -47,6 +48,7 @@ export interface ThreadProjectResponseEvidenceReaderDependencies {
   readonly clauseResponses?: {
     read(fingerprint: ContentFingerprint): Promise<string | undefined>;
   };
+  readonly resources?: AgentResourceExactReopener;
 }
 
 export class ThreadProjectResponseEvidenceReader
@@ -62,6 +64,9 @@ export class ThreadProjectResponseEvidenceReader
   readonly #clauseResponses:
     | ThreadProjectResponseEvidenceReaderDependencies["clauseResponses"]
     | undefined;
+  readonly #resources:
+    | ThreadProjectResponseEvidenceReaderDependencies["resources"]
+    | undefined;
 
   constructor(dependencies: ThreadProjectResponseEvidenceReaderDependencies) {
     this.#projects = dependencies.projects;
@@ -69,6 +74,7 @@ export class ThreadProjectResponseEvidenceReader
     this.#captures = dependencies.captures;
     this.#claimHistory = dependencies.claimHistory;
     this.#clauseResponses = dependencies.clauseResponses;
+    this.#resources = dependencies.resources;
   }
 
   async read(input: {
@@ -89,6 +95,7 @@ export class ThreadProjectResponseEvidenceReader
       projects: this.#projects,
       snapshots: this.#snapshots,
       captures: this.#clauseResponses,
+      resources: this.#resources,
     });
     return {
       traces: traces.map(mapTrace),
@@ -152,6 +159,7 @@ async function readClauseResponses(input: {
   readonly captures:
     | { read(fingerprint: ContentFingerprint): Promise<string | undefined> }
     | undefined;
+  readonly resources: AgentResourceExactReopener | undefined;
 }): Promise<{
   readonly records: readonly ProjectResponseClauseResponseFact[];
   readonly failure?: ProjectResponseClauseResponseFailure;
@@ -168,6 +176,17 @@ async function readClauseResponses(input: {
       },
     };
   }
+  if (!input.resources) {
+    return {
+      records: [],
+      failure: {
+        status: "unavailable",
+        code: "clause-response.unavailable",
+        message:
+          "Documentary clause-response history cannot be reopened without the exact agent-resource store.",
+      },
+    };
+  }
   try {
     const history = await readDocumentaryClauseResponseHistory({
       project: input.project,
@@ -176,6 +195,7 @@ async function readClauseResponses(input: {
         captures: input.captures,
         projects: input.projects,
         snapshots: input.snapshots,
+        resources: input.resources,
       },
     });
     const archived = archivedRefKeys(input.thread);

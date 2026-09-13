@@ -23,6 +23,7 @@ import {
   parseProjectResponseBasis,
   PROJECT_RESPONSE_SCHEMA,
 } from "../../application/ports/in/project-response/project-response.ts";
+import { DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX } from "../../domain/record/documentary-clause-response.ts";
 import { PROJECT_ID, READ_ONLY_ANNOTATIONS } from "./mcp-tool-schemas.ts";
 
 export interface ProjectResponseToolDependencies {
@@ -119,6 +120,7 @@ const COUNTS = {
     diagnostics: { type: "integer", minimum: 0 },
     diagnosticsIncluded: { type: "integer", minimum: 0 },
     diagnosticsOmitted: { type: "integer", minimum: 0 },
+    removedClauseResponseCount: { type: "integer", minimum: 0 },
     byKind: {
       type: "object",
       additionalProperties: { type: "integer", minimum: 0 },
@@ -136,6 +138,7 @@ const COUNTS = {
     "diagnostics",
     "diagnosticsIncluded",
     "diagnosticsOmitted",
+    "removedClauseResponseCount",
     "byKind",
     "byCorrespondence",
   ],
@@ -342,7 +345,12 @@ const CLAUSE_RESPONSE = {
     authorKind: { const: "agent" },
     scope: STRING,
     answer: STRING,
-    sourceRefs: { type: "array", items: CLAUSE_SOURCE_REF },
+    sourceRefs: {
+      type: "array",
+      minItems: 1,
+      maxItems: DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX,
+      items: CLAUSE_SOURCE_REF,
+    },
     predecessorArtifactId: ID,
   },
   required: [
@@ -460,6 +468,17 @@ const FULL_OUTPUT = {
     view: { const: "full-evidence" },
     counts: COUNTS,
     items: { type: "array", items: RESPONSE_ITEM },
+    historicalClauseResponses: {
+      type: "array",
+      items: {
+        ...CLAUSE_RESPONSE,
+        properties: {
+          ...CLAUSE_RESPONSE.properties,
+          sourceState: { const: "removed" },
+          applicability: { const: "historical" },
+        },
+      },
+    },
     omission: OMISSION,
   },
   required: [
@@ -468,6 +487,7 @@ const FULL_OUTPUT = {
     "view",
     "counts",
     "items",
+    "historicalClauseResponses",
     "diagnostics",
     "grants",
   ],
@@ -563,6 +583,7 @@ interface ProjectResponseCounts {
   readonly diagnostics: number;
   readonly diagnosticsIncluded: number;
   readonly diagnosticsOmitted: number;
+  readonly removedClauseResponseCount: number;
   readonly byKind: Readonly<Record<string, number>>;
   readonly byCorrespondence: Readonly<Record<string, number>>;
 }
@@ -603,6 +624,8 @@ export interface ProjectResponseToolResult {
   readonly itemId?: string;
   readonly counts?: ProjectResponseCounts;
   readonly items: readonly unknown[];
+  readonly historicalClauseResponses?:
+    readonly ProjectResponseItem["clauseResponses"][number][];
   readonly omission?: ProjectResponseOmission;
   readonly diagnosticOmission?: ProjectResponseDiagnosticOmission;
   readonly diagnostics: ProjectResponseReadModel["diagnostics"];
@@ -757,6 +780,7 @@ function summaryPage(
       included.length,
       model.diagnostics.length,
       envelope.diagnostics.length,
+      model.historicalClauseResponses.length,
     ),
     items: included,
     ...omissionFor(
@@ -787,8 +811,10 @@ function fullPage(
       included.length,
       model.diagnostics.length,
       model.diagnostics.length,
+      model.historicalClauseResponses.length,
     ),
     items: included,
+    historicalClauseResponses: model.historicalClauseResponses,
     ...omissionFor(
       model,
       remaining,
@@ -837,6 +863,7 @@ function countsFor(
   included: number,
   diagnostics: number,
   diagnosticsIncluded: number,
+  removedClauseResponseCount: number,
 ): ProjectResponseCounts {
   const byKind: Record<string, number> = {};
   const byCorrespondence: Record<string, number> = {};
@@ -855,6 +882,7 @@ function countsFor(
     diagnostics,
     diagnosticsIncluded,
     diagnosticsOmitted: diagnostics - diagnosticsIncluded,
+    removedClauseResponseCount,
     byKind,
     byCorrespondence,
   };

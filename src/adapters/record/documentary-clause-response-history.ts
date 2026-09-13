@@ -1,5 +1,6 @@
 /** Reopen sealed clause-response records and select exact successor heads. */
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
+import type { AgentResourceExactReopener } from "../../application/ports/out/resource/agent-resource-exact-reopener.ts";
 import {
   deterministicJson,
   fingerprintsEqual,
@@ -18,6 +19,7 @@ import {
   parseDocumentaryClauseResponseCapture,
   RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
 } from "../../domain/record/documentary-clause-response.ts";
+import { parseAgentResourceReference } from "../../domain/resource/agent-resource-reference.ts";
 import {
   archivedRefKeys,
   type ThreadArtifact,
@@ -38,6 +40,7 @@ export interface DocumentaryClauseResponseHistoryDependencies {
   };
   readonly projects: Pick<EngineeringProjectRevisionStore, "get" | "getRevision">;
   readonly snapshots: Pick<ThreadSnapshotStore, "get">;
+  readonly resources: AgentResourceExactReopener;
 }
 
 export interface ReopenedDocumentaryClauseResponseRecord {
@@ -162,7 +165,7 @@ export async function readDocumentaryClauseResponseHistory(input: {
     }
     validateThreadSnapshot(base);
     validateThreadSnapshot(result);
-    reopenExactThreadArtifactSources(capture, base);
+    await reopenExactCaptureSources(capture.sources, base, d.resources);
     if (
       deterministicJson(result.artifacts.find((item) => item.id === artifact.id)) !==
         deterministicJson(artifact)
@@ -247,13 +250,22 @@ export async function readDocumentaryClauseResponseHistory(input: {
  * local: importing documentary-clause-response-inputs would form a cycle
  * because that resolver itself reads history to select the predecessor.
  */
-function reopenExactThreadArtifactSources(
-  capture: DocumentaryClauseResponseCapture,
+export async function reopenExactCaptureSources(
+  sources: DocumentaryClauseResponseCapture["sources"],
   basis: ThreadSnapshot,
-): void {
+  resources: AgentResourceExactReopener,
+): Promise<void> {
   const archived = archivedRefKeys(basis);
-  for (const source of capture.sources) {
-    if (source.kind !== "thread-artifact") continue;
+  for (const source of sources) {
+    if (source.kind === "agent-resource") {
+      const expected = parseAgentResourceReference(source.resourceRef);
+      try {
+        await resources.reopenExact(expected);
+      } catch (error) {
+        reject(error instanceof Error ? error.message : String(error));
+      }
+      continue;
+    }
     const matches = basis.artifacts.filter((artifact) =>
       artifact.id === source.artifactId &&
       !archived.has(`artifact:${artifact.id}`)

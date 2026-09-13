@@ -208,11 +208,13 @@ export class ReadProjectResponse implements ProjectResponseUseCase {
     const items = approved.brief.items.map((item) =>
       projectItem(item, approved.brief, indexed, thread === undefined)
     );
-    const retained = retainedClauseDiagnostics(approved.brief, indexed);
+    const historicalClauseResponses = projectRemovedClauseResponses(
+      approved.brief,
+      indexed,
+    );
     const diagnostics = [
       ...evidenceDiagnostics,
       ...traceGapDiagnostics(indexed.gapTraces),
-      ...retained,
       ...(thread || evidenceDiagnostics.length > 0 ? [] : [diagnostic(
         "thread.absent",
         "No Thread snapshot is bound to this approved brief; items list missing-evidence gaps.",
@@ -237,6 +239,7 @@ export class ReadProjectResponse implements ProjectResponseUseCase {
       status,
       basis,
       items,
+      historicalClauseResponses,
       diagnostics,
       grants: "none",
     });
@@ -406,36 +409,57 @@ function projectClauseResponses(
         authorKind: record.authorKind,
         scope: record.scope,
         answer: record.answer,
-        sourceRefs: record.sourceRefs.map(
-          (ref): ProjectResponseClauseSourceRef =>
-            ref.kind === "agent-resource"
-              ? { kind: "agent-resource", uri: ref.uri }
-              : { kind: "thread-artifact", artifactId: ref.artifactId },
-        ),
+        sourceRefs: clauseSourceRefs(record),
         ...(record.predecessorArtifactId
           ? { predecessorArtifactId: record.predecessorArtifactId }
           : {}),
       };
     })
-    .toSorted((left, right) =>
-      left.revision - right.revision ||
-      left.artifactId.localeCompare(right.artifactId)
-    );
+    .toSorted(compareClauseResponses);
 }
 
-function retainedClauseDiagnostics(
+function projectRemovedClauseResponses(
   brief: ProjectBriefRevision,
   facts: IndexedEvidence,
-): readonly ProjectResponseDiagnostic[] {
+): readonly ProjectResponseClauseResponse[] {
   const currentIds = new Set(brief.items.map((item) => item.id));
   return facts.clauseResponses
     .filter((record) => !currentIds.has(record.sourceItemId))
-    .map((record) =>
-      diagnostic(
-        "clause-response.removed-item",
-        `Historical documentary clause-response ${record.artifactId} for removed item ${record.sourceItemId} is retained and is not current.`,
-      )
-    );
+    .map((record) => ({
+      artifactId: record.artifactId,
+      revision: record.revision,
+      sourceItemId: record.sourceItemId,
+      sourceBrief: { ...record.sourceBrief },
+      sourceState: "removed" as const,
+      applicability: "historical" as const,
+      recordingStatus: record.recordingStatus,
+      authorKind: record.authorKind,
+      scope: record.scope,
+      answer: record.answer,
+      sourceRefs: clauseSourceRefs(record),
+      ...(record.predecessorArtifactId
+        ? { predecessorArtifactId: record.predecessorArtifactId }
+        : {}),
+    }))
+    .toSorted(compareClauseResponses);
+}
+
+function clauseSourceRefs(
+  record: ProjectResponseClauseResponseFact,
+): readonly ProjectResponseClauseSourceRef[] {
+  return record.sourceRefs.map((ref): ProjectResponseClauseSourceRef =>
+    ref.kind === "agent-resource"
+      ? { kind: "agent-resource", uri: ref.uri }
+      : { kind: "thread-artifact", artifactId: ref.artifactId }
+  );
+}
+
+function compareClauseResponses(
+  left: ProjectResponseClauseResponse,
+  right: ProjectResponseClauseResponse,
+): number {
+  return left.revision - right.revision ||
+    left.artifactId.localeCompare(right.artifactId);
 }
 
 function tracesForItem(

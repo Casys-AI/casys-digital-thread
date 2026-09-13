@@ -17,6 +17,7 @@ import type {
   EngineeringThreadEntityRef,
   EngineeringThreadSnapshotBasis,
 } from "../../domain/project/engineering-project.ts";
+import { sameSnapshotRef } from "../../domain/project/validation/engineering-project-invariant-values.ts";
 import {
   documentaryClauseResponseArtifactId,
   type DocumentaryClauseResponseCapture,
@@ -299,12 +300,41 @@ export class RecordSealDocumentaryClauseResponseRunExecutor {
     assertCompleted(project, command);
     requireClaimedShape(run, origin);
     const receipt = exactCompletionReceipt(project, command, origin, run);
+    const completedProject = await this.#d.projects.getRevision(
+      project.project.id,
+      receipt.resultingSnapshot.revision,
+    );
+    const completedRun = completedProject?.agentRuns.find((item) => item.id === run.id);
+    const persistedReceipts =
+      completedProject?.commandReceipts?.filter((item) =>
+        item.commandId === receipt.commandId
+      ) ?? [];
+    if (
+      !completedProject || completedProject.project.id !== project.project.id ||
+      completedProject.id !== receipt.resultingSnapshot.snapshotId ||
+      completedProject.revision !== receipt.resultingSnapshot.revision ||
+      persistedReceipts.length !== 1 ||
+      deterministicJson(persistedReceipts[0]) !== deterministicJson(receipt) ||
+      !completedRun || completedRun.status !== "completed" ||
+      completedRun.completedAt !== run.completedAt ||
+      !completedRun.resultSnapshot || !run.resultSnapshot ||
+      !sameSnapshotRef(completedRun.resultSnapshot, run.resultSnapshot)
+    ) {
+      throw invalidTransition(
+        `Documentary clause-response run ${command.runId} has no unique exact completion receipt bound to its immutable project revision and Thread result.`,
+      );
+    }
     const basis = requireBasis(run);
-    const result = run.resultSnapshot!;
+    const result = run.resultSnapshot;
+    if (!result) {
+      throw invalidTransition(
+        "The completed clause-response run has no exact Thread result snapshot.",
+      );
+    }
     const snapshot = await this.#d.snapshots.getFresh(result.snapshotId);
     if (
       !snapshot ||
-      deterministicJson(snapshotRef(snapshot)) !== deterministicJson(result) ||
+      !sameSnapshotRef(snapshotRef(snapshot), result) ||
       snapshot.previous?.snapshotId !== basis.snapshotId ||
       snapshot.previous.revision !== basis.revision
     ) {
@@ -332,6 +362,7 @@ export class RecordSealDocumentaryClauseResponseRunExecutor {
     );
     if (
       deterministicJson(snapshot) !== deterministicJson(expected.successor) ||
+      !sameSnapshotRef(result, snapshotRef(expected.successor)) ||
       deterministicJson(run.evidenceRefs) !== deterministicJson(expected.evidenceRefs)
     ) {
       throw invalidTransition(
@@ -347,11 +378,7 @@ export class RecordSealDocumentaryClauseResponseRunExecutor {
     assertExactCompletedAttachment(project, run, snapshot, expected);
     await this.#d.commands.completeRun(
       origin,
-      completionCommand(
-        command,
-        receipt.resultingSnapshot.revision - 1,
-        expected,
-      ),
+      completionCommand(command, completedProject.revision - 1, expected),
     );
   }
 
@@ -635,11 +662,13 @@ function exactCompletionReceipt(
       receipt.commandId === commandStep(command.commandId, "complete")
     ) ?? [];
   const receipt = matches[0];
+  const result = run.resultSnapshot;
   if (
     matches.length !== 1 || !receipt || receipt.type !== "agent-run.complete" ||
     receipt.actor.origin !== origin.kind || receipt.actor.id !== origin.actorId ||
     receipt.issuedAt !== new Date(command.issuedAt).toISOString() ||
     receipt.appliedAt !== run.completedAt ||
+    !result ||
     !Number.isSafeInteger(receipt.resultingSnapshot.revision) ||
     receipt.resultingSnapshot.revision < 1
   ) {

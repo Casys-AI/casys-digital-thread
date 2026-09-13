@@ -28,6 +28,7 @@ import type {
   ProjectResponseStatus,
   ProjectResponseV1Item,
 } from "../../../domain/project/project-response.ts";
+import { DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX } from "../../../domain/record/documentary-clause-response.ts";
 import {
   isProjectResponseV2,
   parseProjectResponseBasis,
@@ -571,6 +572,16 @@ function parseClauseResponse(
       issues,
     )
     : undefined;
+  if (Object.hasOwn(value, "predecessorArtifactId")) {
+    if (!isNonEmptyString(value.predecessorArtifactId)) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          `${path}.predecessorArtifactId must be a non-empty string when present.`,
+        ),
+      );
+    }
+  }
   if (issues.length !== before || !sourceBrief || !sourceRefs) return undefined;
   return {
     artifactId: value.artifactId as string,
@@ -585,7 +596,8 @@ function parseClauseResponse(
     scope: value.scope as string,
     answer: value.answer as string,
     sourceRefs,
-    ...(typeof value.predecessorArtifactId === "string"
+    ...(Object.hasOwn(value, "predecessorArtifactId") &&
+        isNonEmptyString(value.predecessorArtifactId)
       ? { predecessorArtifactId: value.predecessorArtifactId }
       : {}),
   };
@@ -596,6 +608,17 @@ function parseClauseSourceRefs(
   path: string,
   issues: ProjectResponseDiagnostic[],
 ): readonly ProjectResponseClauseResponse["sourceRefs"][number][] | undefined {
+  if (
+    value.length < 1 || value.length > DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX
+  ) {
+    issues.push(
+      issue(
+        "response.invalid-shape",
+        `${path} must contain 1 to ${DOCUMENTARY_CLAUSE_RESPONSE_SOURCE_MAX} sources.`,
+      ),
+    );
+    return undefined;
+  }
   const refs: ProjectResponseClauseResponse["sourceRefs"][number][] = [];
   const before = issues.length;
   for (const [index, entry] of value.entries()) {
@@ -755,6 +778,50 @@ export function parseProjectResponse(
     }
   }
   const diagnostics = parseGaps(value.diagnostics, "diagnostics", issues);
+  const historicalClauseResponses: ProjectResponseClauseResponse[] = [];
+  if (schemaVersion === PROJECT_RESPONSE_SCHEMA_V1) {
+    if (Object.hasOwn(value, "historicalClauseResponses")) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          "historicalClauseResponses is not a project-response/1.0 field.",
+        ),
+      );
+    }
+  } else if (schemaVersion === PROJECT_RESPONSE_SCHEMA) {
+    if (!Array.isArray(value.historicalClauseResponses)) {
+      issues.push(
+        issue(
+          "response.invalid-shape",
+          "historicalClauseResponses must be an array.",
+        ),
+      );
+    } else {
+      for (
+        const [index, entry] of value.historicalClauseResponses.entries()
+      ) {
+        const parsed = parseClauseResponse(
+          entry,
+          `historicalClauseResponses[${index}]`,
+          issues,
+        );
+        if (!parsed) break;
+        if (
+          parsed.sourceState !== "removed" ||
+          parsed.applicability !== "historical"
+        ) {
+          issues.push(
+            issue(
+              "response.invalid-shape",
+              `historicalClauseResponses[${index}] must be removed and historical.`,
+            ),
+          );
+          break;
+        }
+        historicalClauseResponses.push(parsed);
+      }
+    }
+  }
   let basis: ProjectResponseBasis | undefined;
   if (value.basis !== undefined) {
     try {
@@ -795,6 +862,7 @@ export function parseProjectResponse(
       schemaVersion: PROJECT_RESPONSE_SCHEMA,
       ...envelope,
       items: items as readonly ProjectResponseItem[],
+      historicalClauseResponses,
     },
   };
 }
@@ -806,6 +874,14 @@ export function clauseResponsesOn(
 ): readonly ProjectResponseClauseResponse[] {
   if (!isProjectResponseV2(model)) return [];
   return (item as ProjectResponseItem).clauseResponses;
+}
+
+/** Removed-item answers: inspectable, never current correspondence. */
+export function historicalClauseResponsesOn(
+  model: ProjectResponseDocument,
+): readonly ProjectResponseClauseResponse[] {
+  if (!isProjectResponseV2(model)) return [];
+  return model.historicalClauseResponses;
 }
 
 /**

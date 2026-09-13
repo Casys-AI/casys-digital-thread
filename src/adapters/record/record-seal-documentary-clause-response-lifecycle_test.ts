@@ -87,6 +87,7 @@ Deno.test({
           snapshots: baseline.snapshots,
           captures: { read: () => Promise.resolve(undefined) },
           clauseResponses: captures,
+          resources: persisted.reopen,
         }),
       });
 
@@ -132,6 +133,48 @@ Deno.test({
       assertEquals(
         (await clauseResponseArtifacts(baseline)).length,
         1,
+      );
+
+      const foreignExecutor = new RecordSealDocumentaryClauseResponseRunExecutor({
+        projects: {
+          get: async (id: string) => {
+            const project = await baseline.projects.get(id);
+            if (!project) return undefined;
+            return {
+              ...project,
+              commandReceipts: project.commandReceipts?.map((receipt) =>
+                receipt.commandId.endsWith(":complete") &&
+                  receipt.type === "agent-run.complete"
+                  ? {
+                    ...receipt,
+                    resultingSnapshot: {
+                      snapshotId: "project:foreign-same-revision",
+                      revision: receipt.resultingSnapshot.revision,
+                    },
+                  }
+                  : receipt
+              ),
+            };
+          },
+          getRevision: (id, revision) => baseline.projects.getRevision(id, revision),
+        },
+        snapshots: baseline.snapshots,
+        captures,
+        resources: persisted.reopen,
+        commands: baseline.commands,
+        lease: new FileEngineeringProjectRunLease(`${root}/writer-leases-foreign`),
+      });
+      await assertRejects(
+        () =>
+          foreignExecutor.execute(AGENT, {
+            commandId: "execute-first",
+            projectId: PROJECT_ID,
+            expectedRevision: first.queuedRevision,
+            issuedAt: "2026-09-13T10:00:00.000Z",
+            runId: "run:clause-r1",
+          }),
+        EngineeringProjectCommandError,
+        "no unique exact completion receipt",
       );
 
       const second = await sealClauseResponse({
@@ -190,6 +233,20 @@ Deno.test({
         rationale: "Later brief revision must retain historical answers.",
         inputFingerprint: changed.framing!.proposalReview!.inputFingerprint,
       });
+      const beforeHistoricalReplay = (await baseline.projects.get(PROJECT_ID))!;
+      const historicalReplay = await executor.execute(AGENT, {
+        commandId: "execute-first",
+        projectId: PROJECT_ID,
+        expectedRevision: first.queuedRevision,
+        issuedAt: "2026-09-13T10:00:00.000Z",
+        runId: "run:clause-r1",
+      });
+      assertEquals(historicalReplay.revision, beforeHistoricalReplay.revision);
+      assertEquals(
+        (await baseline.projects.get(PROJECT_ID))!.revision,
+        beforeHistoricalReplay.revision,
+      );
+      assertEquals((await clauseResponseArtifacts(baseline)).length, 2);
       const afterLaterBrief = await reader.read({ projectId: PROJECT_ID });
       assertEquals(afterLaterBrief.status, "available");
       const retained = afterLaterBrief.items.find((row) =>
@@ -282,6 +339,7 @@ Deno.test({
             snapshots: overrides.snapshots ?? baseline.snapshots,
             captures: { read: () => Promise.resolve(undefined) },
             clauseResponses: overrides.captures ?? captures,
+            resources: persisted.reopen,
           }),
         }).project({
           project: overrides.project ?? project,
@@ -392,6 +450,7 @@ Deno.test({
                 thread.id,
                 () => coherentForgedThread,
               ),
+              resources: persisted.reopen,
             },
           }),
         TypeError,
@@ -485,6 +544,7 @@ Deno.test({
           snapshots: baseline.snapshots,
           captures: { read: () => Promise.resolve(undefined) },
           clauseResponses: captures,
+          resources: persisted.reopen,
         }),
       }).project({
         project: (await baseline.projects.get(PROJECT_ID))!,

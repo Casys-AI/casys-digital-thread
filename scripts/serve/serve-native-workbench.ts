@@ -41,6 +41,11 @@ import {
   createDocumentaryClauseResponseStore,
   DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
 } from "../../src/adapters/record/documentary-clause-response-store.ts";
+import {
+  DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY,
+  FileAgentResourceStore,
+} from "../../src/adapters/resource/file-agent-resource-store.ts";
+import { ReopenAgentResource } from "../../src/application/use-cases/resource/reopen-agent-resource.ts";
 export { DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY };
 import { isExplicitLoopbackHostname } from "../../src/adapters/loopback-host.ts";
 import {
@@ -1965,6 +1970,9 @@ if (import.meta.main) {
   const documentaryClauseResponseCaptures = createDocumentaryClauseResponseStore(
     DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
   );
+  const reopenAgentResource = new ReopenAgentResource(
+    new FileAgentResourceStore(DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY),
+  );
   const projectResponse = new ReadProjectResponse({
     projects: projectStore,
     snapshots: projectSnapshots ?? store,
@@ -1979,6 +1987,7 @@ if (import.meta.main) {
         traces: requirementsBriefTraceCaptures,
       },
       clauseResponses: documentaryClauseResponseCaptures,
+      resources: reopenAgentResource,
     }),
   });
   const handler = createNativeWorkbenchHandler({

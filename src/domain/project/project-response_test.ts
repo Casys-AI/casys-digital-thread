@@ -73,6 +73,7 @@ Deno.test("unavailable project-response keeps grants none and empty items", () =
   assertEquals(result.schemaVersion, PROJECT_RESPONSE_SCHEMA);
   assertEquals(result.status, "unavailable");
   assertEquals(result.items, []);
+  assertEquals(result.historicalClauseResponses, []);
   assertEquals(result.grants, "none");
   assertEquals("pass" in result, false);
   assertEquals("coverage" in result, false);

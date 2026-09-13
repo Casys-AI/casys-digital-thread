@@ -140,6 +140,11 @@ export interface ProjectResponseV1ReadModel extends ProjectResponseEnvelope {
 export interface ProjectResponseReadModel extends ProjectResponseEnvelope {
   readonly schemaVersion: typeof PROJECT_RESPONSE_SCHEMA;
   readonly items: readonly ProjectResponseItem[];
+  /**
+   * Documentary answers whose brief item is no longer on the current
+   * human-approved brief. Never current correspondence or requirement proof.
+   */
+  readonly historicalClauseResponses: readonly ProjectResponseClauseResponse[];
 }
 
 export type ProjectResponseDocument =
@@ -236,6 +241,7 @@ export function unavailableProjectResponse(
     schemaVersion: PROJECT_RESPONSE_SCHEMA,
     status: extras.status ?? "unavailable",
     items: extras.items ?? [],
+    historicalClauseResponses: extras.historicalClauseResponses ?? [],
     diagnostics: extras.diagnostics ?? [],
     grants: "none",
     ...(extras.basis ? { basis: extras.basis } : {}),

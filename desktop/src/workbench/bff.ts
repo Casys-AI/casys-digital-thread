@@ -44,6 +44,15 @@ import type { EngineeringCaseWorkbenchEnricherDependencies } from "../../../src/
 import type { RequirementsCaptureReader } from "../../../src/adapters/thread/requirements-target-workbench-enricher.ts";
 import { composeHistoryCaptureReaders } from "../../../src/adapters/thread/requirements-history-workbench-enricher.ts";
 import { createRequirementsBriefTraceStore } from "../../../src/adapters/record/requirements-brief-trace-store.ts";
+import {
+  createDocumentaryClauseResponseStore,
+  DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
+} from "../../../src/adapters/record/documentary-clause-response-store.ts";
+import {
+  DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY,
+  FileAgentResourceStore,
+} from "../../../src/adapters/resource/file-agent-resource-store.ts";
+import { ReopenAgentResource } from "../../../src/application/use-cases/resource/reopen-agent-resource.ts";
 import { ReadProjectResponse } from "../../../src/application/use-cases/project-response/read-project-response.ts";
 import { ThreadProjectResponseEvidenceReader } from "../../../src/adapters/thread/project-response-evidence-reader.ts";
 import { FileProjectSourceWorkspaceStore } from "../../../src/adapters/project-source-workspace/file-project-source-workspace-store.ts";
@@ -178,6 +187,14 @@ export function createPackagedWorkbenchBff(
   const requirementsBriefTraceCaptures = createRequirementsBriefTraceStore(
     rooted(controlPlaneRoot, REQUIREMENTS_CAPTURE_DESCRIPTOR.directory),
   );
+  const documentaryClauseResponseCaptures = createDocumentaryClauseResponseStore(
+    rooted(controlPlaneRoot, DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY),
+  );
+  const reopenAgentResource = new ReopenAgentResource(
+    new FileAgentResourceStore(
+      rooted(controlPlaneRoot, DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY),
+    ),
+  );
   const projectResponse = new ReadProjectResponse({
     projects: projectStore,
     snapshots: projectSnapshots,
@@ -191,6 +208,8 @@ export function createPackagedWorkbenchBff(
         captures: requirementsCaptures,
         traces: requirementsBriefTraceCaptures,
       },
+      clauseResponses: documentaryClauseResponseCaptures,
+      resources: reopenAgentResource,
     }),
   });
   const viewerAppRegistry = new FileThreadViewerAppRegistry({

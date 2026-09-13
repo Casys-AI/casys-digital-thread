@@ -21,6 +21,7 @@ import {
   DEFAULT_RESPONSE_FILTER,
   freshnessLabel,
   hasResponseGap,
+  historicalClauseResponsesOn,
   isResponseBasisMatch,
   parseProjectResponse,
   type ProjectResponseBasis,
@@ -95,6 +96,7 @@ export function OverviewResponseIndex({
   const gapItems = model.items.filter(hasResponseGap);
   const visible = filter === "gaps" ? gapItems : model.items;
   const hiddenCount = model.items.length - gapItems.length;
+  const historicalRecords = historicalClauseResponsesOn(model);
   return (
     <section
       className={cn(
@@ -188,6 +190,27 @@ export function OverviewResponseIndex({
               ))}
             </ol>
           )}
+        {historicalRecords.length > 0 && (
+          <details className="mt-2">
+            <summary className={cn("cursor-pointer text-xs", DATA_LINE)}>
+              Réponses hors brief actuel ({historicalRecords.length}) ·
+              historiques, non courantes
+            </summary>
+            <p className="m-0 mt-1 text-xs text-muted-foreground">
+              Inspectables ; ni correspondance courante ni preuve
+              d&apos;exigence.
+            </p>
+            <ul className="m-0 mt-1.5 list-none space-y-1 p-0">
+              {historicalRecords.map((record) => (
+                <ClauseResponseEntry
+                  key={record.artifactId}
+                  record={record}
+                  onOpenEvidence={onOpenEvidence}
+                />
+              ))}
+            </ul>
+          </details>
+        )}
         <BasisProvenance model={model} />
       </details>
     </section>
@@ -408,9 +431,24 @@ function ClauseResponseEntry({
         </span>
       </span>
       <span className={cn("mt-0.5 block", DATA_LINE)}>
-        {record.scope} · auteur agent · enregistrement, pas acceptation
+        {record.sourceItemId} · {record.scope}{" "}
+        · auteur agent · enregistrement, pas acceptation
       </span>
       <p className="m-0 mt-1 text-[12px] leading-relaxed">{record.answer}</p>
+      <ul className="m-0 mt-1 list-none space-y-0.5 p-0">
+        {record.sourceRefs.map((source) => (
+          <li
+            key={source.kind === "agent-resource"
+              ? source.uri
+              : source.artifactId}
+            className={cn(DATA_LINE)}
+          >
+            {source.kind === "agent-resource"
+              ? `agent-resource · ${source.uri}`
+              : `thread-artifact · ${source.artifactId}`}
+          </li>
+        ))}
+      </ul>
     </li>
   );
 }

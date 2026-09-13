@@ -47,3 +47,16 @@ emit `project-response/2.0` with `clauseResponses`. Historical `project-response
 payloads remain readable as that discriminator and do not carry these fields. The
 proposal is `recordingStatus: "proposal"` without changing correspondence or closing a
 proof gap.
+
+If the item is removed from a later approved brief, its answer, scope, source references
+and original brief identity remain in V2 `historicalClauseResponses`, with
+`sourceState: "removed"` and `applicability: "historical"`. The default MCP summary
+reports `counts.removedClauseResponseCount`; retrieve the records with
+`evidence: "full-evidence"` and the exact summary `expectedBasis`. Workbench GET/SSE
+renders these records separately from current brief items. V1 never accepts this V2
+field.
+
+History reopens every agent resource through the existing exact resource port; missing
+or changed bytes make the documentary evidence unavailable. Replaying a completed
+recording reopens its original immutable project receipt and exact Thread result,
+including after subsequent project or brief revisions.

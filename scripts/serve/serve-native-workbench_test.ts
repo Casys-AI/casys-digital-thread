@@ -954,6 +954,7 @@ Deno.test("native Workbench evidence GET enriches the already-resolved project a
             message: "No exact mapping.",
           }],
         })),
+        historicalClauseResponses: [],
         diagnostics: [],
         grants: "none",
       });

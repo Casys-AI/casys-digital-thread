@@ -352,7 +352,10 @@ import {
   VERIFY_SEAL_ELECTRICAL_OBSERVATION_METHOD_SHEET_OPERATION,
 } from "./src/adapters/electrical/server-composition.ts";
 import { createAgentResourceIngress } from "./src/adapters/resource/server-composition.ts";
-import { FileAgentResourceStore } from "./src/adapters/resource/file-agent-resource-store.ts";
+import {
+  DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY,
+  FileAgentResourceStore,
+} from "./src/adapters/resource/file-agent-resource-store.ts";
 import { ProjectResourceCaptureError } from "./src/application/use-cases/resource/prepare-project-resource-capture.ts";
 import {
   AgentResourceReopenError,
@@ -460,7 +463,6 @@ const LOCAL_MODELICA_QUALIFICATION_CAPTURE_FINGERPRINT = Object.freeze({
 });
 const LOCAL_MODELICA_QUALIFICATION_ROOT =
   "state/local/modelica-microsandbox-qualification";
-const DEFAULT_AGENT_RESOURCE_CAPTURE_DIRECTORY = "state/local/agent-resource-captures";
 
 export interface CreateConsoleServerOptions {
   manifest?: FleetManifest;
@@ -1464,6 +1466,7 @@ async function createProjectControl(
         traces: requirementsBriefTraceStore,
       },
       clauseResponses: documentaryClauseResponseStore,
+      resources: reopenAgentResource,
     }),
   });
   // Reconcile-uncertain-writer requires no provider — always available.

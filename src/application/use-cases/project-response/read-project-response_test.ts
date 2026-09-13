@@ -131,6 +131,68 @@ Deno.test("historical clause-responses stay visible after the brief item changes
   assertEquals(exclusion.item.statement, current.statement);
 });
 
+Deno.test("removed-item clause-response stays inspectable as non-current history", async () => {
+  const { project } = await approvedProject();
+  const brief = project.framing!.currentBrief!;
+  const thread = listedThread(project, 1);
+  const facts = factsWithTraces([], {
+    clauseResponses: [{
+      artifactId: "documentary-clause-response-retired",
+      revision: 1,
+      sourceItemId: "retired-exclusion",
+      sourceBrief: {
+        briefId: brief.briefId,
+        snapshotId: "brief-old",
+        revision: 1,
+      },
+      sourceItem: {
+        id: "retired-exclusion",
+        kind: "exclusion",
+        statement: "Retired exclusion text.",
+        sourceRefs: [{ kind: "intent", reference: "conversation:old" }],
+      },
+      recordingStatus: "proposal",
+      authorKind: "agent",
+      scope: "context",
+      answer: "Historical retired answer.",
+      sourceRefs: [{
+        kind: "agent-resource",
+        uri: `casys://agent-resource-capture/sha256/${"a".repeat(64)}`,
+      }],
+    }],
+  });
+  const result = await usecase(facts).project({
+    project: withThread(project, thread),
+    thread,
+  });
+  assertEquals(
+    result.items.some((row) => row.item.id === "retired-exclusion"),
+    false,
+  );
+  assertEquals(
+    result.items.some((row) =>
+      row.clauseResponses.some((record) => record.sourceItemId === "retired-exclusion")
+    ),
+    false,
+  );
+  assertEquals(result.historicalClauseResponses.length, 1);
+  const historical = result.historicalClauseResponses[0]!;
+  assertEquals(historical.answer, "Historical retired answer.");
+  assertEquals(historical.scope, "context");
+  assertEquals(historical.applicability, "historical");
+  assertEquals(historical.sourceState, "removed");
+  assertEquals(historical.sourceItemId, "retired-exclusion");
+  assertEquals(historical.sourceRefs, [{
+    kind: "agent-resource",
+    uri: `casys://agent-resource-capture/sha256/${"a".repeat(64)}`,
+  }]);
+  assertEquals(
+    result.diagnostics.some((item) => item.code === "clause-response.removed-item"),
+    false,
+  );
+  assertEquals(result.items.every((row) => row.correspondence !== "documentary"), true);
+});
+
 Deno.test("an invalid declared clause-response stays unavailable without a fabricated answer", async () => {
   const { project } = await approvedProject();
   const brief = project.framing!.currentBrief!;
