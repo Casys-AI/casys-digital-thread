@@ -8,11 +8,6 @@ export function OverviewSensitivityJourneyDisclosure({
 }: {
   readonly journey: OverviewSensitivityJourney;
 }): JSX.Element {
-  const perturbedPoint = {
-    value: journey.measurement.basePoint.value +
-      journey.measurement.perturbationStep.value,
-    unit: journey.measurement.basePoint.unit,
-  };
   return (
     <section
       className="overview-sensitivity-journey mt-3 overflow-hidden rounded-md border border-brand/25 bg-brand/[0.025]"
@@ -47,36 +42,13 @@ export function OverviewSensitivityJourneyDisclosure({
           />
         </ol>
 
-        <p className="mb-2 text-[11px] font-semibold text-foreground">
-          {journey.parameter.label}
-        </p>
-        <SensitivityResponsePlot
-          base={journey.measurement.responseAtBase}
-          perturbed={journey.measurement.responseAtPerturbed}
+        <SensitivityMeasuredDeltaTable
+          parameterLabel={journey.parameter.label}
+          lower={journey.parameter.lower}
+          upper={journey.parameter.upper}
+          measurement={journey.measurement}
           responseLabel={journey.responseLabel}
         />
-
-        <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[10px]">
-          <dt className="text-muted-foreground">Local range</dt>
-          <dd className="m-0 font-mono text-right">
-            {formatQuantity(journey.parameter.lower)} →{" "}
-            {formatQuantity(journey.parameter.upper)}
-          </dd>
-          <dt className="text-muted-foreground">Base</dt>
-          <dd className="m-0 font-mono text-right">
-            {formatQuantity(journey.measurement.basePoint)} →{" "}
-            {formatQuantity(journey.measurement.responseAtBase)}
-          </dd>
-          <dt className="text-muted-foreground">Perturbed</dt>
-          <dd className="m-0 font-mono text-right">
-            {formatQuantity(perturbedPoint)} →{" "}
-            {formatQuantity(journey.measurement.responseAtPerturbed)}
-          </dd>
-          <dt className="text-muted-foreground">Local derivative</dt>
-          <dd className="m-0 font-mono text-right font-semibold text-brand">
-            {formatQuantity(journey.measurement.derivative)}
-          </dd>
-        </dl>
 
         <div className="mt-3 rounded-md border border-border bg-muted/45 p-2">
           <p className="m-0 text-[10px] font-semibold">
@@ -104,6 +76,64 @@ export function OverviewSensitivityJourneyDisclosure({
         </details>
       </div>
     </section>
+  );
+}
+
+export interface SensitivityMeasuredDeltaTableProps {
+  readonly parameterLabel: string;
+  readonly lower: ThreadAnalysisQuantity;
+  readonly upper: ThreadAnalysisQuantity;
+  readonly measurement: OverviewSensitivityJourney["measurement"];
+  readonly responseLabel?: string;
+}
+
+/** Shared FEA-delta table for a current journey or a historical measured relation. */
+export function SensitivityMeasuredDeltaTable({
+  parameterLabel,
+  lower,
+  upper,
+  measurement,
+  responseLabel,
+}: SensitivityMeasuredDeltaTableProps): JSX.Element {
+  const perturbedPoint = {
+    value: measurement.basePoint.value + measurement.perturbationStep.value,
+    unit: measurement.basePoint.unit,
+  };
+  return (
+    <>
+      <p className="mb-2 text-[11px] font-semibold text-foreground">
+        {parameterLabel}
+      </p>
+      {responseLabel
+        ? (
+          <SensitivityResponsePlot
+            base={measurement.responseAtBase}
+            perturbed={measurement.responseAtPerturbed}
+            responseLabel={responseLabel}
+          />
+        )
+        : null}
+      <dl className="mt-3 grid grid-cols-[auto_1fr] gap-x-2 gap-y-1 text-[10px]">
+        <dt className="text-muted-foreground">Local range</dt>
+        <dd className="m-0 font-mono text-right">
+          {formatQuantity(lower)} → {formatQuantity(upper)}
+        </dd>
+        <dt className="text-muted-foreground">Base</dt>
+        <dd className="m-0 font-mono text-right">
+          {formatQuantity(measurement.basePoint)} →{" "}
+          {formatQuantity(measurement.responseAtBase)}
+        </dd>
+        <dt className="text-muted-foreground">Perturbed</dt>
+        <dd className="m-0 font-mono text-right">
+          {formatQuantity(perturbedPoint)} →{" "}
+          {formatQuantity(measurement.responseAtPerturbed)}
+        </dd>
+        <dt className="text-muted-foreground">Local derivative</dt>
+        <dd className="m-0 font-mono text-right font-semibold text-brand">
+          {formatQuantity(measurement.derivative)}
+        </dd>
+      </dl>
+    </>
   );
 }
 

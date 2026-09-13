@@ -4,6 +4,7 @@
  * Provider-free: the sealed dfm-check-case/1.0 only. No DFM payload lives here.
  */
 
+import type { ThreadArtifact } from "../../../domain/thread/thread-snapshot.ts";
 import {
   DFM_CHECK_CASE_SCHEMA,
   type DfmCheckCase,
@@ -108,4 +109,38 @@ export async function fingerprintDfmCaseCapture(
   capture: DfmCaseCapture,
 ): Promise<ContentFingerprint> {
   return await sha256Fingerprint(capture);
+}
+
+export function isExactDfmCaseArtifact(
+  artifact: ThreadArtifact,
+  caseDigest: string,
+): boolean {
+  return artifact.id === `dfm-case-${caseDigest}` &&
+    artifact.kind === "document" && artifact.version === caseDigest &&
+    artifact.mediaType === "application/json" &&
+    artifact.uri === `${DFM_CASE_CAPTURE_URI_PREFIX}${artifact.fingerprint.digest}` &&
+    artifact.producer.serverId === "digital-thread" &&
+    artifact.producer.tool ===
+      `${INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION.id}@${INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION.version}`;
+}
+
+export async function assertDfmCaseArtifactCapture(
+  artifact: ThreadArtifact,
+  capture: DfmCaseCapture,
+  text: string,
+): Promise<void> {
+  if (
+    !isExactDfmCaseArtifact(artifact, capture.caseDigest) ||
+    capture.trustedRunId !== artifact.producer.runId
+  ) {
+    throw new TypeError(
+      "The sealed DFM case capture does not match its artifact producer.",
+    );
+  }
+  if (
+    deterministicJson(capture) !== text ||
+    (await fingerprintDfmCaseCapture(capture)).digest !== artifact.fingerprint.digest
+  ) {
+    throw new TypeError("The DFM case capture bytes or fingerprint are not canonical.");
+  }
 }

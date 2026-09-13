@@ -53,7 +53,7 @@ const FEA_VERDICTS = groupId("verdicts", OVERVIEW_DOMAIN_GROUP_KEYS.fea);
 Deno.test("current-engineering-cases remains a registered producer of the same hull content", () => {
   assertEquals(
     OVERVIEW_HULL_ADAPTERS.map((adapter) => adapter.id),
-    ["current-brief", "current-engineering-cases"],
+    ["current-brief", "current-engineering-cases", "current-dfm-cases"],
   );
   assertEquals(
     OVERVIEW_HULL_ADAPTERS.some((adapter) =>

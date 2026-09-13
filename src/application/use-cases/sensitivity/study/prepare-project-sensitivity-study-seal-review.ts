@@ -229,7 +229,10 @@ export class PrepareProjectSensitivityStudySealReview
         admissionArtifactId: admission.artifact.id,
         cadSource: admission.cadSource,
         authority: selectedCase.source,
-        ...sensitivityStudySealIdentities(selectedCase.caseId),
+        ...sensitivityStudySealIdentities(
+          selectedCase.caseId,
+          admission.cadSource.sha256,
+        ),
       };
       const fromOffer = selectedCase.source === "signed-offer";
       const summary = fromOffer

@@ -76,6 +76,7 @@ Deno.test("first-party launch groups publish distinct loopback host ports", asyn
     "casys-build123d-sandbox",
     "casys-chrono",
     "casys-mcp-calculix",
+    "casys-mcp-dfm",
     "casys-syson",
   ]);
   const published = listed.flatMap((group) =>
@@ -85,6 +86,7 @@ Deno.test("first-party launch groups publish distinct loopback host ports", asyn
     3009,
     3014,
     3015,
+    3018,
     3024,
     3025,
   ]);

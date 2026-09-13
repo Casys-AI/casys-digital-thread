@@ -34,6 +34,7 @@ import {
   type ExactRequirementsCapture,
   isRecaptureRequirementsCapture,
   parseExactRequirementsCapture,
+  recapturePredecessorArtifactMatches,
   REQUIREMENTS_TRACED_WRITE_PRODUCER_TOOL,
   type RequirementsCaptureConstraintUsage,
   requirementsCaptureObservedAt,
@@ -518,13 +519,10 @@ export async function readExactRequirementsPredecessor(
   if (isRecaptureRequirementsCapture(priorRecord)) {
     if (
       !predecessorRequirementsArtifact ||
-      predecessorRequirementsArtifact.id !== priorRecord.predecessor.artifactId ||
-      !fingerprintsEqual(
-        predecessorRequirementsArtifact.fingerprint,
-        priorRecord.predecessor.fingerprint,
-      ) ||
-      predecessorRequirementsArtifact.producer.runId !==
-        priorRecord.predecessor.producerRunId
+      !recapturePredecessorArtifactMatches(
+        priorRecord,
+        predecessorRequirementsArtifact,
+      )
     ) {
       throw new EngineeringProjectCommandError(
         "invalid_input",

@@ -13,7 +13,6 @@ import { CapabilityRuntimeLaunchGroupSupervisor } from "../../application/contro
 import {
   type CapabilityRuntimeQualificationAttempt,
   type CapabilityRuntimeQualificationAttemptIdentity,
-  type CapabilityRuntimeQualificationAttemptOutcome,
   type CapabilityRuntimeQualificationQuarantineReason,
   type CapabilityRuntimeQualificationQuarantineResourceErrorKind,
   type CapabilityRuntimeQualificationQuarantineResourceFailure,

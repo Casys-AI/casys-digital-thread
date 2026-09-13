@@ -27,7 +27,11 @@ import {
   createFirstPartyCalculixHttpRuntimeQualificationSpecifications,
 } from "./first-party-calculix-http-runtime-qualification-specifications.ts";
 import { createLocalCapabilityRuntimeReadComposition } from "./local-capability-runtime-read-composition.ts";
+import {
+  ErpnextBuyRuntimeQualificationService,
+} from "./erpnext-buy-runtime-qualification-service.ts";
 import { LocalChronoRuntimeSecretResolver } from "./local-chrono-runtime-secret-resolver.ts";
+import { overlaySecretInjector } from "./local-erpnext-buy-runtime-secret-resolver.ts";
 import {
   CapabilityRuntimeCalculixInputStagerFactory,
 } from "../sensitivity/live-fea/capability-runtime-calculix-input-stager.ts";
@@ -50,8 +54,8 @@ export interface LocalCapabilityRuntimeQualificationComposition {
 }
 
 /**
- * Closed router for the two code-owned local qualification probes. The CLI
- * cannot select a provider or alter either probe's fixed material.
+ * Closed router for the code-owned local qualification probes. The CLI
+ * cannot select a provider or alter a probe's fixed material.
  */
 export interface LocalCapabilityRuntimeQualificationService {
   review(candidateId: string): Promise<unknown>;
@@ -73,8 +77,11 @@ export async function composeLocalCapabilityRuntimeQualification(
   const host = createCapabilityRuntimeHostAdapter({
     registry: capability.launchGroups,
     journal: capability.journal,
-    secrets,
-    secretInjector: secrets,
+    secrets: capability.secrets,
+    secretInjector: overlaySecretInjector(
+      secrets,
+      capability.erpnextBuy?.secrets,
+    ),
     dockerEnvironment: dockerProcessEnvironment(),
   });
   const groups = new CapabilityRuntimeLaunchGroupSupervisor({
@@ -83,7 +90,7 @@ export async function composeLocalCapabilityRuntimeQualification(
     leases,
     states: capability.composeObserver,
     host,
-    secrets,
+    secrets: capability.secrets,
     lock: hostMutationLock,
   });
   const chrono = new CapabilityRuntimeQualificationService({
@@ -133,8 +140,34 @@ export async function composeLocalCapabilityRuntimeQualification(
     attestations: capability.qualifications,
     now: options.now,
   });
+  const erpCandidates = capability.erpnextBuy?.qualificationCandidates ?? [];
+  const erpSpecs = capability.qualificationSpecs.filter((spec) =>
+    erpCandidates.some((candidate) =>
+      candidate.id === spec.candidate.id &&
+      candidate.fingerprint.digest === spec.candidate.fingerprint.digest
+    )
+  );
+  const erp = capability.erpnextBuy && erpCandidates.length === 1
+    ? new ErpnextBuyRuntimeQualificationService({
+      candidates: erpCandidates,
+      specs: erpSpecs,
+      catalog: capability.catalog,
+      profile: capability.erpnextBuy.contribution.profile,
+      fixture: capability.erpnextBuy.fixture,
+      policy: capability.policy,
+      lock: capability.lock,
+      launchGroups: capability.launchGroups,
+      attempts: new FileCapabilityRuntimeQualificationAttemptStore(),
+      attestations: capability.qualifications,
+      groups,
+      leases,
+      host: capability.host,
+      now: options.now,
+      secrets: capability.erpnextBuy.secrets,
+    })
+    : undefined;
   return {
-    service: new LocalQualificationServiceRouter({ chrono, calculix }),
+    service: new LocalQualificationServiceRouter({ chrono, calculix, erp }),
     secrets,
   };
 }
@@ -151,10 +184,14 @@ class LocalQualificationServiceRouter
     private readonly services: {
       readonly chrono: CapabilityRuntimeQualificationService;
       readonly calculix: CalculixHttpRuntimeQualificationService;
+      readonly erp: ErpnextBuyRuntimeQualificationService | undefined;
     },
   ) {}
 
   async review(candidateId: string): Promise<unknown> {
+    if (this.services.erp?.owns(candidateId)) {
+      return await this.services.erp.review(candidateId);
+    }
     return candidateId === CALCULIX_HTTP_ARM64_NATIVE_QUALIFICATION_CANDIDATE_ID
       ? await this.services.calculix.review(candidateId)
       : await this.services.chrono.review(candidateId);
@@ -165,6 +202,13 @@ class LocalQualificationServiceRouter
     reviewFingerprint: { readonly algorithm: "sha256"; readonly digest: string },
     confirm: boolean,
   ): Promise<unknown> {
+    if (this.services.erp?.owns(candidateId)) {
+      return await this.services.erp.apply(
+        candidateId,
+        reviewFingerprint,
+        confirm,
+      );
+    }
     if (candidateId !== CALCULIX_HTTP_ARM64_NATIVE_QUALIFICATION_CANDIDATE_ID) {
       return await this.services.chrono.apply(
         candidateId,
@@ -183,6 +227,9 @@ class LocalQualificationServiceRouter
   }
 
   async recover(candidateId: string): Promise<unknown> {
+    if (this.services.erp?.owns(candidateId)) {
+      return await this.services.erp.recover(candidateId);
+    }
     return candidateId === CALCULIX_HTTP_ARM64_NATIVE_QUALIFICATION_CANDIDATE_ID
       ? await this.services.calculix.recover(candidateId)
       : await this.services.chrono.recover(candidateId);

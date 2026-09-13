@@ -17,12 +17,17 @@ export const OVERVIEW_DOMAIN_GROUP_KEYS = {
   sysmlModel: "domain:sysml-model",
   geometry: "domain:geometry",
   fea: "domain:fea",
+  dfm: "family:dfm",
   simulation: "domain:simulation",
   assemblyIntegrity: "family:assembly-integrity",
   prescribedKinematics: "family:prescribed-kinematics",
   unassigned: "unassigned",
   projectActivity: "project-activity",
 } as const;
+
+const DFM_SEAL_OPERATION = "industrialize.seal-dfm-case@1";
+const DFM_RUN_OPERATION = "industrialize.run-dfm-checks@1";
+const DFM_CHECK_CASE_KEY = /^verification-case:dfm-check:[a-f0-9]{64}$/;
 
 export type OverviewDomainGroupKey =
   typeof OVERVIEW_DOMAIN_GROUP_KEYS[keyof typeof OVERVIEW_DOMAIN_GROUP_KEYS];
@@ -66,6 +71,14 @@ const FAMILY_BY_EXACT_OPERATION = new Map<string, OverviewDomainGroupKey>([
   [
     "verify.evaluate-prescribed-kinematics@1",
     OVERVIEW_DOMAIN_GROUP_KEYS.prescribedKinematics,
+  ],
+  [
+    DFM_SEAL_OPERATION,
+    OVERVIEW_DOMAIN_GROUP_KEYS.dfm,
+  ],
+  [
+    DFM_RUN_OPERATION,
+    OVERVIEW_DOMAIN_GROUP_KEYS.dfm,
   ],
 ]);
 
@@ -200,9 +213,42 @@ export function overviewDomainGroupKeyFor(
     matchedArtifact?.kind ?? node.artifactKind,
   );
   if (fromKind) return fromKind;
+  if (
+    node.entityKind === "requirement" &&
+    hasUnambiguousDfmCheckCaseMembership(node.engineeringCaseRefs)
+  ) {
+    return OVERVIEW_DOMAIN_GROUP_KEYS.dfm;
+  }
   const fromEntity = groupFromEntityKind(node.entityKind);
   if (fromEntity) return fromEntity;
   return node.system || OVERVIEW_DOMAIN_GROUP_KEYS.unassigned;
+}
+
+/** Exact seal or measured-check artifact; never a label or provider name. */
+export function isOverviewDfmCaseOrResultArtifact(
+  artifact?: ThreadArtifact,
+): boolean {
+  const operation = recordedOperation(artifact);
+  return operation === DFM_SEAL_OPERATION ||
+    operation === DFM_RUN_OPERATION;
+}
+
+/** Exact measured DFM-check capture; never a title or id-prefix heuristic. */
+export function isOverviewDfmCheckCapture(
+  artifact?: ThreadArtifact,
+): boolean {
+  return recordedOperation(artifact) === DFM_RUN_OPERATION;
+}
+
+/**
+ * Validated `engineering-cases/1.1` dfm-check keys only. Mixed families stay
+ * unambiguous non-DFM so ordinary SysML requirements remain SYSML.
+ */
+export function hasUnambiguousDfmCheckCaseMembership(
+  refs: readonly string[] | undefined,
+): boolean {
+  if (refs === undefined || refs.length === 0) return false;
+  return refs.every((key) => DFM_CHECK_CASE_KEY.test(key));
 }
 
 /** Presentation-only caption for a recorded group identity. */
@@ -233,6 +279,9 @@ export function overviewDomainGroupCaption(
   }
   if (normalized === OVERVIEW_DOMAIN_GROUP_KEYS.fea) {
     return lane === "verdicts" ? "FEA verdict" : "FEA";
+  }
+  if (normalized === OVERVIEW_DOMAIN_GROUP_KEYS.dfm) {
+    return lane === "verdicts" ? "DFM verdict" : "DFM";
   }
   if (normalized === OVERVIEW_DOMAIN_GROUP_KEYS.simulation) {
     return "Simulation";
@@ -316,10 +365,16 @@ export function overviewDisambiguatedRecordLabel(
   return `${label} · ${qualifier}`;
 }
 
+function recordedOperation(
+  artifact: ThreadArtifact | undefined,
+): string | undefined {
+  return artifact?.producer?.tool ?? artifact?.producedBy;
+}
+
 function groupFromOperation(
   artifact: ThreadArtifact | undefined,
 ): string | undefined {
-  const operation = artifact?.producer?.tool ?? artifact?.producedBy;
+  const operation = recordedOperation(artifact);
   if (!operation) return undefined;
   return FAMILY_BY_EXACT_OPERATION.get(operation) ??
     DOMAIN_BY_EXACT_OPERATION.get(operation);

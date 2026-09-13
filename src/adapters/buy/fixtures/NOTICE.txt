@@ -1,0 +1,12 @@
+synthetic test input — not a commercial amount, quote, invoice, or purchase
+
+Producer: mcp-erpnext-buy-20260912 src/buy (io.casys.mcp-erpnext.buy-source-capture/1.0).
+Copied from audit/buy-contract-fixtures/accepted without rewriting.
+
+buy-source-capture.canonical.json is the inner canonicalText. Hash CAS against
+those UTF-8 bytes excluding the trailing newline of the file:
+sha256:aa33230c6af6abc929f1687ce6ffc00ccf920510e58efa3c53ec71f4dbbe9d5a
+byteCount 2435.
+
+buy-source-capture.wrapper.json is the MCP structuredContent wrapper. DT must
+hash the inner canonicalText, not this wrapper and not a reserialized projection.

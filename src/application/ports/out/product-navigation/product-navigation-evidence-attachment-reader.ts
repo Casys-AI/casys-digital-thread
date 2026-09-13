@@ -6,7 +6,10 @@
  * the ProjectSourceWorkspace authoring-attachment reader.
  */
 
-import type { RecrossedRequirementsCaptureScope } from "../../../../domain/thread/requirement-definition-scope.ts";
+import type {
+  RecrossedRequirementsCaptureScope,
+  RequirementHistoricalEvaluationFact,
+} from "../../../../domain/thread/requirement-definition-scope.ts";
 import type { ThreadSnapshot } from "../../../../domain/thread/thread-snapshot.ts";
 import type { ProductNavigationAttachmentGraph } from "../../in/product-navigation/product-navigation-read-model.ts";
 
@@ -28,6 +31,12 @@ export interface ProductNavigationEvidenceAttachmentFacts
   readonly sourceFiles?: readonly ProductNavigationAttachedSourceFile[];
   /** Current requirements-capture tips recrossed against the inspect basis. */
   readonly requirementScopes?: readonly RecrossedRequirementsCaptureScope[];
+  /**
+   * Historical-unjoined evaluations recrossed from archived predecessors.
+   * Current requirement status, observations and graph edges stay live.
+   */
+  readonly requirementHistoricalEvaluations?:
+    readonly RequirementHistoricalEvaluationFact[];
 }
 
 export interface ProductNavigationEvidenceAttachmentReader {

@@ -156,6 +156,12 @@ import {
   parseDfmRunDecisionParameters,
 } from "../../domain/make/dfm/dfm-proposal.ts";
 import {
+  BUY_CAPTURE_CONFIGURATION_COST_OPERATION,
+  BUY_SEAL_CONFIGURATION_COST_OPERATION,
+  parseBuyCaptureDecisionParameters,
+  parseBuySealDecisionParameters,
+} from "../../domain/buy/buy-proposal.ts";
+import {
   DECIDE_ACCEPT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
   DECIDE_REJECT_PRESCRIBED_KINEMATICS_EVALUATION_OPERATION,
   VERIFY_EVALUATE_PRESCRIBED_KINEMATICS_OPERATION,
@@ -427,6 +433,18 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION),
     (parameters) => {
       parseDfmRunDecisionParameters(parameters);
+    },
+  ],
+  [
+    keyOf(BUY_CAPTURE_CONFIGURATION_COST_OPERATION),
+    (parameters) => {
+      parseBuyCaptureDecisionParameters(parameters);
+    },
+  ],
+  [
+    keyOf(BUY_SEAL_CONFIGURATION_COST_OPERATION),
+    (parameters) => {
+      parseBuySealDecisionParameters(parameters);
     },
   ],
 ]);

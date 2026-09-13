@@ -1,3 +1,4 @@
+import { sameSnapshotRef } from "../../../domain/project/validation/engineering-project-invariant-values.ts";
 /**
  * Provider-free executor for `industrialize.seal-dfm-case@1`.
  *
@@ -13,10 +14,10 @@ import {
   type EngineeringProjectCommandService,
 } from "../../../application/use-cases/project/engineering-project-command-service.ts";
 import {
-  DFM_TARGET_MEDIA_TYPE,
   type DfmCheckCase,
   parseDfmTargetArtifactUri,
 } from "../../../domain/make/dfm/dfm-case.ts";
+import { attestCanonicalWriteGeometryStep } from "../../../domain/make/dfm/dfm-canonical-step.ts";
 import {
   canonicalDfmCaseText,
   dfmCaseFromDecisionParameters,
@@ -402,6 +403,12 @@ function requireAttestedGeometry(
   dfmCase: DfmCheckCase,
 ): ThreadArtifact {
   const parsed = parseDfmTargetArtifactUri(dfmCase.target.artifactUri);
+  if (parsed.projectId !== dfmCase.project.id) {
+    throw new EngineeringProjectCommandError(
+      "invalid_input",
+      "DFM target URI project does not match the sealed case project.",
+    );
+  }
   const artifact = snapshot.artifacts.find((item) => item.id === parsed.artifactId);
   if (!artifact) {
     throw new EngineeringProjectCommandError(
@@ -409,26 +416,15 @@ function requireAttestedGeometry(
       `DFM case target artefact "${parsed.artifactId}" is absent from the basis snapshot.`,
     );
   }
-  if (artifact.mediaType !== DFM_TARGET_MEDIA_TYPE) {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      "DFM case target must be a model/step write-geometry artefact.",
-    );
+  const attested = attestCanonicalWriteGeometryStep(
+    snapshot,
+    artifact,
+    dfmCase.target.sha256,
+  );
+  if (attested.status !== "attested") {
+    throw new EngineeringProjectCommandError("invalid_input", attested.message);
   }
-  if (artifact.producer.tool !== "design.write-geometry@1") {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      "DFM case target must be a design.write-geometry@1 canonical artefact.",
-    );
-  }
-  if (artifact.fingerprint.digest !== dfmCase.target.sha256) {
-    throw new EngineeringProjectCommandError(
-      "invalid_input",
-      `DFM case target SHA-256 mismatch: expected ${dfmCase.target.sha256}, ` +
-        `observed ${artifact.fingerprint.digest}.`,
-    );
-  }
-  return artifact;
+  return attested.step;
 }
 
 function buildDfmCaseSuccessor(input: {
@@ -557,12 +553,14 @@ function requireMrtrApproval(
       approval.decisionId === decision.id &&
       approval.status === "approved" &&
       approval.decidedByOrigin === "human" &&
-      sameSnapshotBasis(approval.baseSnapshot, basis) &&
+      approval.baseSnapshot !== undefined &&
+      sameSnapshotRef(approval.baseSnapshot, basis) &&
       fingerprintsEqual(approval.inputFingerprint, decision.inputFingerprint)
     );
     if (
       exactHumanApprovals.length === 1 &&
-      sameSnapshotBasis(decision.baseSnapshot, basis) &&
+      decision.baseSnapshot !== undefined &&
+      sameSnapshotRef(decision.baseSnapshot, basis) &&
       decision.inputFingerprint
     ) {
       candidates.push({ decision, proposal: decision.proposal });
@@ -596,13 +594,6 @@ async function exactBasisSnapshot(
     );
   }
   return snapshot;
-}
-
-function sameSnapshotBasis(
-  left: { readonly snapshotId: string; readonly revision: number } | undefined,
-  right: EngineeringThreadSnapshotBasis,
-): boolean {
-  return left?.snapshotId === right.snapshotId && left.revision === right.revision;
 }
 
 function assertCompleted(

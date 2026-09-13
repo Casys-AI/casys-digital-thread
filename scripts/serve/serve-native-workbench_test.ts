@@ -39,12 +39,19 @@ import {
   injectMcpAppScriptNonce,
   MCP_APP_SCRIPT_NONCE_META_NAME,
   projectViewerReviewAnchors,
+  readPersistedProjectCatalog,
   resolveNativeWorkbenchProjectId,
   resolveNativeWorkbenchStartupTarget,
   resolveNativeWorkbenchSubjectId,
   resolveWorkbenchUiAssetPath,
   ThreadViewerSessionsSequencer,
 } from "./serve-native-workbench.ts";
+import { FileEngineeringProjectRevisionStore } from "../../src/adapters/shared/stores/engineering-project-store.ts";
+import { validateEngineeringProjectSnapshot } from "../../src/domain/project/engineering-project-validation.ts";
+import {
+  type NativeWorkbenchProjectDiscovery,
+  readNativeWorkbenchProjectDiscovery,
+} from "../../src/adapters/thread/native-workbench-project-discovery.ts";
 import { verifiedArchitectureNavigationFixture } from "../../src/adapters/architecture/renderer/capture-product-structure-traversal_test.ts";
 import { sampleAgentResourceReference } from "../../src/testing/agent-resource-test-support.ts";
 import {
@@ -643,6 +650,232 @@ Deno.test("native Workbench labels persisted-project discovery literally unavail
   assertEquals((await projects.json()).state, "unavailable");
   const page = await handler(new Request("http://localhost/"));
   assertStringIncludes(await page.text(), "<strong>unavailable</strong>");
+});
+
+Deno.test("native Workbench v2 discovery keeps a healthy project visible beside an invalid head", async () => {
+  const directory = await Deno.makeTempDir({
+    prefix: "native-workbench-project-discovery-serve-",
+  });
+  try {
+    const store = new FileEngineeringProjectRevisionStore(directory);
+    const valid = await store.createInitial(
+      discoveryProjectFixture("healthy-id01", "Healthy ID01"),
+    );
+    await Deno.mkdir(`${directory}/legacy-unsupported`);
+    await Deno.writeTextFile(
+      `${directory}/legacy-unsupported/0000000001.json`,
+      DISCOVERY_LEAK_JSON,
+    );
+    const before = await discoveryTreeSnapshot(directory);
+    const native = createNativeWorkbenchHandler({
+      store: new EmptyThreadStore(),
+      projectStore: store,
+      html: "unused",
+      projectCatalog: () => readPersistedProjectCatalog(store, directory),
+      projectDiscovery: () => readNativeWorkbenchProjectDiscovery(store, directory),
+    });
+    const handler = createFocusedWorkspaceHandler({
+      focus: new MutableFocus(undefined),
+      workspaceId: "primary",
+      native,
+      projectCatalog: () => readPersistedProjectCatalog(store, directory),
+      projectDiscovery: () => readNativeWorkbenchProjectDiscovery(store, directory),
+    });
+
+    const catalog = await handler(new Request("http://localhost/api/projects"));
+    assertEquals(catalog.status, 503);
+    assertEquals((await catalog.json()).state, "unavailable");
+
+    const discovery = await handler(
+      new Request("http://localhost/api/project-discovery"),
+    );
+    assertEquals(discovery.status, 200);
+    const body = await discovery.json() as NativeWorkbenchProjectDiscovery;
+    assertEquals(body.schemaVersion, "native-workbench-project-discovery/2.0");
+    assertEquals(body.state, "partial");
+    assertEquals(body.counts, {
+      available: 1,
+      unavailable: 1,
+      candidates: 2,
+    });
+    assertEquals(body.entries[0], {
+      kind: "available",
+      id: "healthy-id01",
+      name: "Healthy ID01",
+      revision: 1,
+      subjectId: "healthy-id01-subject",
+    });
+    const unavailable = body.entries[1];
+    assertEquals(unavailable.kind, "unavailable");
+    if (unavailable.kind !== "unavailable") return;
+    assertEquals(unavailable.observedStorageIdentifier, "legacy-unsupported");
+    assertEquals(unavailable.identityAuthority, "observed-storage");
+    assertEquals(unavailable.reasonCode, "validation-failure");
+    assertEquals("name" in unavailable, false);
+    assertEquals("status" in unavailable, false);
+    assertDiscoveryNoLeak(JSON.stringify(body));
+
+    const page = await handler(new Request("http://localhost/"));
+    const html = await page.text();
+    assertEquals(page.status, 200);
+    assertStringIncludes(html, 'data-discovery-kind="available"');
+    assertStringIncludes(html, 'data-discovery-kind="unavailable"');
+    assertStringIncludes(html, "Healthy ID01");
+    assertStringIncludes(html, "<code>healthy-id01</code>");
+    assertStringIncludes(html, "legacy-unsupported");
+    assertEquals(html.includes("<a href="), false);
+    assertEquals(html.includes("/projects/"), false);
+    assertEquals(html.includes("<form"), false);
+    assertEquals(html.includes("<button"), false);
+    assertEquals(html.includes("cockpit_focus_set"), false);
+    assertStringIncludes(
+      html,
+      "Choose the project from the paired assistant.",
+    );
+    const invented = await handler(
+      new Request("http://localhost/projects/healthy-id01"),
+    );
+    assertEquals(invented.status, 200);
+    assertStringIncludes(
+      await invented.text(),
+      "Choose the project from the paired assistant.",
+    );
+    assertDiscoveryNoLeak(html);
+
+    const focused = createNativeWorkbenchHandler({
+      store: new EmptyThreadStore(),
+      projectStore: store,
+      projectId: valid.project.id,
+      subjectId: valid.project.subjectId,
+      html: "unused",
+    });
+    const snapshot = await focused(
+      new Request("http://localhost/api/thread/workbench"),
+    );
+    assertEquals(snapshot.status, 200);
+    assertEquals((await snapshot.json()).project.project.id, "healthy-id01");
+    assertEquals(await discoveryTreeSnapshot(directory), before);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("native Workbench v2 discovery labels five valid and five invalid roots", async () => {
+  const entries: NativeWorkbenchProjectDiscovery["entries"][number][] = [];
+  for (let index = 1; index <= 5; index++) {
+    entries.push({
+      kind: "available",
+      id: `good-${index}`,
+      name: `Good ${index}`,
+      revision: 1,
+      subjectId: `good-${index}-subject`,
+    });
+  }
+  for (let index = 1; index <= 5; index++) {
+    entries.push({
+      kind: "unavailable",
+      observedStorageIdentifier: `bad-<${index}>`,
+      identityAuthority: "observed-storage",
+      reasonCode: "malformed-head",
+      message: "Observed project head is not well-formed published JSON.",
+    });
+  }
+  const discovery: NativeWorkbenchProjectDiscovery = {
+    schemaVersion: "native-workbench-project-discovery/2.0",
+    state: "partial",
+    counts: { available: 5, unavailable: 5, candidates: 10 },
+    enumeration: { complete: true, truncated: false },
+    entries,
+  };
+  const handler = createFocusedWorkspaceHandler({
+    focus: new MutableFocus(undefined),
+    workspaceId: "primary",
+    native: createNativeWorkbenchHandler({
+      store: new EmptyThreadStore(),
+      projectStore: new ProjectStore([]),
+      html: "unused",
+      projectDiscovery: () => Promise.resolve(discovery),
+    }),
+    projectDiscovery: () => Promise.resolve(discovery),
+  });
+
+  const response = await handler(
+    new Request("http://localhost/api/project-discovery"),
+  );
+  assertEquals(response.status, 200);
+  assertEquals((await response.json()).counts.candidates, 10);
+
+  const html = await (await handler(new Request("http://localhost/"))).text();
+  for (let index = 1; index <= 5; index++) {
+    assertStringIncludes(html, `Good ${index}`);
+    assertStringIncludes(html, `<code>good-${index}</code>`);
+    assertStringIncludes(html, `bad-&lt;${index}&gt;`);
+  }
+  assertEquals(html.includes("<script>"), false);
+  assertEquals(html.includes("<a href="), false);
+  assertEquals(html.includes("/projects/"), false);
+  assertEquals(html.includes("<form"), false);
+  assertEquals(html.includes("<button"), false);
+  assertEquals(html.includes("cockpit_focus_set"), false);
+  assertStringIncludes(
+    html,
+    "Choose the project from the paired assistant.",
+  );
+});
+
+Deno.test("native Workbench v2 discovery stays GET-only and fail-closed when unwired", async () => {
+  const handler = createFocusedWorkspaceHandler({
+    focus: new MutableFocus(undefined),
+    workspaceId: "primary",
+    native: createNativeWorkbenchHandler({
+      store: new EmptyThreadStore(),
+      projectStore: new ProjectStore([]),
+      html: "unused",
+    }),
+  });
+  const missing = await handler(
+    new Request("http://localhost/api/project-discovery"),
+  );
+  assertEquals(missing.status, 503);
+  assertEquals((await missing.json()).state, "unavailable");
+  const rejected = await handler(
+    new Request("http://localhost/api/project-discovery", { method: "POST" }),
+  );
+  assertEquals(rejected.status, 405);
+  assertEquals(rejected.headers.get("Allow"), "GET");
+});
+
+Deno.test("native Workbench v2 discovery redacts leaked credentials from API and HTML", async () => {
+  const discovery: NativeWorkbenchProjectDiscovery = {
+    schemaVersion: "native-workbench-project-discovery/2.0",
+    state: "partial",
+    counts: { available: 0, unavailable: 1, candidates: 1 },
+    enumeration: { complete: true, truncated: false },
+    entries: [{
+      kind: "unavailable",
+      observedStorageIdentifier: "broken",
+      identityAuthority: "observed-storage",
+      reasonCode: "validation-failure",
+      message:
+        "Observed project head is not a valid current EngineeringProjectSnapshot.",
+    }],
+  };
+  const handler = createFocusedWorkspaceHandler({
+    focus: new MutableFocus(undefined),
+    workspaceId: "primary",
+    native: createNativeWorkbenchHandler({
+      store: new EmptyThreadStore(),
+      projectStore: new ProjectStore([]),
+      html: "unused",
+      projectDiscovery: () => Promise.resolve(discovery),
+    }),
+    projectDiscovery: () => Promise.resolve(discovery),
+  });
+  const api = await (await handler(
+    new Request("http://localhost/api/project-discovery"),
+  )).text();
+  const html = await (await handler(new Request("http://localhost/"))).text();
+  assertDiscoveryNoLeak(`${api}\n${html}`);
 });
 
 Deno.test("native Workbench serves a planning-only project without borrowing a thread", async () => {
@@ -2961,4 +3194,95 @@ class MutableFocus implements CockpitFocusStore {
     this.value = snapshot;
     return Promise.resolve(snapshot);
   }
+}
+
+const DISCOVERY_LEAK_PASSWORD = "hunter2-credential";
+const DISCOVERY_LEAK_PATH = "/Volumes/DEV/secret/id_rsa";
+const DISCOVERY_LEAK_TOKEN = "sk-live-secret-token";
+const DISCOVERY_LEAK_JSON = JSON.stringify({
+  schemaVersion: "1.0",
+  password: DISCOVERY_LEAK_PASSWORD,
+  path: DISCOVERY_LEAK_PATH,
+  token: DISCOVERY_LEAK_TOKEN,
+  name: "Should-Not-Surface",
+  status: "pass",
+  verdict: "pass",
+});
+
+function discoveryProjectFixture(id: string, name: string) {
+  const generatedAt = "2026-08-01T10:36:58.345Z";
+  const objective = "Exercise read-only project discovery without a product fixture.";
+  return validateEngineeringProjectSnapshot({
+    schemaVersion: "4.0",
+    id: `${id}:r1`,
+    revision: 1,
+    generatedAt,
+    project: {
+      id,
+      name,
+      subjectId: `${id}-subject`,
+      objective: { title: objective, statement: objective },
+    },
+    framing: {
+      intent: {
+        statement: objective,
+        source: { kind: "human", reference: "paired-conversation" },
+        capturedAt: generatedAt,
+        capturedBy: { id: "human:owner", origin: "human" },
+      },
+      questions: [],
+      answers: [],
+    },
+    threadSnapshots: [],
+    phases: [],
+    workItems: [],
+    agentRuns: [],
+    decisions: [],
+    approvals: [],
+    blockers: [],
+    commandReceipts: [{
+      commandId: `start-${id}`,
+      type: "project.start",
+      actor: { id: "human:owner", origin: "human" },
+      issuedAt: generatedAt,
+      appliedAt: generatedAt,
+      requestFingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
+      resultingSnapshot: { snapshotId: `${id}:r1`, revision: 1 },
+    }],
+  });
+}
+
+function assertDiscoveryNoLeak(text: string): void {
+  for (
+    const leak of [
+      DISCOVERY_LEAK_PASSWORD,
+      DISCOVERY_LEAK_PATH,
+      DISCOVERY_LEAK_TOKEN,
+      "Should-Not-Surface",
+    ]
+  ) {
+    assertEquals(text.includes(leak), false);
+  }
+}
+
+async function discoveryTreeSnapshot(directory: string): Promise<string> {
+  const lines: string[] = [];
+  async function walk(path: string, relative: string): Promise<void> {
+    const entries = [];
+    for await (const entry of Deno.readDir(path)) entries.push(entry);
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const child = `${path}/${entry.name}`;
+      const rel = relative === "" ? entry.name : `${relative}/${entry.name}`;
+      const stat = await Deno.lstat(child);
+      lines.push(
+        `${rel}|${stat.isDirectory}|${stat.isSymlink}|${stat.size}|${
+          stat.mtime?.getTime() ?? ""
+        }`,
+      );
+      if (stat.isDirectory && !stat.isSymlink) await walk(child, rel);
+    }
+  }
+  await walk(directory, "");
+  return lines.join("\n");
 }
