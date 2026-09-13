@@ -191,3 +191,8 @@ the same consumption.
 - No FX, no UOM conversion, no division-derived unit prices, no complete total while
   anything required is unknown.
 - Fixture amounts in tests are synthetic labels, not actual spend.
+
+The summary MCP tool advertises `readOnlyHint: false` because it saves immutable draft
+evidence; the detail tool retains `readOnlyHint: true`. Neither mutates ERP or the
+Thread. V2 lineage also compares the complete bundle recomputed by the existing
+composition calculator, including line completeness, totals and coverage.

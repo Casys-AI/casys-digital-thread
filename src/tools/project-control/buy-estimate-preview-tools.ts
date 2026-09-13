@@ -1,4 +1,4 @@
-/** Read-only Buy documentary-estimate costing preview. No ERP dispatch. */
+/** Buy documentary-estimate preview writes draft evidence only. No ERP dispatch. */
 
 import type { McpApp, MCPTool } from "@casys/mcp-server";
 import {
@@ -556,7 +556,7 @@ const projectBuyCostEstimatePreviewTool: MCPTool = {
       },
     ],
   },
-  annotations: READ_ONLY_ANNOTATIONS,
+  annotations: { ...READ_ONLY_ANNOTATIONS, readOnlyHint: false },
 };
 
 const PREVIEW_CURSOR_SCHEMA = {

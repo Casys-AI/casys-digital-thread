@@ -557,3 +557,31 @@ Deno.test("annex STEP basis must match the configuration at composition and line
     "STEP fingerprint",
   );
 });
+
+Deno.test("v2 lineage refuses omitted lines and forged aggregate fields", async () => {
+  const { configuration, digest, base } = await twoLineBase();
+  const annex = await annexFor(digest, {
+    lines: [bracketLine({ operand: "sourced", decimal: "50.00" })],
+  });
+  const v2 = await computeBuyCostCandidateV2({
+    configuration,
+    configurationDigest: digest,
+    baseBundle: base,
+    estimates: [annex],
+    pricingContext: buyPricingContext(),
+  });
+  const retained = { baseBundle: base, annexes: [annex], configuration };
+  for (
+    const edit of [
+      { lines: v2.lines.slice(0, 1) },
+      { totals: [] },
+      { coverage: { ...v2.coverage, excludedLineIds: ["line.bracket"] } },
+    ]
+  ) {
+    const altered = validateBuyCostBundleV2({ ...v2, ...edit });
+    await assertRejects(
+      () => assertBuyCostBundleV2Lineage(altered, retained),
+      TypeError,
+    );
+  }
+});

@@ -79,7 +79,7 @@ async function wired() {
   };
 }
 
-Deno.test("preview tools stay absent without dependencies and read-only", () => {
+Deno.test("preview tools stay absent without dependencies", () => {
   const app = capturingApp();
   registerProjectBuyEstimatePreviewTools(app, {});
   assertEquals(app.has(BUY_COST_ESTIMATE_PREVIEW_TOOL_NAME), false);
@@ -95,8 +95,11 @@ Deno.test("preview summary output validates and advertises no authority", async 
     ]
   ) {
     assertEquals(app.has(name), true);
-    assertEquals(app.tool(name).annotations, READ_ONLY_ANNOTATIONS);
-    assertEquals(app.tool(name).annotations?.readOnlyHint, true);
+    const annotations = name === BUY_COST_ESTIMATE_PREVIEW_TOOL_NAME
+      ? { ...READ_ONLY_ANNOTATIONS, readOnlyHint: false }
+      : READ_ONLY_ANNOTATIONS;
+    assertEquals(app.tool(name).annotations, annotations);
+    assertEquals(app.tool(name).annotations?.readOnlyHint, annotations.readOnlyHint);
   }
   const out = await app.handle(BUY_COST_ESTIMATE_PREVIEW_TOOL_NAME, command) as {
     content: string;

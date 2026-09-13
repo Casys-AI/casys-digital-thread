@@ -1340,7 +1340,6 @@ Deno.test("control-plane MCP tools are namespaced, read-only, and return structu
           tool.name === "project_isolated_geometry_seal_review" ||
           tool.name === "project_buy_configuration_cost_capture_review" ||
           tool.name === "project_buy_configuration_cost_seal_review" ||
-          tool.name === "project_buy_cost_estimate_preview" ||
           tool.name === "project_buy_cost_estimate_preview_detail" ||
           tool.name === "project_led_driver_source_review" ||
           tool.name === "project_evaluation_closeout_review" ||

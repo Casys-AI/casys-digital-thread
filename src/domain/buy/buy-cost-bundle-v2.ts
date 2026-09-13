@@ -534,6 +534,19 @@ export async function assertBuyCostBundleV2Lineage(
       );
     }
   }
+
+  const expectedBundle = await computeBuyCostCandidateV2({
+    configuration,
+    configurationDigest: verifiedDigest,
+    baseBundle: base,
+    estimates: annexes,
+    pricingContext: base.pricingContext,
+  });
+  if (deterministicJson(v2) !== deterministicJson(expectedBundle)) {
+    throw new TypeError(
+      "Buy v2 does not match its complete recomputed bundle, including lines, totals and coverage.",
+    );
+  }
 }
 
 function priceEstimateLine(input: {
