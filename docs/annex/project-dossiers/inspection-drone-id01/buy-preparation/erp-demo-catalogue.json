@@ -11,35 +11,40 @@
       "path": "docs/annex/project-dossiers/inspection-drone-id01/buy-preparation/price-source-manifest.json",
       "sha256": "sha256:5343f5ce94b4b20aeebf7a0c51bd6f55f53474e337cc07cb5ba3c57528482f4c",
       "url": "https://holybro.com/products/pixhawk-6c-mini",
-      "retrievedAt": "2026-09-13T07:19:33.000Z"
+      "retrievedAt": "2026-09-13T07:19:33.000Z",
+      "category": "public-catalogue"
     },
     {
       "id": "src.ligpower-f1404-kv4600",
       "path": "docs/annex/project-dossiers/inspection-drone-id01/buy-preparation/price-source-manifest.json",
       "sha256": "sha256:5343f5ce94b4b20aeebf7a0c51bd6f55f53474e337cc07cb5ba3c57528482f4c",
       "url": "https://www.ligpower.com/product/f1404-kv4600-fpv-motor.html",
-      "retrievedAt": "2026-09-13T07:19:33.000Z"
+      "retrievedAt": "2026-09-13T07:19:33.000Z",
+      "category": "public-catalogue"
     },
     {
       "id": "src.rpi-zero-2-w",
       "path": "docs/annex/project-dossiers/inspection-drone-id01/buy-preparation/price-source-manifest.json",
       "sha256": "sha256:5343f5ce94b4b20aeebf7a0c51bd6f55f53474e337cc07cb5ba3c57528482f4c",
       "url": "https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/",
-      "retrievedAt": "2026-09-13T07:19:33.000Z"
+      "retrievedAt": "2026-09-13T07:19:33.000Z",
+      "category": "documentary"
     },
     {
       "id": "src.rpi-cam-mod3",
       "path": "docs/annex/project-dossiers/inspection-drone-id01/buy-preparation/price-source-manifest.json",
       "sha256": "sha256:5343f5ce94b4b20aeebf7a0c51bd6f55f53474e337cc07cb5ba3c57528482f4c",
       "url": "https://www.raspberrypi.com/products/camera-module-3/",
-      "retrievedAt": "2026-09-13T07:19:33.000Z"
+      "retrievedAt": "2026-09-13T07:19:33.000Z",
+      "category": "documentary"
     },
     {
       "id": "src.prusa-petg-jet-black-1kg",
       "path": "docs/annex/project-dossiers/inspection-drone-id01/buy-preparation/price-source-manifest.json",
       "sha256": "sha256:5343f5ce94b4b20aeebf7a0c51bd6f55f53474e337cc07cb5ba3c57528482f4c",
       "url": "https://www.prusa3d.com/product/prusament-petg-jet-black-1kg-nfc/",
-      "retrievedAt": "2026-09-13T07:21:33.000Z"
+      "retrievedAt": "2026-09-13T07:21:33.000Z",
+      "category": "documentary"
     }
   ],
   "lines": [

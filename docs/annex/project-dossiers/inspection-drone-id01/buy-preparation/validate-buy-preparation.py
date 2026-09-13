@@ -8,14 +8,22 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
+from datetime import datetime
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[4]
 SOURCES = REPO / "docs/annex/project-dossiers/inspection-drone-id01/sources"
 SCHEMA = "id01-buy-preparation/1.0"
-SHA256_HEX = __import__("re").compile(r"^[0-9a-f]{64}$")
+SHA256_HEX = re.compile(r"^[0-9a-f]{64}$")
+CANONICAL_UTC = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{3})?Z$"
+)
+CANONICAL_UTC_MILLISECONDS = re.compile(
+    r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$"
+)
 EXPECTED_PROJECT = "inspection-drone-id01:project:r892:5d6ef81cf812c6f1"
 EXPECTED_BRIEF = "inspection-drone-id01:brief:r7:22fb5d1b598dbd41"
 EXPECTED_THREAD = (
@@ -23,6 +31,10 @@ EXPECTED_THREAD = (
     "industrialize-run-dfm-checks-run:"
     "id01-yolo-queue-dfm-r118-authority-retry-jit-20260912"
 )
+EXPECTED_READY_OBSERVATION_IDS = {
+    "obs.holybro-11088-none",
+    "obs.ligpower-f1404-kv4600",
+}
 
 
 def fail(errors: list[str], msg: str) -> None:
@@ -36,6 +48,26 @@ def load(name: str) -> dict:
 
 def sha256_file(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def is_canonical_utc(value: object) -> bool:
+    if not isinstance(value, str) or not CANONICAL_UTC.fullmatch(value):
+        return False
+    try:
+        datetime.strptime(
+            value, "%Y-%m-%dT%H:%M:%S.%fZ" if "." in value else "%Y-%m-%dT%H:%M:%SZ"
+        )
+    except ValueError:
+        return False
+    return True
+
+
+def is_canonical_utc_milliseconds(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and CANONICAL_UTC_MILLISECONDS.fullmatch(value) is not None
+        and is_canonical_utc(value)
+    )
 
 
 def main() -> int:
@@ -60,11 +92,8 @@ def main() -> int:
         baseline = doc.get("baseline") or {}
         if baseline.get("projectSnapshotId") != EXPECTED_PROJECT:
             fail(errors, f"{label}: unexpected projectSnapshotId")
-        brief = baseline.get("approvedBriefId")
-        if brief not in (EXPECTED_BRIEF, None) and baseline.get("approvedBriefId") != EXPECTED_BRIEF:
-            fail(errors, f"{label}: unexpected approvedBriefId")
-        if label == "architecture" and baseline.get("approvedBriefId") != EXPECTED_BRIEF:
-            fail(errors, "architecture: approvedBriefId mismatch")
+        if baseline.get("approvedBriefId") != EXPECTED_BRIEF:
+            fail(errors, f"{label}: approvedBriefId mismatch")
         if baseline.get("threadSnapshotId") != EXPECTED_THREAD:
             fail(errors, f"{label}: unexpected threadSnapshotId")
 
@@ -164,8 +193,8 @@ def main() -> int:
         if path.stat().st_size != entry["bytes"]:
             fail(errors, f"size mismatch {rel}")
 
-    # Recross occurrence counts against placement JSON.
-    expected_counts: dict[str, int] = {}
+    # Recross exact PartUsage -> PartDefinition pairs against the captures.
+    expected_occurrences: set[tuple[str, str]] = set()
     for fname in (
         "airframe-placements.json",
         "propulsion-placements.json",
@@ -176,18 +205,28 @@ def main() -> int:
     ):
         payload = json.loads((SOURCES / fname).read_text(encoding="utf-8"))
         for row in payload["placements"]:
-            pd = row["partDefinitionElementId"]
-            expected_counts[pd] = expected_counts.get(pd, 0) + 1
-    reconstructed = {p["partDefinitionElementId"]: len(p["occurrences"]) for p in parts}
-    if reconstructed != expected_counts:
-        fail(errors, f"occurrence recross failed: {reconstructed} vs {expected_counts}")
+            expected_occurrences.add(
+                (row["usageElementId"], row["partDefinitionElementId"])
+            )
+    reconstructed_occurrences = {
+        (occ["elementId"], part["partDefinitionElementId"])
+        for part in parts
+        for occ in part["occurrences"]
+    }
+    if reconstructed_occurrences != expected_occurrences:
+        fail(errors, "occurrence recross failed: exact usage/PartDefinition pairs differ")
 
     if articles["itemProposalStatus"] != "proposal-not-selected":
         fail(errors, "articles must remain proposal-not-selected")
     if articles["notSupplierQuotation"] is not True:
         fail(errors, "articles must forbid supplier quotation")
-    if len(articles["cotsAndMaterialArticleProposals"]) > 6:
-        fail(errors, "more than 6 COTS/material alternatives")
+    max_alternatives = (articles.get("coverageLimits") or {}).get(
+        "maxCotsMaterialAlternatives"
+    )
+    if max_alternatives != 5:
+        fail(errors, "maxCotsMaterialAlternatives must be 5")
+    elif len(articles["cotsAndMaterialArticleProposals"]) > max_alternatives:
+        fail(errors, "more than 5 COTS/material alternatives")
 
     codes = [row["erp"]["item_code"] for row in articles["cotsAndMaterialArticleProposals"]]
     if len(codes) != len(set(codes)):
@@ -202,9 +241,13 @@ def main() -> int:
     if make_priced:
         fail(errors, "make lines must not carry forged Item Price")
 
-    obs = {row["observationId"]: row for row in manifest["observations"]}
-    if len(obs) != 5:
-        fail(errors, f"expected 5 price observations, got {len(obs)}")
+    observation_rows = manifest["observations"]
+    observation_ids = [row.get("observationId") for row in observation_rows]
+    if len(observation_ids) != len(set(observation_ids)):
+        fail(errors, "duplicate price observationId")
+    if len(observation_rows) != 5:
+        fail(errors, f"expected 5 price observations, got {len(observation_rows)}")
+    obs = {row["observationId"]: row for row in observation_rows}
     if manifest["noAggregateDroneTotal"] is not True:
         fail(errors, "manifest must forbid a drone total")
 
@@ -218,18 +261,36 @@ def main() -> int:
             fail(errors, f"{row['proposalId']} must not carry validity-date payload fields")
         if row.get("priceReadyForItemPrice") is True:
             ready_ids.add(oid)
-            if price.get("price_list_rate") in (None, ""):
-                fail(errors, f"{row['proposalId']} marked ready without rate")
+            source = obs.get(oid)
+            if source is not None:
+                if source.get("itemPriceReady") is not True:
+                    fail(errors, f"{row['proposalId']} ready but observation is not ItemPrice-ready")
+                if price.get("price_list_rate") != source.get("observedValue"):
+                    fail(errors, f"{row['proposalId']} rate != observedValue")
+                if price.get("currency") != source.get("currency"):
+                    fail(errors, f"{row['proposalId']} currency != observation currency")
         elif row.get("priceReadyForItemPrice") is False:
             if price.get("price_list_rate") is not None:
                 fail(errors, f"{row['proposalId']} must not copy unread checkout into Item Price")
+        else:
+            fail(errors, f"{row['proposalId']} must state priceReadyForItemPrice")
+    if ready_ids != EXPECTED_READY_OBSERVATION_IDS:
+        fail(errors, f"ItemPrice-ready observation IDs differ: {sorted(ready_ids)}")
+    manifest_ready_ids = {
+        row["observationId"] for row in observation_rows if row.get("itemPriceReady") is True
+    }
+    if manifest_ready_ids != EXPECTED_READY_OBSERVATION_IDS:
+        fail(
+            errors,
+            f"manifest ItemPrice-ready observation IDs differ: {sorted(manifest_ready_ids)}",
+        )
 
     for oid, row in obs.items():
         for field in ("url", "retrievedAtUtc", "currency", "unit", "observedValue", "kind"):
             if not row.get(field):
                 fail(errors, f"{oid}: missing {field}")
-        if not str(row["retrievedAtUtc"]).startswith("2026-09-13T"):
-            fail(errors, f"{oid}: retrieval timestamp is not 2026-09-13 UTC")
+        if not is_canonical_utc(row["retrievedAtUtc"]):
+            fail(errors, f"{oid}: retrievedAtUtc must be canonical UTC")
         scope = row.get("scope") or {}
         for dim in ("tax", "shipping", "validity", "stock"):
             if dim not in scope:
@@ -250,11 +311,14 @@ def main() -> int:
         fail(errors, "filament must stay documentary if later configured")
     if filament.get("priceReadyForItemPrice") is not False:
         fail(errors, "filament must not be ItemPrice-ready without a retained primary receipt")
-    prusa_obs = obs["obs.prusa-petg-jet-black-1kg"]
-    if prusa_obs.get("observedValue") != "25.49":
-        fail(errors, "must retain the documentary 25.49 Prusa observation")
-    if prusa_obs.get("itemPriceReady") is not False:
-        fail(errors, "Prusa observation must stay not ItemPrice-ready")
+    prusa_obs = obs.get("obs.prusa-petg-jet-black-1kg")
+    if prusa_obs is None:
+        fail(errors, "Prusa observation missing")
+    else:
+        if prusa_obs.get("observedValue") != "25.49":
+            fail(errors, "must retain the documentary 25.49 Prusa observation")
+        if prusa_obs.get("itemPriceReady") is not False:
+            fail(errors, "Prusa observation must stay not ItemPrice-ready")
 
     catalogue = load("erp-demo-catalogue.json")
     if catalogue.get("schema") != "demo-catalogue/1.0":
@@ -265,16 +329,40 @@ def main() -> int:
     }:
         fail(errors, "demo catalogue priceList mismatch")
     manifest_digest = sha256_file(HERE / "price-source-manifest.json")
+    proposal_by_code = {
+        row["erp"]["item_code"]: row
+        for row in articles["cotsAndMaterialArticleProposals"]
+    }
+    catalogue_codes = [line.get("itemCode") for line in catalogue["lines"]]
+    if len(catalogue_codes) != len(set(catalogue_codes)):
+        fail(errors, "duplicate catalogue itemCode")
+    if set(catalogue_codes) != set(proposal_by_code):
+        fail(errors, "catalogue itemCode set must exactly match article proposals")
+    sources_by_id = {source["id"]: source for source in catalogue["sources"]}
+    if len(sources_by_id) != len(catalogue["sources"]):
+        fail(errors, "duplicate catalogue source id")
     priced_lines = 0
     for line in catalogue["lines"]:
         if not line["itemCode"].startswith("DEMO-ID01-"):
             fail(errors, f"catalogue itemCode prefix {line['itemCode']}")
         if line["observation"]["uom"] != line["stockUom"]:
             fail(errors, f"{line['itemCode']} observation.uom != stockUom")
-        src = next(
-            (s for s in catalogue["sources"] if s["id"] == line["sourceRef"]),
-            None,
-        )
+        proposal = proposal_by_code.get(line["itemCode"])
+        if proposal is None:
+            continue
+        erp = proposal["erp"]
+        price = erp["proposed_item_price"]
+        if line.get("itemName") != erp.get("item_name"):
+            fail(errors, f"{line['itemCode']} itemName differs from article proposal")
+        if line.get("itemGroup") != erp.get("item_group"):
+            fail(errors, f"{line['itemCode']} itemGroup differs from article proposal")
+        if line.get("stockUom") != erp.get("stock_uom"):
+            fail(errors, f"{line['itemCode']} stockUom differs from article proposal")
+        if erp.get("price_list") != catalogue["priceList"]["name"]:
+            fail(errors, f"{line['itemCode']} price list differs from demo catalogue")
+        if line["observation"].get("uom") != price.get("uom"):
+            fail(errors, f"{line['itemCode']} observation.uom differs from article proposal")
+        src = sources_by_id.get(line["sourceRef"])
         if src is None:
             fail(errors, f"{line['itemCode']} unknown sourceRef")
             continue
@@ -285,15 +373,44 @@ def main() -> int:
             fail(errors, f"{src['id']} path must point at the local price-source manifest")
         if src.get("sha256") != f"sha256:{manifest_digest}":
             fail(errors, f"{src['id']} sha256 must be the stored manifest digest")
+        source_matches = [
+            row
+            for row in observation_rows
+            if row.get("url") == src.get("url")
+            and row.get("retrievedAtUtc") == src.get("retrievedAt")
+        ]
+        if len(source_matches) != 1:
+            fail(errors, f"{line['itemCode']} source must resolve one manifest observation")
+            continue
+        source_observation = source_matches[0]
+        if source_observation["observationId"] != price.get("observationId"):
+            fail(errors, f"{line['itemCode']} source lineage differs from article observation")
+        if line["observation"].get("currency") != source_observation.get("currency"):
+            fail(errors, f"{line['itemCode']} catalogue currency differs from source observation")
+        expected_category = (
+            "public-catalogue"
+            if source_observation.get("itemPriceReady") is True
+            else "documentary"
+        )
+        if src.get("category") != expected_category:
+            fail(errors, f"{src['id']} category differs from source observation readiness")
+        if not is_canonical_utc_milliseconds(src.get("retrievedAt")):
+            fail(errors, f"{src['id']} retrievedAt must be canonical UTC milliseconds")
         if line["observation"]["amount"] is not None:
             priced_lines += 1
             for key in ("url", "retrievedAt", "sha256"):
                 if not src.get(key):
                     fail(errors, f"priced {line['itemCode']} missing source.{key}")
-            if not str(src["retrievedAt"]).endswith(".000Z") and "." not in str(
-                src["retrievedAt"]
-            ):
-                fail(errors, f"{src['id']} retrievedAt must be canonical UTC with milliseconds")
+            if proposal.get("priceReadyForItemPrice") is not True:
+                fail(errors, f"{line['itemCode']} has catalogue amount without ready article")
+            if line["observation"]["amount"] != price.get("price_list_rate"):
+                fail(errors, f"{line['itemCode']} catalogue amount differs from article rate")
+            if line["observation"]["amount"] != source_observation.get("observedValue"):
+                fail(errors, f"{line['itemCode']} catalogue amount differs from observedValue")
+            if line["observation"]["currency"] != price.get("currency"):
+                fail(errors, f"{line['itemCode']} catalogue currency differs from article price")
+        elif proposal.get("priceReadyForItemPrice") is True:
+            fail(errors, f"{line['itemCode']} ready article must carry a catalogue amount")
     if priced_lines != 2:
         fail(errors, f"expected 2 priced catalogue lines, got {priced_lines}")
     filament_line = next(

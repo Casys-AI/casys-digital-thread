@@ -40,6 +40,11 @@ produit huit appels proposés : une Price List, cinq Items et deux Item Prices, 
 UOM et le groupe d'articles requis. Le plan conserve le manifeste des sources. Son
 acceptation offline ne prouve aucune création de document ERP.
 
+[L'import local autorisé](erp-local-import-20260913.md) est maintenant exécuté : cinq
+articles et deux Item Prices ont été créés et relus sur le port 8080, avec la liste et
+le groupe dédiés. Les trois articles sans prix restent sans Item Price. Ce reçu reste
+documentaire et ne qualifie pas le binding ERP ni un coût Buy.
+
 [La feuille de production](buy-preparation/production-estimate-worksheet.md) sépare
 matière, temps machine, énergie et main-d'œuvre. Les entrées manquantes et les sorties
 restent `unresolved`. Le prix d'une bobine ne devient pas le coût d'une pièce. Les bancs
@@ -61,8 +66,8 @@ printabilité et de temps/matière ne sont pas encore jouées sur ID01.
 
 ## Suite mesurable
 
-1. Créer ou réutiliser les articles et prix sur l'ERPNext local autorisé, conserver les
-   vrais `name` et `modified`, puis vérifier les lectures fraîches.
+1. Import catalogue effectué et relu ; conserver les vrais `name` et `modified` du
+   [reçu daté](erp-local-import-20260913.md).
 2. Préparer et qualifier le binding de ce site par le parcours serveur existant. Tant
    que le binding n'est pas qualifié, aucun Buy ID01 n'est exécuté.
 3. Fermer les choix de configuration, occurrences et quantités qui demandent une

@@ -772,19 +772,89 @@
           "note": "documentary method contract"
         },
         {
-          "kind": "baseline-pointer",
-          "ref": "thread-snapshot-baseline.json#/artifacts",
-          "note": "17 verify.evaluate-assembly-integrity@1 evidences in Thread r119; 2 cited individually"
-        },
-        {
           "kind": "thread-artifact",
           "ref": "assembly-integrity-evaluation-20f60f72ccec0d0f3e65e28120ac66582d37bbef288199d4750de4e35f6994eb",
-          "note": "recorded integrity evaluation"
+          "note": "recorded integrity evaluation; run:id01-queue-airframe-integrity-l4-20260907"
         },
         {
           "kind": "thread-artifact",
           "ref": "assembly-integrity-evaluation-4b4ffa1c73df06c15bc5e47755ad29cde2b0208e6be5457fc69c55253b272a0f",
-          "note": "recorded integrity evaluation"
+          "note": "recorded integrity evaluation; run:id01-queue-electricalPower-integrity-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-2c6fe42ce123b97a9e2f98e2286f856e7f31f0903f42744eab3899944760934c",
+          "note": "recorded integrity evaluation; run:id01-queue-avionics-integrity-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-39ed096e98e731952a1ef840b2ac3ef2324de1115b8c5befa8617bdd7dfe2046",
+          "note": "recorded integrity evaluation; run:id01-queue-landingGear-integrity-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-cebcca564a6feecbe7612a4f08f1e8e7b189a8ffe08f332544f6682db4eb4282",
+          "note": "recorded integrity evaluation; run:id01-queue-cameraPayload-integrity-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-8b3cb8ec46ed17dae8024232044629ed1fb788f67d78f04949b7ee6f24adc166",
+          "note": "recorded integrity evaluation; run:id01-queue-propulsion-integrity-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-4e3dc70d41638b917ecbde11a275f6673c2ddfd5763578a0a41d3de982eb1865",
+          "note": "recorded integrity evaluation; run:id01-queue-airframe-closeout-recross-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-b13e4c1fa4a179a23e48bcafa0991818c834df217a2131c9174330641e052209",
+          "note": "recorded integrity evaluation; run:id01-queue-electricalPower-closeout-recross-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-e5791dc27b0311653224fb87128ab8f153886d9a4e5d2df60ec9111a6c09f4e6",
+          "note": "recorded integrity evaluation; run:id01-queue-avionics-closeout-recross-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-958214dfe6ae2ba8dfa0d2c16dae27cd570f8891481a5a4dba00fb9c52d2eceb",
+          "note": "recorded integrity evaluation; run:id01-queue-landingGear-closeout-recross-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-882a95a267085dab127704a6cf99c7068484180b37fc3d51955ab6bbd18defc4",
+          "note": "recorded integrity evaluation; run:id01-queue-cameraPayload-closeout-recross-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-7f7cc8c0c2e574afdc86ca15d850a433e93b36c5cfb47c69999a12822d2b1fb4",
+          "note": "recorded integrity evaluation; run:id01-queue-propulsion-closeout-recross-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-21f7ed7337dfba4c17d2f386896a32f1634d05349547c313e627c662bb5d0d37",
+          "note": "recorded integrity evaluation; run:id01-queue-root-canary-integrity-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-8e305a399223589a19fced909bf4b86b2e96a2b2af679deb13ea543015d5d91a",
+          "note": "recorded integrity evaluation; run:id01-queue-airframe-rebuild-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-9a13335623fda4b8fb57d94043b7849108db3fd6d2e0c8830b953bbcf5551aac",
+          "note": "recorded integrity evaluation; run:id01-queue-root-rebuild-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-83f3d7926589703b5a34856240821c5906176f13ec69d02a8244057f66b86b8e",
+          "note": "recorded integrity evaluation; run:queue-assembly-integrity-evaluation-958ef913155ff5f8-r91-r660"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-c96f55e0f38357b11fd07d9a61b79cfe9cf52925c1d78f8f08589f8eead7451a",
+          "note": "recorded integrity evaluation; run:id01-queue-l4-assembly-integrity-r106-20260911"
         },
         {
           "kind": "persisted-decision",
@@ -1038,11 +1108,6 @@
           "kind": "thread-artifact",
           "ref": "assembly-integrity-evaluation-4b4ffa1c73df06c15bc5e47755ad29cde2b0208e6be5457fc69c55253b272a0f",
           "note": "recorded integrity evaluation"
-        },
-        {
-          "kind": "baseline-pointer",
-          "ref": "thread-snapshot-baseline.json#/artifacts",
-          "note": "17 verify.evaluate-assembly-integrity@1 evidences in Thread r119"
         }
       ],
       "nextAction": null,
@@ -1688,7 +1753,7 @@
           "note": "approved closeout"
         }
       ],
-      "nextAction": "Rescell correspondence on brief r7 or present explicitly as historical bench evidence.",
+      "nextAction": "Reconcile correspondence with brief r7 or present explicitly as historical bench evidence.",
       "missingEvidence": [
         "exact r7 correspondence (recapture) or explicit historical label"
       ]

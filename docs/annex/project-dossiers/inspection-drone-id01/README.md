@@ -26,11 +26,13 @@ native historical arm correspondence sourced at brief r4; 39 other items lack an
 requirement correspondence in that index. Context and exclusions can need documentary
 answers rather than solver runs. A filled preparation matrix grants no clause verdict.
 
-Five demo articles and two public catalogue prices are prepared for the authorized local
-ERPNext site on port 8080. On this saved Project/Thread basis, no Buy cost bundle,
-qualified ERP binding or ID01 print-estimate exists. Monetary production estimates and
-persisted documentary responses remain tracked implementation gaps. Part/bench/DFM
-results do not qualify flight or authorize physical manufacture.
+Five demo articles and two public catalogue prices were created and freshly read back on
+the authorized local ERPNext site on port 8080; three articles remain unpriced. The
+[dated import receipt](erp-local-import-20260913.md) preserves actual names and modified
+values. On this saved Project/Thread basis, no Buy cost bundle, qualified ERP binding or
+ID01 print-estimate exists. Monetary production estimates and persisted documentary
+responses remain tracked implementation gaps. Part/bench/DFM results do not qualify
+flight or authorize physical manufacture.
 
 ## Historical saved-state reread — 2026-09-12
 
