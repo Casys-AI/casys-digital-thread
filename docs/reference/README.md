@@ -1,5 +1,5 @@
 # Reference
-> Verified-Against: 1df156e6 (2026-08-30).
+> Verified-Against: af031bea (2026-09-13).
 
 Audience: both · Diátaxis: reference · Kind: index
 

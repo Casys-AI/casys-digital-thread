@@ -1,4 +1,5 @@
 # Task catalog
+> Verified-Against: 160d8855 (2026-09-13).
 
 Audience: contributor · Diátaxis: reference · Kind: inventory
 

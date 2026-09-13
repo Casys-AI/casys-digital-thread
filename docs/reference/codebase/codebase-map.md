@@ -1,5 +1,5 @@
 # Reference: codebase map
-> Verified-Against: 7a9c747e (2026-08-31).
+> Verified-Against: 35a797a4 (2026-09-13).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

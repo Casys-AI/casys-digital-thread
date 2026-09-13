@@ -1,5 +1,5 @@
 # Reference: local runtime
-> Verified-Against: 3795b8d6 (2026-09-06).
+> Verified-Against: 41399083 (2026-09-13).
 
 Audience: both · Diátaxis: reference · Kind: index
 
