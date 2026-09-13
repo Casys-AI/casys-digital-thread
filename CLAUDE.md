@@ -51,6 +51,7 @@ deno task fmt         # --check seulement ; pour écrire : deno fmt <chemin>
 deno task test        # suite Deno complète
 deno task check:ui    # tsc --noEmit sur src/ui
 deno task verify:docs # liens et ancres Markdown, sans accepter state/local
+deno task verify:task-catalog
 deno task verify:thread:presentation   # gate de release : bundle natif sans handshake Apps
 deno task verify:evidence              # cohérence des fixtures console
 ```

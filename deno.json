@@ -79,7 +79,9 @@
     "verify:docs": "deno run --no-prompt --frozen --allow-read --allow-run=git scripts/gates/verify-doc-links.ts",
     "verify:evidence": "deno run --allow-read scripts/gates/verify-console-evidence.ts",
     "fmt": "deno fmt --check deno.json server.ts scripts src/adapters src/application src/domain src/orchestration src/presentation src/testing src/tools experiments/thread-workflow experiments/admission-compiler-spike src/ui/*_test.ts && deno fmt --check src/ui/src",
-    "lint": "deno lint server.ts scripts src experiments/admission-compiler-spike"
+    "lint": "deno lint server.ts scripts src experiments/admission-compiler-spike",
+    "verify": "deno task fmt && deno task lint && deno task check && deno task check:ui && deno task test && deno task verify:docs",
+    "verify:task-catalog": "deno run --no-prompt --frozen --no-config --allow-read scripts/gates/verify-task-catalog.ts"
   },
   "fmt": {
     "lineWidth": 88,

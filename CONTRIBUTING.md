@@ -30,6 +30,64 @@ images. Change a provider in its own repository. A change belongs here only when
 affects this workspace's contracts, registered integration, control plane, persistence,
 Workbench, Desktop shell, or local worker definitions.
 
+## First contribution path
+
+Follow this sequence for a first change. Agents start with [AGENTS.md](AGENTS.md). The
+[documentation index](docs/README.md) routes how-to and reference pages by goal. The
+[task catalog](docs/reference/runtime/task-catalog.md) lists every registered
+`deno.json` task and when to use it.
+
+### 1. Clone and install
+
+```bash
+git clone https://github.com/Casys-AI/casys-digital-thread.git
+cd casys-digital-thread
+npm --prefix src/ui ci
+```
+
+Use Deno and Node.js versions compatible with repository CI (currently Deno 2.9.2 and
+Node.js 24). Docker is not required for the contributor gates below.
+
+### 2. Validate the checkout
+
+```bash
+deno task verify
+```
+
+This is the contributor entry command. It runs `fmt`, `lint`, `check`, `check:ui`,
+`test`, then `verify:docs`. `fmt` is check-only; do not use `deno fmt` as validation,
+because that rewrites files. This entry command is intentionally narrower than full
+source validation and CI: it does not run `verify:evidence`,
+`verify:thread:presentation`, or `verify:task-catalog`. See
+[Validate a source checkout](docs/how-to/setup/validate-a-source-checkout.md) for
+those source gates.
+
+### 3. Make one focused change
+
+Keep the pull request to one behavioral or documentation concern. Add or update the
+smallest test that proves the changed behavior. Update living documentation when a
+public contract, command, or workflow changes. Do not combine formatting, generated
+output, broad renames, and behavioral changes in one pull request.
+
+### 4. Re-run the contributor gates
+
+```bash
+deno task verify
+```
+
+Documentation-only changes may stop at `deno task verify:docs`. A `deno.json` task
+change also needs `deno task verify:task-catalog`. Changes to committed fixtures or
+the Workbench presentation also need `deno task verify:evidence` and
+`deno task verify:thread:presentation` from the source-checkout how-to. Provider
+and microVM checks are not part of this path; if a relevant one cannot run, state
+that fact and the exact reason.
+
+### 5. Open a pull request
+
+Use the checklist below. Confirm the authority model is preserved, tests cover the
+material risk, documentation links pass, and the diff contains no secrets, local state,
+generated output, or unrelated edits.
+
 ## Propose a focused change
 
 - Keep each pull request limited to one behavioral or documentation concern.
@@ -61,8 +119,14 @@ identifiers and sensitive values before attaching logs to an issue or pull reque
 
 ## Validate the change
 
-Run checks proportionate to the change. For a typical code change, the repository gates
-are:
+Run checks proportionate to the change. For a typical code change, the contributor
+entry command is:
+
+```bash
+deno task verify
+```
+
+It chains the repository gates in this order:
 
 ```bash
 deno task fmt
@@ -73,11 +137,21 @@ deno task test
 deno task verify:docs
 ```
 
+This entry command stays intentionally narrower than the source-checkout how-to and
+CI: it does not run `verify:evidence`, `verify:thread:presentation`, or
+`verify:task-catalog`. Those source gates run in
+[Validate a source checkout](docs/how-to/setup/validate-a-source-checkout.md) and
+the Quality workflow.
+
 Documentation-only changes must at least run:
 
 ```bash
 deno task verify:docs
 ```
+
+Adding, removing, or renaming a `deno.json` task also requires
+`deno task verify:task-catalog` and an update to the
+[task catalog](docs/reference/runtime/task-catalog.md).
 
 Some provider and microVM checks require local images or live services and are not part
 of every pull request. If a relevant check cannot run, state that fact and the exact
