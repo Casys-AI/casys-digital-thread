@@ -101,7 +101,20 @@ export async function planProjectCapabilityRequirementsProposal(
     mode: material.mode,
     downloadBytes: material.downloadBytes,
     storageBytes: material.storageBytes,
-  }));
+  })).toSorted((left, right) =>
+    compareText(
+      `${left.unitId}\u0000${left.materialId}`,
+      `${right.unitId}\u0000${right.materialId}`,
+    )
+  );
+  const semanticRequirements = structuredClone(input.requirements)
+    .toSorted(compareRequirement);
+  const bindings = structuredClone(plan.bindings).toSorted((left, right) =>
+    compareText(
+      engineeringCapabilityRequirementKey(left.requirement),
+      engineeringCapabilityRequirementKey(right.requirement),
+    )
+  );
   const body = {
     schemaVersion: PROJECT_CAPABILITY_PROPOSAL_SCHEMA_VERSION,
     mutatesRuntime: false,
@@ -109,8 +122,8 @@ export async function planProjectCapabilityRequirementsProposal(
     source: input.source,
     brief: structuredClone(input.brief),
     intent: input.intent === null ? null : structuredClone(input.intent),
-    semanticRequirements: structuredClone(input.requirements),
-    bindings: structuredClone(plan.bindings),
+    semanticRequirements,
+    bindings,
     units,
     materials,
     effects: structuredClone(plan.effects),
@@ -478,6 +491,16 @@ function sameAuthorizedMaterial(
 
 function materialKey(value: ProjectCapabilityProposal["materials"][number]): string {
   return `${value.unitId}\u0000${value.materialId}`;
+}
+
+function compareRequirement(
+  left: ProjectCapabilityProposal["semanticRequirements"][number],
+  right: ProjectCapabilityProposal["semanticRequirements"][number],
+): number {
+  return compareText(
+    engineeringCapabilityRequirementKey(left),
+    engineeringCapabilityRequirementKey(right),
+  ) || compareText(left.minimumQualification, right.minimumQualification);
 }
 
 function compareText(left: string, right: string): number {

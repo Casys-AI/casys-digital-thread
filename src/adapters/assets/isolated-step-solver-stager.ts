@@ -1,6 +1,7 @@
 /**
- * Materialize isolated STEP bytes onto a private host cache, then stage them
- * into the CalculiX volume. The cache is not thread-assets and not a cad-model.
+ * Materialize exact STEP bytes onto a private host cache, then stage them
+ * into an owned container. The cache is not thread-assets and not a cad-model.
+ * Default basename is the CalculiX `fea-<digest>.step` identity.
  */
 
 import type { SolverInputStager } from "../../application/ports/out/solver-input-stager.ts";
@@ -19,6 +20,8 @@ export class IsolatedStepSolverStager implements SolverInputStager {
     private readonly readFile: (
       path: string,
     ) => Promise<Uint8Array> = (path) => Deno.readFile(path),
+    private readonly fileNameFor: (digest: string) => string = (digest) =>
+      `fea-${digest}.step`,
   ) {}
 
   async stage(input: {
@@ -32,7 +35,7 @@ export class IsolatedStepSolverStager implements SolverInputStager {
     if (input.bytes.byteLength !== input.byteCount) {
       throw new TypeError("Staged STEP byteCount does not match the supplied bytes.");
     }
-    const fileName = `fea-${input.fingerprint.digest}.step`;
+    const fileName = this.fileNameFor(input.fingerprint.digest);
     const hostPath = `${this.hostCacheDirectory.replace(/\/$/, "")}/${fileName}`;
     await Deno.mkdir(this.hostCacheDirectory, { recursive: true });
     await this.writeFile(hostPath, input.bytes);
@@ -52,7 +55,7 @@ export class IsolatedStepSolverStager implements SolverInputStager {
     if (input.fingerprint.algorithm !== "sha256") {
       throw new TypeError("Staged STEP fingerprint must use sha256.");
     }
-    const fileName = `fea-${input.fingerprint.digest}.step`;
+    const fileName = this.fileNameFor(input.fingerprint.digest);
     const hostPath = `${this.hostCacheDirectory.replace(/\/$/, "")}/${fileName}`;
     let bytes: Uint8Array;
     try {

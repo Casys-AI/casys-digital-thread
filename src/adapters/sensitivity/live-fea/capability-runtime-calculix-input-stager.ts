@@ -28,12 +28,12 @@ import {
   capabilityRuntimeLaunchGroupReference,
   sameCapabilityRuntimeLaunchGroupReference,
 } from "../../../domain/capability/runtime/capability-runtime-launch-group.ts";
+import type { ContainerCommandRunner } from "../../assets/container-asset-stager.ts";
 import {
-  type ContainerAssetStager,
-  ContainerAssetStagingError,
-  type ContainerCommandRunner,
-  type StagedContainerAsset,
-} from "../../assets/container-asset-stager.ts";
+  defaultOwnedContainerCommandRunner,
+  defaultOwnedContainerHostFileReader,
+  OwnedLaunchGroupContainerAssetStager,
+} from "../../assets/owned-launch-group-container-stager.ts";
 import { IsolatedStepSolverStager } from "../../assets/isolated-step-solver-stager.ts";
 
 const CALCULIX_GROUP_ID = "casys-mcp-calculix";
@@ -44,7 +44,6 @@ const EXPORTS_DIRECTORY = "/exports";
 const INPUT_VOLUME = "calculix-inputs";
 const RUNS_VOLUME = "calculix-runs";
 const EXPORTS_VOLUME = "calculix-exports";
-const CONTAINER_ID = /^[a-f0-9]{12,64}$/;
 const STAGED_STEP_FILE = /^fea-([a-f0-9]{64})\.step$/;
 
 export interface CapabilityRuntimeCalculixInputStagerFactoryOptions {
@@ -67,8 +66,8 @@ export class CapabilityRuntimeCalculixInputStagerFactory
   constructor(
     private readonly options: CapabilityRuntimeCalculixInputStagerFactoryOptions,
   ) {
-    this.#run = options.commandRunner ?? defaultCommandRunner;
-    this.#readHost = options.hostFileReader ?? defaultHostFileReader;
+    this.#run = options.commandRunner ?? defaultOwnedContainerCommandRunner;
+    this.#readHost = options.hostFileReader ?? defaultOwnedContainerHostFileReader;
   }
 
   async forActiveCapabilitySession(input: {
@@ -110,150 +109,15 @@ export class CapabilityRuntimeCalculixInputStagerFactory
       new OwnedLaunchGroupContainerAssetStager({
         group,
         member,
+        containerDirectory: INPUT_DIRECTORY,
+        assertFileName: requireStagedStepFileName,
+        mountsAreExact: hasExactCalculixVolumeMounts,
+        preexisting: "reuse-or-copy",
+        authority: "CalculiX",
         run: this.#run,
         readHost: this.#readHost,
       }),
     );
-  }
-}
-
-interface OwnedLaunchGroupContainerAssetStagerOptions {
-  readonly group: CapabilityRuntimeLaunchGroup;
-  readonly member: CapabilityRuntimeLaunchGroupMaterial;
-  readonly run: ContainerCommandRunner;
-  readonly readHost: (path: string) => Promise<Uint8Array | undefined>;
-}
-
-class OwnedLaunchGroupContainerAssetStager implements ContainerAssetStager {
-  constructor(private readonly options: OwnedLaunchGroupContainerAssetStagerOptions) {}
-
-  resolveTarget(input: { readonly containerFileName: string }): StagedContainerAsset {
-    requireStagedStepFileName(input.containerFileName);
-    return Object.freeze({
-      containerPath: `${INPUT_DIRECTORY}/${input.containerFileName}`,
-    });
-  }
-
-  async stage(input: {
-    readonly sourcePath: string;
-    readonly expectedDigest: string;
-    readonly expectedBytes: number;
-    readonly containerFileName: string;
-  }): Promise<StagedContainerAsset> {
-    requireDigest(input.expectedDigest);
-    requireStagedStepFileName(input.containerFileName, input.expectedDigest);
-    if (!Number.isSafeInteger(input.expectedBytes) || input.expectedBytes <= 0) {
-      throw new TypeError(
-        "CalculiX staged input byte count must be a positive safe integer.",
-      );
-    }
-    const target = this.resolveTarget(input);
-    const source = await this.options.readHost(input.sourcePath);
-    if (
-      !source || source.byteLength !== input.expectedBytes ||
-      await sha256(source) !== input.expectedDigest
-    ) {
-      throw new ContainerAssetStagingError(
-        "pre_verify_failed",
-        { sourcePath: input.sourcePath, containerFileName: input.containerFileName },
-        "Server-owned CalculiX staging cache bytes do not match the exact STEP identity.",
-      );
-    }
-    const containerId = await this.#ownedRunningContainer();
-    if (
-      await this.#hasExactBytes(containerId, target.containerPath, input.expectedDigest)
-    ) {
-      return target;
-    }
-    const copy = await this.options.run("docker", [
-      "cp",
-      input.sourcePath,
-      `${containerId}:${target.containerPath}`,
-    ]);
-    if (!copy.success) {
-      throw stagingError("copy_failed", copy, input.containerFileName);
-    }
-    const readback = await this.options.run("docker", [
-      "exec",
-      containerId,
-      "cat",
-      target.containerPath,
-    ]);
-    if (!readback.success) {
-      throw stagingError("post_read_failed", readback, input.containerFileName);
-    }
-    if (await sha256(readback.stdout) !== input.expectedDigest) {
-      throw new ContainerAssetStagingError(
-        "sha256_mismatch",
-        { containerFileName: input.containerFileName, expected: input.expectedDigest },
-        "Launch-group-owned CalculiX input readback has a different SHA-256.",
-      );
-    }
-    return target;
-  }
-
-  async #hasExactBytes(
-    containerId: string,
-    path: string,
-    expectedDigest: string,
-  ): Promise<boolean> {
-    const result = await this.options.run("docker", ["exec", containerId, "cat", path]);
-    return result.success && await sha256(result.stdout) === expectedDigest;
-  }
-
-  async #ownedRunningContainer(): Promise<string> {
-    const labels = this.options.member.ownership;
-    const args = [
-      "container",
-      "ls",
-      "--all",
-      ...labels.flatMap((label) => ["--filter", `label=${label.key}=${label.value}`]),
-      "--format",
-      "{{.ID}}",
-    ];
-    const listed = await this.options.run("docker", args);
-    if (!listed.success) {
-      throw new ContainerAssetStagingError(
-        "post_read_failed",
-        { service: this.options.member.serviceName },
-        "Cannot inspect the exact owned CalculiX launch-group container.",
-      );
-    }
-    const ids = new TextDecoder().decode(listed.stdout).split(/\r?\n/)
-      .map((value) => value.trim()).filter((value) => value.length > 0);
-    if (ids.length !== 1 || !CONTAINER_ID.test(ids[0]!)) {
-      throw new ContainerAssetStagingError(
-        "post_read_failed",
-        { service: this.options.member.serviceName, count: String(ids.length) },
-        "Exact CalculiX launch-group ownership is absent or ambiguous.",
-      );
-    }
-    const id = ids[0]!;
-    const inspected = await this.options.run("docker", ["inspect", id]);
-    const actual = parseOwnedContainer(
-      inspected.stdout,
-      id,
-      this.options.member,
-      this.options.group,
-    );
-    if (!inspected.success || !actual || actual.status !== "running") {
-      throw new ContainerAssetStagingError(
-        "post_read_failed",
-        { service: this.options.member.serviceName, containerId: id },
-        "Exact CalculiX launch-group container is not a running owned digest-pinned service with its three sealed volume mounts.",
-      );
-    }
-    const image = await this.options.run("docker", ["image", "inspect", actual.image]);
-    if (
-      !image.success || !hasExactImage(image.stdout, this.options.member.imageReference)
-    ) {
-      throw new ContainerAssetStagingError(
-        "post_read_failed",
-        { service: this.options.member.serviceName, containerId: id },
-        "Exact CalculiX launch-group container image does not match the sealed digest.",
-      );
-    }
-    return id;
   }
 }
 
@@ -273,42 +137,6 @@ function exactCalculixMember(
     );
   }
   return matches[0]!;
-}
-
-function parseOwnedContainer(
-  value: Uint8Array,
-  requestedId: string,
-  member: CapabilityRuntimeLaunchGroupMaterial,
-  group: CapabilityRuntimeLaunchGroup,
-): { readonly image: string; readonly status: string } | undefined {
-  try {
-    const parsed = JSON.parse(new TextDecoder().decode(value));
-    const root = Array.isArray(parsed) ? parsed[0] : parsed;
-    if (!root || typeof root !== "object" || Array.isArray(root)) return undefined;
-    const record = root as Record<string, unknown>;
-    const config = record.Config;
-    const state = record.State;
-    if (
-      !config || typeof config !== "object" || Array.isArray(config) ||
-      !state || typeof state !== "object" || Array.isArray(state) ||
-      typeof record.Id !== "string" || typeof record.Image !== "string"
-    ) return undefined;
-    if (!(record.Id as string).startsWith(requestedId)) return undefined;
-    const labels = (config as Record<string, unknown>).Labels;
-    if (!labels || typeof labels !== "object" || Array.isArray(labels)) {
-      return undefined;
-    }
-    if (
-      !member.ownership.every((label) =>
-        (labels as Record<string, unknown>)[label.key] === label.value
-      )
-    ) return undefined;
-    if (!hasExactCalculixVolumeMounts(record.Mounts, group)) return undefined;
-    const status = (state as Record<string, unknown>).Status;
-    return typeof status === "string" ? { image: record.Image, status } : undefined;
-  } catch {
-    return undefined;
-  }
 }
 
 /**
@@ -343,30 +171,6 @@ function hasExactCalculixVolumeMounts(
   return seen.size === expected.size;
 }
 
-function hasExactImage(value: Uint8Array, reference: string): boolean {
-  try {
-    const parsed = JSON.parse(new TextDecoder().decode(value));
-    const root = Array.isArray(parsed) ? parsed[0] : parsed;
-    return !!root && typeof root === "object" && !Array.isArray(root) &&
-      Array.isArray((root as Record<string, unknown>).RepoDigests) &&
-      ((root as Record<string, unknown>).RepoDigests as unknown[]).includes(reference);
-  } catch {
-    return false;
-  }
-}
-
-function stagingError(
-  code: "copy_failed" | "post_read_failed",
-  result: Awaited<ReturnType<ContainerCommandRunner>>,
-  fileName: string,
-): ContainerAssetStagingError {
-  return new ContainerAssetStagingError(
-    code,
-    { containerFileName: fileName, exitCode: String(result.code) },
-    `Launch-group-owned CalculiX staging ${code} for ${fileName}.`,
-  );
-}
-
 function requireStagedStepFileName(value: string, expectedDigest?: string): void {
   const match = STAGED_STEP_FILE.exec(value);
   if (!match || (expectedDigest !== undefined && match[1] !== expectedDigest)) {
@@ -375,38 +179,3 @@ function requireStagedStepFileName(value: string, expectedDigest?: string): void
     );
   }
 }
-
-function requireDigest(value: string): void {
-  if (!/^[a-f0-9]{64}$/.test(value)) {
-    throw new TypeError(
-      "CalculiX staging digest must be a lowercase SHA-256 hex value.",
-    );
-  }
-}
-
-async function sha256(bytes: Uint8Array): Promise<string> {
-  const copy = Uint8Array.from(bytes);
-  const digest = await crypto.subtle.digest("SHA-256", copy.buffer);
-  return [...new Uint8Array(digest)].map((byte) => byte.toString(16).padStart(2, "0"))
-    .join("");
-}
-
-async function defaultHostFileReader(path: string): Promise<Uint8Array | undefined> {
-  try {
-    return await Deno.readFile(path);
-  } catch (error) {
-    if (error instanceof Deno.errors.NotFound) return undefined;
-    throw error;
-  }
-}
-
-const defaultCommandRunner: ContainerCommandRunner = async (exe, args) => {
-  const output = await new Deno.Command(exe, { args, stdout: "piped", stderr: "piped" })
-    .output();
-  return {
-    success: output.success,
-    code: output.code,
-    stdout: output.stdout,
-    stderr: output.stderr,
-  };
-};

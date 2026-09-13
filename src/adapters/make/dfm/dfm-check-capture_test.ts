@@ -29,6 +29,7 @@ function liveParsed() {
     qualification.dfm_check_overhangs,
     LIVE_SHA256,
     45,
+    [0, 0, 1],
   );
   const zMinFilter = {
     enabled: true,
@@ -126,6 +127,7 @@ Deno.test("the recorded overhang fixture keeps the bed-contact zone until Z-min 
     qualification.dfm_check_overhangs,
     LIVE_SHA256,
     45,
+    [0, 0, 1],
   );
   assertEquals(result.violations.length, 6);
   assertEquals(result.violations[0]?.centroid_mm[2], -3);
@@ -211,5 +213,18 @@ Deno.test("the recorded mismatch message names the STEP attestation", () => {
   assertEquals(
     qualification.dfm_mismatch_test.message.includes("STEP SHA-256 mismatch"),
     true,
+  );
+});
+
+Deno.test("overhang measurement refuses an orientation different from the signed direction", () => {
+  assertThrows(
+    () =>
+      parseDfmOverhangResult(qualification.dfm_check_overhangs, LIVE_SHA256, 45, [
+        1,
+        0,
+        0,
+      ]),
+    TypeError,
+    "build direction",
   );
 });

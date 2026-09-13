@@ -68,7 +68,7 @@ projection.
 | `project_agent_run_queue`               | Bounded agent mutation   | Queue one ready, registered work item with server-derived run identity, basis, and summary |
 | `project_agent_run_plan_get`            | Read                     | Reopen the sealed `resolved-operation-plan/2.0` on one run; never executes                 |
 | `project_agent_run_cancel`              | Human elicitation        | Cancel one exact unclaimed queued run after signed paired-chat confirmation                |
-| `project_work_item_abandon`             | Human elicitation        | Abandon eligible work items and pending decisions; no run, provider, or Thread snapshot    |
+| `project_work_item_abandon`             | Human elicitation        | Abandon eligible work with no evidence and no runs except human pre-claim cancellations; preserve runs and unlisted approved decisions; no new run or Thread    |
 | `project_agent_run_execute`             | Bounded server execution | Dispatch that exact queued registered run; no arbitrary execution payload                  |
 
 Closing a leftover ready work item behind a completed successor is operator recovery,

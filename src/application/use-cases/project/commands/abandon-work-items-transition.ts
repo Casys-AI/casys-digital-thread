@@ -31,12 +31,18 @@ export function applyAbandonWorkItems(
     if (!work) notFound("work item", workItemId);
     if (work.status !== "ready" && work.status !== "waiting-for-decision") {
       invalidTransition(
-        `Work item ${work.id} has status ${work.status}; only ready or waiting-for-decision items without runs can be abandoned.`,
+        `Work item ${work.id} has status ${work.status}; only ready or waiting-for-decision items can be abandoned.`,
       );
     }
-    if (draft.agentRuns.some((run) => run.workItemId === work.id)) {
+    // Cancelled runs stay as history. Commit-time snapshot validation is the
+    // authority that they are human pre-claim cancellations with no evidence.
+    if (
+      draft.agentRuns.some((run) =>
+        run.workItemId === work.id && run.status !== "cancelled"
+      )
+    ) {
       invalidTransition(
-        `Work item ${work.id} has an associated run and cannot be abandoned.`,
+        `Work item ${work.id} has a run other than a human pre-claim cancellation and cannot be abandoned.`,
       );
     }
     if (work.evidenceRefs.length > 0) {

@@ -514,9 +514,7 @@ function assertNoInteriorOverlap(
   const skip = new Set(involved);
   for (const row of laidOut) {
     if (skip.has(row.row.key)) continue;
-    const box = view === "matrix"
-      ? overviewHullRowCableSurface(row, view)
-      : row;
+    const box = view === "matrix" ? overviewHullRowCableSurface(row, view) : row;
     const minX = box.x + 0.5;
     const maxX = box.x + box.width - 0.5;
     const minY = box.y + 0.5;

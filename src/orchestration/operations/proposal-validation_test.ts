@@ -606,6 +606,8 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
   assertEquals(gatedProposalOperations(), [
     "analyze.seal-sensitivity-study@1",
     "architecture.seed-syson-model@2",
+    "buy.capture-configuration-cost@1",
+    "buy.seal-configuration-cost@1",
     "compile.seal-admission@3",
     "decide.accept-admitted-modelica-evaluation@1",
     "decide.accept-admitted-spice-evaluation@1",

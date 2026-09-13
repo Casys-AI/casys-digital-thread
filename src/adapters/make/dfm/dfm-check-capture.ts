@@ -292,6 +292,7 @@ export function parseDfmOverhangResult(
   value: unknown,
   expectedSha256: string,
   expectedMaxOverhangDeg: number,
+  expectedBuildDirection: readonly [number, number, number],
 ): DfmOverhangResult {
   const root = requireObject(value, "dfm_check_overhangs structuredContent");
   if (!Array.isArray(root.violations)) {
@@ -336,6 +337,13 @@ export function parseDfmOverhangResult(
     ) !== expectedMaxOverhangDeg
   ) {
     throw new Error("dfm_check_overhangs declared a different threshold.");
+  }
+  const direction = requireFiniteTriple(
+    limits.build_direction,
+    "dfm_check_overhangs limits_declared.build_direction",
+  );
+  if (direction.some((value, index) => value !== expectedBuildDirection[index])) {
+    throw new TypeError("dfm_check_overhangs declared a different build direction.");
   }
   if (!Array.isArray(root.not_checked)) {
     throw new Error("dfm_check_overhangs not_checked must be an array.");
