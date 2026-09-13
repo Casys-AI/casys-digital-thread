@@ -1,0 +1,144 @@
+{
+  "schema": "demo-catalogue/1.0",
+  "scenario": "DEMO-ID01 inspection-drone-id01 public catalogue observations — no supplier quotation",
+  "priceList": {
+    "name": "DEMO-ID01-PUBLIC-CATALOGUE",
+    "currency": "USD"
+  },
+  "sources": [
+    {
+      "id": "src.holybro-11088-none",
+      "path": "docs/annex/project-dossiers/inspection-drone-id01/buy-preparation/price-source-manifest.json",
+      "sha256": "sha256:5343f5ce94b4b20aeebf7a0c51bd6f55f53474e337cc07cb5ba3c57528482f4c",
+      "url": "https://holybro.com/products/pixhawk-6c-mini",
+      "retrievedAt": "2026-09-13T07:19:33.000Z",
+      "category": "public-catalogue"
+    },
+    {
+      "id": "src.ligpower-f1404-kv4600",
+      "path": "docs/annex/project-dossiers/inspection-drone-id01/buy-preparation/price-source-manifest.json",
+      "sha256": "sha256:5343f5ce94b4b20aeebf7a0c51bd6f55f53474e337cc07cb5ba3c57528482f4c",
+      "url": "https://www.ligpower.com/product/f1404-kv4600-fpv-motor.html",
+      "retrievedAt": "2026-09-13T07:19:33.000Z",
+      "category": "public-catalogue"
+    },
+    {
+      "id": "src.rpi-zero-2-w",
+      "path": "docs/annex/project-dossiers/inspection-drone-id01/buy-preparation/price-source-manifest.json",
+      "sha256": "sha256:5343f5ce94b4b20aeebf7a0c51bd6f55f53474e337cc07cb5ba3c57528482f4c",
+      "url": "https://www.raspberrypi.com/products/raspberry-pi-zero-2-w/",
+      "retrievedAt": "2026-09-13T07:19:33.000Z",
+      "category": "documentary"
+    },
+    {
+      "id": "src.rpi-cam-mod3",
+      "path": "docs/annex/project-dossiers/inspection-drone-id01/buy-preparation/price-source-manifest.json",
+      "sha256": "sha256:5343f5ce94b4b20aeebf7a0c51bd6f55f53474e337cc07cb5ba3c57528482f4c",
+      "url": "https://www.raspberrypi.com/products/camera-module-3/",
+      "retrievedAt": "2026-09-13T07:19:33.000Z",
+      "category": "documentary"
+    },
+    {
+      "id": "src.prusa-petg-jet-black-1kg",
+      "path": "docs/annex/project-dossiers/inspection-drone-id01/buy-preparation/price-source-manifest.json",
+      "sha256": "sha256:5343f5ce94b4b20aeebf7a0c51bd6f55f53474e337cc07cb5ba3c57528482f4c",
+      "url": "https://www.prusa3d.com/product/prusament-petg-jet-black-1kg-nfc/",
+      "retrievedAt": "2026-09-13T07:21:33.000Z",
+      "category": "documentary"
+    }
+  ],
+  "lines": [
+    {
+      "itemCode": "DEMO-ID01-PIXHAWK-6C-MINI-A-11088",
+      "itemName": "DEMO ID01 Holybro Pixhawk 6C Mini Model-A Current SKU 11088",
+      "itemGroup": "DEMO-ID01",
+      "stockUom": "Nos",
+      "sourceRef": "src.holybro-11088-none",
+      "sourceMapping": "candidate",
+      "observation": {
+        "amount": "130.99",
+        "currency": "USD",
+        "uom": "Nos",
+        "pack": "1 controller, Power Module None, SKU 11088, Shopify variant 44511517540541",
+        "taxShipping": "unknown; shipping calculated at checkout"
+      },
+      "note": "Candidate mapping to AutopilotEnvelope 07ad2fb6-3205-4bff-9f7f-7e041d0c58a9. Installation compatibility unresolved. Not a selected BOM line."
+    },
+    {
+      "itemCode": "DEMO-ID01-THOBBY-F1404-KV4600",
+      "itemName": "DEMO ID01 T-HOBBY F1404 KV4600 motor",
+      "itemGroup": "DEMO-ID01",
+      "stockUom": "Nos",
+      "sourceRef": "src.ligpower-f1404-kv4600",
+      "sourceMapping": "candidate",
+      "observation": {
+        "amount": "16.90",
+        "currency": "USD",
+        "uom": "Nos",
+        "pack": "1 motor + parts bag",
+        "taxShipping": "unknown; page claims free DHL/UPS express, landed cost unknown"
+      },
+      "note": "Candidate mapping to MotorEnvelope 7b318cfc-d8fd-4725-b734-1afcfcf09248. Mount/propeller/ESC compatibility unresolved. Buy quantity unresolved."
+    },
+    {
+      "itemCode": "DEMO-ID01-RPI-ZERO-2-W",
+      "itemName": "DEMO ID01 Raspberry Pi Zero 2 W",
+      "itemGroup": "DEMO-ID01",
+      "stockUom": "Nos",
+      "sourceRef": "src.rpi-zero-2-w",
+      "sourceMapping": "candidate",
+      "observation": {
+        "amount": null,
+        "currency": "USD",
+        "uom": "Nos",
+        "pack": "1 board",
+        "taxShipping": "unknown"
+      },
+      "note": "Manufacturer $15 headline is not a readable checkout. Item only. Candidate mapping to CompanionComputerEnvelope e19064f9-3d0c-4052-b025-53468ab864cb."
+    },
+    {
+      "itemCode": "DEMO-ID01-RPI-CAM-MOD3-STD",
+      "itemName": "DEMO ID01 Raspberry Pi Camera Module 3 Standard",
+      "itemGroup": "DEMO-ID01",
+      "stockUom": "Nos",
+      "sourceRef": "src.rpi-cam-mod3",
+      "sourceMapping": "candidate",
+      "observation": {
+        "amount": null,
+        "currency": "USD",
+        "uom": "Nos",
+        "pack": "1 module, variant not isolated at checkout",
+        "taxShipping": "unknown"
+      },
+      "note": "Manufacturer from-$25 family copy is not a readable checkout. Item only. Candidate mapping to CameraBoardEnvelope e8531caf-bb17-41cc-8297-e271ed5a5bea."
+    },
+    {
+      "itemCode": "DEMO-ID01-PRUSAMENT-PETG-JB-1KG",
+      "itemName": "DEMO ID01 Prusament PETG Jet Black 1kg NFC",
+      "itemGroup": "DEMO-ID01",
+      "stockUom": "Kg",
+      "sourceRef": "src.prusa-petg-jet-black-1kg",
+      "sourceMapping": "unknown",
+      "observation": {
+        "amount": null,
+        "currency": "USD",
+        "uom": "Kg",
+        "pack": "1 kg NFC spool as sold; catalogue UOM Kg is the spool, not printed-part mass",
+        "taxShipping": "unknown"
+      },
+      "note": "No PartDefinition. Documentary session quote 25.49 USD remains in the price-source-manifest and is not ItemPrice-ready (no retained primary receipt; root GET 403). Do not convert unknown printed mass. Print/labor/machine rates are not catalogue."
+    }
+  ],
+  "unresolved": [
+    "ERP demo site, image digest, topology, and opaque secret slots",
+    "commerce.read-erpnext-buy-source@1 qualification",
+    "Item Group DEMO-ID01 and UOM Nos/Kg must already exist on the future site",
+    "Raspberry Pi Zero 2 W readable checkout unit price",
+    "Raspberry Pi Camera Module 3 Standard readable checkout unit price",
+    "Prusament PETG Jet Black 1kg ItemPrice-ready primary receipt independently readable by root",
+    "Buy quantities / BOM (architecture usage counts are not selected quantities)",
+    "Tax, shipping, FX, validity dates",
+    "Print mass, machine time, energy, labor (outside Item Price)",
+    "Human selection of any candidate mapping"
+  ]
+}

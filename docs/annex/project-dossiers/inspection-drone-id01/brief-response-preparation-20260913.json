@@ -1,0 +1,2138 @@
+{
+  "schemaVersion": "id01-brief-response-preparation/1.0",
+  "kind": "preparation-only",
+  "warning": "Not an operation, not a CAS capture, not a sealed Thread response. No aggregate satisfaction, readiness or coverage is stated.",
+  "documentDate": "2026-09-13",
+  "basis": {
+    "projectId": "inspection-drone-id01",
+    "projectIdentity": "inspection-drone-id01:project:r892:5d6ef81cf812c6f1",
+    "projectRevision": 892,
+    "brief": {
+      "briefId": "inspection-drone-id01:brief",
+      "snapshotId": "inspection-drone-id01:brief:r7:22fb5d1b598dbd41",
+      "revision": 7,
+      "itemCount": 40,
+      "approvedAt": "2026-09-08T14:48:28.254Z",
+      "approvedBy": {
+        "id": "local-yolo:startup-opt-in",
+        "origin": "human"
+      },
+      "inputFingerprint": {
+        "algorithm": "sha256",
+        "digest": "4fc020661a69f522e98b9ff329cdcccc4d1003b2b9c31d7fd43c54e2e043a347"
+      }
+    },
+    "thread": {
+      "snapshotId": "project:inspection-drone-id01:r119:industrialize-run-dfm-checks-run:id01-yolo-queue-dfm-r118-authority-retry-jit-20260912",
+      "revision": 119,
+      "subjectId": "project:inspection-drone-id01"
+    },
+    "replayedFrom": "id01-response.json (project-response/1.0, status available, grants none)"
+  },
+  "statusVocabulary": {
+    "documentary": "Answer provided from recorded sources; states what exists, never a verdict.",
+    "provisional": "Draft position pending human decision or sourcing; reversible.",
+    "unresolved": "No exact join yet; next action and missing evidence named.",
+    "excluded": "Clause states an exclusion honored by project scope; exclusion response, not a verification outcome."
+  },
+  "futureGap": "No persistent per-item clause-response write capability exists in the registered product surface. record.seal-requirements-brief-trace@1 seals an existing requirement trace and must not be reused for arbitrary context responses; no operation was invented here. This preparation table is not a completed BE tender response.",
+  "items": [
+    {
+      "id": "objective",
+      "kind": "objective",
+      "statement": "Concevoir ID01, drone civil non armé d’inspection visuelle, avec une architecture multi-sous-systèmes cohérente, des sources géométriques traçables, de la géométrie canonique et des vérifications réellement exécutées dans leur domaine admis. Ce projet numérique ne revendique ni aptitude au vol ni certification.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        },
+        {
+          "kind": "answer",
+          "reference": "mission-primary-confirmed"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "framing",
+      "status": "documentary",
+      "statusReason": "Project intent restated from the approved brief; no proof applicable.",
+      "proposedResponse": "ID01 is a civil unarmed visual-inspection drone project with a coherent multi-subsystem architecture, traceable geometry sources, canonical geometry and really-executed in-domain checks. The digital project claims no flight fitness and no certification. This preparation plus the read-only response index is the traceability vehicle for that objective.",
+      "evidence": [
+        {
+          "kind": "audit-input",
+          "ref": "id01-response.json",
+          "note": "read-only replay, status available, grants none"
+        },
+        {
+          "kind": "baseline-pointer",
+          "ref": "project-canonical-baseline.json#/framing/currentBriefApproval",
+          "note": "brief r7 approval identity (human origin local-yolo:startup-opt-in, 2026-09-08)"
+        }
+      ],
+      "nextAction": null,
+      "missingEvidence": []
+    },
+    {
+      "id": "mission",
+      "kind": "mission-scenario",
+      "statement": "Observer par caméra les façades et toitures de bâtiments et infrastructures civiles en extérieur ; cette mission est choisie par l’utilisateur.",
+      "briefSourceRefs": [
+        {
+          "kind": "answer",
+          "reference": "mission-primary-confirmed"
+        },
+        {
+          "kind": "answer",
+          "reference": "operating-environment-exterior-confirmed"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "framing",
+      "status": "documentary",
+      "statusReason": "User-chosen mission; intent, not an engineering result.",
+      "proposedResponse": "Visual observation by camera of civil building facades and roofs, outdoors. Sizing details (durations, distances) remain sourcing work.",
+      "evidence": [
+        {
+          "kind": "brief-quoted",
+          "ref": "mission-primary-confirmed",
+          "note": "brief answer ref (intent, not proof)"
+        },
+        {
+          "kind": "brief-quoted",
+          "ref": "operating-environment-exterior-confirmed",
+          "note": "brief answer ref (intent, not proof)"
+        }
+      ],
+      "nextAction": "Size the mission only from sourced data (see mission-sizing-screen).",
+      "missingEvidence": [
+        "sourced durations",
+        "sourced shooting distances"
+      ]
+    },
+    {
+      "id": "primary-user",
+      "kind": "primary-user",
+      "statement": "L’utilisateur cible du système est l’opérateur d’inspection visuelle d’un site civil ; les observations servent à l’examen du bâtiment, pas à un ciblage de personnes.",
+      "briefSourceRefs": [
+        {
+          "kind": "answer",
+          "reference": "mission-primary-confirmed"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "framing",
+      "status": "documentary",
+      "statusReason": "Declared target user; intent, not a verified claim.",
+      "proposedResponse": "Target user is the civil-site visual-inspection operator; observations serve building examination, not person targeting.",
+      "evidence": [
+        {
+          "kind": "brief-quoted",
+          "ref": "mission-primary-confirmed",
+          "note": "brief answer ref (intent, not proof)"
+        }
+      ],
+      "nextAction": null,
+      "missingEvidence": []
+    },
+    {
+      "id": "environment",
+      "kind": "operating-environment",
+      "statement": "L’extérieur, notamment façades et toitures, est le contexte choisi. Le site, la présence de personnes et les conditions météorologiques admissibles ne sont pas encore spécifiés et ne sont pas présumés sûrs.",
+      "briefSourceRefs": [
+        {
+          "kind": "answer",
+          "reference": "operating-environment-exterior-confirmed"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "context",
+      "status": "provisional",
+      "statusReason": "Site, persons present and admissible weather unspecified and not presumed safe.",
+      "proposedResponse": "Exterior facades and roofs are the chosen context. Site, presence of persons and admissible weather conditions are unspecified and must not be presumed safe.",
+      "evidence": [
+        {
+          "kind": "brief-quoted",
+          "ref": "operating-environment-exterior-confirmed",
+          "note": "brief answer ref (intent, not proof)"
+        }
+      ],
+      "nextAction": "Human site/weather context required before any real operation; held with jurisdiction-open and performance-open.",
+      "missingEvidence": [
+        "site",
+        "persons-present policy",
+        "admissible weather"
+      ]
+    },
+    {
+      "id": "yolo-local",
+      "kind": "constraint",
+      "statement": "L’utilisateur demande le mode YOLO local : les propositions bornées passent par les confirmations enregistrées du serveur avec origine local-yolo:startup-opt-in, sans sollicitation répétitive du chat. Les contrôles d’admission, de provenance, de qualification et de preuve restent obligatoires.",
+      "briefSourceRefs": [
+        {
+          "kind": "answer",
+          "reference": "operating-environment-exterior-confirmed"
+        },
+        {
+          "kind": "document",
+          "reference": "docs/reference/runtime/local-runtime-and-ports.md#local-yolo-approval-mode"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "method",
+      "status": "documentary",
+      "statusReason": "Recorded operating mode; controls stay mandatory.",
+      "proposedResponse": "Bounded proposals pass through server-recorded confirmations with origin local-yolo:startup-opt-in, without repeated chat elicitation. Admission, provenance, qualification and proof controls remain mandatory.",
+      "evidence": [
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/runtime/local-runtime-and-ports.md#local-yolo-approval-mode",
+          "note": "documentary doc ref cited by the brief itself"
+        },
+        {
+          "kind": "baseline-pointer",
+          "ref": "project-canonical-baseline.json#/framing/currentBriefApproval",
+          "note": "recorded human-origin confirmation"
+        }
+      ],
+      "nextAction": null,
+      "missingEvidence": []
+    },
+    {
+      "id": "no-weapons",
+      "kind": "exclusion",
+      "statement": "Aucun armement, ciblage, appui à une attaque, usage militaire opérationnel ou identification de personnes n’est conçu dans ID01.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        },
+        {
+          "kind": "answer",
+          "reference": "mission-primary-confirmed"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "scope-exclusion",
+      "status": "excluded",
+      "statusReason": "Honored by project scope. An exclusion response, not a verification outcome.",
+      "proposedResponse": "No armament, targeting, attack support, operational military use or person identification is designed in ID01: the subsystem structure contains no weapon parts and the 125-run journal contains no such scope.",
+      "evidence": [
+        {
+          "kind": "audit-input",
+          "ref": "id01-architecture-current.json",
+          "note": "architecture-capture/4.0 sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9; PartDefinition InspectionDrone f58ee456-a69f-4835-a6f4-e15503c528a1 with six subsystem usages, no weapon parts",
+          "element": "f58ee456-a69f-4835-a6f4-e15503c528a1"
+        },
+        {
+          "kind": "baseline-pointer",
+          "ref": "project-canonical-baseline.json#/agentRuns",
+          "note": "125 runs; term scan over run records for weapon scope returns zero (computation, not an identity)"
+        }
+      ],
+      "nextAction": "None unless scope changes by explicit human decision.",
+      "missingEvidence": []
+    },
+    {
+      "id": "no-real-flight",
+      "kind": "exclusion",
+      "statement": "Aucun vol réel, achat, fabrication physique, déploiement opérationnel ou certification n’est autorisé par ce brief numérique. La simulation d’une pièce ou un assemblage géométrique ne vaut pas validation du drone volant.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "scope-exclusion",
+      "status": "excluded",
+      "statusReason": "Honored by project scope. An exclusion response, not a verification outcome.",
+      "proposedResponse": "No real flight, purchase, physical build, operational deployment or certification is authorized by this digital brief. Bench simulation and geometric assembly are not flying-drone validation. The journal holds zero buy/erpnext mentions across all runs.",
+      "evidence": [
+        {
+          "kind": "baseline-pointer",
+          "ref": "project-canonical-baseline.json#/agentRuns",
+          "note": "125 runs; zero buy/erpnext mentions (computation, not an identity)"
+        },
+        {
+          "kind": "audit-input",
+          "ref": "id01-response.json",
+          "note": "index holds no flight claim; 39 correspondence.missing + 1 native bench link"
+        }
+      ],
+      "nextAction": "Any real-world step needs new human intent plus a new decision.",
+      "missingEvidence": []
+    },
+    {
+      "id": "source-discipline",
+      "kind": "constraint",
+      "statement": "Créer nos propres sources de conception ID01. Les cotes initiales peuvent être proposées par Astra comme choix de conception provisoires, avec unité, justification, auteur et déclencheur de révision, conformément à la demande humaine « Et les côtes il faut les inventer je crois non ? Les sources en tout cas ouai ». Ne jamais présenter ces choix comme des mesures ou performances prouvées. Les propriétés matériau, caractéristiques des composants achetés et résultats doivent rester reliés à une source identifiée ou à un calcul reproductible ; les données inconnues restent unresolved.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        },
+        {
+          "kind": "document",
+          "reference": "AGENTS.md"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "method",
+      "status": "documentary",
+      "statusReason": "Standing design discipline, applied per source.",
+      "proposedResponse": "ID01 parts are created from own sources; initial dimensions may be Astra-proposed provisional design choices with unit, justification, author and revision trigger, never presented as proven measures. Material properties, purchased-component characteristics and results stay tied to an identified source or reproducible computation; unknowns stay unresolved.",
+      "evidence": [
+        {
+          "kind": "worktree-doc",
+          "ref": "AGENTS.md",
+          "note": "documentary NN contract cited by the brief"
+        },
+        {
+          "kind": "dossier-doc",
+          "ref": "docs/annex/project-dossiers/inspection-drone-id01/sources/",
+          "note": "directory: own .py sources with *-provenance.md notes (directory listing, not a single identity)"
+        }
+      ],
+      "nextAction": "Ongoing discipline; no single closeout.",
+      "missingEvidence": []
+    },
+    {
+      "id": "architecture-package",
+      "kind": "proposed-decision",
+      "statement": "Retenir le package SysML ID01Architecture pour la structure documentaire du projet.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "structure",
+      "status": "documentary",
+      "statusReason": "Retained documentary structure; recorded approval exists.",
+      "proposedResponse": "The SysML package ID01Architecture is retained for the documentary structure of the project. The reread architecture capture (sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9) retains package ID01Architecture.",
+      "evidence": [
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-system-architecture",
+          "note": "approved in Project r892"
+        },
+        {
+          "kind": "audit-input",
+          "ref": "id01-architecture-current.json",
+          "note": "package ID01Architecture retained in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9 (op model.write-architecture@1, run:id01-queue-camera-board-hole-architecture-20260911)"
+        }
+      ],
+      "nextAction": null,
+      "missingEvidence": []
+    },
+    {
+      "id": "architecture-system",
+      "kind": "proposed-decision",
+      "statement": "Retenir InspectionDrone comme système racine, contenant les sous-systèmes Airframe, PropulsionSystem, CameraPayload, ElectricalPower, FlightAvionics et LandingGear. Cette décomposition est structurelle ; elle ne crée pas de ports, de flux ou de comportement SysML non couverts.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "structure",
+      "status": "documentary",
+      "statusReason": "Retained root decomposition; structural only.",
+      "proposedResponse": "InspectionDrone is retained as root system with Airframe, PropulsionSystem, CameraPayload, ElectricalPower, FlightAvionics and LandingGear. Structural decomposition only: no ports, flows or uncovered SysML behavior. Root identity PartDefinition f58ee456-a69f-4835-a6f4-e15503c528a1 (InspectionDrone) in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9.",
+      "evidence": [
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-integration-architecture",
+          "note": "approved in Project r892"
+        },
+        {
+          "kind": "audit-input",
+          "ref": "id01-architecture-current.json",
+          "note": "root PartDefinition InspectionDrone f58ee456-a69f-4835-a6f4-e15503c528a1 with six usages airframe/propulsion/cameraPayload/electricalPower/avionics/landingGear in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9",
+          "element": "f58ee456-a69f-4835-a6f4-e15503c528a1"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-module-airframe-unit",
+          "note": "approved module seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-module-electricalPower-unit",
+          "note": "approved module seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-module-avionics-unit",
+          "note": "approved module seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-module-landingGear-unit",
+          "note": "approved module seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-module-cameraPayload-unit",
+          "note": "approved module seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-module-propulsion-unit",
+          "note": "approved module seal"
+        }
+      ],
+      "nextAction": null,
+      "missingEvidence": []
+    },
+    {
+      "id": "subsystem-airframe",
+      "kind": "proposed-decision",
+      "statement": "Retenir Airframe, occurrence airframe sous InspectionDrone, pour notre propre châssis, ses pièces, assemblages, attaches et bras. Les paramètres initiaux seront des décisions de conception explicites et révisables, pas la reproduction imposée d’un modèle tiers.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "structure",
+      "status": "documentary",
+      "statusReason": "Own chassis perimeter with sealed module and accepted integrity; no joint/strength/flight claim.",
+      "proposedResponse": "Airframe (occurrence airframe) covers our own chassis, parts, assemblies, attachments and arms as explicit revisable design decisions. Module sealed and integrity accepted; this proves no joint strength and no flight fitness. Structural identity PartDefinition aed8a774-ae7e-4253-976f-fa79cdcb7b6d (Airframe) in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9.",
+      "evidence": [
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-module-airframe-unit",
+          "note": "approved module seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-airframe-integrity-evaluation",
+          "note": "approved integrity evaluation"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-airframe-integrity-closeout-recross",
+          "note": "approved integrity closeout recross"
+        },
+        {
+          "kind": "audit-input",
+          "ref": "id01-architecture-current.json",
+          "note": "PartDefinition Airframe aed8a774-ae7e-4253-976f-fa79cdcb7b6d in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9",
+          "element": "aed8a774-ae7e-4253-976f-fa79cdcb7b6d"
+        }
+      ],
+      "nextAction": null,
+      "missingEvidence": []
+    },
+    {
+      "id": "subsystem-propulsion",
+      "kind": "proposed-decision",
+      "statement": "Retenir PropulsionSystem, occurrence propulsion sous InspectionDrone, comme périmètre d’intégration des ensembles propulsifs du drone civil. Le modèle initial ne prouve ni poussée ni dynamique de vol.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "structure",
+      "status": "documentary",
+      "statusReason": "Integration perimeter only; no thrust or flight-dynamics proof.",
+      "proposedResponse": "PropulsionSystem (occurrence propulsion) is the integration perimeter for the civil drone propulsion assemblies. The initial model proves neither thrust nor flight dynamics. Structural identity PartDefinition ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7 (PropulsionSystem) in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9.",
+      "evidence": [
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-module-propulsion-unit",
+          "note": "approved module seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-propulsion-integrity-evaluation",
+          "note": "approved integrity evaluation"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-propulsion-integrity-closeout-recross",
+          "note": "approved integrity closeout recross"
+        },
+        {
+          "kind": "audit-input",
+          "ref": "id01-architecture-current.json",
+          "note": "PartDefinition PropulsionSystem ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7 in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9",
+          "element": "ce5021a0-9e1c-4c58-a2dc-7e4b4dda8de7"
+        }
+      ],
+      "nextAction": "Presizing data still open (see propulsion-energy-source-data-open).",
+      "missingEvidence": [
+        "sourced motor/propeller/ESC/battery data"
+      ]
+    },
+    {
+      "id": "subsystem-camera",
+      "kind": "proposed-decision",
+      "statement": "Retenir CameraPayload, occurrence cameraPayload sous InspectionDrone, pour la caméra d’inspection et son support mécanique, avec des caractéristiques à sourcer avant calcul.",
+      "briefSourceRefs": [
+        {
+          "kind": "answer",
+          "reference": "mission-primary-confirmed"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "structure",
+      "status": "documentary",
+      "statusReason": "Structural perimeter; characteristics to source before computation.",
+      "proposedResponse": "CameraPayload (occurrence cameraPayload) covers the inspection camera and its mechanical mount, with characteristics to source before any computation. Structural identity PartDefinition ed1a741f-4c24-4166-8e90-745c9211d6cf (CameraPayload) in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9.",
+      "evidence": [
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-module-cameraPayload-unit",
+          "note": "approved module seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-cameraPayload-integrity-evaluation",
+          "note": "approved integrity evaluation"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-cameraPayload-integrity-closeout-recross",
+          "note": "approved integrity closeout recross"
+        },
+        {
+          "kind": "audit-input",
+          "ref": "id01-architecture-current.json",
+          "note": "PartDefinition CameraPayload ed1a741f-4c24-4166-8e90-745c9211d6cf in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9",
+          "element": "ed1a741f-4c24-4166-8e90-745c9211d6cf"
+        }
+      ],
+      "nextAction": "Camera characteristics sourcing open (see camera-component-reference).",
+      "missingEvidence": [
+        "sourced camera characteristics"
+      ]
+    },
+    {
+      "id": "subsystem-power",
+      "kind": "proposed-decision",
+      "statement": "Retenir ElectricalPower, occurrence electricalPower sous InspectionDrone, pour l’intégration de la source d’énergie et de l’alimentation de l’instrumentation. Les caractéristiques électriques et l’autonomie restent à établir.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "structure",
+      "status": "documentary",
+      "statusReason": "Structural perimeter; electrical characteristics and endurance still to establish.",
+      "proposedResponse": "ElectricalPower (occurrence electricalPower) covers the energy source and instrumentation supply integration. Electrical characteristics and endurance remain to be established. Structural identity PartDefinition 8a55a273-884c-486d-b336-00662d5c4107 (ElectricalPower) in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9.",
+      "evidence": [
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-module-electricalPower-unit",
+          "note": "approved module seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-electricalPower-integrity-evaluation",
+          "note": "approved integrity evaluation"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-electricalPower-integrity-closeout-recross",
+          "note": "approved integrity closeout recross"
+        },
+        {
+          "kind": "audit-input",
+          "ref": "id01-architecture-current.json",
+          "note": "PartDefinition ElectricalPower 8a55a273-884c-486d-b336-00662d5c4107 in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9",
+          "element": "8a55a273-884c-486d-b336-00662d5c4107"
+        }
+      ],
+      "nextAction": "Establish characteristics from sourced data; no selection implied.",
+      "missingEvidence": [
+        "electrical characteristics",
+        "endurance"
+      ]
+    },
+    {
+      "id": "subsystem-avionics",
+      "kind": "proposed-decision",
+      "statement": "Retenir FlightAvionics, occurrence avionics sous InspectionDrone, comme périmètre structurel réservé à l’électronique de contrôle et d’observation ; aucun logiciel de vol, stabilisation ou navigation opérationnelle n’est validé.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "structure",
+      "status": "documentary",
+      "statusReason": "Reserved structural perimeter; no flight software validated.",
+      "proposedResponse": "FlightAvionics (occurrence avionics) is the structural perimeter reserved for control and observation electronics. No flight software, stabilization or operational navigation is validated. Structural identity PartDefinition 9cac605e-5d64-4451-9421-7852a34a4223 (FlightAvionics) in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9.",
+      "evidence": [
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-module-avionics-unit",
+          "note": "approved module seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-avionics-integrity-evaluation",
+          "note": "approved integrity evaluation"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-avionics-integrity-closeout-recross",
+          "note": "approved integrity closeout recross"
+        },
+        {
+          "kind": "audit-input",
+          "ref": "id01-architecture-current.json",
+          "note": "PartDefinition FlightAvionics 9cac605e-5d64-4451-9421-7852a34a4223 in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9",
+          "element": "9cac605e-5d64-4451-9421-7852a34a4223"
+        }
+      ],
+      "nextAction": null,
+      "missingEvidence": []
+    },
+    {
+      "id": "subsystem-landing",
+      "kind": "proposed-decision",
+      "statement": "Retenir LandingGear, occurrence landingGear sous InspectionDrone, pour les supports au sol du système. La présence du sous-système ne prouve ni choc d’atterrissage ni résistance physique.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "structure",
+      "status": "documentary",
+      "statusReason": "Structural perimeter; presence proves no landing-shock or strength claim.",
+      "proposedResponse": "LandingGear (occurrence landingGear) covers the ground supports. The subsystem presence proves neither landing shock nor physical strength. Structural identity PartDefinition 1f63469d-9b5b-4693-8aef-42066e3bdf5d (LandingGear) in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9.",
+      "evidence": [
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-module-landingGear-unit",
+          "note": "approved module seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-landingGear-integrity-evaluation",
+          "note": "approved integrity evaluation"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-landingGear-integrity-closeout-recross",
+          "note": "approved integrity closeout recross"
+        },
+        {
+          "kind": "audit-input",
+          "ref": "id01-architecture-current.json",
+          "note": "PartDefinition LandingGear 1f63469d-9b5b-4693-8aef-42066e3bdf5d in capture sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9",
+          "element": "1f63469d-9b5b-4693-8aef-42066e3bdf5d"
+        }
+      ],
+      "nextAction": null,
+      "missingEvidence": []
+    },
+    {
+      "id": "success-traceability",
+      "kind": "success-criterion",
+      "statement": "Le dossier doit permettre de relire les identités exactes du brief, des sous-systèmes SysML, des sources attachées, des admissions, des géométries et de chaque observation publiée, sans substitution entre versions ni perte des états unresolved ou unavailable.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        }
+      ],
+      "dependsOnItemIds": [
+        "architecture-system",
+        "source-discipline"
+      ],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "criterion",
+      "status": "documentary",
+      "statusReason": "The read-only replay index is the traceability vehicle; unresolved/unavailable preserved.",
+      "proposedResponse": "The dossier re-reads exact identities of brief, SysML subsystems, attached sources, admissions, geometries and published observations without version substitution, keeping unresolved and unavailable states. The replay enumerates all 40 r7 items with joins and gaps and infers no aggregate satisfaction.",
+      "evidence": [
+        {
+          "kind": "audit-input",
+          "ref": "id01-response.json",
+          "note": "40 items, correspondence native:1 unresolved:39, grants none"
+        },
+        {
+          "kind": "audit-input",
+          "ref": "id01-response-summary.json",
+          "note": "gap codes, 1 requirement, 1 evaluation, TRACE GAP diagnostic"
+        }
+      ],
+      "nextAction": "A persistent per-item clause-response capability is missing in the product surface; listed as a future gap. The replay stays read-only.",
+      "missingEvidence": [
+        "persistent clause-response write path (future capability, not forged here)"
+      ]
+    },
+    {
+      "id": "success-assembly",
+      "kind": "success-criterion",
+      "statement": "L’assemblage géométrique étudié doit rendre visibles ses pièces réellement couvertes et celles qui ne le sont pas ; les observations d’intégrité doivent être reliées aux STEP canoniques exacts et à leurs placements, sans conclure sur les joints, la résistance ou la sécurité de vol.",
+      "briefSourceRefs": [
+        {
+          "kind": "document",
+          "reference": "docs/reference/domains/cad/assembly-integrity.md"
+        }
+      ],
+      "dependsOnItemIds": [
+        "subsystem-airframe",
+        "subsystem-camera",
+        "source-discipline"
+      ],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "criterion",
+      "status": "documentary",
+      "statusReason": "Method applied on recorded assemblies; joints/strength/flight explicitly out.",
+      "proposedResponse": "The studied geometric assembly exposes actually covered versus uncovered parts; integrity observations are tied to exact canonical STEPs and placements, with no conclusion on joints, strength or flight safety. Recorded outcome: 11 assembly-integrity-accept decisions (r54-r107) and 17 recorded evaluation evidences (exact IDs in evidence[]).",
+      "evidence": [
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/domains/cad/assembly-integrity.md",
+          "note": "documentary method contract"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-20f60f72ccec0d0f3e65e28120ac66582d37bbef288199d4750de4e35f6994eb",
+          "note": "recorded integrity evaluation; run:id01-queue-airframe-integrity-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-4b4ffa1c73df06c15bc5e47755ad29cde2b0208e6be5457fc69c55253b272a0f",
+          "note": "recorded integrity evaluation; run:id01-queue-electricalPower-integrity-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-2c6fe42ce123b97a9e2f98e2286f856e7f31f0903f42744eab3899944760934c",
+          "note": "recorded integrity evaluation; run:id01-queue-avionics-integrity-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-39ed096e98e731952a1ef840b2ac3ef2324de1115b8c5befa8617bdd7dfe2046",
+          "note": "recorded integrity evaluation; run:id01-queue-landingGear-integrity-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-cebcca564a6feecbe7612a4f08f1e8e7b189a8ffe08f332544f6682db4eb4282",
+          "note": "recorded integrity evaluation; run:id01-queue-cameraPayload-integrity-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-8b3cb8ec46ed17dae8024232044629ed1fb788f67d78f04949b7ee6f24adc166",
+          "note": "recorded integrity evaluation; run:id01-queue-propulsion-integrity-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-4e3dc70d41638b917ecbde11a275f6673c2ddfd5763578a0a41d3de982eb1865",
+          "note": "recorded integrity evaluation; run:id01-queue-airframe-closeout-recross-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-b13e4c1fa4a179a23e48bcafa0991818c834df217a2131c9174330641e052209",
+          "note": "recorded integrity evaluation; run:id01-queue-electricalPower-closeout-recross-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-e5791dc27b0311653224fb87128ab8f153886d9a4e5d2df60ec9111a6c09f4e6",
+          "note": "recorded integrity evaluation; run:id01-queue-avionics-closeout-recross-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-958214dfe6ae2ba8dfa0d2c16dae27cd570f8891481a5a4dba00fb9c52d2eceb",
+          "note": "recorded integrity evaluation; run:id01-queue-landingGear-closeout-recross-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-882a95a267085dab127704a6cf99c7068484180b37fc3d51955ab6bbd18defc4",
+          "note": "recorded integrity evaluation; run:id01-queue-cameraPayload-closeout-recross-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-7f7cc8c0c2e574afdc86ca15d850a433e93b36c5cfb47c69999a12822d2b1fb4",
+          "note": "recorded integrity evaluation; run:id01-queue-propulsion-closeout-recross-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-21f7ed7337dfba4c17d2f386896a32f1634d05349547c313e627c662bb5d0d37",
+          "note": "recorded integrity evaluation; run:id01-queue-root-canary-integrity-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-8e305a399223589a19fced909bf4b86b2e96a2b2af679deb13ea543015d5d91a",
+          "note": "recorded integrity evaluation; run:id01-queue-airframe-rebuild-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-9a13335623fda4b8fb57d94043b7849108db3fd6d2e0c8830b953bbcf5551aac",
+          "note": "recorded integrity evaluation; run:id01-queue-root-rebuild-l4-20260907"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-83f3d7926589703b5a34856240821c5906176f13ec69d02a8244057f66b86b8e",
+          "note": "recorded integrity evaluation; run:queue-assembly-integrity-evaluation-958ef913155ff5f8-r91-r660"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-c96f55e0f38357b11fd07d9a61b79cfe9cf52925c1d78f8f08589f8eead7451a",
+          "note": "recorded integrity evaluation; run:id01-queue-l4-assembly-integrity-r106-20260911"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-assembly-integrity-accept-21f7ed7337dfba4c-r68",
+          "note": "approved assembly-integrity accept"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-assembly-integrity-accept-4e3dc70d41638b91-r54",
+          "note": "approved assembly-integrity accept"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-assembly-integrity-accept-7f7cc8c0c2e574af-r64",
+          "note": "approved assembly-integrity accept"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-assembly-integrity-accept-83f3d7926589703b-r92",
+          "note": "approved assembly-integrity accept"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-assembly-integrity-accept-882a95a267085dab-r62",
+          "note": "approved assembly-integrity accept"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-assembly-integrity-accept-8e305a399223589a-r77",
+          "note": "approved assembly-integrity accept"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-assembly-integrity-accept-958214dfe6ae2ba8-r60",
+          "note": "approved assembly-integrity accept"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-assembly-integrity-accept-9a13335623fda4b8-r81",
+          "note": "approved assembly-integrity accept"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-assembly-integrity-accept-b13e4c1fa4a179a2-r56",
+          "note": "approved assembly-integrity accept"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-assembly-integrity-accept-c96f55e0f38357b1-r107",
+          "note": "approved assembly-integrity accept"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-assembly-integrity-accept-e5791dc27b031165-r58",
+          "note": "approved assembly-integrity accept"
+        }
+      ],
+      "nextAction": "New assemblies need new runs; no standing verdict transfers.",
+      "missingEvidence": [
+        "exact current clause join (method evidence recorded; clause mapping absent in replay)"
+      ]
+    },
+    {
+      "id": "success-mechanical",
+      "kind": "success-criterion",
+      "statement": "Exécuter une vérification mécanique pertinente sur une pièce porteuse précisément identifiée, avec matériau, chargement, conditions aux limites et critères sourcés avant le calcul ; publier le résultat et ses limites sans extrapolation au drone entier.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        },
+        {
+          "kind": "document",
+          "reference": "docs/reference/domains/fea/coverage.md"
+        }
+      ],
+      "dependsOnItemIds": [
+        "subsystem-airframe",
+        "subsystem-camera",
+        "source-discipline"
+      ],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "criterion",
+      "status": "documentary",
+      "statusReason": "Bounded static FEA executed on identified bearer parts; no whole-drone extrapolation.",
+      "proposedResponse": "Pertinent mechanical verification executed on precisely identified bearer parts with material, loading, boundary conditions and criteria sourced before computation; result and limits published without extrapolation to the whole drone. Recorded outcome: 5 proof-case seals, 5 L5 accept-closeout documents, 6 bench evaluations all pass, 5 bench observations (exact IDs in evidence[]).",
+      "evidence": [
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/domains/fea/coverage.md",
+          "note": "documentary method contract"
+        },
+        {
+          "kind": "baseline-pointer",
+          "ref": "thread-snapshot-baseline.json#/evaluations",
+          "note": "6 bench evaluations in Thread r119, all pass (full IDs in camera-bracket-bench-stress evidence)"
+        },
+        {
+          "kind": "baseline-pointer",
+          "ref": "thread-snapshot-baseline.json#/observations",
+          "note": "5 calculix-isolated-observation-* bench observations in Thread r119"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "fea-proof-5cfe52509a34b49694b2109996493d187cd8f834f17fe3273e6d3225828d0320",
+          "note": "recorded proof-case seal document"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "fea-proof-184773c90be51e12e52c958cb1f92027969959e0b7af21f3a95b774e4219dcea",
+          "note": "recorded proof-case seal document"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "fea-proof-ddbc41594b60d148c47f946201d2ea16cfb9efef105e2e71798ebebea9da9dae",
+          "note": "recorded proof-case seal document"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "fea-proof-8d86da9b7796a98498eff634ab8604b84ca8b0014f74c26772018d72f5359da9",
+          "note": "recorded proof-case seal document"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "fea-proof-1e48f4318a5c523a8ae6cf1dcd0dd277afc87de08111065e907371c899229d52",
+          "note": "recorded proof-case seal document"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "evaluation-closeout-e245850178fee5b3b2b118f3656d3fcd4b819adfb9a96cd247d2abfb22a34537",
+          "note": "recorded L5 accept-closeout document"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "evaluation-closeout-f16c5fd31e7dfa930bb6ad2c1b315607a4dbcb209ac211ee51e0c8a003e24378",
+          "note": "recorded L5 accept-closeout document"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "evaluation-closeout-42065707232e3fe4c881aa31d3500225ded5f248376ae5431436b50016f62ef4",
+          "note": "recorded L5 accept-closeout document"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "evaluation-closeout-c8630e646d5c6c86c8cac978063d76a1d6cc215d75d5fd728ab6b119fb187a17",
+          "note": "recorded L5 accept-closeout document"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "evaluation-closeout-2f4cefca355ce326d7d9b0b0737c40815ca20d43867dd6a9eeb55766bc8d3ae6",
+          "note": "recorded L5 accept-closeout document"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "dec-proof-seal-id01-camera-bracket-bench-r1",
+          "note": "approved proof seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "dec-proof-seal-id01-camera-bracket-bench-r2",
+          "note": "approved proof seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "dec-proof-seal-id01-camera-bracket-bench-r3",
+          "note": "approved proof seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "dec-proof-seal-id01-camera-bracket-bench-r4",
+          "note": "approved proof seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "dec-proof-seal-id01-radial-arm-bench-r2",
+          "note": "approved proof seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "dec-proof-seal-id01-radial-arm-bench-r3",
+          "note": "approved proof seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-camera-bracket-bench-closeout",
+          "note": "approved bench closeout"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-id01-camera-bracket-bench-r3-closeout-20260907",
+          "note": "approved bench closeout"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-id01-camera-bracket-bench-r4-closeout",
+          "note": "approved bench closeout"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-id01-radial-arm-bench-r2-closeout-r89",
+          "note": "approved bench closeout"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-id01-radial-arm-bench-r3-closeout",
+          "note": "approved bench closeout"
+        }
+      ],
+      "nextAction": "New parts need new loops; a part pass never proves another clause.",
+      "missingEvidence": [
+        "exact current clause join (proofs recorded; clause mapping absent in replay)"
+      ]
+    },
+    {
+      "id": "verify-assembly",
+      "kind": "verification-activity",
+      "statement": "Observer et évaluer l’intégrité statique du module canonique exact dans la portée de la méthode assembly-integrity ; ce travail contrôle la géométrie importée, les occurrences et leurs placements, pas l’aptitude au vol.",
+      "briefSourceRefs": [
+        {
+          "kind": "document",
+          "reference": "docs/reference/domains/cad/assembly-integrity.md"
+        }
+      ],
+      "dependsOnItemIds": [
+        "success-assembly",
+        "success-traceability"
+      ],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "activity",
+      "status": "documentary",
+      "statusReason": "Recorded static-integrity activity within method scope.",
+      "proposedResponse": "Static integrity of the exact canonical module observed and evaluated within the assembly-integrity method scope. This checks imported geometry, occurrences and placements, not flight fitness.",
+      "evidence": [
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/domains/cad/assembly-integrity.md",
+          "note": "documentary method contract"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-20f60f72ccec0d0f3e65e28120ac66582d37bbef288199d4750de4e35f6994eb",
+          "note": "recorded integrity evaluation"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "assembly-integrity-evaluation-4b4ffa1c73df06c15bc5e47755ad29cde2b0208e6be5457fc69c55253b272a0f",
+          "note": "recorded integrity evaluation"
+        }
+      ],
+      "nextAction": null,
+      "missingEvidence": [
+        "exact current clause join (activity recorded; clause mapping absent in replay)"
+      ]
+    },
+    {
+      "id": "verify-static-fea",
+      "kind": "verification-activity",
+      "statement": "Exécuter une preuve structurelle statique sur une pièce admissible via la méthode static-structural-fea. Si la matière, le chargement ou la géométrie dépasse le contrat, préserver le refus et traiter un besoin d’extension générique séparément ; ne pas remplacer un matériau composite par un matériau isotrope sans décision explicitement justifiée.",
+      "briefSourceRefs": [
+        {
+          "kind": "document",
+          "reference": "docs/reference/domains/fea/coverage.md"
+        }
+      ],
+      "dependsOnItemIds": [
+        "success-mechanical",
+        "success-traceability"
+      ],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "activity",
+      "status": "documentary",
+      "statusReason": "Recorded @3 static proofs on admissible parts; refusals preserved.",
+      "proposedResponse": "Static structural proof executed on admissible parts via static-structural-fea. Out-of-contract material, loading or geometry preserves refusal; no composite material silently replaced by an isotropic one without explicitly justified decision.",
+      "evidence": [
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/domains/fea/coverage.md",
+          "note": "documentary method contract"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "fea-proof-1e48f4318a5c523a8ae6cf1dcd0dd277afc87de08111065e907371c899229d52",
+          "note": "proof-case seal, arm r3 run"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "fea-proof-8d86da9b7796a98498eff634ab8604b84ca8b0014f74c26772018d72f5359da9",
+          "note": "proof-case seal, bracket r4 run"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "evaluation-closeout-2f4cefca355ce326d7d9b0b0737c40815ca20d43867dd6a9eeb55766bc8d3ae6",
+          "note": "L5 accept-closeout, arm r3 run"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "evaluation-closeout-c8630e646d5c6c86c8cac978063d76a1d6cc215d75d5fd728ab6b119fb187a17",
+          "note": "L5 accept-closeout, bracket r4 run"
+        },
+        {
+          "kind": "baseline-pointer",
+          "ref": "thread-snapshot-baseline.json#/evaluations",
+          "note": "30 verify.run-fea-static-proof@3 evidences in Thread r119 (plus the 5 proof-case seals cited above)"
+        }
+      ],
+      "nextAction": null,
+      "missingEvidence": [
+        "exact current clause join (proofs recorded; clause mapping absent in replay)"
+      ]
+    },
+    {
+      "id": "jurisdiction-open",
+      "kind": "open-question",
+      "statement": "Les pays de fabrication, de mise sur le marché et d’exploitation ne sont pas renseignés. Toute applicabilité réglementaire et toute autorisation de vol restent unresolved ; aucune juridiction n’est inventée pour ce projet numérique.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        },
+        {
+          "kind": "answer",
+          "reference": "operating-environment-exterior-confirmed"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "open-question",
+      "status": "unresolved",
+      "statusReason": "Countries of manufacture, market and operation unknown; no jurisdiction invented.",
+      "proposedResponse": "Regulatory applicability and any flight authorization stay unresolved. No jurisdiction, legal category or certification path is invented for this digital project.",
+      "evidence": [
+        {
+          "kind": "brief-quoted",
+          "ref": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195",
+          "note": "brief sourceRef (intent, not proof)"
+        },
+        {
+          "kind": "brief-quoted",
+          "ref": "operating-environment-exterior-confirmed",
+          "note": "brief sourceRef (intent, not proof)"
+        }
+      ],
+      "nextAction": "Human answer genuinely needed: blocks regulatory conclusions and tax/logistics cost dimensions. A partial documentary cost with those unknowns named stays possible.",
+      "missingEvidence": [
+        "manufacture country",
+        "market country",
+        "operation country"
+      ]
+    },
+    {
+      "id": "performance-open",
+      "kind": "open-question",
+      "statement": "Masse finale, autonomie, charges opérationnelles, qualité d’image, tenue au vent, distance aux façades et protection des personnes ne sont pas des exigences approuvées. Les établir à partir de sources et d’un contexte explicite avant tout usage réel.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        },
+        {
+          "kind": "answer",
+          "reference": "operating-environment-exterior-confirmed"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "open-question",
+      "status": "unresolved",
+      "statusReason": "No approved performance requirements exist.",
+      "proposedResponse": "Final mass, endurance, operational loads, image quality, wind holding, facade distance and person protection are not approved requirements. Establish them from sources and explicit context before any real use.",
+      "evidence": [
+        {
+          "kind": "brief-quoted",
+          "ref": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195",
+          "note": "brief sourceRef (intent, not proof)"
+        },
+        {
+          "kind": "brief-quoted",
+          "ref": "operating-environment-exterior-confirmed",
+          "note": "brief sourceRef (intent, not proof)"
+        }
+      ],
+      "nextAction": "Human-sourced thresholds required; the agent invents none.",
+      "missingEvidence": [
+        "mass",
+        "endurance",
+        "operational loads",
+        "image quality",
+        "wind holding",
+        "facade distance",
+        "person protection"
+      ]
+    },
+    {
+      "id": "verification-limits",
+      "kind": "observed-fact",
+      "statement": "La couverture actuelle distingue l’intégrité géométrique d’assemblage et la FEA statique bornée. Elle ne démontre pas la dynamique de vol, la stabilisation, les vibrations ou la tenue d’un assemblage composite complet.",
+      "briefSourceRefs": [
+        {
+          "kind": "document",
+          "reference": "docs/reference/domains/cad/assembly-integrity.md"
+        },
+        {
+          "kind": "document",
+          "reference": "docs/reference/domains/fea/coverage.md"
+        },
+        {
+          "kind": "document",
+          "reference": "docs/reference/domains/modelica/coverage.md"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "boundary",
+      "status": "documentary",
+      "statusReason": "Standing coverage boundary, observed as fact.",
+      "proposedResponse": "Current coverage distinguishes assembly geometric integrity and bounded static FEA. It demonstrates no flight dynamics, stabilization, vibration or full composite-assembly strength.",
+      "evidence": [
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/domains/cad/assembly-integrity.md",
+          "note": "documentary contract cited by the brief"
+        },
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/domains/fea/coverage.md",
+          "note": "documentary contract cited by the brief"
+        },
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/domains/modelica/coverage.md",
+          "note": "documentary contract cited by the brief"
+        }
+      ],
+      "nextAction": "Standing boundary; none.",
+      "missingEvidence": []
+    },
+    {
+      "id": "cost-later",
+      "kind": "manufacturing-evidence",
+      "statement": "La fabrication, les achats, les devis et le chiffrage restent une étape ultérieure distincte. Aucune estimation de coût ou de fabricabilité n’est présentée comme preuve issue de cette phase Behave.",
+      "briefSourceRefs": [
+        {
+          "kind": "document",
+          "reference": "docs/how-to/verify-design/verify-a-new-design-from-scratch.md"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing",
+        "mapping.missing"
+      ],
+      "scope": "manufacturing",
+      "status": "unresolved",
+      "statusReason": "Later distinct stage (plus mapping.missing in the replay). No cost or manufacturability presented as Behave proof.",
+      "proposedResponse": "Manufacturing, purchasing and costing remain a later financial scope, answered by dated sourced catalogue prices OR authentic quotations; a catalogue line is sufficient where it covers the required dimensions, and preparation is not Buy proof. Flight authorization matters before real operation, not before a purely digital sizing screen.",
+      "evidence": [
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/how-to/verify-design/verify-a-new-design-from-scratch.md",
+          "note": "documentary doc ref from the brief itself (behave stops before make/buy)"
+        },
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/domains/buy/README.md",
+          "note": "later Buy path: capture then seal over a qualified site binding"
+        },
+        {
+          "kind": "baseline-pointer",
+          "ref": "thread-snapshot-baseline.json#/artifacts",
+          "note": "zero buy-configuration / buy-cost-bundle artifact IDs in Thread r119 (computation)"
+        },
+        {
+          "kind": "baseline-pointer",
+          "ref": "project-canonical-baseline.json#/agentRuns",
+          "note": "125 runs; zero buy/erpnext mentions (computation)"
+        }
+      ],
+      "nextAction": "Independent catalogue sourcing (Grok) and owner offline ERP plan only when actually produced and cited; Buy site qualification absent; no future artifact IDs fabricated.",
+      "missingEvidence": [
+        "dated sourced catalogue prices or authentic quotations",
+        "ERP site qualification",
+        "buy-configuration/1.0",
+        "buy-cost-bundle/1.0"
+      ]
+    },
+    {
+      "id": "own-source-design",
+      "kind": "assumption",
+      "statement": "Concevoir les pièces ID01 à partir de nos propres sources paramétriques. devFrame reste une référence exploratoire non retenue comme géométrie de définition ; son STEP n’a été ni admis ni exécuté pour ID01. Le support de caméra ouvre la chaîne de conception, sans réduire le projet complet à cette seule pièce.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "assumption",
+      "status": "documentary",
+      "statusReason": "Own parametric sources used; devFrame explicitly excluded from definition geometry.",
+      "proposedResponse": "ID01 parts are designed from own parametric sources. devFrame stays an exploratory reference not retained as definition geometry; its STEP was neither admitted nor executed for ID01. The camera bracket opens the design chain without reducing the full project to that single part.",
+      "evidence": [
+        {
+          "kind": "dossier-doc",
+          "ref": "docs/annex/project-dossiers/inspection-drone-id01/sources/",
+          "note": "directory: own .py sources with *-provenance.md notes (directory listing, not a single identity)"
+        }
+      ],
+      "nextAction": null,
+      "missingEvidence": []
+    },
+    {
+      "id": "camera-component-reference",
+      "kind": "assumption",
+      "statement": "Prendre le Raspberry Pi Camera Module 3 Standard visible comme référence provisoire d’intégration de la caméra civile. Le constructeur publie une enveloppe 25 × 24 × 11,5 mm et une masse 4 g, sans préciser ici le périmètre du câble. Ce choix n’autorise aucun achat et ne valide ni qualité d’inspection, ni tenue météo, ni compatibilité électromagnétique du drone.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        },
+        {
+          "kind": "document",
+          "reference": "https://www.raspberrypi.com/products/camera-module-3/"
+        },
+        {
+          "kind": "document",
+          "reference": "https://www.raspberrypi.com/documentation/accessories/camera.html"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "assumption",
+      "status": "provisional",
+      "statusReason": "Provisional maker reference only; no purchase, no quality/weather/EMC validation.",
+      "proposedResponse": "Raspberry Pi Camera Module 3 Standard is the provisional civil-integration reference (maker envelope 25x24x11.5 mm, 4 g; cable out of scope). This authorizes no purchase and validates no inspection quality, weather holding or drone EMC.",
+      "evidence": [
+        {
+          "kind": "external-documentary",
+          "ref": "https://www.raspberrypi.com/products/camera-module-3/",
+          "note": "maker page (external, not fetched; no network)"
+        },
+        {
+          "kind": "external-documentary",
+          "ref": "https://www.raspberrypi.com/documentation/accessories/camera.html",
+          "note": "maker doc (external, not fetched; no network)"
+        }
+      ],
+      "nextAction": "Human component selection required before any procurement; cable scope open.",
+      "missingEvidence": [
+        "selected component",
+        "cable scope",
+        "quality/weather/EMC evidence"
+      ]
+    },
+    {
+      "id": "camera-bracket-concept",
+      "kind": "assumption",
+      "statement": "Créer CameraMountBracket, occurrence cameraMountBracket sous CameraPayload, en équerre monobloc conceptuelle : largeur 35 mm, profondeur de semelle 30 mm, hauteur 35 mm, épaisseur initiale 3 mm. Choix propres à ID01, non calculés à ce stade. Motif caméra provisoire : entraxes 21 mm horizontal (25 moins deux marges de 2 mm, symétrie de la vue supposée) et 12,5 mm vertical (14,5 moins 2 mm), rayon 1,1 mm selon le perçage constructeur Ø2,2 ; rangée basse placée à 10 mm du dessous de notre support. Fixation semelle proposée : entraxe 20 mm, déport Y −7,5 mm, rayon 1,6 mm, sans prétendre à une tolérance normalisée. Ces valeurs définissent une géométrie à examiner, pas une compatibilité de fixation démontrée.",
+      "briefSourceRefs": [
+        {
+          "kind": "intent",
+          "reference": "conversation:01a01d46-78d9-7562-8a44-3ce90c382195"
+        },
+        {
+          "kind": "document",
+          "reference": "https://pip-assets.raspberrypi.com/categories/1207-design-files/documents/RP-008153-DS-1-camera-module-3-standard-mechanical-drawing.pdf"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "assumption",
+      "status": "provisional",
+      "statusReason": "Concept geometry to examine; fixing compatibility not demonstrated, tolerances not standard-claimed.",
+      "proposedResponse": "CameraMountBracket monobloc concept (35x30x35 mm, 3 mm, provisional hole pattern per maker drilling, proposed sole fixings) defines geometry to examine, not proven fixing compatibility.",
+      "evidence": [
+        {
+          "kind": "external-documentary",
+          "ref": "https://pip-assets.raspberrypi.com/categories/1207-design-files/documents/RP-008153-DS-1-camera-module-3-standard-mechanical-drawing.pdf",
+          "note": "maker drawing (external, not fetched; no network)"
+        }
+      ],
+      "nextAction": "DFM and assembly findings feed revisions; no normalized tolerance claimed.",
+      "missingEvidence": [
+        "fixing compatibility proof",
+        "tolerance standard"
+      ]
+    },
+    {
+      "id": "camera-bracket-bench-assumptions",
+      "kind": "assumption",
+      "statement": "Proposer un calcul théorique de banc du seul CameraMountBracket canonique 35 × 30 × 35 mm, épaisseur 3 mm. Idéalisation homogène isotrope 6082-T6 : E = 70000 MPa, nu = 0,33 d’après Euralliage ; aucune matière fabriquée ni certificat de lot n’est acquis. Charge externe caméra seule : 0,004 kg × 9,80665 m/s² = 0,0392266 N, quatre forces égales (0; −0,00980665; 0) N autour des quatre perçages caméra. La direction −Y est une orientation de banc, pas une charge de vol. Toute la face inférieure Z = 0 est parfaitement encastrée ; c’est une fixation idéale, pas la liaison caméra–drone encore unresolved. Boîtes en mm : appui min(−18;−15,5;−0,1), max(18;15,5;0,1) ; charges centrées X = ±10,5 et Z = 10/22,5, demi-largeur X/Z = 1,8, Y de 11,9 à 15,1. Maille tétraédrique cible 1 mm, sans preuve de convergence. Exclure poids propre, câble, vis/entretoises, moment du centre de masse de caméra, contact, vibrations et charges de vol/atterrissage.",
+      "briefSourceRefs": [
+        {
+          "kind": "document",
+          "reference": "casys://agent-resource-capture/sha256/f575b31476d9e45077467234f4b80b366fc462022b15d768d0cd50cb3e4e5f13"
+        },
+        {
+          "kind": "document",
+          "reference": "https://www.raspberrypi.com/documentation/accessories/camera.html#hardware-specifications"
+        },
+        {
+          "kind": "document",
+          "reference": "https://jcgm.bipm.org/vim/en/2.12.html"
+        },
+        {
+          "kind": "document",
+          "reference": "https://www.euralliage.com/6082.htm"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "assumption",
+      "status": "documentary",
+      "statusReason": "Theoretical bench idealizations frozen for that bench; exclusions explicit.",
+      "proposedResponse": "Theoretical bench of the single canonical CameraMountBracket with frozen idealizations: homogeneous isotropic 6082-T6, camera-only load, -Y bench orientation, ideal Z=0 clamp, 1 mm mesh without convergence proof, and the stated exclusions (self-weight, cable, screws, contacts, vibration, flight/landing loads).",
+      "evidence": [
+        {
+          "kind": "brief-quoted",
+          "ref": "casys://agent-resource-capture/sha256/f575b31476d9e45077467234f4b80b366fc462022b15d768d0cd50cb3e4e5f13",
+          "note": "brief document ref (agent resource)"
+        },
+        {
+          "kind": "external-documentary",
+          "ref": "https://www.euralliage.com/6082.htm",
+          "note": "external, not fetched; no network"
+        },
+        {
+          "kind": "external-documentary",
+          "ref": "https://jcgm.bipm.org/vim/en/2.12.html",
+          "note": "external, not fetched; no network"
+        }
+      ],
+      "nextAction": "None; assumptions frozen for that bench.",
+      "missingEvidence": []
+    },
+    {
+      "id": "camera-bracket-bench-stress",
+      "kind": "success-criterion",
+      "statement": "Dans le seul cas théorique de banc défini par camera-bracket-bench-assumptions, le maximum de contrainte de von Mises du CameraMountBracket doit être inférieur ou égal à 260000000 Pa. La limite est le minimum Rp0,2 catalogue 260 MPa pour tôle 6082 T6/T651/T62 d’épaisseur >1,5 à 3 mm ; c’est un critère interne de comparaison élastique sans facteur de sécurité, plasticité, tenue des fixations, qualification de fabrication ni conclusion sur le drone entier. Nom de métrique de cette exigence : camera_bracket_bench_max_von_mises_pa.",
+      "briefSourceRefs": [
+        {
+          "kind": "document",
+          "reference": "casys://agent-resource-capture/sha256/f575b31476d9e45077467234f4b80b366fc462022b15d768d0cd50cb3e4e5f13"
+        },
+        {
+          "kind": "document",
+          "reference": "https://www.euralliage.com/6082.htm"
+        }
+      ],
+      "dependsOnItemIds": [
+        "camera-bracket-bench-assumptions",
+        "camera-bracket-concept",
+        "source-discipline"
+      ],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "criterion",
+      "status": "documentary",
+      "statusReason": "Internal elastic-comparison criterion; Thread holds historical passes but the exact r7 clause join is absent (TRACE GAP on the capture).",
+      "proposedResponse": "Internal criterion at or below 260000000 Pa (catalogue Rp0.2 minimum 260 MPa, no safety factor, plasticity, fixation, manufacturing or whole-drone conclusion). Thread r119 holds historical pass evaluations on three camera-bracket von Mises lineages with recorded closeouts, but the capture carrying them (requirements-CameraMountBracket-4488a613ba6ffd5baea9626302a7e97ff8d37061bfb63892f91a41ad69dd5df9) is TRACE GAP with no exact r7 source-item identity: relevant artefacts exist, exact join absent.",
+      "evidence": [
+        {
+          "kind": "replay-quoted",
+          "ref": "requirements-CameraMountBracket-4488a613ba6ffd5baea9626302a7e97ff8d37061bfb63892f91a41ad69dd5df9",
+          "note": "named in id01-response.json diagnostics as TRACE GAP"
+        },
+        {
+          "kind": "thread-evaluation",
+          "ref": "requirement-3ea5824924d2d537276572c6fd9aab1940adec4a89eaa634da2b5e30e7ddfb21-camera_bracket_bench_max_von_mises_pa-evaluation-0c74b341303b1402f2b7f75576f868545bdaa049cc6690329f00441715e86d29",
+          "note": "historical pass in Thread r119"
+        },
+        {
+          "kind": "thread-evaluation",
+          "ref": "requirement-c99285e11e19c3b0756566d8d415f7b983e910ef92d47633c3255ebf437c5080-camera_bracket_bench_max_von_mises_pa-evaluation-0c74b341303b1402f2b7f75576f868545bdaa049cc6690329f00441715e86d29-run-run:id01-queue-bench-r3-fea-20260907",
+          "note": "historical pass in Thread r119"
+        },
+        {
+          "kind": "thread-evaluation",
+          "ref": "requirement-4488a613ba6ffd5baea9626302a7e97ff8d37061bfb63892f91a41ad69dd5df9-camera_bracket_bench_max_von_mises_pa-evaluation-0c74b341303b1402f2b7f75576f868545bdaa049cc6690329f00441715e86d29-run-run:id01-queue-fea-run-bracket-r4-20260911",
+          "note": "historical pass in Thread r119"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-camera-bracket-bench-closeout",
+          "note": "approved bench closeout"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-id01-camera-bracket-bench-r3-closeout-20260907",
+          "note": "approved bench closeout"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-id01-camera-bracket-bench-r4-closeout",
+          "note": "approved bench closeout"
+        }
+      ],
+      "nextAction": "Explicit successor with exact item identity (recapture or retrospective declaration, documentary). Never rewrite historic bytes.",
+      "missingEvidence": [
+        "exact r7 source-item identity for the camera capture"
+      ]
+    },
+    {
+      "id": "radial-arm-bench-component",
+      "kind": "observed-fact",
+      "statement": "Le banc cible le RadialArm courant, PartDefinition 444df600-019b-45d5-ac36-617ff0a0f791, défini par notre source originale SHA-256 8ef0f3c1b8d114ea18ec9dccab3d8abca8e4a5e6c03f0ce5d902506a5cb12666 et son STEP canonique SHA-256 4351574f57e1b8204163be8b672abd7836d1e7f2bbb4376e61d455892f24498b, 22726 octets, au Thread r86. Cette identité ne couvre pas une interface moteur quatre trous ni une liaison mécanique.",
+      "briefSourceRefs": [
+        {
+          "kind": "tool",
+          "reference": "project_snapshot:inspection-drone-id01:r618:thread-r86"
+        },
+        {
+          "kind": "document",
+          "reference": "casys://agent-resource-capture/sha256/7564bd73a9c6ce1a1baeb2da0f740916309f563642ad5332d558f15a0ba86e2f"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "fact",
+      "status": "documentary",
+      "statusReason": "Observed part identity at Thread r86; motor interface and mechanical link excluded.",
+      "proposedResponse": "The bench targets the RadialArm identity quoted by the approved brief (PartDefinition 444df600-019b-45d5-ac36-617ff0a0f791, own source SHA-256 8ef0f3c1b8d114ea18ec9dccab3d8abca8e4a5e6c03f0ce5d902506a5cb12666, canonical STEP SHA-256 4351574f57e1b8204163be8b672abd7836d1e7f2bbb4376e61d455892f24498b, 22726 bytes, Thread r86). That cited basis is historical: successors may exist and were not reopened here, so no current status is transferred by name. This identity covers no four-hole motor interface and no mechanical link.",
+      "evidence": [
+        {
+          "kind": "brief-quoted",
+          "ref": "project_snapshot:inspection-drone-id01:r618:thread-r86",
+          "note": "brief tool ref"
+        },
+        {
+          "kind": "brief-quoted",
+          "ref": "casys://agent-resource-capture/sha256/7564bd73a9c6ce1a1baeb2da0f740916309f563642ad5332d558f15a0ba86e2f",
+          "note": "brief document ref (agent resource)"
+        }
+      ],
+      "nextAction": "Motor interface and mechanical link still unresolved.",
+      "missingEvidence": [
+        "reopened current STEP identity (successors unknown here)"
+      ]
+    },
+    {
+      "id": "radial-arm-bench-assumptions",
+      "kind": "assumption",
+      "statement": "Étudier le seul RadialArm courant par un calcul statique linéaire de rigidité. Modèle homogène isotrope théorique EN AW-6082-T6 : E = 70000 MPa et nu = 0,33 ; aucune matière fabriquée ou certifiée. Encastrement idéal de la face racine x = -50 mm par boîte min(-50,1; -8,1; -0,1), max(-49,9; 8,1; 5,1) mm. Force conventionnelle totale (0; 0; -5) N répartie sur la face libre x = 50 mm par boîte min(49,9; -8,1; -0,1), max(50,1; 8,1; 5,1) mm. Maille tétraédrique cible 1 mm, sans étude de convergence. Exclure joints, boulons, précharge, contact, poids propre, couple moteur, poussée dynamique, vibrations, fatigue, flambement, impact, non-linéarité, tolérances, facteur de sécurité, fabricabilité, drone complet, vol et certification.",
+      "briefSourceRefs": [
+        {
+          "kind": "answer",
+          "reference": "radial-arm-compliance-screen-r1-confirmed"
+        },
+        {
+          "kind": "document",
+          "reference": "casys://agent-resource-capture/sha256/7564bd73a9c6ce1a1baeb2da0f740916309f563642ad5332d558f15a0ba86e2f"
+        },
+        {
+          "kind": "document",
+          "reference": "https://www.hydro.com/Document/Index?id=7824&name=Hydro+EN+AW+6082.PDF"
+        },
+        {
+          "kind": "document",
+          "reference": "https://www.ligpower.com/product/f1404-kv4600-fpv-motor.html"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "assumption",
+      "status": "documentary",
+      "statusReason": "Theoretical rigidity screen with conventional load and full exclusion list.",
+      "proposedResponse": "Linear static rigidity screen of the single current RadialArm: theoretical homogeneous isotropic EN AW-6082-T6, ideal root-face clamp box, conventional 5 N tip load, 1 mm mesh without convergence study, excluding joints, bolts, preload, contact, self-weight, motor torque, dynamic thrust, vibration, fatigue, buckling, impact, non-linearity, tolerances, safety factor, manufacturability, full drone, flight and certification.",
+      "evidence": [
+        {
+          "kind": "brief-quoted",
+          "ref": "radial-arm-compliance-screen-r1-confirmed",
+          "note": "brief answer ref"
+        },
+        {
+          "kind": "brief-quoted",
+          "ref": "casys://agent-resource-capture/sha256/7564bd73a9c6ce1a1baeb2da0f740916309f563642ad5332d558f15a0ba86e2f",
+          "note": "brief document ref (agent resource)"
+        },
+        {
+          "kind": "external-documentary",
+          "ref": "https://www.hydro.com/Document/Index?id=7824",
+          "note": "external context, not fetched; no network"
+        },
+        {
+          "kind": "external-documentary",
+          "ref": "https://www.ligpower.com/product/f1404-kv4600-fpv-motor.html",
+          "note": "external context, not a motor selection; not fetched"
+        }
+      ],
+      "nextAction": "None; assumptions frozen for that bench.",
+      "missingEvidence": []
+    },
+    {
+      "id": "radial-arm-bench-displacement",
+      "kind": "success-criterion",
+      "statement": "Dans le seul banc théorique défini par radial-arm-bench-assumptions, le déplacement maximal du RadialArm doit être inférieur ou égal à 0,2 mm. Nom de métrique : radial_arm_bench_max_displacement_mm. Ce plafond est un critère interne de rigidité choisi par l’utilisateur ; ce n’est ni une exigence de vol, ni une limite matériau, ni une preuve des joints ou du drone entier.",
+      "briefSourceRefs": [
+        {
+          "kind": "answer",
+          "reference": "radial-arm-compliance-screen-r1-confirmed"
+        },
+        {
+          "kind": "document",
+          "reference": "casys://agent-resource-capture/sha256/7564bd73a9c6ce1a1baeb2da0f740916309f563642ad5332d558f15a0ba86e2f"
+        }
+      ],
+      "dependsOnItemIds": [
+        "radial-arm-bench-component",
+        "radial-arm-bench-assumptions",
+        "source-discipline"
+      ],
+      "replayCorrespondence": "native",
+      "replayGaps": [],
+      "scope": "criterion",
+      "status": "documentary",
+      "statusReason": "Internal rigidity criterion with a historical native pass sourced at brief r4; historical, not a current r7 response.",
+      "proposedResponse": "Internal criterion at or below 0.2 mm on the theoretical bench only; neither flight requirement, nor material limit, nor joints/whole-drone proof. The recorded historical pass is evaluation requirement-7f206ff76ab6ab232cb7293a2b8df6cccbb0c241e5bc3e1dac09df09e8e3f6db-radial_arm_bench_max_displacement_mm-evaluation-f2359b032ebb765c19c608dcc0d3127d49ed0ac24901c4e9b2f467457dd981d1-run-run:id01-queue-fea-run-arm-r3-20260911 (observed 2026-09-11), sourced at brief inspection-drone-id01:brief:r4:8366ffe2fb53e984: historical, not a current r7 response. A retrospective documentary join does not inherit the native pass; exact r7 join remains absent.",
+      "evidence": [
+        {
+          "kind": "thread-requirement",
+          "ref": "requirement-7f206ff76ab6ab232cb7293a2b8df6cccbb0c241e5bc3e1dac09df09e8e3f6db-radial_arm_bench_max_displacement_mm",
+          "note": "native origin, historical applicability in replay"
+        },
+        {
+          "kind": "thread-evaluation",
+          "ref": "requirement-7f206ff76ab6ab232cb7293a2b8df6cccbb0c241e5bc3e1dac09df09e8e3f6db-radial_arm_bench_max_displacement_mm-evaluation-f2359b032ebb765c19c608dcc0d3127d49ed0ac24901c4e9b2f467457dd981d1-run-run:id01-queue-fea-run-arm-r3-20260911",
+          "note": "historical pass, canonical full ID from replay"
+        },
+        {
+          "kind": "thread-observation",
+          "ref": "calculix-isolated-observation-1de4d772b33be0d4d7f4ce9d99af68ba562eb8d9fb3026d21e470aa79c155d40-radial-arm-bench-displacement-run-run:id01-queue-fea-run-arm-r3-20260911",
+          "note": "bench observation cited by the evaluation"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "calculix-isolated-syson-evaluation-f2359b032ebb765c19c608dcc0d3127d49ed0ac24901c4e9b2f467457dd981d1-run-run:id01-queue-fea-run-arm-r3-20260911",
+          "note": "evaluation evidence cited by the evaluation"
+        },
+        {
+          "kind": "replay-quoted",
+          "ref": "inspection-drone-id01:brief:r4:8366ffe2fb53e984",
+          "note": "source brief snapshot in replay, state unchanged"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-radial-arm-bench-requirements-r1",
+          "note": "approved bench requirements"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-id01-radial-arm-bench-r2-closeout-r89",
+          "note": "approved closeout"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-id01-radial-arm-bench-r3-closeout",
+          "note": "approved closeout"
+        }
+      ],
+      "nextAction": "Reconcile correspondence with brief r7 or present explicitly as historical bench evidence.",
+      "missingEvidence": [
+        "exact r7 correspondence (recapture) or explicit historical label"
+      ]
+    },
+    {
+      "id": "propulsion-energy-presizing-priority",
+      "kind": "proposed-decision",
+      "statement": "Pour la prochaine phase, établir d’abord une base sourcée de pré-dimensionnement propulsion et énergie avant toute nouvelle simulation Chrono, Modelica ou CalculiX. Cette priorité ne sélectionne aucun composant, fournisseur, chiffre de performance ou moyen de conformité.",
+      "briefSourceRefs": [
+        {
+          "kind": "answer",
+          "reference": "propulsion-energy-presizing-priority-r1-confirmed"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "decision-proposal",
+      "status": "provisional",
+      "statusReason": "Phasing proposal; selects nothing until human go-ahead and sourced data.",
+      "proposedResponse": "For the next phase, establish a sourced propulsion-and-energy presizing base before any new Chrono, Modelica or CalculiX simulation. This priority selects no component, supplier, performance figure or compliance means.",
+      "evidence": [
+        {
+          "kind": "brief-quoted",
+          "ref": "propulsion-energy-presizing-priority-r1-confirmed",
+          "note": "brief answer ref"
+        }
+      ],
+      "nextAction": "Human go-ahead; then source data (see propulsion-energy-source-data-open).",
+      "missingEvidence": [
+        "human go-ahead",
+        "sourced presizing data"
+      ]
+    },
+    {
+      "id": "success-propulsion-energy-presizing",
+      "kind": "success-criterion",
+      "statement": "Produire un dossier de pré-dimensionnement traçable qui sépare masses et positions sourcées, données moteur-hélice-ESC-batterie, hypothèses provisoires et inconnues, puis calcule avec unités le poids, la poussée stationnaire requise, la marge de poussée, les points de puissance et courant, l’énergie utilisable, l’autonomie par profil de mission, le centre de gravité, les jeux d’hélice et les charges transmises. Aucun résultat ne vaut sélection matérielle, aptitude au vol ou certification.",
+      "briefSourceRefs": [
+        {
+          "kind": "answer",
+          "reference": "propulsion-energy-presizing-priority-r1-confirmed"
+        },
+        {
+          "kind": "document",
+          "reference": "docs/project-dossiers/inspection-drone-id01/README.md#current-project-truth"
+        }
+      ],
+      "dependsOnItemIds": [
+        "subsystem-propulsion",
+        "subsystem-power",
+        "performance-open",
+        "success-traceability"
+      ],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "criterion",
+      "status": "provisional",
+      "statusReason": "Dossier spec awaiting source data and human thresholds.",
+      "proposedResponse": "Traceable presizing dossier separating sourced masses/positions, motor-propeller-ESC-battery data, provisional assumptions and unknowns, then computing with units weight, required stationary thrust, thrust margin, power/current points, usable energy, endurance per mission profile, center of gravity, propeller clearances and transmitted loads. No result counts as hardware selection, flight fitness or certification.",
+      "evidence": [
+        {
+          "kind": "brief-quoted",
+          "ref": "propulsion-energy-presizing-priority-r1-confirmed",
+          "note": "brief answer ref"
+        },
+        {
+          "kind": "dossier-doc",
+          "ref": "docs/annex/project-dossiers/inspection-drone-id01/README.md#current-project-truth",
+          "note": "existing annex note; the brief-cited docs/project-dossiers path does not resolve in this worktree"
+        }
+      ],
+      "nextAction": "Blocked on source data and human thresholds (see propulsion-energy-source-data-open, performance-open).",
+      "missingEvidence": [
+        "sourced masses/positions",
+        "motor-prop-ESC-battery data",
+        "human thresholds"
+      ]
+    },
+    {
+      "id": "propulsion-energy-source-data-open",
+      "kind": "open-question",
+      "statement": "Le profil de mission quantifié, l’inventaire de masse et de positions, la variante exacte du moteur, l’hélice, l’ESC, la batterie, leurs interfaces et leurs courbes dans des conditions comparables restent à sourcer. Tant que ces données manquent, le bilan propulsion-énergie et les charges opérationnelles restent unresolved plutôt que remplacés par les enveloppes CAD ou le banc conventionnel 5 N.",
+      "briefSourceRefs": [
+        {
+          "kind": "answer",
+          "reference": "propulsion-energy-presizing-priority-r1-confirmed"
+        },
+        {
+          "kind": "document",
+          "reference": "docs/project-dossiers/inspection-drone-id01/sources/integration-provenance.md#sourced-candidate-envelopes"
+        },
+        {
+          "kind": "document",
+          "reference": "docs/project-dossiers/inspection-drone-id01/sources/camera-and-propeller-envelope-provenance.md#staticpropellerenvelope"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "open-question",
+      "status": "unresolved",
+      "statusReason": "Quantified inputs unsourced; balance stays unresolved, not replaced by envelopes or the 5 N bench.",
+      "proposedResponse": "Quantified mission profile, mass/position inventory, exact motor variant, propeller, ESC, battery, interfaces and curves under comparable conditions remain to be sourced. Until then the propulsion-energy balance and operational loads stay unresolved.",
+      "evidence": [
+        {
+          "kind": "brief-quoted",
+          "ref": "propulsion-energy-presizing-priority-r1-confirmed",
+          "note": "brief answer ref"
+        },
+        {
+          "kind": "dossier-doc",
+          "ref": "docs/annex/project-dossiers/inspection-drone-id01/sources/integration-provenance.md",
+          "note": "verified present; the brief-cited #sourced-candidate-envelopes anchor is absent in this worktree"
+        },
+        {
+          "kind": "dossier-doc",
+          "ref": "docs/annex/project-dossiers/inspection-drone-id01/sources/camera-and-propeller-envelope-provenance.md",
+          "note": "verified present"
+        }
+      ],
+      "nextAction": "Human/Grok sourcing of exact references; the agent prepares sheets, the human selects consequential components.",
+      "missingEvidence": [
+        "mission profile",
+        "mass/position inventory",
+        "motor/prop/ESC/battery variant + curves"
+      ]
+    },
+    {
+      "id": "propulsion-energy-method-boundary",
+      "kind": "observed-fact",
+      "statement": "La capacité actuelle ne fournit pas une preuve générique de performance propulsive : CalculiX couvre le statique linéaire mono-pièce, Chrono la cinématique prescrite bornée et Modelica un sous-ensemble scalaire fermé. Le besoin d’une carte ou d’un essai moteur-hélice, d’un modèle système, d’une extension aérodynamique, modale, vibratoire, de fatigue ou multicorps sera décidé seulement après fermeture suffisante des données et de la question physique.",
+      "briefSourceRefs": [
+        {
+          "kind": "document",
+          "reference": "docs/reference/domains/fea/coverage.md"
+        },
+        {
+          "kind": "document",
+          "reference": "docs/reference/domains/mechanism/coverage.md"
+        },
+        {
+          "kind": "document",
+          "reference": "docs/reference/domains/modelica/coverage.md"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "boundary",
+      "status": "documentary",
+      "statusReason": "Standing capability boundary; extensions decided only after data closure.",
+      "proposedResponse": "Current capability provides no generic propulsion-performance proof: CalculiX covers linear static single-part, Chrono bounded prescribed kinematics, Modelica a closed scalar subset. A motor-propeller map or test, system model, aerodynamic, modal, vibration, fatigue or multibody extension is decided only after sufficient data and physics-question closure.",
+      "evidence": [
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/domains/fea/coverage.md",
+          "note": "documentary contract cited by the brief"
+        },
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/domains/mechanism/coverage.md",
+          "note": "documentary contract cited by the brief"
+        },
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/domains/modelica/coverage.md",
+          "note": "documentary contract cited by the brief"
+        }
+      ],
+      "nextAction": "None now.",
+      "missingEvidence": []
+    },
+    {
+      "id": "mission-sizing-screen",
+      "kind": "mission-scenario",
+      "statement": "Pour le premier écran de pré-dimensionnement démonstrateur, retenir un passage local court : montée, approche, inspection visuelle d’une seule zone de façade, retour direct et atterrissage. Cette forme de scénario est un choix réversible délégué à Codex ; durée, distance de prise de vue, réserve, météo, autorisation de vol et composants restent à sourcer.",
+      "briefSourceRefs": [
+        {
+          "kind": "answer",
+          "reference": "mission-sizing-scenario-shape-r1-delegated-a"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "scenario",
+      "status": "provisional",
+      "statusReason": "Reversible delegated scenario shape; durations, distances, reserves unsourced.",
+      "proposedResponse": "First demonstrator presizing screen: a short local passage (climb, approach, visual inspection of a single facade zone, direct return, landing). Reversible shape delegated; duration, shooting distance, reserve, weather, flight authorization and components unsourced.",
+      "evidence": [
+        {
+          "kind": "brief-quoted",
+          "ref": "mission-sizing-scenario-shape-r1-delegated-a",
+          "note": "brief answer ref"
+        },
+        {
+          "kind": "dossier-doc",
+          "ref": "docs/annex/project-dossiers/inspection-drone-id01/mission-sizing-decision-sheet-20260908.md",
+          "note": "documentary sheet at project r675 / Thread r93"
+        }
+      ],
+      "nextAction": "Source durations, distances, reserve, weather and authorization before any operational reading.",
+      "missingEvidence": [
+        "duration",
+        "shooting distance",
+        "reserve",
+        "weather",
+        "flight authorization",
+        "components"
+      ]
+    },
+    {
+      "id": "success-radial-arm-sensitivity",
+      "kind": "success-criterion",
+      "statement": "Produire sur le RadialArm une étude de sensibilité physique réellement exécutée et persistée : faire varier le levier source exact arm_height autour de sa base scellée, observer radial_arm_bench_max_displacement_mm avec unités, conditions, domaine local et provenance, puis joindre la base à l’exigence exacte sans transformer une mesure en verdict ni inventer un échec. Le coût du premier calcul et tout gain de réemploi éventuel restent distincts et mesurés.",
+      "briefSourceRefs": [
+        {
+          "kind": "document",
+          "reference": "https://linear.app/casys/issue/CAS-54/digital-thread-exploiter-et-visualiser-la-sensibilite-en-conception"
+        },
+        {
+          "kind": "document",
+          "reference": "docs/reference/domains/sensitivity/README.md"
+        },
+        {
+          "kind": "document",
+          "reference": "docs/project-dossiers/inspection-drone-id01/sources/radial-arm.py"
+        }
+      ],
+      "dependsOnItemIds": [
+        "radial-arm-bench-component",
+        "radial-arm-bench-assumptions",
+        "radial-arm-bench-displacement",
+        "success-traceability"
+      ],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "criterion",
+      "status": "documentary",
+      "statusReason": "Sensitivity study executed and persisted; exact r7 clause join absent in the index, so study evidence, not a clause verdict.",
+      "proposedResponse": "Executed and persisted sensitivity on the RadialArm through the recorded typed case path: sealed study, base observation, derivative observation, edges model, and recorded seal/run/base/edges decisions including decision-sensitivity-base-evaluation-72093069ff760744-r95. Thread r119 evaluations[] holds no sensitivity entry; that absence does not prove the base evaluation absent, since the typed study observation and seal decisions are the recorded evidence. Exact r7 clause join remains absent: study evidence, not a clause verdict.",
+      "evidence": [
+        {
+          "kind": "thread-artifact",
+          "ref": "sensitivity-study-72093069ff760744dc7726bef90005c18de2977790fc8e2e026b49699928d8a9",
+          "note": "recorded study, analyze.run-fea-sensitivity@1"
+        },
+        {
+          "kind": "thread-observation",
+          "ref": "sensitivity-base-radial_arm_bench_max_displacement_mm-72093069ff760744dc7726bef90005c18de2977790fc8e2e026b49699928d8a9",
+          "note": "recorded base observation"
+        },
+        {
+          "kind": "thread-observation",
+          "ref": "sensitivity-d-radial_arm_bench_max_displacement_mm-72093069ff760744dc7726bef90005c18de2977790fc8e2e026b49699928d8a9",
+          "note": "recorded derivative observation"
+        },
+        {
+          "kind": "thread-artifact",
+          "ref": "sensitivity-edges-e98a04de64db34bb2a5b074fd6778c84d8447830db9b18b99b5492f772acf3e3",
+          "note": "recorded edges model, model.write-sensitivity-edges@1"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "dec-sensitivity-seal-id01-radial-arm-height-isolated",
+          "note": "approved study seal"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "dec-sensitivity-run-id01-radial-arm-height-r94",
+          "note": "approved study run"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-sensitivity-base-evaluation-72093069ff760744-r95",
+          "note": "approved base evaluation"
+        },
+        {
+          "kind": "persisted-decision",
+          "ref": "decision-sensitivity-edges-72093069ff760744-r96",
+          "note": "approved edges write"
+        }
+      ],
+      "nextAction": "Exact r7 join, or present strictly as executed-study evidence without a clause verdict.",
+      "missingEvidence": [
+        "exact r7 clause join"
+      ]
+    },
+    {
+      "id": "sensitivity-runtime-boundary",
+      "kind": "constraint",
+      "statement": "La sensibilité n’est exécutable que lorsque le serveur a qualifié le binding exact et sélectionné sans ambiguïté la source, le levier, la métrique et la méthode. Une découverte de contrat, une preuve statique @3, un template documentaire, un nœud de whiteboard ou une donnée issue d’un autre projet ne vaut ni qualification ni étude ID01.",
+      "briefSourceRefs": [
+        {
+          "kind": "document",
+          "reference": "docs/reference/domains/sensitivity/README.md"
+        },
+        {
+          "kind": "document",
+          "reference": "docs/reference/runtime/capability-packs/local-runtime-qualification.md"
+        },
+        {
+          "kind": "document",
+          "reference": "AGENTS.md"
+        }
+      ],
+      "dependsOnItemIds": [],
+      "replayCorrespondence": "unresolved",
+      "replayGaps": [
+        "correspondence.missing"
+      ],
+      "scope": "constraint",
+      "status": "documentary",
+      "statusReason": "Server-owned qualification gate; discovery or foreign data never qualifies.",
+      "proposedResponse": "Sensitivity runs only once the server has qualified the exact binding and unambiguously selected source, lever, metric and method. Contract discovery, a static @3 proof, a documentary template, a whiteboard node or another project's data is neither qualification nor an ID01 study.",
+      "evidence": [
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/domains/sensitivity/README.md",
+          "note": "documentary contract cited by the brief"
+        },
+        {
+          "kind": "worktree-doc",
+          "ref": "docs/reference/runtime/capability-packs/local-runtime-qualification.md",
+          "note": "documentary contract cited by the brief"
+        },
+        {
+          "kind": "worktree-doc",
+          "ref": "AGENTS.md",
+          "note": "documentary NN contract cited by the brief"
+        }
+      ],
+      "nextAction": null,
+      "missingEvidence": []
+    }
+  ],
+  "inputs": [
+    {
+      "file": "project-canonical-baseline.json",
+      "note": "exact persisted Project inspection-drone-id01:project:r892:5d6ef81cf812c6f1, revision 892, 119 decisions, 125 runs, 123 work items"
+    },
+    {
+      "file": "thread-snapshot-baseline.json",
+      "note": "Thread r119: 220 artifacts, 12 evaluations (all pass), 17 observations; zero buy artifact IDs"
+    },
+    {
+      "file": "id01-response.json",
+      "note": "read-only replay project-response/1.0, status available, grants none, 40 items"
+    },
+    {
+      "file": "id01-response-summary.json",
+      "note": "39 correspondence.missing, 1 native, mapping.missing x1, TRACE GAP diagnostic"
+    },
+    {
+      "file": "workbench-baseline.json",
+      "note": "zero buy-configuration / buy-cost-bundle / buy-evidence mentions"
+    },
+    {
+      "file": "id01-architecture-current.json",
+      "digest": "sha256:1782bbb8e7e3a3fdf97ccec9613d243214a946b525d83e6714e95c2b68d8cdd9",
+      "note": "architecture-capture/4.0, op model.write-architecture@1, run:id01-queue-camera-board-hole-architecture-20260911; 19 PartDefinitions incl. RadialArm 444df600"
+    },
+    {
+      "file": "id01-part-definitions-current.json",
+      "digest": "sha256:879ac8a5d892ded7ffe325fcde36d81ce41b4655dbfaf9b472140c5643ebae9c",
+      "note": "part-definitions-capture/1.0, sealed-architecture-subgraph scope; captures not copied into public docs"
+    }
+  ]
+}

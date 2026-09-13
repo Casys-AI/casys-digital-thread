@@ -1,0 +1,440 @@
+{
+  "schemaVersion": "id01-buy-preparation/1.0",
+  "documentKind": "article-proposals",
+  "notSchema": "buy-configuration/1.0",
+  "status": "preparatory-proposal",
+  "itemProposalStatus": "proposal-not-selected",
+  "authority": "not-admitted-source",
+  "notHumanSelectedBom": true,
+  "notSupplierQuotation": true,
+  "writtenAtUtc": "2026-09-13T07:22:14Z",
+  "baseline": {
+    "projectSnapshotId": "inspection-drone-id01:project:r892:5d6ef81cf812c6f1",
+    "approvedBriefId": "inspection-drone-id01:brief:r7:22fb5d1b598dbd41",
+    "threadSnapshotId": "project:inspection-drone-id01:r119:industrialize-run-dfm-checks-run:id01-yolo-queue-dfm-r118-authority-retry-jit-20260912"
+  },
+  "erpDemoNaming": {
+    "itemPrefix": "DEMO-ID01-",
+    "priceList": "DEMO-ID01-PUBLIC-CATALOGUE",
+    "itemGroup": "DEMO-ID01",
+    "dossierTitle": "Démo — relevés catalogue publics — aucune offre fournisseur",
+    "note": "A demo ERP site has no demo marker in the closed Buy contract. Names carry DEMO-ID01. ERP attestation will reread these demo documents; it will not prove a supplier offer."
+  },
+  "structuralMakeLines": [
+    {
+      "proposalId": "line.central-deck",
+      "partDefinitionElementId": "3569666d-a105-47b5-87ac-c42c7bcdaa0a",
+      "name": "CentralDeck",
+      "sourcing": "make",
+      "item": null,
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "gaps": [
+        "item-mapping-unresolved",
+        "manufacturing-process-unresolved",
+        "quantity-unresolved"
+      ],
+      "erpItem": "none-do-not-forge-item-price"
+    },
+    {
+      "proposalId": "line.radial-arm",
+      "partDefinitionElementId": "444df600-019b-45d5-ac36-617ff0a0f791",
+      "name": "RadialArm",
+      "sourcing": "make",
+      "item": null,
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "4",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "gaps": [
+        "item-mapping-unresolved",
+        "manufacturing-process-unresolved",
+        "quantity-unresolved"
+      ],
+      "erpItem": "none-do-not-forge-item-price"
+    },
+    {
+      "proposalId": "line.battery-tray",
+      "partDefinitionElementId": "3c238d78-df6c-4c8c-9fa8-4583749ec8c4",
+      "name": "BatteryTray",
+      "sourcing": "make",
+      "item": null,
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "gaps": [
+        "item-mapping-unresolved",
+        "manufacturing-process-unresolved",
+        "quantity-unresolved"
+      ],
+      "erpItem": "none-do-not-forge-item-price"
+    },
+    {
+      "proposalId": "line.avionics-carrier",
+      "partDefinitionElementId": "6e2822d9-0894-42c5-a9e4-ad4d96f2294f",
+      "name": "AvionicsCarrier",
+      "sourcing": "make",
+      "item": null,
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "gaps": [
+        "item-mapping-unresolved",
+        "manufacturing-process-unresolved",
+        "quantity-unresolved"
+      ],
+      "erpItem": "none-do-not-forge-item-price"
+    },
+    {
+      "proposalId": "line.landing-skid",
+      "partDefinitionElementId": "bde8e324-0c63-41b6-a98d-65cd942b7ce6",
+      "name": "LandingSkid",
+      "sourcing": "make",
+      "item": null,
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "2",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "gaps": [
+        "item-mapping-unresolved",
+        "manufacturing-process-unresolved",
+        "quantity-unresolved"
+      ],
+      "erpItem": "none-do-not-forge-item-price"
+    },
+    {
+      "proposalId": "line.camera-mount-bracket",
+      "partDefinitionElementId": "e9f1d48b-666d-48ff-af6c-abf74646b68e",
+      "name": "CameraMountBracket",
+      "sourcing": "make",
+      "item": null,
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "gaps": [
+        "item-mapping-unresolved",
+        "manufacturing-process-unresolved",
+        "quantity-unresolved"
+      ],
+      "erpItem": "none-do-not-forge-item-price"
+    }
+  ],
+  "placeholderLines": [
+    {
+      "proposalId": "line.battery-reserved-volume",
+      "partDefinitionElementId": "fbbfcc87-d879-4235-a121-0226b21c6a81",
+      "name": "BatteryReservedVolume",
+      "sourcing": "unresolved",
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "gaps": [
+        "item-mapping-unresolved",
+        "component-identity-unresolved",
+        "quantity-unresolved"
+      ]
+    },
+    {
+      "proposalId": "line.static-propeller-envelope",
+      "partDefinitionElementId": "97f8e0a5-980b-4e28-8d60-5ac6e0e3abf5",
+      "name": "StaticPropellerEnvelope",
+      "sourcing": "unresolved",
+      "quantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "4",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "gaps": [
+        "item-mapping-unresolved",
+        "component-identity-unresolved",
+        "quantity-unresolved"
+      ]
+    }
+  ],
+  "cotsAndMaterialArticleProposals": [
+    {
+      "proposalId": "article.pixhawk-6c-mini-a-current",
+      "status": "proposal-not-selected",
+      "mapsToPartDefinition": "07ad2fb6-3205-4bff-9f7f-7e041d0c58a9",
+      "mapsToPartName": "AutopilotEnvelope",
+      "proposedQuantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "identityCompatibility": "envelope-54.3x39x17.5-mm-matches-Model-A-Current; mounting-connectors-unresolved",
+      "erp": {
+        "item_code": "DEMO-ID01-PIXHAWK-6C-MINI-A-11088",
+        "item_name": "DEMO ID01 Holybro Pixhawk 6C Mini Model-A Current SKU 11088",
+        "item_group": "DEMO-ID01",
+        "stock_uom": "Nos",
+        "is_purchase_item": 1,
+        "is_sales_item": 0,
+        "price_list": "DEMO-ID01-PUBLIC-CATALOGUE",
+        "proposed_item_price": {
+          "price_list_rate": "130.99",
+          "currency": "USD",
+          "uom": "Nos",
+          "observationId": "obs.holybro-11088-none",
+          "note": "Validity dates are operator decisions; not derived from retrieval date."
+        }
+      },
+      "buySourcingIfLaterConfigured": "buy",
+      "itemAuthorityIfLaterConfigured": "catalog-declared",
+      "priceReadyForItemPrice": true
+    },
+    {
+      "proposalId": "article.thobby-f1404-kv4600",
+      "status": "proposal-not-selected",
+      "mapsToPartDefinition": "7b318cfc-d8fd-4725-b734-1afcfcf09248",
+      "mapsToPartName": "MotorEnvelope",
+      "proposedQuantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "4",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "identityCompatibility": "overall-size-17.9x16.6-mm-sourced; mount-pattern-shaft-propeller-ESC-unresolved",
+      "erp": {
+        "item_code": "DEMO-ID01-THOBBY-F1404-KV4600",
+        "item_name": "DEMO ID01 T-HOBBY F1404 KV4600 motor",
+        "item_group": "DEMO-ID01",
+        "stock_uom": "Nos",
+        "is_purchase_item": 1,
+        "is_sales_item": 0,
+        "price_list": "DEMO-ID01-PUBLIC-CATALOGUE",
+        "proposed_item_price": {
+          "price_list_rate": "16.90",
+          "currency": "USD",
+          "uom": "Nos",
+          "observationId": "obs.ligpower-f1404-kv4600",
+          "note": "Validity dates are operator decisions; not derived from retrieval date."
+        }
+      },
+      "buySourcingIfLaterConfigured": "buy",
+      "itemAuthorityIfLaterConfigured": "catalog-declared",
+      "priceReadyForItemPrice": true
+    },
+    {
+      "proposalId": "article.rpi-zero-2-w",
+      "status": "proposal-not-selected",
+      "mapsToPartDefinition": "e19064f9-3d0c-4052-b025-53468ab864cb",
+      "mapsToPartName": "CompanionComputerEnvelope",
+      "proposedQuantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "identityCompatibility": "65x30-mm-footprint-sourced; 10mm-height-is-packaging-hypothesis; headers-storage-cooling-unresolved",
+      "erp": {
+        "item_code": "DEMO-ID01-RPI-ZERO-2-W",
+        "item_name": "DEMO ID01 Raspberry Pi Zero 2 W",
+        "item_group": "DEMO-ID01",
+        "stock_uom": "Nos",
+        "is_purchase_item": 1,
+        "is_sales_item": 0,
+        "price_list": "DEMO-ID01-PUBLIC-CATALOGUE",
+        "proposed_item_price": {
+          "price_list_rate": null,
+          "currency": null,
+          "uom": "Nos",
+          "observationId": "obs.rpi-zero-2-w-rrp-copy",
+          "note": "No add-to-cart unit price was readable on the manufacturer page. Do not copy the $15 headline into Item Price unless a human later accepts that manufacturer-stated copy as the demo catalogue amount. Validity dates are operator decisions; not derived from retrieval date."
+        }
+      },
+      "buySourcingIfLaterConfigured": "buy",
+      "itemAuthorityIfLaterConfigured": "catalog-declared",
+      "priceReadyForItemPrice": false
+    },
+    {
+      "proposalId": "article.rpi-camera-module-3-standard",
+      "status": "proposal-not-selected",
+      "mapsToPartDefinition": "e8531caf-bb17-41cc-8297-e271ed5a5bea",
+      "mapsToPartName": "CameraBoardEnvelope",
+      "proposedQuantity": {
+        "buyStatus": "unresolved",
+        "canonicalBuyQuantity": false,
+        "placementProposal": {
+          "status": "proposed-from-placement-source",
+          "value": "1",
+          "uom": "Nos",
+          "canonical": false
+        }
+      },
+      "identityCompatibility": "25x24x11.5-mm-package-sourced; Zero-camera-cable-required-and-unselected; image-quality-unresolved",
+      "erp": {
+        "item_code": "DEMO-ID01-RPI-CAM-MOD3-STD",
+        "item_name": "DEMO ID01 Raspberry Pi Camera Module 3 Standard",
+        "item_group": "DEMO-ID01",
+        "stock_uom": "Nos",
+        "is_purchase_item": 1,
+        "is_sales_item": 0,
+        "price_list": "DEMO-ID01-PUBLIC-CATALOGUE",
+        "proposed_item_price": {
+          "price_list_rate": null,
+          "currency": null,
+          "uom": "Nos",
+          "observationId": "obs.rpi-cam-mod3-from-price",
+          "note": "Manufacturer page states Available from $25 across variants. Approved-reseller checkout lines were not readable. Do not copy into Item Price without a human choice of exact variant and a later readable checkout amount. Validity dates are operator decisions; not derived from retrieval date."
+        }
+      },
+      "buySourcingIfLaterConfigured": "buy",
+      "itemAuthorityIfLaterConfigured": "catalog-declared",
+      "priceReadyForItemPrice": false
+    },
+    {
+      "proposalId": "article.prusament-petg-jet-black-1kg",
+      "status": "proposal-not-selected",
+      "mapsToPartDefinition": null,
+      "mapsToPartName": null,
+      "role": "manufacturing-material-candidate",
+      "roleNote": "Not an ID01 PartDefinition. Candidate FDM feedstock if a later print-estimate path is opened. Structural parts have no selected process. DFM on CameraBoardEnvelope is a screening envelope, not a print authorization. FEA used theoretical 6082-T6, which is not this filament.",
+      "proposedQuantity": {
+        "status": "unknown",
+        "value": null,
+        "uom": "Kg"
+      },
+      "identityCompatibility": "not-a-part-identity",
+      "erp": {
+        "item_code": "DEMO-ID01-PRUSAMENT-PETG-JB-1KG",
+        "item_name": "DEMO ID01 Prusament PETG Jet Black 1kg NFC",
+        "item_group": "DEMO-ID01",
+        "stock_uom": "Kg",
+        "is_purchase_item": 1,
+        "is_sales_item": 0,
+        "price_list": "DEMO-ID01-PUBLIC-CATALOGUE",
+        "proposed_item_price": {
+          "price_list_rate": null,
+          "currency": null,
+          "uom": "Kg",
+          "observationId": "obs.prusa-petg-jet-black-1kg",
+          "note": "Session observation 25.49 USD / 1 kg spool is retained in the documentary price-source-manifest. No stored primary retrieval receipt/excerpt of product/locale/unit/currency/value was kept in this worktree; root independent GET was 403 / no readable 25.49. Not ItemPrice-ready. Do not convert unknown printed mass."
+        }
+      },
+      "buySourcingIfLaterConfigured": "documentary",
+      "priceReadyForItemPrice": false,
+      "selectorNote": "Keep as demo Item only. Do not emit Item Price. Do not attach this item to a make line to evade the Buy selector limit.",
+      "rootVerification": "unverified"
+    }
+  ],
+  "notProposedAsArticles": [
+    "ESC cards from the 2026-09-08 pre-selection matrix",
+    "Holybro PM02/PM06/PDB",
+    "battery SKUs",
+    "GF3016 or other propellers",
+    "Raspberry Pi Zero camera cable",
+    "fasteners",
+    "EN AW-6082-T6 mill stock (bench assumption, no price sourced)"
+  ],
+  "coverageLimits": {
+    "maxCotsMaterialAlternatives": 5,
+    "pricedAddToCartObservations": 3,
+    "manufacturerStatedWithoutCheckout": 2,
+    "noDroneTotal": true,
+    "tax": "unknown",
+    "shipping": "unknown-except-where-a-page-claims-free-shipping",
+    "fx": "no-conversion",
+    "buySelectorWouldPrice": "only Item Price or Supplier Quotation; this packet forges neither live ERP document",
+    "itemPriceReady": 2,
+    "documentaryPriceNotItemPriceReady": 1
+  },
+  "ownerRepoImporterHints": {
+    "exchangeFields": [
+      "itemCode",
+      "itemName",
+      "itemGroup",
+      "stockUom",
+      "sourceRef",
+      "sourceMapping",
+      "observation.amount",
+      "observation.currency",
+      "observation.uom"
+    ],
+    "createOrder": [
+      "UOM Nos",
+      "UOM Kg",
+      "Item Group DEMO-ID01",
+      "Price List DEMO-ID01-PUBLIC-CATALOGUE buying=1 selling=0",
+      "Item rows for all five COTS/material proposals",
+      "Item Price rows only for Holybro SKU 11088 and T-HOBBY F1404 KV4600"
+    ],
+    "forbid": [
+      "Supplier Quotation",
+      "invented modified",
+      "HTTP during dry-run",
+      "secrets",
+      "fake siteId"
+    ],
+    "afterAuthorizedImport": "collect actual ERP name and modified; do not invent them here"
+  },
+  "finalizedAtUtc": "2026-09-13T07:33:58.000Z",
+  "identityAuthority": "architecture-capture/4.0 labels after CAS reopen; placement quantities stay proposals",
+  "demoCatalogueInput": "docs/annex/project-dossiers/inspection-drone-id01/buy-preparation/erp-demo-catalogue.json"
+}

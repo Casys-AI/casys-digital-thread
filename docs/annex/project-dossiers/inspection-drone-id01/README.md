@@ -4,10 +4,37 @@ Audience: both · Diátaxis: none · Kind: dated project tracking note
 
 Dated project tracking. Primary atelier, **local**. This page is documentary and
 non-authoritative: it does not replace project state, Thread evidence, or signed human
-decisions. The **2026-09-12** block below is a saved-state reread of persisted latest
-`0000000882.json`. It is not a server restart or live `GET` today.
+decisions. Each block names its saved-state basis; earlier blocks remain historical.
 
-## Current project truth
+## Latest dated reread — 2026-09-13
+
+Exact persisted Project r892, `inspection-drone-id01:project:r892:5d6ef81cf812c6f1`,
+approved brief r7 `inspection-drone-id01:brief:r7:22fb5d1b598dbd41`, Thread r119
+`project:inspection-drone-id01:r119:industrialize-run-dfm-checks-run:id01-yolo-queue-dfm-r118-authority-retry-jit-20260912`.
+The proposed r8 is still unconfirmed. This is a read of persisted records; no new
+engineering run or consequential approval was performed by this reread.
+
+The current DFM rerun has an exact available evidence basis. Earlier approval/run
+refusals remain historical. Executed sensitivity retains its typed study, observations,
+base evaluation and recorded decisions; its absence from the generic Thread
+`evaluations[]` collection is not absence of sensitivity evidence.
+
+[BE demo preparation](be-demo-preparation-20260913.md) now contains the
+[40-item brief response matrix](brief-response-preparation-20260913.md) and
+[sourced Buy article proposals](buy-preparation/README.md). The read index retains one
+native historical arm correspondence sourced at brief r4; 39 other items lack an exact
+requirement correspondence in that index. Context and exclusions can need documentary
+answers rather than solver runs. A filled preparation matrix grants no clause verdict.
+
+Five demo articles and two public catalogue prices were created and freshly read back on
+the authorized local ERPNext site on port 8080; three articles remain unpriced. The
+[dated import receipt](erp-local-import-20260913.md) preserves actual names and modified
+values. On this saved Project/Thread basis, no Buy cost bundle, qualified ERP binding or
+ID01 print-estimate exists. Monetary production estimates and persisted documentary
+responses remain tracked implementation gaps. Part/bench/DFM results do not qualify
+flight or authorize physical manufacture.
+
+## Historical saved-state reread — 2026-09-12
 
 Saved-state reread **2026-09-12**, original atelier file
 `state/local/engineering-projects/inspection-drone-id01/0000000882.json`, persisted
@@ -294,8 +321,8 @@ This is a code/documentation inventory, not evidence that these methods have run
 ID01. Every eventual operation remains conditional on admission, exact inputs, runtime
 qualification, and required human authority.
 
-| Surface                                                                 | Documented bounded coverage                                                                   | Limit for this project                                                |
-| ----------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
+| Surface                                                                    | Documented bounded coverage                                                                   | Limit for this project                                                |
+| -------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- | --------------------------------------------------------------------- |
 | [SysML](../../../reference/domains/sysml/coverage.md)                      | Generic part architecture, typed occurrences, named parameter handles and scalar requirements | No demonstrated physical-interface or whole-vehicle behavioural model |
 | [CAD](../../../reference/domains/cad/coverage.md)                          | Admitted bounded Build123d source, canonical part STEP and immediate-module export            | A successful isolated execution alone is not canonical geometry       |
 | [Assembly integrity](../../../reference/domains/cad/assembly-integrity.md) | Imported geometry, placement, topology and intersection observations                          | Does not prove joints, mechanical strength, motion or vehicle safety  |
