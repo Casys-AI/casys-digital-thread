@@ -7,6 +7,7 @@ import type {
 import type { ThreadEntityKind } from "../../domain/thread/thread-snapshot.ts";
 import {
   type CapabilityReference,
+  COMMERCE_READ_ERPNEXT_BUY_SOURCE_CAPABILITY,
   ELECTRONICS_RUN_ADMITTED_SPICE_CAPABILITY,
   GEOMETRY_EXECUTE_ADMITTED_SOURCE_CAPABILITY,
   GEOMETRY_EXPORT_ADMITTED_SOURCE_CAPABILITY,
@@ -98,6 +99,10 @@ import {
   INDUSTRIALIZE_RUN_DFM_CHECKS_OPERATION,
   INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
 } from "../../domain/make/dfm/dfm-proposal.ts";
+import {
+  BUY_CAPTURE_CONFIGURATION_COST_OPERATION,
+  BUY_SEAL_CONFIGURATION_COST_OPERATION,
+} from "../../domain/buy/buy-operations.ts";
 import {
   type EngineeringOperationBasisKind,
   type EngineeringOperationRegistry,
@@ -1653,6 +1658,55 @@ const OPERATIONS = [
         allowedThreadEntityKinds: ["artifact"],
       },
     ],
+  },
+  /**
+   * Qualified ERP read of exact commercial documents plus a documentary
+   * candidate bundle. Does not create ERP documents or purchase anything.
+   */
+  {
+    id: BUY_CAPTURE_CONFIGURATION_COST_OPERATION.id,
+    version: BUY_CAPTURE_CONFIGURATION_COST_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Capture the reviewed configuration and dated costs",
+    description:
+      "Reopen the signed Buy configuration and canonical STEP, dispatch the " +
+      "locked erpnext_buy_capture read through a qualified ERP site binding, " +
+      "persist the canonical capture bytes, and publish a documentary cost " +
+      "candidate. This is not approved spend, a purchase, or a current price claim.",
+    workItemKind: "industrialize",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: requiredRuntimeDemand(
+      qualifiedCapability(COMMERCE_READ_ERPNEXT_BUY_SOURCE_CAPABILITY),
+    ),
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
+  },
+  /**
+   * Provider-free seal of the signed candidate. No ERP refresh.
+   */
+  {
+    id: BUY_SEAL_CONFIGURATION_COST_OPERATION.id,
+    version: BUY_SEAL_CONFIGURATION_COST_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal the reviewed configuration-cost bundle",
+    description:
+      "Reopen the signed Buy candidate, configuration and STEP, refuse a stale " +
+      "geometry or divergent bundle, and seal those exact bytes as a Thread " +
+      "successor. No provider refresh occurs between signed review and seal. " +
+      "Partial or unresolved coverage stays documentary or partial.",
+    workItemKind: "industrialize",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    bindings: [{
+      name: "approvedBrief",
+      allowedSourceKinds: ["approved-brief"],
+    }],
   },
   /**
    * Human-only recovery gate for a terminal failed provider run whose outcome

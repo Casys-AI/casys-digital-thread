@@ -168,15 +168,18 @@ function parseRef(value: unknown): TechnicalCompilationPreviewEvidenceReference 
     x.schemaVersion !== TECHNICAL_COMPILATION_PREVIEW_EVIDENCE_REFERENCE_SCHEMA ||
     !Number.isSafeInteger(x.byteCount) || Number(x.byteCount) < 1
   ) throw new TypeError("Invalid preview evidence reference.");
-  const fp = x.fingerprint as any;
+  if (x.fingerprint === null || typeof x.fingerprint !== "object") {
+    throw new TypeError("Invalid preview evidence fingerprint.");
+  }
+  const fingerprint = x.fingerprint as Record<string, unknown>;
   if (
-    !fp || fp.algorithm !== "sha256" || typeof fp.digest !== "string" ||
-    !/^[a-f0-9]{64}$/.test(fp.digest)
+    fingerprint.algorithm !== "sha256" || typeof fingerprint.digest !== "string" ||
+    !/^[a-f0-9]{64}$/.test(fingerprint.digest)
   ) throw new TypeError("Invalid preview evidence fingerprint.");
   return {
     schemaVersion: TECHNICAL_COMPILATION_PREVIEW_EVIDENCE_REFERENCE_SCHEMA,
     projectId: safeId(x.projectId, "$ref.projectId"),
-    fingerprint: { algorithm: "sha256", digest: fp.digest },
+    fingerprint: { algorithm: "sha256", digest: fingerprint.digest },
     byteCount: Number(x.byteCount),
   };
 }
@@ -234,7 +237,7 @@ async function parse(value: unknown): Promise<TechnicalCompilationPreviewEvidenc
       "decisionParameters",
       "operation",
     ], "$evidence.result");
-    await validateReadyPreview(r, projectId, fingerprint, document);
+    validateReadyPreview(r, projectId, fingerprint, document);
   } else if (
     Object.hasOwn(r, "draft") || Object.hasOwn(r, "decisionParameters") ||
     Object.hasOwn(r, "operation")
@@ -257,12 +260,12 @@ function parseFingerprint(value: unknown, path: string) {
   return { algorithm: "sha256" as const, digest: fingerprint.digest };
 }
 
-async function validateReadyPreview(
+function validateReadyPreview(
   value: Record<string, unknown>,
   projectId: string,
   fingerprint: { readonly algorithm: "sha256"; readonly digest: string },
   document: Awaited<ReturnType<typeof validateTechnicalCompilationDocument>>,
-): Promise<void> {
+): void {
   const draft = exactRecord(value.draft, [
     "schemaVersion",
     "draftId",

@@ -85,7 +85,8 @@
   "fmt": {
     "lineWidth": 88,
     "semiColons": true,
-    "singleQuote": false
+    "singleQuote": false,
+    "exclude": ["src/adapters/buy/fixtures"]
   },
   "lint": {
     "rules": {

@@ -28,7 +28,10 @@ import { ProjectSourceWorkspaceError } from "../../../domain/project-source-work
 import type { ProductNavigationAuthoringAttachmentReader } from "../../ports/out/product-navigation/product-navigation-authoring-attachment-reader.ts";
 import { productNavigationAuthoringCursorBinding } from "./product-navigation-authoring-cursor-binding.ts";
 import type { ProductNavigationEvidenceAttachmentReader } from "../../ports/out/product-navigation/product-navigation-evidence-attachment-reader.ts";
-import { threadRequirementsByCaptureScope } from "../../../domain/thread/requirement-definition-scope.ts";
+import {
+  overlayRequirementHistoricalEvaluations,
+  threadRequirementsByCaptureScope,
+} from "../../../domain/thread/requirement-definition-scope.ts";
 import { exactRecord } from "../../../domain/kernel/case-validation.ts";
 import { fingerprintsEqual } from "../../../domain/kernel/deterministic-json.ts";
 import {
@@ -634,9 +637,12 @@ export class ProjectProductNavigation implements ProductNavigationUseCase {
       })
       : undefined;
     const scoped = facts
-      ? threadRequirementsByCaptureScope(
-        opened.snapshot,
-        facts.requirementScopes ?? [],
+      ? overlayRequirementHistoricalEvaluations(
+        threadRequirementsByCaptureScope(
+          opened.snapshot,
+          facts.requirementScopes ?? [],
+        ),
+        facts.requirementHistoricalEvaluations,
       )
       : [];
     const attachments = facts

@@ -11,6 +11,7 @@ import { FixedCapabilityRuntimeLaunchGroupRegistry } from "../../application/con
 import {
   MCP_CALCULIX_082_IMAGE_REFERENCE,
   MCP_CHRONO_032_IMAGE_REFERENCE,
+  MCP_DFM_010_IMAGE_REFERENCE,
 } from "./first-party-capability-runtime-identities.ts";
 
 export const POSTGRES_IMAGE_REFERENCE =
@@ -128,7 +129,65 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
     ...calculixBody,
     fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(calculixBody),
   } as const;
-  return [syson, build123dSandbox, build123dObservation, chrono, calculix];
+  const dfm = await createFirstPartyDfmLaunchGroup();
+  return [syson, build123dSandbox, build123dObservation, chrono, calculix, dfm];
+}
+
+async function createFirstPartyDfmLaunchGroup(): Promise<
+  CapabilityRuntimeLaunchGroup
+> {
+  const image = MCP_DFM_010_IMAGE_REFERENCE;
+  const composeContent = deterministicJson({
+    services: {
+      "mcp-dfm": {
+        image,
+        ports: ["127.0.0.1:3018:3018"],
+        volumes: ["dfm-exports:/exports:ro"],
+        cap_drop: ["ALL"],
+        security_opt: ["no-new-privileges:true"],
+      },
+    },
+    volumes: { "dfm-exports": {} },
+  });
+  const compose = {
+    schemaVersion: "capability-runtime-compose-descriptor/1.0" as const,
+    content: composeContent,
+    fingerprint: await fingerprintCapabilityRuntimeComposeContent(composeContent),
+  };
+  const body = {
+    schemaVersion: "capability-runtime-launch-group/2.0" as const,
+    id: "casys-mcp-dfm",
+    version: "1.0.0",
+    activationPolicy: "persistent" as const,
+    acquisition: { kind: "compose" as const, projectName: "casys-mcp-dfm-v1" },
+    materials: [
+      material(
+        "casys.mcp-dfm",
+        "mcp-dfm-image",
+        image,
+        "mcp-dfm",
+        "casys-mcp-dfm-v1",
+      ),
+    ],
+    compose,
+    retention: {
+      containers: "stop-only" as const,
+      images: "preserve" as const,
+      volumes: "preserve" as const,
+    },
+    secretSlots: [],
+    readiness: {
+      kind: "mcp-tools-list" as const,
+      timeoutMs: 15_000,
+      attemptTimeoutMs: 1_000,
+      retryIntervalMs: 250,
+    },
+    security: "reviewed" as const,
+  };
+  return {
+    ...body,
+    fingerprint: await fingerprintCapabilityRuntimeLaunchGroup(body),
+  };
 }
 
 async function createFirstPartyChronoLaunchGroup(): Promise<
@@ -440,6 +499,11 @@ function requireGroup(
 export async function firstPartyChronoLaunchGroupReference() {
   const groups = await createFirstPartyCapabilityRuntimeLaunchGroups();
   return capabilityRuntimeLaunchGroupReference(requireGroup(groups, "casys-chrono"));
+}
+
+export async function firstPartyDfmLaunchGroupReference() {
+  const groups = await createFirstPartyCapabilityRuntimeLaunchGroups();
+  return capabilityRuntimeLaunchGroupReference(requireGroup(groups, "casys-mcp-dfm"));
 }
 
 function material(

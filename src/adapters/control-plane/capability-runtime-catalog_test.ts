@@ -146,6 +146,7 @@ Deno.test("atomic first-party runtime catalogue exposes only runtime materials a
     "casys.modelica-worker",
     "casys.spice-worker",
     "casys.mcp-chrono",
+    "casys.mcp-dfm",
   ]);
   const build123dWorker = catalog.units.find((unit) =>
     unit.id === "casys.build123d-isolated-worker"

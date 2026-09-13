@@ -28,7 +28,7 @@ After that confirmation the local supervisor may acquire approved persistent mat
 and activates it JIT under a lease; authorization itself never starts Docker or a
 worker. Ordinary Digital Thread start is cold Deno. H1 starts its own Compose launch
 groups (`casys-syson`, `casys-build123d-sandbox`, `casys-build123d-observation`,
-`casys-chrono`, `casys-mcp-calculix`) as separate Docker projects. Registry enrollment
+`casys-chrono`, `casys-mcp-calculix`, `casys-mcp-dfm`) as separate Docker projects. Registry enrollment
 is candidacy; it does not start a service, and only an executor that opens its
 registered runtime/preparation session can activate a demanded group. Root
 `docker-compose.yml` is a maintainer probe and collides with those groups on the same
