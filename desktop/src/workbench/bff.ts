@@ -43,6 +43,9 @@ import type { ProductNavigationTechnicalAdmissionReader } from "../../../src/ada
 import type { EngineeringCaseWorkbenchEnricherDependencies } from "../../../src/adapters/thread/verification-case-workbench-enricher.ts";
 import type { RequirementsCaptureReader } from "../../../src/adapters/thread/requirements-target-workbench-enricher.ts";
 import { composeHistoryCaptureReaders } from "../../../src/adapters/thread/requirements-history-workbench-enricher.ts";
+import { createRequirementsBriefTraceStore } from "../../../src/adapters/record/requirements-brief-trace-store.ts";
+import { ReadProjectResponse } from "../../../src/application/use-cases/project-response/read-project-response.ts";
+import { ThreadProjectResponseEvidenceReader } from "../../../src/adapters/thread/project-response-evidence-reader.ts";
 import { FileProjectSourceWorkspaceStore } from "../../../src/adapters/project-source-workspace/file-project-source-workspace-store.ts";
 import { DEFAULT_PROJECT_SOURCE_WORKSPACE_DIRECTORY } from "../../../src/adapters/project-source-workspace/server-composition.ts";
 import { readDeclaredCockpitFleet } from "../../../src/adapters/thread/cockpit-fleet-projector.ts";
@@ -172,6 +175,23 @@ export function createPackagedWorkbenchBff(
     new Base64EngineeringAssetReader(projectBaselineAssetDirectory),
   ]);
   const liveUpdates = new FileLiveThreadUpdateStore(liveUpdateDirectory);
+  const requirementsBriefTraceCaptures = createRequirementsBriefTraceStore(
+    rooted(controlPlaneRoot, REQUIREMENTS_CAPTURE_DESCRIPTOR.directory),
+  );
+  const projectResponse = new ReadProjectResponse({
+    projects: projectStore,
+    snapshots: projectSnapshots,
+    evidence: new ThreadProjectResponseEvidenceReader({
+      projects: projectStore,
+      captures: requirementsCaptures,
+      claimHistory: {
+        projects: projectStore,
+        snapshots: projectSnapshots,
+        captures: requirementsCaptures,
+        traces: requirementsBriefTraceCaptures,
+      },
+    }),
+  });
   const viewerAppRegistry = new FileThreadViewerAppRegistry({
     registryPath: rooted(controlPlaneRoot, PACKAGED_VIEWER_APP_REGISTRY_PATH),
     objectDirectory: rooted(
@@ -194,6 +214,8 @@ export function createPackagedWorkbenchBff(
     projectSourceWorkspace,
     requirementsCaptures,
     historyEvidenceCaptures,
+    requirementsBriefTraceCaptures,
+    projectResponse,
     productStructureCaptures: archCaptures,
     geometryCaptures,
     sysmlSourceAnalysis,

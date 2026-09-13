@@ -89,24 +89,31 @@ export interface ProjectAnswer {
  * requirements, architecture and verification results belong to their linked
  * SysML and ThreadSnapshot records rather than being copied back as fake facts.
  */
-export type ProjectBriefItemKind =
-  | "objective"
-  | "primary-user"
-  | "mission-scenario"
-  | "operating-environment"
-  | "success-criterion"
-  | "constraint"
-  | "exclusion"
-  | "intended-market"
-  | "manufacturing-jurisdiction"
-  | "operating-jurisdiction"
-  | "compliance-target"
-  | "verification-activity"
-  | "manufacturing-evidence"
-  | "observed-fact"
-  | "assumption"
-  | "open-question"
-  | "proposed-decision";
+export const PROJECT_BRIEF_ITEM_KINDS = [
+  "objective",
+  "primary-user",
+  "mission-scenario",
+  "operating-environment",
+  "success-criterion",
+  "constraint",
+  "exclusion",
+  "intended-market",
+  "manufacturing-jurisdiction",
+  "operating-jurisdiction",
+  "compliance-target",
+  "verification-activity",
+  "manufacturing-evidence",
+  "observed-fact",
+  "assumption",
+  "open-question",
+  "proposed-decision",
+] as const;
+
+export type ProjectBriefItemKind = typeof PROJECT_BRIEF_ITEM_KINDS[number];
+
+export function isProjectBriefItemKind(value: unknown): value is ProjectBriefItemKind {
+  return PROJECT_BRIEF_ITEM_KINDS.some((kind) => kind === value);
+}
 
 /**
  * V1 brief records predate explicit gate dependencies. V2 makes that
@@ -141,12 +148,21 @@ export function canonicalizeBriefGateDependsOnItemIds(
   return canonical;
 }
 
-export type ProjectBriefSourceKind =
-  | "intent"
-  | "answer"
-  | "tool"
-  | "document"
-  | "expert";
+export const PROJECT_BRIEF_SOURCE_KINDS = [
+  "intent",
+  "answer",
+  "tool",
+  "document",
+  "expert",
+] as const;
+
+export type ProjectBriefSourceKind = typeof PROJECT_BRIEF_SOURCE_KINDS[number];
+
+export function isProjectBriefSourceKind(
+  value: unknown,
+): value is ProjectBriefSourceKind {
+  return PROJECT_BRIEF_SOURCE_KINDS.some((kind) => kind === value);
+}
 
 export interface ProjectBriefSourceRef {
   readonly kind: ProjectBriefSourceKind;

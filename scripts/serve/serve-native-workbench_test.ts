@@ -65,6 +65,8 @@ import {
   THREAD_VIEWER_APP_REGISTRY_SCHEMA,
 } from "../../src/adapters/thread/file-thread-viewer-app-registry.ts";
 import { sha256Fingerprint } from "../../src/domain/kernel/deterministic-json.ts";
+import { PROJECT_RESPONSE_SCHEMA } from "../../src/domain/project/project-response.ts";
+import type { ProjectResponseUseCase } from "../../src/application/ports/in/project-response/project-response.ts";
 import type {
   ThreadViewerAppBinding,
   ThreadViewerSessionsProjection,
@@ -903,6 +905,85 @@ Deno.test("native Workbench serves a planning-only project without borrowing a t
   assertEquals(body.project.threadSnapshots, []);
   assertEquals(body.planning.technicalBaseline.status, "not-created");
   assertEquals(store.latestCalls, 0);
+  assertEquals(Object.hasOwn(body, "response"), false);
+});
+
+Deno.test("native Workbench evidence GET enriches the already-resolved project and Thread via project()", async () => {
+  const r2 = genericArchitectureThreadSnapshot(2);
+  const r3 = genericArchitectureThreadSnapshot(3, r2);
+  const project = genericArchitectureProject("completed", r2, r3);
+  const seen: Array<{ projectRevision: number; threadId?: string }> = [];
+  const projectResponse: ProjectResponseUseCase = {
+    read: () => Promise.reject(new Error("Workbench must not call read()")),
+    project: (query) => {
+      seen.push({
+        projectRevision: query.project.revision,
+        threadId: query.thread?.id,
+      });
+      return Promise.resolve({
+        schemaVersion: PROJECT_RESPONSE_SCHEMA,
+        status: "available",
+        basis: {
+          projectId: query.project.project.id,
+          projectRevision: query.project.revision,
+          brief: {
+            briefId: query.project.framing!.currentBrief!.briefId,
+            snapshotId: query.project.framing!.currentBrief!.id,
+            revision: query.project.framing!.currentBrief!.revision,
+          },
+          thread: query.thread
+            ? {
+              snapshotId: query.thread.id,
+              revision: query.thread.revision,
+              subjectId: query.thread.subject.id,
+            }
+            : undefined,
+        },
+        items: query.project.framing!.currentBrief!.items.map((item) => ({
+          item,
+          correspondence: "unresolved" as const,
+          requirements: [],
+          gaps: [{
+            code: "correspondence.missing",
+            message: "No exact mapping.",
+          }],
+        })),
+        diagnostics: [],
+        grants: "none",
+      });
+    },
+  };
+  const handler = createNativeWorkbenchHandler({
+    store: new ThreadStore([r2, r3]),
+    projectStore: new ProjectStore([project]),
+    projectId: project.project.id,
+    subjectId: project.project.subjectId,
+    html: "unused",
+    projectResponse,
+  });
+  const response = await handler(
+    new Request("http://localhost/api/thread/workbench"),
+  );
+  const body = await response.json() as {
+    surface: string;
+    thread: { id: string; revision: number };
+    response: {
+      schemaVersion: string;
+      basis: { projectRevision: number; thread?: { snapshotId: string } };
+      items: unknown[];
+    };
+  };
+  assertEquals(response.status, 200);
+  assertEquals(body.surface, "evidence");
+  assertEquals(body.thread.id, r3.id);
+  assertEquals(body.response.schemaVersion, PROJECT_RESPONSE_SCHEMA);
+  assertEquals(body.response.basis.projectRevision, project.revision);
+  assertEquals(body.response.basis.thread?.snapshotId, body.thread.id);
+  assertEquals(body.response.items.length, 3);
+  assertEquals(seen, [{
+    projectRevision: project.revision,
+    threadId: body.thread.id,
+  }]);
 });
 
 Deno.test("native Workbench keeps a durable unattached generic architecture snapshot out of preview until completion attaches it", async () => {

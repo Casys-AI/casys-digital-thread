@@ -1,4 +1,5 @@
 # Reference: agent workspace
+
 > Verified-Against: 16b1628d (2026-09-13).
 
 Audience: agent · Diátaxis: reference · Kind: contract
@@ -132,6 +133,7 @@ refuses. Product inspection is `preview:thread` / `preview:cockpit`.
 | ------------------------------------------------------ | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `project_start`                                        | Agent mutation         | Create schema-3.0 project from plain-language intent                                                                                                                                                                                                                                                                                                                                    |
 | `project_snapshot`                                     | Read                   | Current project, decisions, runs, receipts. Completed FEA/DFM/sensitivity-base runs carry a read-time `join` from Thread `evaluations[]`. Sensitivity, DFM, printability, print-estimate, FEA and admitted SPICE runs carry `observations` from Thread `observations[]`. Neither field is persisted.                                                                                    |
+| `project_response_read`                                | Read                   | Exhaustive index of every current human-approved brief item against recorded evidence. Default bounded summary (≤8KiB): ids, kinds, independent correspondence, gap counts. `available` is index-readable, never ready/pass. No provider/runtime. Grants none. Workbench stays GET/SSE.                                                                                                 |
 | `project_question_propose`                             | Agent mutation         | One framing question                                                                                                                                                                                                                                                                                                                                                                    |
 | `project_answer_record`                                | Agent or human         | Sourced answer or explicit unknown                                                                                                                                                                                                                                                                                                                                                      |
 | `project_brief_propose`                                | Agent mutation         | Living brief revision; not canonical. Result carries `nextTool`, `briefSnapshotId`, `briefRevision`, `inputFingerprint`, `capabilityProposal`, and its exact `capabilityProposalFingerprint` for confirmation                                                                                                                                                                           |
@@ -148,6 +150,19 @@ refuses. Product inspection is `preview:thread` / `preview:cockpit`.
 | `project_work_item_abandon`                            | Human MRTR             | Ready or waiting work with no evidence and no runs except human pre-claim cancellations, plus pending decisions; approved decisions remain intact when omitted. No Thread snapshot.                                                                                                                                                                                                     |
 | `project_agent_run_plan_get`                           | Read                   | Inspect sealed `resolved-operation-plan/2.0`; does not execute                                                                                                                                                                                                                                                                                                                          |
 | `cockpit_focus_set` / `cockpit_focus_snapshot`         | UI routing             | Point the cockpit at one durable project. Not a Workbench command, not `GET /projects/<id>`, not a query selector                                                                                                                                                                                                                                                                       |
+
+`project_response_read` default omits statements, full brief text and solver bytes.
+Named item detail (`itemId`) and `evidence: "full-evidence"` require the exact
+`expectedBasis` from that summary. Rows omitted to stay in budget are declared; retrieve
+them without loss with the same `expectedBasis` and `afterItemId` of the last included
+item. Diagnostics in the default summary are a bounded prefix; omitted diagnostic text
+is declared as `diagnosticOmission`. An available model retrieves complete diagnostic
+facts with that `expectedBasis` and `evidence: "full-evidence"`, a documented soft
+budget that may exceed 8KiB. A non-available or request-refused model, including
+`basis.stale`, declares the omission and count without a retrieval handle: following the
+current `model.basis` would drop the request-scoped refusal. Without an exact available
+basis, diagnostic omission is declared without a retrieval handle. A stale
+`expectedBasis` is refused without mixing revisions.
 
 Successor closeout of a leftover ready work item is **not** an MCP tool. Inspect or
 apply with `deno task recover:work-item-successor`. Default is inspect. `--apply` writes
@@ -657,11 +672,11 @@ flowchart TD
 Three judgement branches hang off that same canonical STEP. Exact ops above; do not
 invent a fourth join.
 
-| Branch                                           | Played on dl05?    | Independent verdict               | Shared cause                                          |
-| ------------------------------------------------ | ------------------ | --------------------------------- | ----------------------------------------------------- |
-| Behave (CalculiX / Modelica / study-base)        | Yes                | A `@3` `pass` is not a DFM `pass` | Same STEP; a later CAD write retires the old proof    |
-| Make (measured DFM; printability is documentary) | No                 | A DFM `fail` is not a `z*` grant  | Same STEP only. Isolated geometry is not a DFM target |
-| Buy (BOM / ERP / cost)                           | No registered seal | —                                 | Same part identities when a binding exists            |
+| Branch                                           | Played on dl05? | Independent verdict                                                                                                             | Shared cause                                          |
+| ------------------------------------------------ | --------------- | ------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------- |
+| Behave (CalculiX / Modelica / study-base)        | Yes             | A `@3` `pass` is not a DFM `pass`                                                                                               | Same STEP; a later CAD write retires the old proof    |
+| Make (measured DFM; printability is documentary) | No              | A DFM `fail` is not a `z*` grant                                                                                                | Same STEP only. Isolated geometry is not a DFM target |
+| Buy (BOM / ERP / dated cost)                     | No              | `buy.capture-configuration-cost@1` then `buy.seal-configuration-cost@1` is dated documentary cost, not a Behave or Make verdict | Same part identities when a binding exists            |
 
 A documentary r1 or a SysON container r2 is **not** an architecture, a CAD model, a
 measurement, or a verdict.

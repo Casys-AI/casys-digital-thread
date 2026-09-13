@@ -143,6 +143,10 @@ import {
   registerProjectRequirementsBriefTraceReviewTools,
 } from "./project-control/requirements-brief-trace-review-tools.ts";
 import {
+  type ProjectResponseToolDependencies,
+  registerProjectResponseTools,
+} from "./project-control/project-response-tools.ts";
+import {
   type ProjectBuyReviewToolDependencies,
   registerProjectBuyReviewTools,
 } from "./project-control/buy-review-tools.ts";
@@ -185,6 +189,7 @@ export interface ProjectControlToolDependencies
     ProjectPrescribedKinematicsReviewToolDependencies,
     ProjectRequirementsRecaptureReviewToolDependencies,
     ProjectRequirementsBriefTraceReviewToolDependencies,
+    ProjectResponseToolDependencies,
     ProjectBuyReviewToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
@@ -273,6 +278,7 @@ export function registerProjectControlTools(
   registerProjectPrescribedKinematicsReviewTools(app, dependencies);
   registerProjectRequirementsRecaptureReviewTools(app, dependencies);
   registerProjectRequirementsBriefTraceReviewTools(app, dependencies);
+  registerProjectResponseTools(app, dependencies);
   registerProjectBuyReviewTools(app, dependencies);
 
   app.registerTool(projectPlanPublishTool, async (args, context) => {

@@ -39,6 +39,7 @@ import {
 } from "../project/navigation-model.ts";
 import { DocumentaryBaselineWorkbench } from "../project/documentary-baseline-workbench.tsx";
 import { ProjectOverview } from "../project/overview.tsx";
+import { selectWorkbenchProjectResponse } from "../project/overview-response-index-model.ts";
 import { PlanningWorkbench } from "../project/planning-workbench.tsx";
 import { ProjectOperations, ProjectWorkRibbon } from "../project/work.tsx";
 import {
@@ -1257,6 +1258,7 @@ export function ThreadWorkbench({
             activities={workbench.projectPath.activities}
             caseActivityJoins={workbench.caseActivityJoins}
             requirementsBriefTraces={workbench.requirementsBriefTraces}
+            projectResponse={selectWorkbenchProjectResponse(workbench)}
             onNavigate={changeView}
             onOpenActivity={openDecisionActivity}
             onOpenDeepLink={openProjectDeepLink}

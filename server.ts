@@ -258,6 +258,8 @@ import { CaptureProductStructureTraversal } from "./src/adapters/architecture/re
 import { WorkbenchProductNavigationEvidenceAttachmentReader } from "./src/adapters/thread/product-navigation-workbench.ts";
 import { composeHistoryCaptureReaders } from "./src/adapters/thread/requirements-history-workbench-enricher.ts";
 import { ProjectSourceWorkspaceAuthoringAttachmentReader } from "./src/adapters/project-source-workspace/product-navigation-authoring-attachment-reader.ts";
+import { ReadProjectResponse } from "./src/application/use-cases/project-response/read-project-response.ts";
+import { ThreadProjectResponseEvidenceReader } from "./src/adapters/thread/project-response-evidence-reader.ts";
 import {
   type ProjectBriefToolDependencies,
   registerProjectBriefTools,
@@ -1418,6 +1420,20 @@ async function createProjectControl(
     commands: runtime.commands,
     lease,
   });
+  const projectResponse = new ReadProjectResponse({
+    projects: runtime.projects,
+    snapshots: threadSnapshots,
+    evidence: new ThreadProjectResponseEvidenceReader({
+      projects: runtime.projects,
+      captures: architectureFoundation.requirementsCaptures,
+      claimHistory: {
+        projects: runtime.projects,
+        snapshots: threadSnapshots,
+        captures: architectureFoundation.requirementsCaptures,
+        traces: requirementsBriefTraceStore,
+      },
+    }),
+  });
   // Reconcile-uncertain-writer requires no provider — always available.
   // Human-only: the executor gate rejects any non-human origin.
   const genericReconcileUncertainWriter = new ReconcileUncertainWriterRunExecutor({
@@ -1770,6 +1786,7 @@ async function createProjectControl(
       briefRequirementsReview: architectureProject.briefRequirementsReview,
       requirementsRecaptureReview: architectureProject.requirementsRecaptureReview,
       requirementsBriefTraceReview,
+      projectResponse,
       feaProofCaseCapture: feaProject.feaProofCaseCapture,
       feaProofSealReview: feaProject.feaProofSealReview,
       feaIsolatedRunReview: feaProject.feaIsolatedRunReview,

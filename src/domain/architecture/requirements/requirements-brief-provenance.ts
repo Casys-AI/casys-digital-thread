@@ -35,10 +35,11 @@ import {
 import type { EngineeringApprovedBriefBasis } from "../../project/engineering-project.ts";
 import {
   isProjectBriefGateKind,
+  PROJECT_BRIEF_ITEM_KINDS,
+  PROJECT_BRIEF_SOURCE_KINDS,
   type ProjectBriefItem,
   type ProjectBriefItemKind,
   type ProjectBriefRevision,
-  type ProjectBriefSourceKind,
   type ProjectBriefSourceRef,
   type ProjectBriefVerificationAuthority,
 } from "../../project/project-brief.ts";
@@ -66,34 +67,6 @@ const SHA256_HEX = /^[a-f0-9]{64}$/;
 const MAX_REQUIREMENTS = 128;
 const MAX_SOURCE_REFS = 32;
 const MAX_DEPENDENCIES = 64;
-
-const PROJECT_BRIEF_ITEM_KINDS: readonly ProjectBriefItemKind[] = [
-  "objective",
-  "primary-user",
-  "mission-scenario",
-  "operating-environment",
-  "success-criterion",
-  "constraint",
-  "exclusion",
-  "intended-market",
-  "manufacturing-jurisdiction",
-  "operating-jurisdiction",
-  "compliance-target",
-  "verification-activity",
-  "manufacturing-evidence",
-  "observed-fact",
-  "assumption",
-  "open-question",
-  "proposed-decision",
-];
-
-const PROJECT_BRIEF_SOURCE_KINDS: readonly ProjectBriefSourceKind[] = [
-  "intent",
-  "answer",
-  "tool",
-  "document",
-  "expert",
-];
 
 export async function buildRequirementsBriefProvenance(input: {
   brief: ProjectBriefRevision;
