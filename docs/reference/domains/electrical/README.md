@@ -1,4 +1,5 @@
 # Electrical domain reference
+> Verified-Against: 66703c1a (2026-09-13).
 
 Audience: both · Diátaxis: reference · Kind: index
 
@@ -38,4 +39,4 @@ reviewed `electrical-observation-method-sheet/1.0` through the existing typed st
 Admitted SPICE execution still starts from `compile.seal-admission@3`.
 
 A local AL01 walk of that chain is tracking evidence, not this contract:
-[AL01 runtime evidence](../../../project-dossiers/articulated-led-desk-lamp/runtime-evidence.md).
+[AL01 runtime evidence](../../../annex/project-dossiers/articulated-led-desk-lamp/runtime-evidence.md).

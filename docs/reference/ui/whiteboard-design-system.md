@@ -1,4 +1,5 @@
 # Whiteboard chrome recipes
+> Verified-Against: be7714f8 (2026-09-08).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

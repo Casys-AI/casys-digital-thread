@@ -1,4 +1,5 @@
 # Project source workspace — authority
+> Verified-Against: dc0f72a2 (2026-08-25).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

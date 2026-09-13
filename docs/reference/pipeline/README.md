@@ -1,4 +1,5 @@
 # Reference: analysis and execution pipeline
+> Verified-Against: 3795b8d6 (2026-09-06).
 
 Audience: both · Diátaxis: reference · Kind: index
 

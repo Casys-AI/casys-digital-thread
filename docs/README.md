@@ -42,7 +42,7 @@ verdict, release decision, conformity finding, or certification claim.
 - **Administer the local capability runtime:** follow
   [Administer the local capability runtime](how-to/maintainers/administer-local-capability-runtime.md).
 - **Inspect dated project evidence:** start at the
-  [project-dossier index](project-dossiers/README.md). These pages track observations;
+  [project-dossier index](annex/project-dossiers/README.md). These pages track observations;
   they do not replace persisted project, Thread, CAS, provider, or human-decision state.
 - **Find an exact contract, operation, port, or code location:** enter
   [reference](reference/README.md), especially the
@@ -54,7 +54,7 @@ verdict, release decision, conformity finding, or certification claim.
 - **Understand why a boundary exists:** enter [explanations](explanations/README.md).
 
 Do not begin with an internal planning record when a living how-to, reference, or
-explanation exists.
+explanation exists. Do not start with `docs/annex/`.
 
 ## Agent entry
 
@@ -88,7 +88,8 @@ complete a concrete task against the current product contracts.
 | [`how-to/`](how-to/README.md)                     | Walkthroughs and task recipes, grouped by human goal                          |
 | [`reference/`](reference/README.md)               | Exact contracts, domains, providers, runtime, pipeline, and codebase maps     |
 | [`explanations/`](explanations/README.md)         | Product rationale, verification doctrine, and Workbench design                |
-| [`project-dossiers/`](project-dossiers/README.md) | Dated, non-authoritative project tracking and evidence pointers               |
+| [`annex/`](annex/README.md)                       | Archived observation and planning records; non-authoritative; frozen except link fixes |
+| [`annex/project-dossiers/`](annex/project-dossiers/README.md) | Dated, non-authoritative project tracking and evidence pointers               |
 | `legacy/` (reserved)                              | Retired, non-executable historical dossiers; never admission or live evidence |
 | [`media/`](media/)                                | Public images and supporting visual artifacts used by documentation           |
 

@@ -1,4 +1,5 @@
 # Reference: exact static assembly basis
+> Verified-Against: 92208384 (2026-08-26).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

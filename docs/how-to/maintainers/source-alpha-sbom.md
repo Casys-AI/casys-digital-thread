@@ -27,7 +27,7 @@ The scope intentionally excludes all of the following:
 - provider-specific internal prompting retained by the private development checkout:
   `.grok/**`, `.claude/**`, `.cursor/**`, `.codex/**`, and `CLAUDE.md`. The public archive
   keeps `AGENTS.md`, `.agents/skills/**`, and `.github/**`.
-- private design history under `docs/assets/**` and `docs/rfcs/**`. Contributor-facing
+- private design history under `docs/assets/**` and `docs/annex/rfcs/**`. Contributor-facing
   media moved to `docs/media/**` remains included.
 
 The source archive therefore proves neither that those artifacts exist nor that any

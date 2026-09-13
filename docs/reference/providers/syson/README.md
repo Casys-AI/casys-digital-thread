@@ -1,4 +1,5 @@
 # Provider reference: SysON
+> Verified-Against: ad8ddc1f (2026-08-22).
 
 Audience: both · Diátaxis: reference · Kind: provider map
 

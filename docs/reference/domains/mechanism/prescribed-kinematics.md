@@ -1,4 +1,5 @@
 # Reference: prescribed-kinematics coverage
+> Verified-Against: 7a9c747e (2026-08-31).
 
 Audience: both · Diátaxis: reference · Kind: coverage and exclusions
 

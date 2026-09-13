@@ -1,4 +1,5 @@
 # Reference: mechanism
+> Verified-Against: 37b8b91a (2026-09-01).
 
 Audience: both · Diátaxis: reference · Kind: domain index
 

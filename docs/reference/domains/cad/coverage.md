@@ -1,4 +1,5 @@
 # Reference: CAD coverage
+> Verified-Against: 66703c1a (2026-09-13).
 
 Audience: both · Diátaxis: reference · Kind: contract
 
@@ -39,7 +40,7 @@ existing path authorities.
 Named single-root runtime proof: MCS-02 captured an attachment-rooted RailFrame source,
 sealed its admission at Thread r4, and published one canonical target STEP at r7 before
 the downstream FEA branch. See
-[MCS-02 CAD](../../../project-dossiers/motorized-camera-slider-mcs02/domains/cad.md).
+[MCS-02 CAD](../../../annex/project-dossiers/motorized-camera-slider-mcs02/domains/cad.md).
 That proof covers one `PartDefinition`, not an assembly.
 
 MSM01 then proved the bounded immediate-module path: three independently admitted child
@@ -51,7 +52,7 @@ branch passed only the exact static checks it records: child import, occurrence
 coverage, captured placements, BRep reopening and intersection observation. It does not
 prove joints, clearance, motion, loads, fabricability or safety. Exact assets,
 placements and the L3/L4/L5 boundary are recorded in the
-[MSM01 CAD dossier](../../../project-dossiers/modular-sensor-mount-msm01/domains/cad.md).
+[MSM01 CAD dossier](../../../annex/project-dossiers/modular-sensor-mount-msm01/domains/cad.md).
 
 ID01 then proved bounded manual composition at two module levels on 2026-09-06 UTC: the
 fixed qualified assembler consumed six exact canonical subsystem module STEP files, and
@@ -60,7 +61,7 @@ assembly-integrity L3/L4/L5 passed only the five fixed geometric criteria at r67
 with zero gate claims. Focused source tests also exercise child module capture/STEP
 identity, target/STEP/stale refusals and transitive leaf-to-child-to-root retirement;
 they are not runtime evidence of replacement. The
-[exact canary ledger](../../../project-dossiers/inspection-drone-id01/nested-root-canary-20260907.md)
+[exact canary ledger](../../../annex/project-dossiers/inspection-drone-id01/nested-root-canary-20260907.md)
 separates those proofs. Existing per-invocation bounds and schemas remain unchanged.
 Mixed immediate part/module runtime composition, deeper/unbounded nesting and automatic
 ancestor rebuilding are not promoted by this case; physical joints and loads remain

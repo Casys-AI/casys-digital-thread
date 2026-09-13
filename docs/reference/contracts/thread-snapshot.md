@@ -1,4 +1,5 @@
 # Reference: canonical `ThreadSnapshot` contract
+> Verified-Against: 0134f95e (2026-08-31).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

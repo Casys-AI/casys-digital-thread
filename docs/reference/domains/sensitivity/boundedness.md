@@ -1,4 +1,5 @@
 # Sensitivity boundedness inventory (H01)
+> Verified-Against: 99c4498f (2026-08-29).
 
 Audience: both · Diátaxis: reference · Kind: inventory
 

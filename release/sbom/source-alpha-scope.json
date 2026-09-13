@@ -127,7 +127,7 @@
     },
     {
       "id": "private-design-history",
-      "literal": "Private design history under docs/assets/** and docs/rfcs/** is excluded from the public source archive. Living Diátaxis documentation and contributor-facing media under docs/media/** remain public."
+      "literal": "Private design history under docs/assets/** and docs/annex/rfcs/** is excluded from the public source archive. Living Diátaxis documentation and contributor-facing media under docs/media/** remain public."
     },
     {
       "id": "runtime-qualification",

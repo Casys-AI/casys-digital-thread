@@ -1,4 +1,5 @@
 # Reference: source map — SysML architecture and requirements
+> Verified-Against: de308db0 (2026-09-08).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

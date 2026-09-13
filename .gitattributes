@@ -8,9 +8,9 @@ CLAUDE.md export-ignore
 
 # Session RFCs and the mixed design-asset workspace remain private design history.
 # Contributor-facing media lives under docs/media and remains exportable.
-docs/rfcs/** export-ignore
+docs/annex/rfcs/** export-ignore
 docs/assets/** export-ignore
-docs/rfcs export-ignore
+docs/annex/rfcs export-ignore
 docs/assets export-ignore
 
 # STEP Part 21 files are byte-authoritative generated CAD artefacts. Treating

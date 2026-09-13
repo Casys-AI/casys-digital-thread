@@ -1,4 +1,5 @@
 # Reference: admitted source → isolated microVM
+> Verified-Against: 7d1ca1e7 (2026-09-04).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

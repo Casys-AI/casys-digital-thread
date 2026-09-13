@@ -1,4 +1,5 @@
 # Sensitivity domain reference
+> Verified-Against: 03a7faea (2026-08-31).
 
 Audience: both · Diátaxis: reference · Kind: index
 

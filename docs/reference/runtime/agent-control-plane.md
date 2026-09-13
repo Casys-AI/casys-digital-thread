@@ -1,4 +1,5 @@
 # Reference: MCP console
+> Verified-Against: 7e634350 (2026-09-12).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

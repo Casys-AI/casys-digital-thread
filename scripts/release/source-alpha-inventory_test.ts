@@ -188,7 +188,7 @@ Deno.test("source-alpha scope declares private design history while retaining pu
   assert(
     privateDesignHistory !== undefined &&
       privateDesignHistory.literal.includes("docs/assets/**") &&
-      privateDesignHistory.literal.includes("docs/rfcs/**") &&
+      privateDesignHistory.literal.includes("docs/annex/rfcs/**") &&
       privateDesignHistory.literal.includes("docs/media/**"),
     "The source-alpha scope must declare private design-history exclusions while retaining public contributor media.",
   );

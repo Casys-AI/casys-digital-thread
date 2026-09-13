@@ -1,4 +1,5 @@
 # Reference: building blocks and artifact ownership
+> Verified-Against: 06c77566 (2026-08-31).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

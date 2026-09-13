@@ -1,4 +1,5 @@
 # Domain reference: mechanical proof case V1
+> Verified-Against: de308db0 (2026-09-08).
 
 Audience: both · Diátaxis: reference · Kind: domain contract
 

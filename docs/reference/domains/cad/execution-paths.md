@@ -1,4 +1,5 @@
 # Reference: CAD execution paths
+> Verified-Against: 12b99dcc (2026-09-06).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

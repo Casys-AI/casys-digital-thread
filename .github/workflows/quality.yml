@@ -43,6 +43,8 @@ jobs:
       - name: Verify documentation links
         run: deno task verify:docs
 
+      - name: Verify task catalog
+        run: deno task verify:task-catalog
       - name: Verify documentation code references
         run: deno task verify:doc-code-refs
 

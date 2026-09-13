@@ -1,4 +1,5 @@
 # Reference: Modelica coverage
+> Verified-Against: 66703c1a (2026-09-13).
 
 Audience: both · Diátaxis: reference · Kind: inventory
 
@@ -29,7 +30,7 @@ MRTR, and run it. No parser, worker, image or registry change is needed.
 Named runtime proof: MCS-02 admitted an attachment-rooted scalar carriage-motion model,
 executed it through OMC/DASSL, evaluated the exact delivered observation and reached L5
 at Thread r16. See
-[MCS-02 Modelica](../../../project-dossiers/motorized-camera-slider-mcs02/domains/modelica.md).
+[MCS-02 Modelica](../../../annex/project-dossiers/motorized-camera-slider-mcs02/domains/modelica.md).
 That example proves generic scalar motion inside v2; it does not widen the language or
 turn the historically thermal-named method sheet into a thermal-only contract.
 

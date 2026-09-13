@@ -1,4 +1,5 @@
 # Reference: native thread workflow YAML
+> Verified-Against: f7b89201 (2026-08-20).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

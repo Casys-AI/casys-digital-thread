@@ -1,4 +1,5 @@
 # Reference: codebase map
+> Verified-Against: 35a797a4 (2026-09-13).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 
@@ -21,6 +22,7 @@ not repeat that catalogue.
 | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------- |
 | [Foundation and composition](../codebase/foundation-and-composition.md)                 | Entry docs, kernel primitives, hexagonal port roots, shared adapters |
 | [Project, Thread, and record](../codebase/project-thread-record.md)                     | Project ledger, Thread snapshot, brief, record reconciliation, source workspace |
+| [Add a registered operation](../codebase/add-an-operation.md)                           | Mechanical wiring checklist for one new registered operation; not the authority-extension runbooks |
 | [Resource ingress](../codebase/resource-ingress.md)                                     | Generic agent-resource envelope and draft CAS                        |
 | [Compile](../codebase/compile.md)                                                       | Admission, source analysis, ROP, shared isolation runner             |
 | [SysML architecture and requirements](../codebase/sysml-architecture-requirements.md)   | Renderer, agent-seal, seed, requirements, part definitions           |

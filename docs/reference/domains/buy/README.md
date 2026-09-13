@@ -1,4 +1,5 @@
 # Buy configuration and dated cost evidence
+> Verified-Against: 7e634350 (2026-09-12).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

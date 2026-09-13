@@ -76,14 +76,16 @@ or dated evidence.
 ## Validate a source checkout
 
 The repository CI currently uses Deno 2.9.2 and Node.js 24. Docker is required for the
-provider topology, but not for the documentation and source checks below.
+provider topology, but not for the contributor gates below.
 
 ```bash
 npm --prefix src/ui ci
-deno task verify:docs
-deno task check
-deno task check:ui
+deno task verify
 ```
+
+This entry command runs `fmt`, `lint`, `check`, `check:ui`, `test`, then
+`verify:docs`. It does not run `verify:evidence`, `verify:thread:presentation`,
+or `verify:task-catalog`.
 
 See [Validate a source checkout](docs/how-to/setup/validate-a-source-checkout.md) for
 the full source-validation sequence.
@@ -112,7 +114,7 @@ task-specific how-to guide state the exact boundary for each path.
 | `docs/how-to/`                  | Goal-oriented procedures                                                                                   |
 | `docs/reference/`               | Exact contracts, runtime facts, providers, and code locations                                              |
 | `docs/explanations/`            | Product and architecture reasoning                                                                         |
-| `docs/project-dossiers/`        | Dated, non-authoritative observations from engineering projects                                            |
+| `docs/annex/project-dossiers/`  | Dated, non-authoritative observations from engineering projects                                            |
 
 Engineering provider servers are maintained in separate repositories and run here from
 reviewed images. Related public building blocks include

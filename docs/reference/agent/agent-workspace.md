@@ -1,4 +1,5 @@
 # Reference: agent workspace
+> Verified-Against: 7e634350 (2026-09-12).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

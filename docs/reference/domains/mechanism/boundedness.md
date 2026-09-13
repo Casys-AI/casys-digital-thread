@@ -1,4 +1,5 @@
 # Reference: mechanism boundedness
+> Verified-Against: 06c77566 (2026-08-31).
 
 Audience: both · Diátaxis: reference · Kind: enforced and missing limits
 

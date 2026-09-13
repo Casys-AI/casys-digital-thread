@@ -1,4 +1,5 @@
 # Reference: compilation and isolation
+> Verified-Against: 683a3c0a (2026-09-09).
 
 Audience: agent · Diátaxis: reference · Kind: contract
 

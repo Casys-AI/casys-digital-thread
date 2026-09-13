@@ -1,4 +1,5 @@
 # Reference: mcp-build123d provider surface
+> Verified-Against: eae55b5d (2026-08-31).
 
 Audience: agent · Diátaxis: reference · Kind: provider contract
 

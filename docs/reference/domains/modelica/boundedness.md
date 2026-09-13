@@ -1,4 +1,5 @@
 # Modelica boundedness inventory (H01)
+> Verified-Against: 41a9ef00 (2026-09-05).
 
 Audience: both · Diátaxis: reference · Kind: inventory
 
