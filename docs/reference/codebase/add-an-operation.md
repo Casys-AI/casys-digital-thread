@@ -94,13 +94,33 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
    ([`path-lanes_test.ts:30`](../../../src/orchestration/operations/path-lanes_test.ts)).
 
 4. **Declare runtime demand.** `none` or one explicit required-capability list.
-   The tracer is `NO_RUNTIME_DEMAND`. Adding any entry changes the trusted
-   demand fingerprint
-   ([`registry.ts:1843`](../../../src/orchestration/operations/registry.ts))
-   and the exhaustive projection
-   [`runtime-demand-registry_test.ts:101`](../../../src/orchestration/operations/runtime-demand-registry_test.ts)
-   (pinned `operations.length` and `noneCount`). Capability queue eligibility
-   uses `operations.require`
+   The tracer is `NO_RUNTIME_DEMAND`
+   ([`registry.ts:123`](../../../src/orchestration/operations/registry.ts));
+   demanding operations use `requiredRuntimeDemand`
+   ([`registry.ts:143`](../../../src/orchestration/operations/registry.ts)).
+   The code-owned registry is the single projection source:
+   `engineeringOperationRegistry.list()`
+   ([`registry.ts:1986`](../../../src/orchestration/operations/registry.ts))
+   returns a frozen list of frozen descriptors, and
+   `fingerprintRegisteredEngineeringOperationRegistry`
+   ([`registry.ts:1897`](../../../src/orchestration/operations/registry.ts))
+   seals the trusted demand fingerprint. The exhaustive projection test
+   ([`runtime-demand-registry_test.ts:105`](../../../src/orchestration/operations/runtime-demand-registry_test.ts))
+   pins `operations.length` to 59
+   ([`runtime-demand-registry_test.ts:107`](../../../src/orchestration/operations/runtime-demand-registry_test.ts))
+   and `noneCount` to 35 ([`runtime-demand-registry_test.ts:142`](../../../src/orchestration/operations/runtime-demand-registry_test.ts)),
+   then asserts every descriptor's `runtimeDemand` exactly: `{ kind: "none" }`
+   for operations absent from `DEMANDING_OPERATIONS`
+   ([`runtime-demand-registry_test.ts:38`](../../../src/orchestration/operations/runtime-demand-registry_test.ts),
+   [`runtime-demand-registry_test.ts:128`](../../../src/orchestration/operations/runtime-demand-registry_test.ts)),
+   `{ kind: "required", capabilities }` for listed ones
+   ([`runtime-demand-registry_test.ts:134`](../../../src/orchestration/operations/runtime-demand-registry_test.ts)),
+   and bidirectionally that no map entry lacks a registry operation
+   ([`runtime-demand-registry_test.ts:139`](../../../src/orchestration/operations/runtime-demand-registry_test.ts)).
+   So a new operation always touches that manifest: bump the pinned counts and
+   add an exact `qualified(...)` entry — with `preparation` vs `execution` use —
+   when it demands anything. Capability queue eligibility uses
+   `operations.require`
    ([`capability-runtime-supervisor.ts:182`](../../../src/application/control-plane/capability-runtime-supervisor.ts));
    `runtimeDemand.kind === "none"` returns no runtime
    ([`capability-runtime-supervisor.ts:184`](../../../src/application/control-plane/capability-runtime-supervisor.ts)).
@@ -316,9 +336,11 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
       ([`thread-write-basis-guard_test.ts:625`](../../../src/adapters/shared/thread-write-basis-guard_test.ts));
     - Workbench durable-writer classification
       ([`serve-native-workbench_test.ts:1396`](../../../scripts/serve/serve-native-workbench_test.ts));
-    - update
-      [`runtime-demand-registry_test.ts`](../../../src/orchestration/operations/runtime-demand-registry_test.ts)
-      counts;
+    - extend
+      [`runtime-demand-registry_test.ts`](../../../src/orchestration/operations/runtime-demand-registry_test.ts):
+      bump the pinned `operations.length`/`noneCount`, add the exact
+      `DEMANDING_OPERATIONS` entry, leave no stale map entry (the
+      seen-demanding assertion fails otherwise);
     - path-lane totality (automatic once step 3 is done);
     - registry contract tests when bindings, flags, `mustOrigin`,
       `runtimePreparationPrerequisites`, `requiresDependsOnOperation`, or
