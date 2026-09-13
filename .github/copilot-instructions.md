@@ -22,6 +22,7 @@ Use the narrowest relevant check first. The main repository gates are:
 ```text
 deno task fmt
 deno task verify:docs
+deno task verify:task-catalog
 deno task lint
 deno task check
 deno task check:ui

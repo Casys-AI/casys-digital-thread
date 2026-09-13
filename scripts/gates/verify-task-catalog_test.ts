@@ -54,9 +54,10 @@ const PASS_DENO_JSON = JSON.stringify({
 const PASS_CATALOG = [
   "# Task catalog",
   "",
+  "- prose mention of `alpha` must not fail the reverse check.",
+  "",
   "| Task | Role |",
   "| ---- | ---- |",
-  "- prose mention of `alpha` must not fail the reverse check.",
   "| `alpha` | First fixture task. |",
   "| `beta:task` | Second fixture task. |",
   "",
@@ -114,9 +115,10 @@ Deno.test(
     const catalog = [
       "# Task catalog",
       "",
+      "Prose still mentions `beta:task` after its row was removed.",
+      "",
       "| Task | Role |",
       "| ---- | ---- |",
-      "Prose still mentions `beta:task` after its row was removed.",
       "| `alpha` | First fixture task; also mentions `beta:task` in this role. |",
       "",
     ].join("\n");
@@ -136,9 +138,10 @@ Deno.test(
     const catalog = [
       "# Task catalog",
       "",
+      "Prose mentions `removed:task`, which has no table row.",
+      "",
       "| Task | Role |",
       "| ---- | ---- |",
-      "Prose mentions `removed:task`, which has no table row.",
       "| `alpha` | First fixture task. |",
       "| `beta:task` | Second fixture task. |",
       "",
@@ -211,6 +214,7 @@ Deno.test(
       "| Task | Role |",
       "| ---- | ---- |",
       "| `alpha` | First fixture task. |",
+      "",
       "    | `beta:task` | Indented row that must not count. |",
       "",
     ].join("\n");
@@ -238,6 +242,22 @@ Deno.test("task-catalog gate keeps example rows fenced after incompatible closin
     "````md",
     "| `beta:task` | Still inside the example. |",
     "````",
+    "",
+  ].join("\n");
+  const result = await runGate(PASS_DENO_JSON, catalog);
+  assert(result.code === 1, `expected exit 1, got ${result.code}: ${result.stdout}`);
+  assertStringIncludes(result.stderr, "beta:task");
+});
+
+Deno.test("task-catalog gate ignores standalone pipe-shaped prose", async () => {
+  const catalog = [
+    "# Task catalog",
+    "",
+    "| Task | Role |",
+    "| --- | --- |",
+    "| `alpha` | Registered task. |",
+    "",
+    "| `beta:task` | Standalone prose. |",
     "",
   ].join("\n");
   const result = await runGate(PASS_DENO_JSON, catalog);
