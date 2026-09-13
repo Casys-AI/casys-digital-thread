@@ -1,4 +1,5 @@
 # Buy configuration and dated cost evidence
+> Verified-Against: b55de771 (2026-09-13).
 
 Audience: both · Diátaxis: reference · Kind: contract
 

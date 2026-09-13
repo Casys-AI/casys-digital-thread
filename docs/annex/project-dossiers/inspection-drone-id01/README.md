@@ -88,14 +88,14 @@ French entry points (plain speech; the assistant maps them — do not author env
 self-approve):
 
 - « Guide-moi pour vérifier un nouveau design. » — the existing
-  [Behave from-scratch guide](../../how-to/verify-design/verify-a-new-design-from-scratch.md);
+  [Behave from-scratch guide](../../../how-to/verify-design/verify-a-new-design-from-scratch.md);
   do not open Make/Buy from that loop.
 - « Prépare la revue des contrôles de fabrication de cette pièce. » / « Montre les
   preuves DFM enregistrées. » — measured DFM reviews then
   `industrialize.run-dfm-checks@1`, and the recorded DFM App, not a live solver UI.
 - « Prépare la capture des coûts de cette configuration. » / « Montre les preuves de
   coût enregistrées. » —
-  [Buy configuration and dated cost](../../reference/domains/buy/README.md).
+  [Buy configuration and dated cost](../../../reference/domains/buy/README.md).
 
 The 2026-09-11 block (Thread r98 / project r714–r715) and the 2026-09-08 resumption
 (project r675 / Thread r93) below are **historical**. They are not the current tip.
