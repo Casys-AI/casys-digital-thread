@@ -1,11 +1,12 @@
 /**
- * Verify that every task registered in deno.json is cited in the task catalog,
- * and that every catalog bullet claims a task that still exists.
+ * Verify that every task registered in deno.json is cataloged in the task
+ * catalog, and that every catalog entry still names a registered task.
  *
- * The gate deliberately uses only built-in APIs. A task is cited when its exact
- * name appears as a Markdown code span in docs/reference/runtime/task-catalog.md.
- * The reverse direction only trusts catalog table rows (`| `name` | ...`), so
- * prose code spans never fail the gate when a task is renamed or removed.
+ * The gate deliberately uses only built-in APIs. The single authority is the
+ * set of first-column code spans of true pipe-table rows in
+ * docs/reference/runtime/task-catalog.md (`| `name` | ...`). A task named only
+ * in prose or in another row's role cell is not cataloged, and a stale row
+ * fails even when a prose mention of the same name remains.
  */
 
 interface CitationFailure {
@@ -20,24 +21,23 @@ const CATALOG_PATH = "docs/reference/runtime/task-catalog.md";
 const tasks = await readDenoTasks();
 const taskSet = new Set(tasks);
 const body = await readCatalogBody();
-const cited = collectCodeSpans(body);
+const cataloged = collectCatalogTasks(body);
 const failures: CitationFailure[] = [];
 
 for (const task of tasks) {
-  if (!cited.has(task)) {
+  if (!cataloged.has(task)) {
     failures.push({
       task,
-      reason: `not cited as a Markdown code span in ${CATALOG_PATH}`,
+      reason: `not named in the first column of a ${CATALOG_PATH} table row`,
     });
   }
 }
 
-for (const claimed of collectTableClaims(body)) {
+for (const claimed of cataloged) {
   if (!taskSet.has(claimed)) {
     failures.push({
       task: claimed,
-      reason:
-        `claimed by a ${CATALOG_PATH} table row but missing from ${DENO_JSON_PATH}`,
+      reason: `named by a ${CATALOG_PATH} table row but missing from ${DENO_JSON_PATH}`,
     });
   }
 }
@@ -53,7 +53,7 @@ if (failures.length > 0) {
 }
 
 console.log(
-  `Verified ${tasks.length} deno.json task(s) cited in ${CATALOG_PATH}.`,
+  `Verified ${tasks.length} deno.json task(s) cataloged in ${CATALOG_PATH}.`,
 );
 
 async function readDenoTasks(): Promise<readonly string[]> {
@@ -81,20 +81,11 @@ async function readCatalogBody(): Promise<string> {
   return await Deno.readTextFile(new URL(CATALOG_PATH, REPOSITORY_URL));
 }
 
-function collectCodeSpans(body: string): ReadonlySet<string> {
-  const cited = new Set<string>();
-  const codeSpan = /`([^`\n]+)`/gu;
-  for (const match of body.matchAll(codeSpan)) {
-    cited.add(match[1]!.trim());
-  }
-  return cited;
-}
-
-function collectTableClaims(body: string): readonly string[] {
-  const claimed: string[] = [];
-  const tableRow = /^\| `([^`\n]+)`/gmu;
+function collectCatalogTasks(body: string): ReadonlySet<string> {
+  const cataloged = new Set<string>();
+  const tableRow = /^\s*\| `([^`\n]+)`\s*\|/gmu;
   for (const match of body.matchAll(tableRow)) {
-    claimed.push(match[1]!.trim());
+    cataloged.add(match[1]!.trim());
   }
-  return claimed;
+  return cataloged;
 }

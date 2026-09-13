@@ -7,8 +7,10 @@ This page is the contributor inventory, not a how-to and not a second authority 
 Script entry points that have no task stay in
 [scripts/README.md](../../../scripts/README.md).
 
-`verify:task-catalog` fails when a registered task is missing here as a Markdown code
-span. Adding a task means adding a row in the matching group. The contributor entry
+`verify:task-catalog` fails when a registered task has no first-column table row
+here, or when a row names a task missing from `deno.json`. A name mentioned only
+in prose or in another row's role cell is not cataloged. Adding a task means
+adding a row in the matching group. The contributor entry
 command is `deno task verify`; see [CONTRIBUTING.md](../../../CONTRIBUTING.md) and the
 [documentation index](../../README.md).
 

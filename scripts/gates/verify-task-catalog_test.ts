@@ -1,8 +1,8 @@
 /**
  * Fixture tests for the task-catalog gate. Each case builds a minimal skeleton
  * repository in a temp dir, copies the gate next to it, and runs it as a
- * subprocess, proving both the pass path and the two failure directions
- * (uncited task, stale catalog bullet).
+ * subprocess. The single authority is the first-column code span of true
+ * pipe-table rows: prose and role-cell mentions never catalog a task.
  */
 import { assert, assertStringIncludes } from "@std/assert";
 
@@ -88,7 +88,7 @@ Deno.test("task-catalog gate fails on an uncited task", async () => {
   assertStringIncludes(result.stderr, "beta:task");
 });
 
-Deno.test("task-catalog gate fails on a stale bullet", async () => {
+Deno.test("task-catalog gate fails on a stale table row", async () => {
   const catalog = [
     "# Task catalog",
     "",
@@ -107,3 +107,47 @@ Deno.test("task-catalog gate fails on a stale bullet", async () => {
   assertStringIncludes(result.stderr, "removed:task");
   assertStringIncludes(result.stderr, "missing from deno.json");
 });
+
+Deno.test(
+  "task-catalog gate fails when a removed row leaves prose and role mentions",
+  async () => {
+    const catalog = [
+      "# Task catalog",
+      "",
+      "| Task | Role |",
+      "| ---- | ---- |",
+      "Prose still mentions `beta:task` after its row was removed.",
+      "| `alpha` | First fixture task; also mentions `beta:task` in this role. |",
+      "",
+    ].join("\n");
+    const result = await runGate(PASS_DENO_JSON, catalog);
+    assert(
+      result.code === 1,
+      `expected exit 1, got ${result.code}: ${result.stdout}`,
+    );
+    assertStringIncludes(result.stderr, "beta:task");
+    assertStringIncludes(result.stderr, "first column");
+  },
+);
+
+Deno.test(
+  "task-catalog gate passes when prose alone mentions an unregistered task",
+  async () => {
+    const catalog = [
+      "# Task catalog",
+      "",
+      "| Task | Role |",
+      "| ---- | ---- |",
+      "Prose mentions `removed:task`, which has no table row.",
+      "| `alpha` | First fixture task. |",
+      "| `beta:task` | Second fixture task. |",
+      "",
+    ].join("\n");
+    const result = await runGate(PASS_DENO_JSON, catalog);
+    assert(
+      result.code === 0,
+      `expected exit 0, got ${result.code}: ${result.stderr}`,
+    );
+    assertStringIncludes(result.stdout, "Verified 2 deno.json task(s)");
+  },
+);

@@ -56,7 +56,11 @@ deno task verify
 
 This is the contributor entry command. It runs `fmt`, `lint`, `check`, `check:ui`,
 `test`, then `verify:docs`. `fmt` is check-only; do not use `deno fmt` as validation,
-because that rewrites files.
+because that rewrites files. This entry command is intentionally narrower than full
+source validation and CI: it does not run `verify:evidence`,
+`verify:thread:presentation`, or `verify:task-catalog`. See
+[Validate a source checkout](docs/how-to/setup/validate-a-source-checkout.md) for
+those source gates.
 
 ### 3. Make one focused change
 
@@ -72,8 +76,11 @@ deno task verify
 ```
 
 Documentation-only changes may stop at `deno task verify:docs`. A `deno.json` task
-change also needs `deno task verify:task-catalog`. Provider and microVM checks are not
-part of this path; if a relevant one cannot run, state that fact and the exact reason.
+change also needs `deno task verify:task-catalog`. Changes to committed fixtures or
+the Workbench presentation also need `deno task verify:evidence` and
+`deno task verify:thread:presentation` from the source-checkout how-to. Provider
+and microVM checks are not part of this path; if a relevant one cannot run, state
+that fact and the exact reason.
 
 ### 5. Open a pull request
 
@@ -129,6 +136,12 @@ deno task check:ui
 deno task test
 deno task verify:docs
 ```
+
+This entry command stays intentionally narrower than the source-checkout how-to and
+CI: it does not run `verify:evidence`, `verify:thread:presentation`, or
+`verify:task-catalog`. Those source gates run in
+[Validate a source checkout](docs/how-to/setup/validate-a-source-checkout.md) and
+the Quality workflow.
 
 Documentation-only changes must at least run:
 
