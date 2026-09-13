@@ -253,9 +253,17 @@ when they apply. Citations are the `record.archive-lineage@1` sites unless noted
    `project_agent_run_queue` already validate through that registry
    ([`project-planning-transitions.ts:730`](../../../src/application/use-cases/project/commands/project-planning-transitions.ts),
    [`engineering-run-transitions.ts:451`](../../../src/application/use-cases/project/commands/engineering-run-transitions.ts)).
-   Do not add a new MCP tool for the operation.
-   `project_agent_run_execute` dispatches only by queued run id
+   Execute registered operations through `project_agent_run_execute`, which
+   dispatches only by queued run id
    ([`project-control.ts:751`](../../../src/tools/project-control.ts)).
+   When agents need a read-only review, preview or next-hop surface, add the
+   server-owned MCP review tools conditionally and register them in project
+   control. Existing examples are assembly-integrity review
+   ([`project-control.ts:270`](../../../src/tools/project-control.ts)) and
+   prescribed-kinematics review
+   ([`project-control.ts:273`](../../../src/tools/project-control.ts)).
+   These tools expose registered evidence and preparation choices; dispatch
+   authority stays in the generic run lifecycle. Workbench remains GET + SSE.
 
 11. **Set registry flags that planning actually enforces.**
    - `requiresAdditiveChange` — refused in the initial plan
@@ -471,8 +479,8 @@ Every `file:line` was read in source.
 
 | Suite | What it pins | Citation |
 | ----- | ------------ | -------- |
-| Domain cascade | Closure, unknown target, idempotence | [`src/domain/thread/thread-retirement_test.ts:1`](../../../src/domain/thread/thread-retirement_test.ts) |
-| Executor | Origin, shape, MRTR, publish, recovery, redundant cascade | [`src/adapters/record/archive-lineage-run-executor_test.ts:1`](../../../src/adapters/record/archive-lineage-run-executor_test.ts) |
+| Domain cascade | Closure, unknown target, idempotence (representative cascade test) | [`src/domain/thread/thread-retirement_test.ts:216`](../../../src/domain/thread/thread-retirement_test.ts) |
+| Executor | Origin, shape, MRTR, publish, recovery, redundant cascade (representative publish test) | [`src/adapters/record/archive-lineage-run-executor_test.ts:329`](../../../src/adapters/record/archive-lineage-run-executor_test.ts) |
 | Thread-write guard | Shares basis exclusion with compilation | [`src/adapters/shared/thread-write-basis-guard_test.ts:625`](../../../src/adapters/shared/thread-write-basis-guard_test.ts) |
 | Workbench | Durable-writer classification includes the tracer | [`scripts/serve/serve-native-workbench_test.ts:1629`](../../../scripts/serve/serve-native-workbench_test.ts) |
 | Proposal | Ungated grammar; shared decision still gated by the other op | [`src/orchestration/operations/proposal-validation_test.ts:510`](../../../src/orchestration/operations/proposal-validation_test.ts) |

@@ -151,3 +151,96 @@ Deno.test(
     assertStringIncludes(result.stdout, "Verified 2 deno.json task(s)");
   },
 );
+
+Deno.test(
+  "task-catalog gate fails when a task appears only as a fenced example row",
+  async () => {
+    const catalog = [
+      "# Task catalog",
+      "",
+      "| Task | Role |",
+      "| ---- | ---- |",
+      "| `alpha` | First fixture task. |",
+      "",
+      "```md",
+      "| `beta:task` | Example row that must not count. |",
+      "```",
+      "",
+    ].join("\n");
+    const result = await runGate(PASS_DENO_JSON, catalog);
+    assert(
+      result.code === 1,
+      `expected exit 1, got ${result.code}: ${result.stdout}`,
+    );
+    assertStringIncludes(result.stderr, "beta:task");
+    assertStringIncludes(result.stderr, "first column");
+  },
+);
+
+Deno.test(
+  "task-catalog gate passes when an unregistered row stays inside a fence",
+  async () => {
+    const catalog = [
+      "# Task catalog",
+      "",
+      "| Task | Role |",
+      "| ---- | ---- |",
+      "| `alpha` | First fixture task. |",
+      "| `beta:task` | Second fixture task. |",
+      "",
+      "```md",
+      "| `removed:task` | Example row that must not fail the gate. |",
+      "```",
+      "",
+    ].join("\n");
+    const result = await runGate(PASS_DENO_JSON, catalog);
+    assert(
+      result.code === 0,
+      `expected exit 0, got ${result.code}: ${result.stderr}`,
+    );
+    assertStringIncludes(result.stdout, "Verified 2 deno.json task(s)");
+  },
+);
+
+Deno.test(
+  "task-catalog gate fails when a task row is indented as a code block",
+  async () => {
+    const catalog = [
+      "# Task catalog",
+      "",
+      "| Task | Role |",
+      "| ---- | ---- |",
+      "| `alpha` | First fixture task. |",
+      "    | `beta:task` | Indented row that must not count. |",
+      "",
+    ].join("\n");
+    const result = await runGate(PASS_DENO_JSON, catalog);
+    assert(
+      result.code === 1,
+      `expected exit 1, got ${result.code}: ${result.stdout}`,
+    );
+    assertStringIncludes(result.stderr, "beta:task");
+    assertStringIncludes(result.stderr, "first column");
+  },
+);
+
+Deno.test("task-catalog gate keeps example rows fenced after incompatible closing lines", async () => {
+  const catalog = [
+    "# Task catalog",
+    "",
+    "| Task | Role |",
+    "| ---- | ---- |",
+    "| `alpha` | Real task. |",
+    "",
+    "````md",
+    "```",
+    "~~~~",
+    "````md",
+    "| `beta:task` | Still inside the example. |",
+    "````",
+    "",
+  ].join("\n");
+  const result = await runGate(PASS_DENO_JSON, catalog);
+  assert(result.code === 1, `expected exit 1, got ${result.code}: ${result.stdout}`);
+  assertStringIncludes(result.stderr, "beta:task");
+});
