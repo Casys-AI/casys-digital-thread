@@ -37,6 +37,21 @@ exactement deux Item Prices, tous deux en USD par `Nos` : `130.99` pour le Pixha
 Mini A SKU 11088, variante sans Power Module, et `16.90` pour un moteur F1404 KV4600.
 Les trois autres articles n'ont aucun Item Price dans cette liste.
 
+Une correction documentaire à `08:16:24–08:16:25Z` remplace le libellé trop large «
+public catalogue observation only » par « source observation only » sur les trois
+articles sans prix. Avant chaque mise à jour, la lecture fraîche a confirmé le
+`modified` du reçu initial ; la nouvelle description a été relue, et les identités, nom,
+groupe et unité sont restés identiques. Les nouveaux `modified` observés sont :
+
+| Article                           | `modified` après correction de description |
+| --------------------------------- | ------------------------------------------ |
+| `DEMO-ID01-RPI-ZERO-2-W`          | `2026-09-13 10:16:24.577438`               |
+| `DEMO-ID01-RPI-CAM-MOD3-STD`      | `2026-09-13 10:16:25.004855`               |
+| `DEMO-ID01-PRUSAMENT-PETG-JB-1KG` | `2026-09-13 10:16:25.174154`               |
+
+La [correction du planner propriétaire](https://github.com/Casys-AI/mcp-erpnext/pull/46)
+emploie aussi ce libellé neutre. Aucun Item Price n'est modifié par cette correction.
+
 Les prix proviennent des deux observations publiques datées de
 [la préparation sourcée](buy-preparation/price-source-manifest.json). Le catalogue
 utilisé référence les octets de ce manifeste par
