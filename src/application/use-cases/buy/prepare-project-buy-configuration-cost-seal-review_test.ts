@@ -1,4 +1,4 @@
-import { assertEquals } from "@std/assert";
+import { assertEquals, assertRejects } from "@std/assert";
 import { DESIGN_WRITE_GEOMETRY_TOOL } from "../../../domain/cad/canonical/canonical-write-geometry-step.ts";
 import {
   BUY_CANDIDATE_CAPTURE_SCHEMA,
@@ -55,6 +55,19 @@ Deno.test("seal review is ready for the exact capture→seal successor", async (
   assertEquals(result.status, "ready");
   assertEquals(fixture.configuration.basis, CAPTURE_BASIS);
   assertEquals(fixture.command.basis.revision, SEAL_BASIS.revision);
+});
+
+Deno.test("seal review refuses a non-sha256 candidate fingerprint before reads", async () => {
+  const fixture = await sealReviewFixture();
+  await assertRejects(
+    () =>
+      fixture.review.execute({
+        ...fixture.command,
+        candidateFingerprint: { algorithm: "md5", digest: "0".repeat(32) },
+      }),
+    TypeError,
+    "candidateFingerprint.algorithm must be sha256",
+  );
 });
 
 Deno.test("seal review refuses a candidate from another project", async () => {

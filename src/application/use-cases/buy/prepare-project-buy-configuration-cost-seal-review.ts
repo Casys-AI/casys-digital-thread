@@ -165,12 +165,29 @@ function parseCommand(
       root.candidateArtifactId,
       "$buySealReview.candidateArtifactId",
     ),
-    candidateFingerprint: {
-      algorithm: "sha256",
-      digest: nonEmptyText(
-        fingerprint.digest,
-        "$buySealReview.candidateFingerprint.digest",
-      ),
-    },
+    candidateFingerprint: parseCandidateFingerprint(fingerprint),
   };
+}
+
+const SHA256_HEX = /^[a-f0-9]{64}$/;
+
+function parseCandidateFingerprint(fingerprint: Record<string, unknown>): {
+  readonly algorithm: "sha256";
+  readonly digest: string;
+} {
+  if (fingerprint.algorithm !== "sha256") {
+    throw new TypeError(
+      "$buySealReview.candidateFingerprint.algorithm must be sha256.",
+    );
+  }
+  const digest = nonEmptyText(
+    fingerprint.digest,
+    "$buySealReview.candidateFingerprint.digest",
+  );
+  if (!SHA256_HEX.test(digest)) {
+    throw new TypeError(
+      "$buySealReview.candidateFingerprint.digest must be lowercase sha256 hex.",
+    );
+  }
+  return { algorithm: "sha256", digest };
 }

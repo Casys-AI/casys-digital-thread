@@ -151,6 +151,10 @@ import {
   registerProjectBuyReviewTools,
 } from "./project-control/buy-review-tools.ts";
 import {
+  type ProjectBuyEstimatePreviewToolDependencies,
+  registerProjectBuyEstimatePreviewTools,
+} from "./project-control/buy-estimate-preview-tools.ts";
+import {
   autoConfirms,
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   localYoloRationale,
@@ -190,7 +194,8 @@ export interface ProjectControlToolDependencies
     ProjectRequirementsRecaptureReviewToolDependencies,
     ProjectRequirementsBriefTraceReviewToolDependencies,
     ProjectResponseToolDependencies,
-    ProjectBuyReviewToolDependencies {
+    ProjectBuyReviewToolDependencies,
+    ProjectBuyEstimatePreviewToolDependencies {
   projects: EngineeringProjectSnapshotReader;
   commands: EngineeringProjectCommandService;
   /** Optional so focused read-only tests need not construct a trusted executor. */
@@ -280,6 +285,7 @@ export function registerProjectControlTools(
   registerProjectRequirementsBriefTraceReviewTools(app, dependencies);
   registerProjectResponseTools(app, dependencies);
   registerProjectBuyReviewTools(app, dependencies);
+  registerProjectBuyEstimatePreviewTools(app, dependencies);
 
   app.registerTool(projectPlanPublishTool, async (args, context) => {
     const common = commonMutation(args);
