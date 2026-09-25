@@ -19,10 +19,9 @@ import {
   validateBuyConfiguration,
 } from "./buy-configuration.ts";
 import {
-  BUY_COST_BUNDLE_SCHEMA,
-  type BuyCostBundle,
-  validateBuyCostBundle,
-} from "./buy-cost-bundle.ts";
+  type BuyCostBundleVersioned,
+  validateBuyCostBundleVersioned,
+} from "./buy-cost-bundle-v2.ts";
 import {
   type BuySourceCaptureEnvelope,
   validateBuySourceCaptureEnvelope,
@@ -51,7 +50,7 @@ export interface BuyCandidateCapture {
   readonly configurationDigest: string;
   readonly bundleDigest: string;
   readonly configuration: BuyConfiguration;
-  readonly bundle: BuyCostBundle;
+  readonly bundle: BuyCostBundleVersioned;
   readonly sourceCaptures: readonly BuySourceCaptureEnvelope[];
   readonly capturedAt: string;
 }
@@ -103,10 +102,7 @@ export async function validateBuyCandidateCapture(
       "$buyCandidateCapture.configuration schema is divergent.",
     );
   }
-  const bundle = validateBuyCostBundle(root.bundle);
-  if (bundle.schemaVersion !== BUY_COST_BUNDLE_SCHEMA) {
-    throw new TypeError("$buyCandidateCapture.bundle schema is divergent.");
-  }
+  const bundle = validateBuyCostBundleVersioned(root.bundle);
   const configurationDigest = nonEmptyText(
     root.configurationDigest,
     "$buyCandidateCapture.configurationDigest",

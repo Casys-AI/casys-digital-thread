@@ -74,6 +74,10 @@ import {
   RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
 } from "../../domain/record/documentary-clause-response.ts";
 import {
+  parsePreSizingWorksheetParameters,
+  RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION,
+} from "../../domain/record/pre-sizing-worksheet.ts";
+import {
   COMPILE_SEAL_ADMISSION_OPERATION,
   parseTechnicalCompilationAdmissionParameters,
 } from "../../domain/compile/admission/technical-compilation-proposal.ts";
@@ -347,6 +351,12 @@ const PROPOSAL_VALIDATORS = new Map<
     keyOf(RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION),
     (parameters) => {
       parseDocumentaryClauseResponseParameters(parameters);
+    },
+  ],
+  [
+    keyOf(RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION),
+    (parameters) => {
+      parsePreSizingWorksheetParameters(parameters);
     },
   ],
   [

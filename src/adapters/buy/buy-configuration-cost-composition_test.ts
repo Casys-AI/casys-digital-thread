@@ -15,6 +15,7 @@ import {
 import { DESIGN_WRITE_GEOMETRY_TOOL } from "../../domain/cad/canonical/canonical-write-geometry-step.ts";
 import { COMMERCE_READ_ERPNEXT_BUY_SOURCE_CAPABILITY } from "../../domain/capability/engineering-capability.ts";
 import { validateBuyConfiguration } from "../../domain/buy/buy-configuration.ts";
+import { BUY_DOCUMENTARY_ESTIMATE_SCHEMA } from "../../domain/buy/buy-documentary-estimate.ts";
 import {
   BUY_CAPTURE_CONFIGURATION_COST_OPERATION,
   BUY_CAPTURE_CONFIGURATION_COST_TOOL,
@@ -62,8 +63,12 @@ import {
   BUY_FIXTURE_SITE,
   BUY_FIXTURE_STEP,
   buyCaptureBodyFixture,
+  buyConfigurationDigest,
   buyConfigurationFixture,
+  buyDocumentaryEstimateFixture,
+  buyEstimateSourceRef,
   buyPricingContext,
+  buyTwoLineConfigurationFixture,
 } from "../../domain/buy/buy-fixtures.ts";
 import { FileThreadSnapshotStore } from "../shared/stores/file-thread-snapshot-store.ts";
 import { FileEngineeringProjectRunLease } from "../shared/stores/file-engineering-project-run-lease.ts";
@@ -442,6 +447,235 @@ Deno.test(
     }
   },
 );
+
+Deno.test(
+  "capture with a documentary estimate seals a v2 bundle and projects the estimate origin",
+  async () => {
+    const root = await Deno.makeTempDir({ prefix: "buy-estimate-e2e-" });
+    try {
+      const configuration = buyTwoLineConfigurationFixture();
+      const configurationDigest = await buyConfigurationDigest(configuration);
+      const estimate = buyDocumentaryEstimateFixture(configurationDigest, {
+        estimateId: "estimate.synthetic.bracket",
+        lines: [bracketEstimateLine()],
+      });
+      const text = deterministicJson(estimate);
+      const bytes = new TextEncoder().encode(text);
+      const resourceDigest = await sha256Hex(bytes);
+      const resourceUri = `casys://agent-resource-capture/sha256/${resourceDigest}`;
+      const stored = {
+        reference: {
+          schemaVersion: "agent-resource-capture/1.0" as const,
+          uri: resourceUri,
+          name: "estimate-input.json",
+          mimeType: "application/json",
+          representation: "text" as const,
+          byteCount: bytes.byteLength,
+          fingerprint: { algorithm: "sha256" as const, digest: resourceDigest },
+        },
+        bytes,
+      };
+      const wrapper = await loadProducerWrapper();
+      const captureFixture = await createCaptureFixture({
+        mcp: {
+          callTool(call) {
+            assertEquals(call.name, ERPNEXT_BUY_CAPTURE_TOOL);
+            return Promise.resolve({ structuredContent: wrapper, text: "" });
+          },
+          callToolTextResult() {
+            return Promise.reject(new Error("unused"));
+          },
+        },
+        configuration,
+        estimate: { resourceUri, resourceDigest },
+        runtimeOverrides: {
+          resources: {
+            read: (uri: string) =>
+              Promise.resolve(uri === resourceUri ? stored : undefined),
+          },
+        },
+        candidateDirectory: `${root}/candidates`,
+        snapshotDirectory: `${root}/snapshots`,
+      });
+      const captured = await captureFixture.executor.execute(
+        AGENT,
+        captureFixture.command,
+      );
+      assertEquals(captured.agentRuns[0]?.status, "completed");
+      const candidateSnapshot = await captureFixture.snapshots.getFresh(
+        captured.agentRuns[0]!.resultSnapshot!.snapshotId,
+      );
+      const candidateArtifact = candidateSnapshot?.artifacts.find((item) =>
+        item.producer.tool === BUY_CAPTURE_CONFIGURATION_COST_TOOL
+      );
+      const candidateText = await Deno.readTextFile(
+        `${root}/candidates/${candidateArtifact!.fingerprint.digest}.json`,
+      );
+      const candidate = JSON.parse(candidateText) as {
+        readonly bundle: {
+          readonly schemaVersion: string;
+          readonly lines: ReadonlyArray<{
+            readonly configurationLineId: string;
+            readonly costClass: string;
+            readonly citation?: { readonly kind: string };
+            readonly amount?: string;
+            readonly provisional?: boolean;
+          }>;
+          readonly totals: ReadonlyArray<{
+            readonly kind: string;
+            readonly amount: string;
+          }>;
+        };
+      };
+      assertEquals(candidate.bundle.schemaVersion, "buy-cost-bundle/2.0");
+      const bracket = candidate.bundle.lines.find((line) =>
+        line.configurationLineId === "line.bracket"
+      );
+      assertEquals(bracket?.costClass, "estimate");
+      assertEquals(bracket?.citation?.kind, "external-documentary");
+      assertEquals(bracket?.provisional, true);
+      assertEquals(bracket?.amount, "100.00");
+
+      const sealFixture = await createSealFixture({
+        project: captured,
+        snapshots: captureFixture.snapshots,
+        candidateDirectory: `${root}/candidates`,
+        sealDirectory: `${root}/seals`,
+        candidateArtifact: candidateArtifact!,
+      });
+      const sealed = await sealFixture.executor.execute(
+        AGENT,
+        sealFixture.command,
+      );
+      assertEquals(
+        sealed.agentRuns.find((run) => run.id === "run.buy-seal")?.status,
+        "completed",
+      );
+      const sealedSnapshot = await sealFixture.snapshots.getFresh(
+        sealed.agentRuns.find((run) => run.id === "run.buy-seal")!
+          .resultSnapshot!.snapshotId,
+      );
+      const sealedArtifact = sealedSnapshot?.artifacts.find((item) =>
+        item.producer.tool === BUY_SEAL_CONFIGURATION_COST_TOOL
+      );
+      const viewerProject = await viewerProjectFor(
+        root,
+        sealedSnapshot!,
+        sealedArtifact!,
+        sealFixture,
+      );
+      const session = await buildBuyViewerBinding({
+        project: viewerProject,
+        thread: sealedSnapshot!,
+        artifactId: sealedArtifact!.id,
+        packages: [installedBuyPackage()],
+        seals: sealFixture.sealStore,
+      });
+      const payload = session!.session.payload as {
+        readonly projection: {
+          readonly status: string;
+          readonly result?: {
+            readonly lines?: ReadonlyArray<{
+              readonly lineId: string;
+              readonly sourceCategory: string;
+            }>;
+          };
+        };
+      };
+      assertEquals(payload.projection.status, "available");
+      const categories = (payload.projection.result?.lines ?? []).map((line) =>
+        `${line.lineId}:${line.sourceCategory}`
+      );
+      assertEquals(categories, [
+        "line.fastener:catalogue-price",
+        "line.bracket:documentary-estimate",
+      ]);
+    } finally {
+      await Deno.remove(root, { recursive: true });
+    }
+  },
+);
+
+Deno.test(
+  "capture refuses a stale documentary estimate before ERP dispatch",
+  async () => {
+    const calls: string[] = [];
+    const configuration = buyTwoLineConfigurationFixture();
+    const digest = await buyConfigurationDigest(configuration);
+    const estimate = buyDocumentaryEstimateFixture(digest, {
+      estimateId: "estimate.synthetic.bracket",
+      lines: [bracketEstimateLine()],
+      configurationDigest: "0".repeat(64),
+    });
+    const text = deterministicJson(estimate);
+    const bytes = new TextEncoder().encode(text);
+    const resourceDigest = await sha256Hex(bytes);
+    const resourceUri = `casys://agent-resource-capture/sha256/${resourceDigest}`;
+    const stored = {
+      reference: {
+        schemaVersion: "agent-resource-capture/1.0" as const,
+        uri: resourceUri,
+        name: "estimate-input.json",
+        mimeType: "application/json",
+        representation: "text" as const,
+        byteCount: bytes.byteLength,
+        fingerprint: { algorithm: "sha256" as const, digest: resourceDigest },
+      },
+      bytes,
+    };
+    const fixture = await createCaptureFixture({
+      mcp: {
+        callTool(call) {
+          calls.push(call.name);
+          return Promise.reject(new Error("must not call"));
+        },
+        callToolTextResult() {
+          return Promise.reject(new Error("must not call"));
+        },
+      },
+      configuration,
+      estimate: { resourceUri, resourceDigest },
+      runtimeOverrides: {
+        resources: {
+          read: (uri: string) =>
+            Promise.resolve(uri === resourceUri ? stored : undefined),
+        },
+      },
+    });
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "configuration digest",
+    );
+    assertEquals(calls, []);
+  },
+);
+
+function bracketEstimateLine(): ReturnType<
+  typeof buyDocumentaryEstimateFixture
+>["lines"][number] {
+  const source = buyEstimateSourceRef({ anchor: "synthetic bracket sheet" });
+  return {
+    configurationLineId: "line.bracket",
+    quantityBasis: "per-configuration-unit",
+    productUom: "Nos",
+    terms: [{
+      id: "material.bracket",
+      nature: "material",
+      consumption: { operand: "sourced", decimal: "1", uom: "kg", source },
+      rate: {
+        operand: "assumed",
+        decimal: "50.00",
+        perUom: "kg",
+        currency: "EUR",
+        justification: {
+          statement: "Synthetic assumed bracket rate.",
+          source,
+        },
+      },
+    }],
+  };
+}
 
 async function loadProducerWrapper(): Promise<Record<string, unknown>> {
   const text = await Deno.readTextFile(
@@ -1298,6 +1532,10 @@ async function createCaptureFixture(options: {
   readonly candidateDirectory?: string;
   readonly snapshotDirectory?: string;
   readonly configuration?: ReturnType<typeof buyConfigurationFixture>;
+  readonly estimate?: {
+    readonly resourceUri: string;
+    readonly resourceDigest: string;
+  };
 }) {
   const configuration = validateBuyConfiguration(
     options.configuration ?? buyConfigurationFixture(),
@@ -1309,6 +1547,14 @@ async function createCaptureFixture(options: {
     configurationResourceUri:
       `casys://agent-resource-capture/sha256/${BUY_FIXTURE_RESOURCE}`,
     configurationResourceDigest: BUY_FIXTURE_RESOURCE,
+    ...(options.estimate
+      ? {
+        estimate: {
+          ...options.estimate,
+          schemaVersion: BUY_DOCUMENTARY_ESTIMATE_SCHEMA,
+        },
+      }
+      : {}),
     schemaVersion: configuration.schemaVersion,
     projectId: PROJECT_ID,
     subjectId: SUBJECT_ID,

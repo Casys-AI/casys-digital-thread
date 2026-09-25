@@ -9,6 +9,7 @@ import type { EngineeringProjectCommandOrigin } from "../../application/ports/in
 import type { BuyConfigurationSourceReader } from "../../application/ports/out/buy/buy-configuration-source-reader.ts";
 import type { BuyQualifiedErpBindingResolver } from "../../application/ports/out/buy/buy-qualified-erp-binding.ts";
 import type { EngineeringProjectRevisionStore } from "../../application/ports/out/engineering-project-revision-store.ts";
+import type { AgentResourceStore } from "../../application/ports/out/resource/agent-resource-store.ts";
 import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
@@ -16,13 +17,28 @@ import {
 import {
   buyGeometryApplicability,
   recrossBuyConfigurationThreadBasis,
+  recrossBuyDocumentaryEstimateBasis,
 } from "../../domain/buy/buy-applicability.ts";
 import {
   type BuyConfiguration,
   validateBuyConfiguration,
 } from "../../domain/buy/buy-configuration.ts";
-import { computeBuyCostCandidate } from "../../domain/buy/buy-cost-bundle.ts";
+import {
+  type BuyCostBundle,
+  type BuyPricingContext,
+  computeBuyCostCandidate,
+} from "../../domain/buy/buy-cost-bundle.ts";
+import {
+  type BuyCostBundleV2,
+  computeBuyCostCandidateV2,
+} from "../../domain/buy/buy-cost-bundle-v2.ts";
 import { selectBuyCostLines } from "../../domain/buy/buy-cost-selection.ts";
+import {
+  type BuyDocumentaryEstimateEnvelope,
+  buyDocumentaryEstimateEnvelopeFromResource,
+} from "../../domain/buy/buy-documentary-estimate.ts";
+import { computeBuyProductionEstimateCandidate } from "../../domain/buy/buy-production-estimate.ts";
+import { decodeUtf8ResourceText } from "../../domain/resource/agent-resource-envelope.ts";
 import {
   BUY_CAPTURE_CONFIGURATION_COST_OPERATION,
   BUY_CAPTURE_CONFIGURATION_COST_TOOL,
@@ -130,6 +146,7 @@ export interface BuyCaptureConfigurationCostRunExecutorDependencies {
   >;
   readonly configurations: BuyConfigurationSourceReader;
   readonly bindings: BuyQualifiedErpBindingResolver;
+  readonly resources?: Pick<AgentResourceStore, "read">;
   readonly erpnext?: ErpnextBuyCaptureClient;
   readonly lease: EngineeringProjectRunLease;
   readonly capabilityRuntime?: CapabilityRuntimeExecutionEligibility;
@@ -280,6 +297,13 @@ export class BuyCaptureConfigurationCostRunExecutor {
       }
       requireMatchingConfigurationBasis(basis, configuration);
       requireCurrentGeometry(basisSnapshot, configuration);
+      const estimate = decisionParams.estimate
+        ? await this.#reopenEstimate(decisionParams.estimate, {
+          configuration,
+          configurationDigest: decisionParams.configurationDigest,
+          basis,
+        })
+        : undefined;
       const binding = await this.deps.bindings.resolve({ project });
       if (binding.status !== "qualified") {
         throw new EngineeringProjectCommandError(
@@ -308,7 +332,7 @@ export class BuyCaptureConfigurationCostRunExecutor {
           "Capture sourceInstance does not match the authorized ERP site binding.",
         );
       }
-      const bundle = computeBuyCostCandidate({
+      const baseBundle = computeBuyCostCandidate({
         configuration,
         configurationDigest: decisionParams.configurationDigest,
         captures: [envelope],
@@ -316,6 +340,15 @@ export class BuyCaptureConfigurationCostRunExecutor {
         pricingContext: decisionParams.pricing,
         selections: selectBuyCostLines(configuration, [envelope]),
       });
+      const bundle = estimate
+        ? await this.#composeEstimateBundle({
+          baseBundle,
+          configuration,
+          configurationDigest: decisionParams.configurationDigest,
+          estimate,
+          pricingContext: decisionParams.pricing,
+        })
+        : baseBundle;
       const bundleDigest = (await sha256Fingerprint(bundle)).digest;
       const capturedAt = requiredStart(run);
       const capture: BuyCandidateCapture = {
@@ -655,6 +688,75 @@ export class BuyCaptureConfigurationCostRunExecutor {
       );
     }
     return configuration;
+  }
+
+  async #composeEstimateBundle(input: {
+    readonly baseBundle: BuyCostBundle;
+    readonly configuration: BuyConfiguration;
+    readonly configurationDigest: string;
+    readonly estimate: BuyDocumentaryEstimateEnvelope;
+    readonly pricingContext: BuyPricingContext;
+  }): Promise<BuyCostBundleV2> {
+    const production = await computeBuyProductionEstimateCandidate({
+      configuration: input.configuration,
+      configurationDigest: input.configurationDigest,
+      estimate: input.estimate,
+      pricingContext: input.pricingContext,
+    });
+    return await computeBuyCostCandidateV2({
+      configuration: input.configuration,
+      configurationDigest: input.configurationDigest,
+      baseBundle: input.baseBundle,
+      estimates: [production],
+      pricingContext: input.pricingContext,
+    });
+  }
+
+  async #reopenEstimate(
+    source: NonNullable<BuyCaptureDecisionParameters["estimate"]>,
+    basis: {
+      readonly configuration: BuyConfiguration;
+      readonly configurationDigest: string;
+      readonly basis: EngineeringThreadSnapshotBasis;
+    },
+  ): Promise<BuyDocumentaryEstimateEnvelope> {
+    if (!this.deps.resources) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "Estimate input is signed but no agent-resource store is composed.",
+      );
+    }
+    const stored = await this.deps.resources.read(source.resourceUri);
+    if (!stored || stored.reference.fingerprint.digest !== source.resourceDigest) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "The signed documentary estimate agent-resource is not readable.",
+      );
+    }
+    let envelope: BuyDocumentaryEstimateEnvelope;
+    try {
+      const text = decodeUtf8ResourceText(stored.bytes, "Documentary estimate");
+      envelope = buyDocumentaryEstimateEnvelopeFromResource(
+        stored.reference,
+        text,
+      );
+    } catch (error) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        `The signed documentary estimate is not usable: ${buyErrorMessage(error)}`,
+      );
+    }
+    const recross = recrossBuyDocumentaryEstimateBasis(envelope.estimate, {
+      configuration: basis.configuration,
+      configurationDigest: basis.configurationDigest,
+      snapshotId: basis.basis.snapshotId,
+      revision: basis.basis.revision,
+      subjectId: basis.basis.subjectId,
+    });
+    if (recross.status !== "current") {
+      throw new EngineeringProjectCommandError("invalid_input", recross.reason);
+    }
+    return envelope;
   }
 
   async #requiredProject(

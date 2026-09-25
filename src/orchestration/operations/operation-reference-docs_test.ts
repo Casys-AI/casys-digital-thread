@@ -113,6 +113,7 @@ const UNWATCHED_CITING_DOCUMENTS = [
   "docs/reference/contracts/engineering-project.md",
   "docs/reference/contracts/thread-workflows.md",
   "docs/reference/domains/buy/README.md",
+  "docs/reference/domains/buy/production-estimates.md",
   "docs/reference/domains/impact/coverage.md",
   "docs/reference/domains/mechanism/operations.md",
   "docs/reference/domains/mechanism/prescribed-kinematics-method-and-evaluation.md",

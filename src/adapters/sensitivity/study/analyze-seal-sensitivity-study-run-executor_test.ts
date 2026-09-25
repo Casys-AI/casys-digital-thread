@@ -213,6 +213,68 @@ Deno.test(
 );
 
 Deno.test(
+  "a sealed same (id, revision) with different bytes refuses the seal",
+  async () => {
+    const fixture = await createOfferFixture();
+    const conflictCaseDigest = "c".repeat(64);
+    const conflictCaptureFingerprint = {
+      algorithm: "sha256" as const,
+      digest: "d".repeat(64),
+    };
+    const basis = await fixture.snapshots.get(
+      fixture.project.threadSnapshots[0]!.snapshotId,
+    );
+    await fixture.snapshots.save(
+      snapshotWithPriorCase(basis!, {
+        caseDigest: conflictCaseDigest,
+        captureFingerprint: conflictCaptureFingerprint,
+      }),
+    );
+    await fixture.captures.save(
+      conflictCaptureFingerprint,
+      JSON.stringify({
+        studyCase: { id: SIGNED_OFFER_CASE_ID, revision: 1 },
+      }),
+    );
+    const error = await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+    );
+    assertStringIncludes(
+      error.message,
+      "sensitivity_study_seal_revision_conflict",
+    );
+    assertEquals(fixture.project.agentRuns[0]?.status, "failed");
+    assertEquals(fixture.project.agentRuns[0]?.resultSnapshot, undefined);
+    assertEquals([...fixture.captures.values()].length, 1);
+  },
+);
+
+Deno.test(
+  "an exact same-bytes reseal is not a revision conflict",
+  async () => {
+    const fixture = await createOfferFixture();
+    const basis = await fixture.snapshots.get(
+      fixture.project.threadSnapshots[0]!.snapshotId,
+    );
+    await fixture.snapshots.save(
+      snapshotWithPriorCase(basis!, {
+        caseDigest: fixture.caseDigest,
+        captureFingerprint: { algorithm: "sha256", digest: "e".repeat(64) },
+      }),
+    );
+    const error = await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      Error,
+    );
+    assertEquals(
+      error.message.includes("sensitivity_study_seal_revision_conflict"),
+      false,
+    );
+  },
+);
+
+Deno.test(
   "a completed run replays without writing a second capture",
   async () => {
     const fixture = await createOfferFixture();
@@ -557,6 +619,57 @@ function snapshotWithSiblingCase(
       from: { kind: "change" as const, id: `change.${sibling.id}` },
       to: { kind: "artifact" as const, id: sibling.id },
       rationale: "The applied change introduced the sibling sensitivity case.",
+    }],
+  });
+}
+
+function snapshotWithPriorCase(
+  snapshot: ThreadSnapshot,
+  prior: {
+    readonly caseDigest: string;
+    readonly captureFingerprint: ContentFingerprint;
+  },
+): ThreadSnapshot {
+  const planted = {
+    id: `sensitivity-case-${prior.caseDigest}`,
+    name: "Sensitivity study case prior seal",
+    kind: "document" as const,
+    version: prior.caseDigest,
+    fingerprint: prior.captureFingerprint,
+    uri:
+      `${SENSITIVITY_STUDY_CASE_CAPTURE_URI_PREFIX}${prior.captureFingerprint.digest}`,
+    mediaType: "application/json",
+    producer: {
+      serverId: "digital-thread",
+      tool: "analyze.seal-sensitivity-study@1",
+      runId: "run.prior-seal",
+    },
+    inputArtifactIds: [] as string[],
+    freshness: {
+      status: "fresh" as const,
+      changedAt: AT,
+      invalidatedByChangeIds: [],
+    },
+  };
+  return validateThreadSnapshot({
+    ...snapshot,
+    artifacts: [...snapshot.artifacts, planted],
+    changeSet: {
+      ...snapshot.changeSet,
+      changes: [...snapshot.changeSet.changes, {
+        id: `change.${planted.id}`,
+        kind: "created" as const,
+        target: { kind: "artifact" as const, id: planted.id },
+        summary: "Seal the reviewed FEA sensitivity study case: prior seal.",
+        afterFingerprint: prior.captureFingerprint,
+      }],
+    },
+    provenance: [...snapshot.provenance, {
+      id: `provenance.${planted.id}`,
+      relation: "changes" as const,
+      from: { kind: "change" as const, id: `change.${planted.id}` },
+      to: { kind: "artifact" as const, id: planted.id },
+      rationale: "The applied change introduced the prior sensitivity case.",
     }],
   });
 }

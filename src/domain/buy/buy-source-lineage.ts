@@ -1,5 +1,5 @@
 /** Recross retained ERP evidence without recomputing recorded prices. */
-import type { BuyCostBundle } from "./buy-cost-bundle.ts";
+import type { BuyCostBundleVersioned } from "./buy-cost-bundle-v2.ts";
 import {
   assertBuySourceCaptureFingerprint,
   type BuySourceCaptureEnvelope,
@@ -9,7 +9,7 @@ import {
 import { deterministicJson, sha256Hex } from "../kernel/deterministic-json.ts";
 
 export async function assertBuySourceLineage(
-  bundle: BuyCostBundle,
+  bundle: BuyCostBundleVersioned,
   captures: readonly BuySourceCaptureEnvelope[],
 ): Promise<void> {
   const retained = new Map(captures.map((item) => [item.fingerprint, item]));

@@ -326,6 +326,12 @@ export class AnalyzeSealSensitivityStudyRunExecutor {
       if (authority === "catalog") {
         assertAdmittedParameterMatchesCase(reopened, studyCase);
       }
+      await assertNoConflictingSensitivitySeal(
+        this.#captures,
+        currentBasisSnapshot,
+        studyCase,
+        caseDigest,
+      );
 
       const sealedAt = requiredStart(run);
       const capture: SensitivityStudyCaseCapture = {
@@ -649,6 +655,64 @@ function assertAdmittedParameterMatchesCase(
     throw invalidTransition(
       "The admitted source parameter does not equal the sealed case baseValue.",
     );
+  }
+}
+
+/**
+ * Duplicate-revision guard: the basis must not already carry the same study
+ * (id, revision) sealed with different bytes. Same digest is left to the
+ * extension applier (exact reseal idempotency); a prior whose capture cannot
+ * be reopened or parsed proves no conflict and never blocks, so legitimate
+ * siblings keep sealing.
+ */
+async function assertNoConflictingSensitivitySeal(
+  captures: FileCaptureStore<"sensitivity-study-case">,
+  basisSnapshot: ThreadSnapshot,
+  studyCase: SensitivityStudyCaseV3,
+  caseDigest: string,
+): Promise<void> {
+  for (const artifact of basisSnapshot.artifacts) {
+    if (!artifact.id.startsWith("sensitivity-case-")) continue;
+    if (artifact.kind !== "document") continue;
+    if (artifact.version === caseDigest) continue;
+    const prior = await readSealedStudyIdentity(captures, artifact);
+    if (!prior) continue;
+    if (prior.id === studyCase.id && prior.revision === studyCase.revision) {
+      throw invalidTransition(
+        `sensitivity_study_seal_revision_conflict: the thread already carries ` +
+          `sensitivity study "${studyCase.id}" r${studyCase.revision} sealed with ` +
+          `different bytes (prior case digest ${artifact.version.slice(0, 16)}… vs ${
+            caseDigest.slice(0, 16)
+          }…). Seal a new revision instead of ` +
+          `resealing r${studyCase.revision} with different content.`,
+      );
+    }
+  }
+}
+
+async function readSealedStudyIdentity(
+  captures: FileCaptureStore<"sensitivity-study-case">,
+  artifact: ThreadArtifact,
+): Promise<{ id: string; revision: number } | undefined> {
+  let text: string | undefined;
+  try {
+    text = await captures.read(artifact.fingerprint);
+  } catch {
+    return undefined;
+  }
+  if (text === undefined) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(text);
+    if (typeof parsed !== "object" || parsed === null) return undefined;
+    const sealed = (parsed as { studyCase?: unknown }).studyCase;
+    if (typeof sealed !== "object" || sealed === null) return undefined;
+    const { id, revision } = sealed as { id?: unknown; revision?: unknown };
+    if (typeof id !== "string" || typeof revision !== "number") {
+      return undefined;
+    }
+    return { id, revision };
+  } catch {
+    return undefined;
   }
 }
 

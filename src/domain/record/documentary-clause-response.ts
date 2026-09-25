@@ -21,6 +21,7 @@ import {
   fingerprintsEqual,
   sha256Fingerprint,
 } from "../kernel/deterministic-json.ts";
+import { isSha256HexDigest } from "../kernel/content-fingerprint.ts";
 import type {
   EngineeringApprovedBriefBasis,
   EngineeringDecisionProposalParameter,
@@ -120,7 +121,6 @@ export interface DocumentaryClauseResponseCapture {
 }
 
 const PATH = "$documentaryClauseResponseCapture";
-const SHA256_HEX = /^[a-f0-9]{64}$/;
 const CLAIM_ID = /^documentary-clause-response-[a-f0-9]{64}$/;
 
 export function parseDocumentaryClauseResponseParameters(
@@ -1007,7 +1007,7 @@ function boundedText(value: string, max: number, path: string): string {
 function parseFingerprint(value: unknown, path: string): ContentFingerprint {
   const fingerprint = exactRecord(value, ["algorithm", "digest"], path);
   literalValue(fingerprint.algorithm, "sha256", `${path}.algorithm`);
-  if (typeof fingerprint.digest !== "string" || !SHA256_HEX.test(fingerprint.digest)) {
+  if (!isSha256HexDigest(fingerprint.digest)) {
     throw new TypeError(`${path}.digest must be canonical lowercase SHA-256 hex.`);
   }
   return { algorithm: "sha256", digest: fingerprint.digest };

@@ -26,6 +26,7 @@ import {
   assertBuyCostBundleV2Lineage,
   computeBuyCostCandidateV2,
 } from "../../../domain/buy/buy-cost-bundle-v2.ts";
+import { BUY_COST_BUNDLE_SCHEMA } from "../../../domain/buy/buy-cost-bundle.ts";
 import {
   assertBuyProductionEstimateLineage,
   computeBuyProductionEstimateCandidate,
@@ -87,6 +88,13 @@ export class PrepareProjectBuyCostEstimatePreview
     if (seal.status !== "ready") return seal;
     const candidate = await this.reopenCandidate(command);
     if (candidate.status !== "ready") return candidate;
+    if (candidate.capture.bundle.schemaVersion !== BUY_COST_BUNDLE_SCHEMA) {
+      return {
+        status: "unresolved",
+        reason:
+          "The Buy candidate already carries estimate annexes; preview composes from a v1 base bundle.",
+      };
+    }
     const envelopes: BuyDocumentaryEstimateEnvelope[] = [];
     for (const ref of command.estimateRefs) {
       const envelope = await this.reopenEstimateInput(ref);

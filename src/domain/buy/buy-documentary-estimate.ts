@@ -288,6 +288,38 @@ export function validateBuyDocumentaryEstimateEnvelope(
   });
 }
 
+/**
+ * Build the sealed envelope from exact agent-resource bytes. The resource
+ * text must already be the canonical bytes of the estimate payload;
+ * the capture locator stays the store-attested reference.
+ */
+export function buyDocumentaryEstimateEnvelopeFromResource(
+  reference: AgentResourceReference,
+  text: string,
+): BuyDocumentaryEstimateEnvelope {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new TypeError("$buyDocumentaryEstimate resource text is not JSON.");
+  }
+  const estimate = validateBuyDocumentaryEstimate(parsed);
+  const canonicalText = deterministicJson(estimate);
+  if (canonicalText !== text) {
+    throw new TypeError(
+      "$buyDocumentaryEstimate resource text is not the exact canonical bytes of the estimate payload.",
+    );
+  }
+  return validateBuyDocumentaryEstimateEnvelope({
+    schemaVersion: BUY_DOCUMENTARY_ESTIMATE_SCHEMA,
+    estimate,
+    capture: reference,
+    canonicalText,
+    fingerprint: `sha256:${reference.fingerprint.digest}`,
+    byteCount: reference.byteCount,
+  });
+}
+
 export function parseBuyEstimateQuantityOperand(
   value: unknown,
   path: string,

@@ -633,6 +633,7 @@ Deno.test("every operation carrying an MRTR grammar is gated", () => {
     "model.write-sensitivity-edges@1",
     "record.reconcile-uncertain-writer@1",
     "record.seal-documentary-clause-response@1",
+    "record.seal-pre-sizing-worksheet@1",
     "record.seal-requirements-brief-trace@1",
     "simulate.run-admitted-modelica@1",
     "simulate.run-admitted-spice@1",

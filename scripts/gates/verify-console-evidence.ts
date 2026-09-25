@@ -258,6 +258,8 @@ expectedEngineeringViewers(
   "build123d",
   [
     "ui://mcp-build123d/results-viewer",
+    "ui://mcp-build123d/assembly-viewer",
+    "ui://mcp-build123d/drawing-viewer",
   ],
 );
 expectedEngineeringViewers(

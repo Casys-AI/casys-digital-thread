@@ -10,14 +10,21 @@ import type {
 import type { BuyConfigurationSourceReader } from "../../ports/out/buy/buy-configuration-source-reader.ts";
 import type { BuyQualifiedErpBindingResolver } from "../../ports/out/buy/buy-qualified-erp-binding.ts";
 import type { EngineeringProjectRevisionStore } from "../../ports/out/engineering-project-revision-store.ts";
+import type { AgentResourceStore } from "../../ports/out/resource/agent-resource-store.ts";
 import {
   buyGeometryApplicability,
   recrossBuyConfigurationThreadBasis,
+  recrossBuyDocumentaryEstimateBasis,
 } from "../../../domain/buy/buy-applicability.ts";
 import {
   BUY_CONFIGURATION_SCHEMA,
+  type BuyConfiguration,
   validateBuyConfiguration,
 } from "../../../domain/buy/buy-configuration.ts";
+import {
+  BUY_DOCUMENTARY_ESTIMATE_SCHEMA,
+  buyDocumentaryEstimateEnvelopeFromResource,
+} from "../../../domain/buy/buy-documentary-estimate.ts";
 import {
   BUY_CLOSED_DOCTYPES,
   type BuyClosedDoctype,
@@ -29,8 +36,10 @@ import {
 } from "../../../domain/buy/buy-cost-bundle.ts";
 import { validateBuyDecimalRounding } from "../../../domain/buy/buy-decimal.ts";
 import {
+  type BuyCaptureEstimateSource,
   encodeBuyCaptureDecisionParameters,
 } from "../../../domain/buy/buy-proposal.ts";
+import { decodeUtf8ResourceText } from "../../../domain/resource/agent-resource-envelope.ts";
 import { ERPNEXT_BUY_CAPTURE_TOOL } from "../../../domain/buy/buy-operations.ts";
 import {
   arrayOf,
@@ -50,6 +59,7 @@ export class PrepareProjectBuyConfigurationCostCaptureReview
     private readonly configurations: BuyConfigurationSourceReader,
     private readonly bindings: BuyQualifiedErpBindingResolver,
     private readonly projects?: EngineeringProjectRevisionStore,
+    private readonly resources?: Pick<AgentResourceStore, "read">,
   ) {}
 
   async execute(
@@ -132,10 +142,19 @@ export class PrepareProjectBuyConfigurationCostCaptureReview
       };
     }
     const configurationDigest = (await sha256Fingerprint(configuration)).digest;
+    const estimate = await this.reopenEstimate(command, {
+      configuration,
+      configurationDigest,
+      snapshotId: snapshot.id,
+      revision: snapshot.revision,
+      subjectId: snapshot.subject.id,
+    });
+    if (estimate.status !== "ready") return estimate;
     const admission = {
       configurationDigest,
       configurationResourceUri: command.configurationResourceUri,
       configurationResourceDigest: command.configurationResourceDigest,
+      ...(estimate.source ? { estimate: estimate.source } : {}),
       schemaVersion: BUY_CONFIGURATION_SCHEMA,
       projectId: command.projectId,
       subjectId: command.basis.subjectId,
@@ -156,10 +175,95 @@ export class PrepareProjectBuyConfigurationCostCaptureReview
       admission,
     };
   }
+
+  private async reopenEstimate(
+    command: ProjectBuyConfigurationCostCaptureReviewCommand,
+    basis: {
+      readonly configuration: BuyConfiguration;
+      readonly configurationDigest: string;
+      readonly snapshotId: string;
+      readonly revision: number;
+      readonly subjectId: string;
+    },
+  ): Promise<
+    | { readonly status: "ready"; readonly source?: BuyCaptureEstimateSource }
+    | { readonly status: "unresolved"; readonly reason: string }
+  > {
+    if (
+      command.estimateResourceUri === undefined &&
+      command.estimateResourceDigest === undefined
+    ) {
+      return { status: "ready" };
+    }
+    if (
+      command.estimateResourceUri === undefined ||
+      command.estimateResourceDigest === undefined
+    ) {
+      return {
+        status: "unresolved",
+        reason:
+          "Estimate input names only one of estimateResourceUri and estimateResourceDigest.",
+      };
+    }
+    if (!this.resources) {
+      return {
+        status: "unresolved",
+        reason: "Estimate input is named but no agent-resource store is composed.",
+      };
+    }
+    const stored = await this.resources.read(command.estimateResourceUri);
+    if (
+      !stored ||
+      stored.reference.fingerprint.digest !== command.estimateResourceDigest
+    ) {
+      return {
+        status: "unresolved",
+        reason: "The documentary estimate agent-resource is not readable.",
+      };
+    }
+    let envelope;
+    try {
+      const text = decodeUtf8ResourceText(stored.bytes, "Documentary estimate");
+      envelope = buyDocumentaryEstimateEnvelopeFromResource(
+        stored.reference,
+        text,
+      );
+    } catch (error) {
+      return {
+        status: "unresolved",
+        reason: `The documentary estimate is not usable: ${
+          error instanceof Error ? error.message : String(error)
+        }`,
+      };
+    }
+    const recross = recrossBuyDocumentaryEstimateBasis(envelope.estimate, basis);
+    if (recross.status !== "current") {
+      return { status: "unresolved", reason: recross.reason };
+    }
+    return {
+      status: "ready",
+      source: {
+        resourceUri: command.estimateResourceUri,
+        resourceDigest: command.estimateResourceDigest,
+        schemaVersion: BUY_DOCUMENTARY_ESTIMATE_SCHEMA,
+      },
+    };
+  }
 }
 
 function parseCommand(value: unknown): ProjectBuyConfigurationCostCaptureReviewCommand {
-  const root = exactRecord(value, [
+  const root = closedRecord(value, [
+    "projectId",
+    "basis",
+    "configurationResourceUri",
+    "configurationResourceDigest",
+    "estimateResourceUri",
+    "estimateResourceDigest",
+    "geometryArtifactId",
+    "geometryArtifactFingerprint",
+    "documents",
+    "pricing",
+  ], [
     "projectId",
     "basis",
     "configurationResourceUri",
@@ -181,6 +285,23 @@ function parseCommand(value: unknown): ProjectBuyConfigurationCostCaptureReviewC
       root.configurationResourceDigest,
       "$buyCaptureReview.configurationResourceDigest",
     ),
+    ...(root.estimateResourceUri === undefined || root.estimateResourceUri === null
+      ? {}
+      : {
+        estimateResourceUri: nonEmptyText(
+          root.estimateResourceUri,
+          "$buyCaptureReview.estimateResourceUri",
+        ),
+      }),
+    ...(root.estimateResourceDigest === undefined ||
+        root.estimateResourceDigest === null
+      ? {}
+      : {
+        estimateResourceDigest: sha256(
+          root.estimateResourceDigest,
+          "$buyCaptureReview.estimateResourceDigest",
+        ),
+      }),
     geometryArtifactId: safeId(
       root.geometryArtifactId,
       "$buyCaptureReview.geometryArtifactId",

@@ -38,10 +38,13 @@ repo authority. Configuration bytes enter through source-backed
 
 ## Capture then seal
 
-1. Source-backed configuration via `project_resource_capture`.
-2. `project_buy_configuration_cost_capture_review` — read-only; no ERP.
-3. Human MRTR on exact configuration, STEP, document refs, pricing scope, and authorized
-   site fingerprint.
+1. Source-backed configuration via `project_resource_capture`, plus one optional
+   source-backed `buy-documentary-estimate/1.0` for production estimates
+   ([sourced estimates](production-estimates.md)).
+2. `project_buy_configuration_cost_capture_review` — read-only; no ERP. A stale or
+   mismatched estimate stays `unresolved` and names no MRTR.
+3. Human MRTR on exact configuration, STEP, document refs, pricing scope, authorized
+   site fingerprint, and the optional estimate locator.
 4. `buy.capture-configuration-cost@1` dispatches locked `erpnext_buy_capture` only
    through a **qualified** ERP read binding (`commerce.read-erpnext-buy-source@1` at
    `qualified`). A fleet image tag is not qualification. Canonical bytes land in DT CAS.

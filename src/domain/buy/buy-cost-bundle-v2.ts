@@ -227,6 +227,27 @@ export function validateBuyCostBundleV2(value: unknown): BuyCostBundleV2 {
   });
 }
 
+/** A sealed bundle in either retained version. V1 readers keep their schema check. */
+export type BuyCostBundleVersioned = BuyCostBundle | BuyCostBundleV2;
+
+/** Validate a retained bundle by its own schema version. */
+export function validateBuyCostBundleVersioned(
+  value: unknown,
+): BuyCostBundleVersioned {
+  if (typeof value === "object" && value !== null) {
+    const schema = (value as { schemaVersion?: unknown }).schemaVersion;
+    if (schema === BUY_COST_BUNDLE_V2_SCHEMA) {
+      return validateBuyCostBundleV2(value);
+    }
+    if (schema === BUY_COST_BUNDLE_SCHEMA) {
+      return validateBuyCostBundle(value);
+    }
+  }
+  throw new TypeError(
+    `$buyCostBundle schema is divergent: expected ${BUY_COST_BUNDLE_SCHEMA} or ${BUY_COST_BUNDLE_V2_SCHEMA}.`,
+  );
+}
+
 /**
  * Compose a v1 bundle with estimate annexes. The base bundle, configuration,
  * and pricing context are preserved exactly: any divergence, unknown line,

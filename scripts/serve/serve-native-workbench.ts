@@ -37,6 +37,7 @@ import { enrichEngineeringEvidenceWorkbenchWithRequirementsBriefTraces } from ".
 import { createRequirementsBriefTraceStore } from "../../src/adapters/record/requirements-brief-trace-store.ts";
 import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../src/domain/record/requirements-brief-trace.ts";
 import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "../../src/domain/record/documentary-clause-response.ts";
+import { RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION } from "../../src/domain/record/pre-sizing-worksheet.ts";
 import {
   createDocumentaryClauseResponseStore,
   DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
@@ -1291,6 +1292,7 @@ const DURABLE_BEFORE_PROJECT_ATTACHMENT_OPERATIONS = [
   MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION,
   RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION,
   RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
+  RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION,
   DESIGN_WRITE_GEOMETRY_OPERATION,
   VERIFY_SEAL_PROOF_CASE_OPERATION,
   VERIFY_RUN_FEA_STATIC_PROOF_OPERATION,

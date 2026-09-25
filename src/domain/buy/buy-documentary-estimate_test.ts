@@ -1,9 +1,10 @@
 import { assertEquals, assertRejects, assertThrows } from "@std/assert";
-import { sha256Hex } from "../kernel/deterministic-json.ts";
+import { deterministicJson, sha256Hex } from "../kernel/deterministic-json.ts";
 import { validateBuyConfiguration } from "./buy-configuration.ts";
 import {
   assertBuyDocumentaryEstimateFingerprint,
   type BuyDocumentaryEstimate,
+  buyDocumentaryEstimateEnvelopeFromResource,
   validateBuyDocumentaryEstimate,
   validateBuyDocumentaryEstimateEnvelope,
 } from "./buy-documentary-estimate.ts";
@@ -338,5 +339,41 @@ Deno.test("tampered or non-canonical estimate bytes fail closed on reopen", asyn
       ),
     TypeError,
     "does not match SHA-256",
+  );
+});
+
+Deno.test("envelope from resource requires canonical bytes", async () => {
+  const digest = await buyConfigurationDigest(buyConfigurationFixture());
+  const estimate = validateBuyDocumentaryEstimate(
+    buyDocumentaryEstimateFixture(digest),
+  );
+  const canonicalText = deterministicJson(estimate);
+  const bytes = new TextEncoder().encode(canonicalText);
+  const resourceDigest = await sha256Hex(bytes);
+  const reference = {
+    ...buySyntheticEvidenceReference(resourceDigest),
+    name: "synthetic-estimate-input.json",
+    mimeType: "application/json",
+    byteCount: bytes.byteLength,
+  };
+  const envelope = buyDocumentaryEstimateEnvelopeFromResource(
+    reference,
+    canonicalText,
+  );
+  assertEquals(envelope.fingerprint, `sha256:${resourceDigest}`);
+  assertEquals(envelope.estimate.estimateId, estimate.estimateId);
+  assertThrows(
+    () =>
+      buyDocumentaryEstimateEnvelopeFromResource(
+        reference,
+        JSON.stringify(estimate, null, 2),
+      ),
+    TypeError,
+    "exact canonical bytes",
+  );
+  assertThrows(
+    () => buyDocumentaryEstimateEnvelopeFromResource(reference, "not json"),
+    TypeError,
+    "not JSON",
   );
 });

@@ -12,6 +12,7 @@ import { MODEL_RECAPTURE_REQUIREMENTS_OPERATION } from "../../domain/architectur
 import { MODEL_WRITE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-proposal.ts";
 import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../domain/record/requirements-brief-trace.ts";
 import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "../../domain/record/documentary-clause-response.ts";
+import { RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION } from "../../domain/record/pre-sizing-worksheet.ts";
 import { MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION } from "../../domain/architecture/requirements/requirements-traced-recapture-proposal.ts";
 import { SYSON_MODEL_SEED_OPERATION } from "../../domain/architecture/seed/syson-model-seed.ts";
 import {
@@ -77,6 +78,7 @@ const THREAD_WRITE_OPERATIONS = new Set([
   `${MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION.id}@${MODEL_RECAPTURE_TRACED_REQUIREMENTS_OPERATION.version}`,
   `${RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION.id}@${RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION.version}`,
   `${RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION.id}@${RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION.version}`,
+  `${RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION.id}@${RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION.version}`,
   `${DESIGN_WRITE_GEOMETRY_OPERATION.id}@${DESIGN_WRITE_GEOMETRY_OPERATION.version}`,
   `${VERIFY_SEAL_PROOF_CASE_OPERATION.id}@${VERIFY_SEAL_PROOF_CASE_OPERATION.version}`,
   `${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.id}@${VERIFY_RUN_FEA_STATIC_PROOF_OPERATION.version}`,

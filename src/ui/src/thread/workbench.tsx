@@ -70,6 +70,12 @@ import {
   displayKindOf,
 } from "./evidence-exploration-model.ts";
 import {
+  allEvidenceKindsVisible,
+  CURRENT_EVIDENCE_KIND_PRESET,
+  isCurrentEvidenceKindPreset,
+  isFullEvidenceKindScope,
+} from "./graph-record-display.ts";
+import {
   buildEvidenceGraphModel,
   type EvidenceGraphModel,
   graphWithoutAnalysisOverlay,
@@ -96,6 +102,7 @@ import {
   versionedEdgeGroupForSelection,
   versionedEdgeOccurrenceKey,
   type VersionedProvenanceEdgeGroup,
+  type VersionedProvenanceProjection,
   versionedRefKey,
   visibleGraphRef,
   visibleGraphSelection,
@@ -164,6 +171,77 @@ export interface ThreadWorkbenchProps {
   onProjectFocus?: (projectId: string | undefined) => void;
 }
 
+/**
+ * The three canvas projections for one evidence model: the no-focus map,
+ * the focus-aware canvas, and the kind-filtered exploration map. The live
+ * and verification-filtered views share this triple; only their model and
+ * versioned-provenance inputs differ.
+ *
+ * The projection identity must be stable across non-data renders (depth
+ * control, selection highlight): rebuilding it per render remounted sigma
+ * on every click — the "everything refreshes" defect. localDepth is NOT a
+ * dependency: the local neighbourhood is computed at max depth and the
+ * visible depth filters display only.
+ */
+function useEvidenceCanvasProjections(
+  workbench: EngineeringWorkbenchSnapshot | undefined,
+  evidenceModel: EvidenceGraphModel | undefined,
+  versionedProvenance: VersionedProvenanceProjection | undefined,
+  explorationMapKinds: Record<DisplayKind, boolean>,
+  lineageFocus: ThreadGraphRef | undefined,
+  presentedMemberRef: ThreadGraphRef | undefined,
+) {
+  const fullMap = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return undefined;
+    if (!versionedProvenance || !evidenceModel) return undefined;
+    return buildEvidenceCanvasProjection(
+      evidenceModel,
+      versionedProvenance.collapsedVersionCount,
+      undefined,
+      versionedProvenance.visibleRefByMemberRef,
+    );
+  }, [workbench, versionedProvenance, evidenceModel]);
+
+  const canvas = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return undefined;
+    if (!versionedProvenance || !evidenceModel || !fullMap) {
+      return undefined;
+    }
+    const focus = presentedMemberRef ?? lineageFocus;
+    if (!focus) return fullMap;
+    return buildEvidenceCanvasProjection(
+      evidenceModel,
+      versionedProvenance.collapsedVersionCount,
+      focus,
+      versionedProvenance.visibleRefByMemberRef,
+    );
+  }, [
+    workbench,
+    versionedProvenance,
+    evidenceModel,
+    fullMap,
+    lineageFocus,
+    presentedMemberRef,
+  ]);
+
+  // Kind-filtered projection for the full Evidence canvas. Changing
+  // explorationMapKinds triggers a dagre remount — the re-layout on the
+  // visible set is intentional (no gaps). workbench stays a dependency:
+  // the guard reads it, and the model memos already rebuild on it, so no
+  // extra remount can occur.
+  const kindProjection = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return undefined;
+    if (!evidenceModel) return undefined;
+    return buildExplorationKindProjection(
+      evidenceModel,
+      explorationMapKinds,
+      versionedProvenance?.collapsedVersionCount ?? 0,
+    );
+  }, [workbench, evidenceModel, explorationMapKinds, versionedProvenance]);
+
+  return { fullMap, canvas, kindProjection };
+}
+
 export function ThreadWorkbench({
   client,
   fleetClient,
@@ -175,10 +253,9 @@ export function ThreadWorkbench({
   const [viewerSessions, setViewerSessions] = useState<
     ThreadViewerSessionsProjection
   >();
-  const [settledViewerSessionsBasisKey, setSettledViewerSessionsBasisKey] =
-    useState<
-      string
-    >();
+  const [settledViewerSessionsBasisKey, setSettledViewerSessionsBasisKey] = useState<
+    string
+  >();
   const [selection, setSelection] = useState<ThreadRef>();
   const [graphSelection, setGraphSelection] = useState<ThreadGraphSelection>();
   const [lineageFocus, setLineageFocus] = useState<ThreadGraphRef>();
@@ -214,24 +291,11 @@ export function ThreadWorkbench({
   >({ kind: "all" });
   // Panneau burger des réglages du graphe (fermé par défaut).
   // Type visibility for the full-map Exploration view (kind-projection, dagre
-  // remounts on change). Defaults: literal record kinds visible, except
-  // change and consumption records.
+  // remounts on change). Default is the current-evidence preset: history,
+  // attestation and derived-analysis kinds stay one gesture away.
   const [explorationMapKinds, setExplorationMapKinds] = useState<
     Record<DisplayKind, boolean>
-  >({
-    "artifact": true,
-    "observation": true,
-    "requirement": true,
-    "evaluation": true,
-    "violation": true,
-    "change": false,
-    "consumption": false,
-    "action": true,
-    "analysis-node": true,
-    "part-definition": true,
-    "part-usage": true,
-    "attribute-usage": true,
-  });
+  >({ ...CURRENT_EVIDENCE_KIND_PRESET });
   // Type visibility for the local Exploration view (in-place sigma reducer,
   // no re-layout). Defaults: all kinds visible.
   const [explorationLocalKinds, setExplorationLocalKinds] = useState<
@@ -550,115 +614,31 @@ export function ThreadWorkbench({
     verificationVersionedProvenanceMemo,
   ]);
 
-  // The projection identity must be stable across non-data renders (depth
-  // control, selection highlight): rebuilding it per render remounted sigma
-  // on every click — the "everything refreshes" defect. localDepth is NOT a
-  // dependency: the local neighbourhood is computed at max depth and the
-  // visible depth filters display only.
-  const fullMapCanvasMemo = useMemo(() => {
-    if (!workbench || workbench.surface !== "evidence") return undefined;
-    if (!versionedProvenanceMemo || !evidenceModel) return undefined;
-    return buildEvidenceCanvasProjection(
-      evidenceModel,
-      versionedProvenanceMemo.collapsedVersionCount,
-      undefined,
-      versionedProvenanceMemo.visibleRefByMemberRef,
-    );
-  }, [workbench, versionedProvenanceMemo, evidenceModel]);
-
-  const evidenceCanvasMemo = useMemo(() => {
-    if (!workbench || workbench.surface !== "evidence") return undefined;
-    if (!versionedProvenanceMemo || !evidenceModel || !fullMapCanvasMemo) {
-      return undefined;
-    }
-    const focus = presentedMemberRef ?? lineageFocus;
-    if (!focus) return fullMapCanvasMemo;
-    return buildEvidenceCanvasProjection(
-      evidenceModel,
-      versionedProvenanceMemo.collapsedVersionCount,
-      focus,
-      versionedProvenanceMemo.visibleRefByMemberRef,
-    );
-  }, [
+  const {
+    fullMap: fullMapCanvasMemo,
+    canvas: evidenceCanvasMemo,
+    kindProjection: explorationKindProjectionMemo,
+  } = useEvidenceCanvasProjections(
     workbench,
-    versionedProvenanceMemo,
     evidenceModel,
-    fullMapCanvasMemo,
-    lineageFocus,
-    presentedMemberRef,
-  ]);
-
-  // Kind-filtered projection for the full Evidence canvas. This projection
-  // replaces the essential-filter projection when there is no focus. Changing
-  // explorationMapKinds triggers a dagre remount — the re-layout on the
-  // visible set is intentional (no gaps).
-  const explorationKindProjectionMemo = useMemo(() => {
-    if (!workbench || workbench.surface !== "evidence") return undefined;
-    if (!evidenceModel) return undefined;
-    return buildExplorationKindProjection(
-      evidenceModel,
-      explorationMapKinds,
-      versionedProvenanceMemo?.collapsedVersionCount ?? 0,
-    );
-  }, [evidenceModel, explorationMapKinds, versionedProvenanceMemo]);
-
-  const verificationFullMapCanvasMemo = useMemo(() => {
-    if (!workbench || workbench.surface !== "evidence") return undefined;
-    if (
-      !verificationVersionedProvenanceMemo || !verificationEvidenceModelMemo
-    ) {
-      return undefined;
-    }
-    return buildEvidenceCanvasProjection(
-      verificationEvidenceModelMemo,
-      verificationVersionedProvenanceMemo.collapsedVersionCount,
-      undefined,
-      verificationVersionedProvenanceMemo.visibleRefByMemberRef,
-    );
-  }, [
-    workbench,
-    verificationVersionedProvenanceMemo,
-    verificationEvidenceModelMemo,
-  ]);
-
-  const verificationEvidenceCanvasMemo = useMemo(() => {
-    if (!workbench || workbench.surface !== "evidence") return undefined;
-    if (
-      !verificationVersionedProvenanceMemo ||
-      !verificationEvidenceModelMemo ||
-      !verificationFullMapCanvasMemo
-    ) return undefined;
-    const focus = presentedMemberRef ?? lineageFocus;
-    if (!focus) return verificationFullMapCanvasMemo;
-    return buildEvidenceCanvasProjection(
-      verificationEvidenceModelMemo,
-      verificationVersionedProvenanceMemo.collapsedVersionCount,
-      focus,
-      verificationVersionedProvenanceMemo.visibleRefByMemberRef,
-    );
-  }, [
-    workbench,
-    verificationVersionedProvenanceMemo,
-    verificationEvidenceModelMemo,
-    verificationFullMapCanvasMemo,
-    lineageFocus,
-    presentedMemberRef,
-  ]);
-
-  const verificationKindProjectionMemo = useMemo(() => {
-    if (!workbench || workbench.surface !== "evidence") return undefined;
-    if (!verificationEvidenceModelMemo) return undefined;
-    return buildExplorationKindProjection(
-      verificationEvidenceModelMemo,
-      explorationMapKinds,
-      verificationVersionedProvenanceMemo?.collapsedVersionCount ?? 0,
-    );
-  }, [
-    workbench,
-    verificationEvidenceModelMemo,
+    versionedProvenanceMemo,
     explorationMapKinds,
+    lineageFocus,
+    presentedMemberRef,
+  );
+
+  const {
+    fullMap: verificationFullMapCanvasMemo,
+    canvas: verificationEvidenceCanvasMemo,
+    kindProjection: verificationKindProjectionMemo,
+  } = useEvidenceCanvasProjections(
+    workbench,
+    verificationEvidenceModelMemo,
     verificationVersionedProvenanceMemo,
-  ]);
+    explorationMapKinds,
+    lineageFocus,
+    presentedMemberRef,
+  );
 
   // Keep one current occurrence index so a controlled keyed selection can
   // remap to the exact recorded relation, or be cleared after SSE if that
@@ -932,6 +912,21 @@ export function ThreadWorkbench({
   const presentKinds = new Set<DisplayKind>(
     displayedEvidenceModel.nodes.map((n) => displayKindOf(n)),
   );
+
+  // One-gesture scope switch between the current-evidence preset and the
+  // complete map. A custom kind mix is neither; the toggle still reaches
+  // the full map in one gesture and returns to the preset from there.
+  const mapShowsFullScope = isFullEvidenceKindScope(explorationMapKinds);
+  const mapShowsCurrentPreset = isCurrentEvidenceKindPreset(
+    explorationMapKinds,
+  );
+  const toggleMapScope = () => {
+    setExplorationMapKinds(
+      mapShowsFullScope
+        ? { ...CURRENT_EVIDENCE_KIND_PRESET }
+        : allEvidenceKindsVisible(),
+    );
+  };
 
   const currentDecisionEvidence = (decisionId?: string) => {
     const decision = decisionId
@@ -1214,9 +1209,8 @@ export function ThreadWorkbench({
           </strong>
           <span>
             The technical thread is at revision{" "}
-            {workbench.alignment.currentThreadRevision}, while project decisions
-            remain anchored to revision{" "}
-            {workbench.alignment.projectThreadRevision}.
+            {workbench.alignment.currentThreadRevision}, while project decisions remain
+            anchored to revision {workbench.alignment.projectThreadRevision}.
           </span>
         </Notice>
       )}
@@ -1230,10 +1224,9 @@ export function ThreadWorkbench({
               : "references do"} not resolve in this thread revision
           </strong>
           <span>
-            These project records cite thread entities or snapshots that the
-            exact revision cannot resolve (usually residues of abandoned work).
-            The rest of this page resolved.{" "}
-            {workbench.unresolvedEvidenceReferences
+            These project records cite thread entities or snapshots that the exact
+            revision cannot resolve (usually residues of abandoned work). The rest of
+            this page resolved. {workbench.unresolvedEvidenceReferences
               .map((issue) => issue.path)
               .join(", ")}
           </span>
@@ -1292,7 +1285,7 @@ export function ThreadWorkbench({
               <div className="flex shrink-0 items-center justify-end gap-3">
                 {activeView === "verification" && (
                   <p className="font-mono text-[9.5px] font-medium uppercase tracking-[.08em] text-muted-foreground max-lg:hidden">
-                    double-click node → local view · click background → full map
+                    double-click node → local view · click background → map
                   </p>
                 )}
               </div>
@@ -1387,38 +1380,59 @@ export function ThreadWorkbench({
                               ? "Selected version path"
                               : evidenceCanvas.isFiltered
                               ? `Local evidence · depth ${localDepth}`
-                              : "Full evidence map"}
+                              : mapShowsFullScope
+                              ? "Full evidence map"
+                              : mapShowsCurrentPreset
+                              ? "Current evidence"
+                              : "Filtered evidence map"}
                           </h4>
                           <p className="text-sm text-muted-foreground">
                             {presentedMemberRef
                               ? `Depth ${localDepth}; the alternate version stays hidden.`
                               : evidenceCanvas.isFiltered
-                              ? "Local view. Select the background for the full map."
-                              : "Select a record to inspect. Double-click a node to focus its neighbourhood."}
+                              ? "Local view. Select the background to return to the map."
+                              : mapShowsFullScope
+                              ? "Select a record to inspect. Double-click a node to focus its neighbourhood."
+                              : mapShowsCurrentPreset
+                              ? "Current head entities. Show full history for revisions, attestations and derived analysis."
+                              : "Custom kind filter. Show full history for the complete map."}
                           </p>
                         </div>
-                        <p className="shrink-0 font-mono text-xs text-muted-foreground">
-                          {evidenceCanvas.isFiltered
-                            ? `${explorationLocalVisibleCount} items shown · local view · depth ${localDepth}`
-                            : (() => {
-                              const kp = displayedKindProjection ??
-                                evidenceCanvas;
-                              const parts: string[] = [
-                                `${kp.displayedCount} items shown`,
-                              ];
-                              const totalFolded =
-                                versionedProvenance.collapsedVersionCount;
-                              if (totalFolded > 0) {
-                                parts.push(`${totalFolded} folded`);
-                              }
-                              if (kp.hiddenByKindCount > 0) {
-                                parts.push(
-                                  `${kp.hiddenByKindCount} hidden by type`,
-                                );
-                              }
-                              return parts.join(" · ");
-                            })()}
-                        </p>
+                        <div className="flex shrink-0 items-center gap-2">
+                          {!presentedMemberRef &&
+                            !evidenceCanvas.isFiltered && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={toggleMapScope}
+                              aria-pressed={mapShowsFullScope}
+                            >
+                              {mapShowsFullScope ? "Current" : "Full history"}
+                            </Button>
+                          )}
+                          <p className="font-mono text-xs text-muted-foreground">
+                            {evidenceCanvas.isFiltered
+                              ? `${explorationLocalVisibleCount} items shown · local view · depth ${localDepth}`
+                              : (() => {
+                                const kp = displayedKindProjection ??
+                                  evidenceCanvas;
+                                const parts: string[] = [
+                                  `${kp.displayedCount} items shown`,
+                                ];
+                                const totalFolded =
+                                  versionedProvenance.collapsedVersionCount;
+                                if (totalFolded > 0) {
+                                  parts.push(`${totalFolded} folded`);
+                                }
+                                if (kp.hiddenByKindCount > 0) {
+                                  parts.push(
+                                    `${kp.hiddenByKindCount} hidden by type`,
+                                  );
+                                }
+                                return parts.join(" · ");
+                              })()}
+                          </p>
+                        </div>
                       </header>
                       <div className="evidence-graph-menu">
                         <DropdownMenu align="end">
@@ -1558,17 +1572,14 @@ function workspaceEyebrow(
 function operationsHeadline(
   project: EngineeringProjectSnapshot,
 ): string {
-  const running =
-    project.agentRuns.filter((run) => run.status === "running").length;
+  const running = project.agentRuns.filter((run) => run.status === "running").length;
   const queued = project.agentRuns.filter((run) => run.status === "queued")
     .length;
   const confirmations = pendingHumanConfirmationDecisions(project).length;
   const preparations = agentPreparationDecisions(project).length;
   return `${running} running · ${queued} queued · ${confirmations} human confirmation${
     confirmations === 1 ? "" : "s"
-  } · ${preparations} agent proposal${
-    preparations === 1 ? "" : "s"
-  } in preparation`;
+  } · ${preparations} agent proposal${preparations === 1 ? "" : "s"} in preparation`;
 }
 
 function workspaceTitle(
@@ -1664,8 +1675,7 @@ function EvidenceCaseNavigator({
                 {sentenceCaseLabel(item.case.family)}
               </span>
               <span className="mt-1 block break-words text-xs text-muted-foreground">
-                {item.case.id} · r{item.case.revision} · {item.nodeCount}{" "}
-                linked items
+                {item.case.id} · r{item.case.revision} · {item.nodeCount} linked items
               </span>
               <span
                 className="mt-2 line-clamp-2 block text-xs text-foreground/75"
@@ -1678,8 +1688,8 @@ function EvidenceCaseNavigator({
         })}
         {cases.length === 0 && (
           <div className="rounded-lg border border-dashed border-border bg-muted/30 p-3 text-sm text-muted-foreground">
-            No engineering case is recorded in this exact snapshot. Catalog
-            status: {catalog.status}.
+            No engineering case is recorded in this exact snapshot. Catalog status:{" "}
+            {catalog.status}.
           </div>
         )}
       </div>
@@ -1740,9 +1750,7 @@ function MetricTiles(
 }
 
 function Mono({ children }: { children: ReactNode }): JSX.Element {
-  return (
-    <code className="font-mono text-xs text-muted-foreground">{children}</code>
-  );
+  return <code className="font-mono text-xs text-muted-foreground">{children}</code>;
 }
 
 function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
@@ -1800,12 +1808,11 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
       {
         id: "asserted-by",
         label: "Asserted by",
-        value:
-          `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
-            edge.analysis.assertedBy.version
-              ? ` @ ${edge.analysis.assertedBy.version}`
-              : ""
-          }`,
+        value: `${edge.analysis.assertedBy.kind} · ${edge.analysis.assertedBy.id}${
+          edge.analysis.assertedBy.version
+            ? ` @ ${edge.analysis.assertedBy.version}`
+            : ""
+        }`,
       },
       {
         id: "analysis-scope",
@@ -1894,10 +1901,9 @@ function GraphEdgeInspector({ snapshot, edge, history, onSelectGraphNode }: {
         {!edge.attestation && edge.analysis
           ? (
             <Notice title="Qualified analysis assertion" tone="info">
-              This semantic relation is backed by the exact evidence listed
-              above and is classified as{" "}
-              {edge.analysis.epistemicBasis}. It does not grant execution
-              authority.
+              This semantic relation is backed by the exact evidence listed above and is
+              classified as{" "}
+              {edge.analysis.epistemicBasis}. It does not grant execution authority.
             </Notice>
           )
           : !edge.attestation && (

@@ -7,6 +7,7 @@ import {
   parseBuySealDecisionParameters,
 } from "./buy-proposal.ts";
 import { BUY_DECIMAL_SCHEMA } from "./buy-decimal.ts";
+import { BUY_DOCUMENTARY_ESTIMATE_SCHEMA } from "./buy-documentary-estimate.ts";
 import {
   BUY_FIXTURE_PARENT,
   BUY_FIXTURE_RESOURCE,
@@ -118,6 +119,75 @@ Deno.test("capture rounding scale accepts the domain 0..12 range before dispatch
     () => parseBuyCaptureDecisionParameters(encodedThirteen),
     BuyProposalError,
     "0..12",
+  );
+});
+
+Deno.test("capture decision parameters round-trip an optional estimate source", () => {
+  const configuration = buyConfigurationFixture();
+  const base = {
+    configurationDigest: "1".repeat(64),
+    configurationResourceUri:
+      `casys://agent-resource-capture/sha256/${BUY_FIXTURE_RESOURCE}`,
+    configurationResourceDigest: BUY_FIXTURE_RESOURCE,
+    schemaVersion: configuration.schemaVersion,
+    projectId: configuration.projectId,
+    subjectId: configuration.subjectId,
+    configurationRevision: configuration.configurationRevision,
+    basisSnapshotId: configuration.basis.snapshotId,
+    basisRevision: configuration.basis.revision,
+    geometry: configuration.geometry,
+    documents: [{ doctype: "Item Price", name: "IP-BRACKET-001" }],
+    pricing: buyPricingContext(),
+    authorizedSiteFingerprint: BUY_FIXTURE_SITE,
+    providerTool: "erpnext_buy_capture",
+  } as const;
+  const bare = parseBuyCaptureDecisionParameters(
+    encodeBuyCaptureDecisionParameters(base),
+  );
+  assertEquals(bare.estimate, undefined);
+
+  const estimate = {
+    resourceUri: `casys://agent-resource-capture/sha256/${"5".repeat(64)}`,
+    resourceDigest: "5".repeat(64),
+    schemaVersion: BUY_DOCUMENTARY_ESTIMATE_SCHEMA,
+  } as const;
+  const parsed = parseBuyCaptureDecisionParameters(
+    encodeBuyCaptureDecisionParameters({ ...base, estimate }),
+  );
+  assertEquals(parsed.estimate, estimate);
+});
+
+Deno.test("a partial estimate trio is refused", () => {
+  const configuration = buyConfigurationFixture();
+  const encoded = encodeBuyCaptureDecisionParameters({
+    configurationDigest: "1".repeat(64),
+    configurationResourceUri:
+      `casys://agent-resource-capture/sha256/${BUY_FIXTURE_RESOURCE}`,
+    configurationResourceDigest: BUY_FIXTURE_RESOURCE,
+    estimate: {
+      resourceUri: `casys://agent-resource-capture/sha256/${"5".repeat(64)}`,
+      resourceDigest: "5".repeat(64),
+      schemaVersion: BUY_DOCUMENTARY_ESTIMATE_SCHEMA,
+    },
+    schemaVersion: configuration.schemaVersion,
+    projectId: configuration.projectId,
+    subjectId: configuration.subjectId,
+    configurationRevision: configuration.configurationRevision,
+    basisSnapshotId: configuration.basis.snapshotId,
+    basisRevision: configuration.basis.revision,
+    geometry: configuration.geometry,
+    documents: [{ doctype: "Item Price", name: "IP-BRACKET-001" }],
+    pricing: buyPricingContext(),
+    authorizedSiteFingerprint: BUY_FIXTURE_SITE,
+    providerTool: "erpnext_buy_capture",
+  });
+  assertThrows(
+    () =>
+      parseBuyCaptureDecisionParameters(
+        encoded.filter((item) => item.key !== "buy.capture.estimate.resource.digest"),
+      ),
+    BuyProposalError,
+    "buy.capture.estimate.resource.digest",
   );
 });
 

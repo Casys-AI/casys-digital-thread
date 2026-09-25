@@ -336,6 +336,11 @@ export class AnalyzeRunFeaSensitivityRunExecutor {
     this.#lease = deps.lease;
   }
 
+  /** True when the production composition bound the exact-reuse experience. */
+  get hasExperienceReuse(): boolean {
+    return this.#experience !== undefined;
+  }
+
   async execute(
     origin: EngineeringProjectCommandOrigin,
     command: {

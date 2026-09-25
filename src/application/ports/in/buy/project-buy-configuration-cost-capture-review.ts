@@ -10,6 +10,8 @@ export interface ProjectBuyConfigurationCostCaptureReviewCommand {
   readonly basis: EngineeringThreadSnapshotBasis;
   readonly configurationResourceUri: string;
   readonly configurationResourceDigest: string;
+  readonly estimateResourceUri?: string;
+  readonly estimateResourceDigest?: string;
   readonly geometryArtifactId: string;
   readonly geometryArtifactFingerprint: string;
   readonly documents: readonly BuyDocumentRequest[];

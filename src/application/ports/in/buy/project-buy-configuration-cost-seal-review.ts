@@ -1,6 +1,6 @@
 import type { EngineeringDecisionProposalParameter } from "../../../../domain/project/engineering-project.ts";
 import type { BuySealDecisionParameters } from "../../../../domain/buy/buy-proposal.ts";
-import type { BuyCostBundle } from "../../../../domain/buy/buy-cost-bundle.ts";
+import type { BuyCostBundleVersioned } from "../../../../domain/buy/buy-cost-bundle-v2.ts";
 import type { EngineeringThreadSnapshotBasis } from "../../../../domain/project/engineering-project.ts";
 
 export interface ProjectBuyConfigurationCostSealReviewCommand {
@@ -16,7 +16,7 @@ export interface ProjectBuyConfigurationCostSealReviewCommand {
 export type ProjectBuyConfigurationCostSealReviewResult =
   | {
     readonly status: "ready";
-    readonly bundle: BuyCostBundle;
+    readonly bundle: BuyCostBundleVersioned;
     readonly decisionParameters: readonly EngineeringDecisionProposalParameter[];
     readonly admission: BuySealDecisionParameters;
   }

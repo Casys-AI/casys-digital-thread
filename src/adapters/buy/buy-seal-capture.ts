@@ -14,10 +14,12 @@ import {
 } from "../../domain/buy/buy-configuration.ts";
 import {
   BUY_COVERAGE_STATUSES,
-  type BuyCostBundle,
   type BuyCoverageStatus,
-  validateBuyCostBundle,
 } from "../../domain/buy/buy-cost-bundle.ts";
+import {
+  type BuyCostBundleVersioned,
+  validateBuyCostBundleVersioned,
+} from "../../domain/buy/buy-cost-bundle-v2.ts";
 import {
   type BuySourceCaptureEnvelope,
   validateBuySourceCaptureEnvelope,
@@ -57,7 +59,7 @@ export interface BuySealCapture {
   readonly bundleDigest: string;
   readonly configurationDigest: string;
   readonly configuration: BuyConfiguration;
-  readonly bundle: BuyCostBundle;
+  readonly bundle: BuyCostBundleVersioned;
   readonly sourceCaptures: readonly BuySourceCaptureEnvelope[];
   readonly coverageStatus: BuyCoverageStatus;
   readonly reviewStatus: BuyReviewStatus;
@@ -105,7 +107,7 @@ export async function validateBuySealCapture(
     "$buySealCapture.operation.version",
   );
   const configuration = validateBuyConfiguration(root.configuration);
-  const bundle = validateBuyCostBundle(root.bundle);
+  const bundle = validateBuyCostBundleVersioned(root.bundle);
   const configurationDigest = sha256(
     root.configurationDigest,
     "$buySealCapture.configurationDigest",

@@ -4,6 +4,10 @@ import type { ContentFingerprint } from "./primitives.ts";
 
 const SHA256_DIGEST = /^[a-f0-9]{64}$/;
 
+export function isSha256HexDigest(value: unknown): value is string {
+  return typeof value === "string" && SHA256_DIGEST.test(value);
+}
+
 export function requireSha256Fingerprint(
   value: ContentFingerprint | undefined,
   path: string,

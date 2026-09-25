@@ -7,7 +7,29 @@ import {
   BUY_SEAL_CAPTURE_URI_PREFIX,
   type BuySealCapture,
 } from "./buy-seal-capture.ts";
-import type { BuyCostLine } from "../../domain/buy/buy-cost-bundle.ts";
+import type {
+  BuyCostCitation,
+  BuyCostClass,
+} from "../../domain/buy/buy-cost-bundle.ts";
+
+/** The recorded fields shared by v1 lines and v2 annexed estimate lines. */
+interface BuyRecordedCostLine {
+  readonly configurationLineId: string;
+  readonly costClass: BuyCostClass;
+  readonly citation?: BuyCostCitation;
+  readonly quantity: string;
+  readonly uom: string;
+  readonly unitPrice?: string;
+  readonly currency?: string;
+  readonly amount?: string;
+  readonly capturedAt?: string;
+  readonly sourceValidity?: { readonly from?: string; readonly to?: string };
+  readonly gaps: readonly {
+    readonly code: string;
+    readonly message: string;
+    readonly lineId?: string;
+  }[];
+}
 import {
   BUY_CAPTURE_URI_PREFIX,
   sha256Digest,
@@ -36,8 +58,9 @@ export async function buildBuyRecordedResult(
 }> {
   const capturedAt = capture.sourceCaptures[0]?.capture.capturedAt ??
     capture.sealedAt;
-  const priced = capture.bundle.lines.filter((line) => line.amount !== undefined);
-  const unpriced = capture.bundle.lines.filter((line) => line.amount === undefined);
+  const lines: readonly BuyRecordedCostLine[] = capture.bundle.lines;
+  const priced = lines.filter((line) => line.amount !== undefined);
+  const unpriced = lines.filter((line) => line.amount === undefined);
   const excluded = capture.bundle.coverage.excludedLineIds;
   const gaps = recordedGaps(capture);
   const status = recordedCoverageStatus(capture, priced, excluded, gaps);
@@ -113,7 +136,7 @@ export async function buildBuyRecordedResult(
 
 function recordedCoverageStatus(
   capture: BuySealCapture,
-  priced: readonly BuyCostLine[],
+  priced: readonly BuyRecordedCostLine[],
   excluded: readonly string[],
   gaps: readonly { readonly code: string }[],
 ): "complete" | "partial" | "unresolved" {
@@ -206,13 +229,13 @@ function recordedGaps(capture: BuySealCapture): readonly {
   return gaps;
 }
 
-function unpricedLineReason(line: BuyCostLine): string {
+function unpricedLineReason(line: BuyRecordedCostLine): string {
   return line.gaps.map((gap) => gap.message).join(" ") ||
     "No sourced monetary amount is established for this configuration line.";
 }
 
 function recordedLine(
-  line: BuyCostLine,
+  line: BuyRecordedCostLine,
   capturedAt: string,
 ): Record<string, unknown> {
   if (
@@ -244,7 +267,7 @@ function recordedLine(
   };
 }
 
-function recordedSource(line: BuyCostLine): Record<string, unknown> {
+function recordedSource(line: BuyRecordedCostLine): Record<string, unknown> {
   const citation = line.citation;
   if (!citation) {
     throw new TypeError("A recorded priced Buy line requires its retained citation.");

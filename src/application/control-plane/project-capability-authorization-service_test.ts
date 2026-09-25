@@ -1188,3 +1188,462 @@ function kinematicsPlan(adapterVersion: string): ResolvedOperationPlanV2 {
 function fingerprint(character: string) {
   return { algorithm: "sha256" as const, digest: character.repeat(64) };
 }
+
+Deno.test("a later pending brief widens the authorized ceiling through its own reviewed amendment", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "capability-brief-amendment-" });
+  try {
+    let tick = 0;
+    const now = () =>
+      new Date(Date.parse("2026-09-13T00:00:00.000Z") + ++tick * 1_000).toISOString();
+    const projects = new FileEngineeringProjectRevisionStore(directory);
+    const briefs = new ProjectBriefCommandService(projects, now);
+    const ledgers = new InMemoryProjectCapabilityLedgerStore();
+    const authorization = await authorizationService(ledgers, now);
+    const started = await briefs.startProject(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "start",
+        projectId: "brief-amendment",
+        projectName: "Brief amendment",
+        issuedAt: "2026-09-12T23:59:00.000Z",
+        intent: "Verify an assembly.",
+        intentSource: { kind: "human", reference: "conversation" },
+      },
+    );
+    const proposed = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose",
+        projectId: started.project.id,
+        expectedRevision: started.revision,
+        issuedAt: "2026-09-12T23:59:10.000Z",
+        items: baselineItems(),
+      },
+    );
+    const proposal = await authorization.proposeForPendingBrief(proposed);
+    assertEquals(
+      await authorization.requiresPendingBriefAmendment(
+        proposed.project.id,
+        proposal,
+      ),
+      false,
+    );
+    await authorization.prepareInitial(proposal);
+    const review = proposed.framing!.proposalReview!;
+    const approved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve",
+        projectId: proposed.project.id,
+        expectedRevision: proposed.revision,
+        issuedAt: "2026-09-12T23:59:20.000Z",
+        briefSnapshotId: review.briefSnapshotId,
+        briefRevision: review.briefRevision,
+        inputFingerprint: review.inputFingerprint,
+        rationale: "Confirmed.",
+      },
+    );
+    const finalized = await authorization.finalizeInitial(approved, proposal);
+    assertEquals(finalized.effectiveEnvelope?.status, "authorized");
+
+    const later = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose-later",
+        projectId: approved.project.id,
+        expectedRevision: approved.revision,
+        issuedAt: "2026-09-12T23:59:30.000Z",
+        items: [
+          ...baselineItems(),
+          {
+            ...item(
+              "static-fea",
+              "verification-activity",
+              "Verify static structural behaviour.",
+            ),
+            dependsOnItemIds: ["success"],
+            verificationAuthority: {
+              id: "static-structural-fea",
+              version: "1.0",
+            },
+          },
+        ],
+      },
+    );
+    const amendment = await authorization.reviewPendingBriefAmendment(later);
+    assertEquals(amendment.status, "amendment-required");
+    if (amendment.status !== "amendment-required") throw new Error("unreachable");
+    assertEquals(
+      await authorization.requiresPendingBriefAmendment(
+        later.project.id,
+        amendment.proposal,
+      ),
+      true,
+    );
+    assertEquals(
+      await authorization.requiresPendingBriefAmendment(
+        later.project.id,
+        proposal,
+      ),
+      false,
+    );
+    // The initial path still refuses a different ceiling; only the reviewed
+    // amendment may carry the later brief forward.
+    await assertRejects(
+      () => authorization.prepareInitial(amendment.proposal),
+      ProjectCapabilityAuthorizationError,
+      "different or revoked ceiling",
+    );
+    const laterReview = later.framing!.proposalReview!;
+    const laterApproved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve-later",
+        projectId: later.project.id,
+        expectedRevision: later.revision,
+        issuedAt: "2026-09-12T23:59:40.000Z",
+        briefSnapshotId: laterReview.briefSnapshotId,
+        briefRevision: laterReview.briefRevision,
+        inputFingerprint: laterReview.inputFingerprint,
+        rationale: "Confirmed widening.",
+      },
+    );
+    await assertRejects(
+      () =>
+        authorization.authorizePendingBriefAmendment(
+          laterApproved,
+          fingerprint("b"),
+        ),
+      ProjectCapabilityAuthorizationError,
+      "no longer matches the exact reviewed proposal",
+    );
+    const amended = await authorization.authorizePendingBriefAmendment(
+      laterApproved,
+      amendment.proposal.capabilityProposalFingerprint,
+    );
+    assertEquals(amended.effectiveEnvelope?.status, "authorized");
+    assertEquals(
+      amended.events.map((event) => event.kind),
+      ["initial-prepared", "initial-authorized", "amendment-authorized"],
+    );
+    assertEquals(
+      amended.effectiveEnvelope?.proposal.capabilityProposalFingerprint,
+      amendment.proposal.capabilityProposalFingerprint,
+    );
+    assertEquals(
+      amended.effectiveEnvelope?.proposal.brief.briefSnapshotId,
+      later.framing!.proposedBrief!.id,
+    );
+    const replay = await authorization.authorizePendingBriefAmendment(
+      laterApproved,
+      amendment.proposal.capabilityProposalFingerprint,
+    );
+    assertEquals(replay.revision, amended.revision);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("an equivalent later brief stays covered while a narrowing brief withdraws", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "capability-brief-covered-" });
+  try {
+    let tick = 0;
+    const now = () =>
+      new Date(Date.parse("2026-09-13T00:00:00.000Z") + ++tick * 1_000).toISOString();
+    const projects = new FileEngineeringProjectRevisionStore(directory);
+    const briefs = new ProjectBriefCommandService(projects, now);
+    const ledgers = new InMemoryProjectCapabilityLedgerStore();
+    const authorization = await authorizationService(ledgers, now);
+    const started = await briefs.startProject(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "start",
+        projectId: "brief-covered",
+        projectName: "Brief covered",
+        issuedAt: "2026-09-12T23:59:00.000Z",
+        intent: "Verify an assembly.",
+        intentSource: { kind: "human", reference: "conversation" },
+      },
+    );
+    const proposed = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose",
+        projectId: started.project.id,
+        expectedRevision: started.revision,
+        issuedAt: "2026-09-12T23:59:10.000Z",
+        items: baselineItems(),
+      },
+    );
+    const proposal = await authorization.proposeForPendingBrief(proposed);
+    await authorization.prepareInitial(proposal);
+    const review = proposed.framing!.proposalReview!;
+    const approved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve",
+        projectId: proposed.project.id,
+        expectedRevision: proposed.revision,
+        issuedAt: "2026-09-12T23:59:20.000Z",
+        briefSnapshotId: review.briefSnapshotId,
+        briefRevision: review.briefRevision,
+        inputFingerprint: review.inputFingerprint,
+        rationale: "Confirmed.",
+      },
+    );
+    const finalized = await authorization.finalizeInitial(approved, proposal);
+
+    const editorial = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose-editorial",
+        projectId: approved.project.id,
+        expectedRevision: approved.revision,
+        issuedAt: "2026-09-12T23:59:30.000Z",
+        items: baselineItems().map((entry) =>
+          entry.id === "objective"
+            ? { ...entry, statement: "Verify the assembly with a clarified title." }
+            : entry
+        ),
+      },
+    );
+    const editorialReview = await authorization.reviewPendingBriefAmendment(
+      editorial,
+    );
+    assertEquals(editorialReview.status, "covered");
+    if (editorialReview.status !== "covered") throw new Error("unreachable");
+    assertEquals(
+      await authorization.requiresPendingBriefAmendment(
+        editorial.project.id,
+        editorialReview.proposal,
+      ),
+      false,
+    );
+    const editorialPending = editorial.framing!.proposalReview!;
+    const editorialApproved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve-editorial",
+        projectId: editorial.project.id,
+        expectedRevision: editorial.revision,
+        issuedAt: "2026-09-12T23:59:40.000Z",
+        briefSnapshotId: editorialPending.briefSnapshotId,
+        briefRevision: editorialPending.briefRevision,
+        inputFingerprint: editorialPending.inputFingerprint,
+        rationale: "Confirmed editorial revision.",
+      },
+    );
+    const editorialFinalized = await authorization.authorizePendingBriefAmendment(
+      editorialApproved,
+      editorialReview.proposal.capabilityProposalFingerprint,
+    );
+    assertEquals(editorialFinalized.revision, finalized.revision);
+
+    const narrowed = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose-narrowed",
+        projectId: editorialApproved.project.id,
+        expectedRevision: editorialApproved.revision,
+        issuedAt: "2026-09-12T23:59:50.000Z",
+        items: baselineItems().filter((entry) => entry.id !== "assembly"),
+      },
+    );
+    const withdrawal = await authorization.reviewPendingBriefAmendment(narrowed);
+    assertEquals(withdrawal.status, "withdrawal-required");
+    if (withdrawal.status !== "withdrawal-required") throw new Error("unreachable");
+    const narrowedPending = narrowed.framing!.proposalReview!;
+    const narrowedApproved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve-narrowed",
+        projectId: narrowed.project.id,
+        expectedRevision: narrowed.revision,
+        issuedAt: "2026-09-13T00:00:00.000Z",
+        briefSnapshotId: narrowedPending.briefSnapshotId,
+        briefRevision: narrowedPending.briefRevision,
+        inputFingerprint: narrowedPending.inputFingerprint,
+        rationale: "Confirmed narrowing.",
+      },
+    );
+    const withdrawn = await authorization.authorizePendingBriefAmendment(
+      narrowedApproved,
+      withdrawal.proposal.capabilityProposalFingerprint,
+    );
+    assertEquals(withdrawn.effectiveEnvelope?.status, "authorized");
+    const before = finalized.effectiveEnvelope?.proposal.bindings.map((binding) =>
+      binding.requirement.id
+    ) ?? [];
+    const after = withdrawn.effectiveEnvelope?.proposal.bindings.map((binding) =>
+      binding.requirement.id
+    ) ?? [];
+    assertEquals(after.length < before.length, true);
+    assertEquals(
+      after.every((key) =>
+        before.includes(key)
+      ),
+      true,
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("a later brief that switches a recorded binding requires a method transition", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "capability-brief-method-" });
+  try {
+    let tick = 0;
+    const now = () =>
+      new Date(Date.parse("2026-09-13T00:00:00.000Z") + ++tick * 1_000).toISOString();
+    const projects = new FileEngineeringProjectRevisionStore(directory);
+    const briefs = new ProjectBriefCommandService(projects, now);
+    const [catalog031, catalog032] = await Promise.all([
+      catalogWithChronoAdapterVersion("0.3.1"),
+      catalogWithChronoAdapterVersion("0.3.2"),
+    ]);
+    const ledgers = new InMemoryProjectCapabilityLedgerStore();
+    const predecessor = authorizationForCatalog(catalog031, ledgers, now);
+    const started = await briefs.startProject(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "start",
+        projectId: "brief-method",
+        projectName: "Brief method",
+        issuedAt: "2026-09-12T23:59:00.000Z",
+        intent: "Observe prescribed kinematics after a CAD baseline.",
+        intentSource: { kind: "human", reference: "conversation" },
+      },
+    );
+    const items = [
+      item("objective", "objective", "Observe a mechanism."),
+      item("mission", "mission-scenario", "Capture CAD then kinematics."),
+      {
+        ...item("success", "success-criterion", "The result is reviewable."),
+        dependsOnItemIds: [],
+      },
+      {
+        ...item(
+          "kinematics",
+          "verification-activity",
+          "Observe prescribed rigid-body kinematics.",
+        ),
+        dependsOnItemIds: ["success"],
+        verificationAuthority: { id: "prescribed-kinematics", version: "1.0" },
+      },
+    ];
+    const proposed = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose",
+        projectId: started.project.id,
+        expectedRevision: started.revision,
+        issuedAt: "2026-09-12T23:59:10.000Z",
+        items,
+      },
+    );
+    const proposal = await predecessor.proposeForPendingBrief(proposed);
+    await predecessor.prepareInitial(proposal);
+    const review = proposed.framing!.proposalReview!;
+    const approved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve",
+        projectId: proposed.project.id,
+        expectedRevision: proposed.revision,
+        issuedAt: "2026-09-12T23:59:20.000Z",
+        briefSnapshotId: review.briefSnapshotId,
+        briefRevision: review.briefRevision,
+        inputFingerprint: review.inputFingerprint,
+        rationale: "Confirmed.",
+      },
+    );
+    await predecessor.finalizeInitial(approved, proposal);
+
+    const later = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose-later",
+        projectId: approved.project.id,
+        expectedRevision: approved.revision,
+        issuedAt: "2026-09-12T23:59:30.000Z",
+        items: items.map((entry) =>
+          entry.id === "objective"
+            ? { ...entry, statement: "Observe the mechanism again." }
+            : entry
+        ),
+      },
+    );
+    const evidenceProject = {
+      ...later,
+      threadSnapshots: [threadSnapshot()],
+      workItems: [
+        plannedWorkItem({
+          id: "wi-baseline",
+          status: "completed",
+          kind: "define",
+          operationId: "baseline.from-approved-brief",
+          operationVersion: "1",
+        }),
+        chronoWorkItem(),
+      ],
+      agentRuns: [completedCadRun(), completedChronoRun()],
+    };
+    const recorded = kinematicsPlan("0.3.1");
+    const withPublished = authorizationForCatalog(
+      catalog032,
+      ledgers,
+      now,
+      {
+        read: () =>
+          Promise.resolve({
+            ...recorded,
+            run: { ...recorded.run, projectId: "brief-method" },
+            operationalCapability: {
+              ...recorded.operationalCapability,
+              projectId: "brief-method",
+            },
+          }),
+      },
+    );
+    const blocked = await withPublished.reviewPendingBriefAmendment(
+      evidenceProject as unknown as EngineeringProjectSnapshot,
+    );
+    assertEquals(blocked.status, "method-transition-required");
+    if (blocked.status !== "method-transition-required") {
+      throw new Error("unreachable");
+    }
+    const laterPending = later.framing!.proposalReview!;
+    const laterApproved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve-later",
+        projectId: later.project.id,
+        expectedRevision: later.revision,
+        issuedAt: "2026-09-12T23:59:40.000Z",
+        briefSnapshotId: laterPending.briefSnapshotId,
+        briefRevision: laterPending.briefRevision,
+        inputFingerprint: laterPending.inputFingerprint,
+        rationale: "Confirmed.",
+      },
+    );
+    // Production snapshots retain their runs across brief approval; the
+    // overlay below reproduces that persistence for the authorize fork.
+    const laterApprovedWithRuns = {
+      ...laterApproved,
+      threadSnapshots: evidenceProject.threadSnapshots,
+      workItems: evidenceProject.workItems,
+      agentRuns: evidenceProject.agentRuns,
+    };
+    await assertRejects(
+      () =>
+        withPublished.authorizePendingBriefAmendment(
+          laterApprovedWithRuns as unknown as EngineeringProjectSnapshot,
+          blocked.proposal.capabilityProposalFingerprint,
+        ),
+      ProjectCapabilityAuthorizationError,
+      "method-transition path",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});

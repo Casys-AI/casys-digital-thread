@@ -8,6 +8,7 @@
 import { attestCanonicalWriteGeometryStep } from "../cad/canonical/canonical-write-geometry-step.ts";
 import type { ThreadArtifact, ThreadSnapshot } from "../thread/thread-snapshot.ts";
 import type { BuyConfiguration } from "./buy-configuration.ts";
+import type { BuyDocumentaryEstimate } from "./buy-documentary-estimate.ts";
 
 export type BuyApplicability =
   | {
@@ -63,6 +64,73 @@ export function recrossBuyConfigurationThreadBasis(
     return {
       status: "refused",
       reason: "Buy configuration basis does not match the exact Thread basis.",
+    };
+  }
+  return { status: "current" };
+}
+
+/**
+ * Recross a documentary estimate against the exact configuration and Thread
+ * basis it prices. A stale estimate bound to another configuration revision,
+ * STEP, or basis is refused; only the recrossed current basis may price.
+ */
+export function recrossBuyDocumentaryEstimateBasis(
+  estimate: BuyDocumentaryEstimate,
+  basis: {
+    readonly configuration: BuyConfiguration;
+    readonly configurationDigest: string;
+    readonly snapshotId: string;
+    readonly revision: number;
+    readonly subjectId: string;
+  },
+): { readonly status: "current" } | {
+  readonly status: "refused";
+  readonly reason: string;
+} {
+  if (estimate.projectId !== basis.configuration.projectId) {
+    return {
+      status: "refused",
+      reason: "Documentary estimate projectId does not match the configuration.",
+    };
+  }
+  if (
+    estimate.subjectId !== basis.subjectId ||
+    estimate.basis.subjectId !== basis.subjectId
+  ) {
+    return {
+      status: "refused",
+      reason: "Documentary estimate subjectId does not match the exact Thread basis.",
+    };
+  }
+  if (estimate.configurationDigest !== basis.configurationDigest) {
+    return {
+      status: "refused",
+      reason:
+        "Documentary estimate configuration digest does not match the reviewed configuration.",
+    };
+  }
+  if (
+    estimate.basis.snapshotId !== basis.snapshotId ||
+    estimate.basis.revision !== basis.revision
+  ) {
+    return {
+      status: "refused",
+      reason: "Documentary estimate basis does not match the exact Thread basis.",
+    };
+  }
+  const bound = basis.configuration.geometry;
+  const claimed = estimate.geometry;
+  if (
+    claimed.parentArtifactId !== bound.parentArtifactId ||
+    claimed.parentFingerprint !== bound.parentFingerprint ||
+    claimed.stepArtifactId !== bound.stepArtifactId ||
+    claimed.stepFingerprint !== bound.stepFingerprint ||
+    claimed.stepUri !== bound.stepUri
+  ) {
+    return {
+      status: "refused",
+      reason:
+        "Documentary estimate geometry does not match the reviewed configuration STEP.",
     };
   }
   return { status: "current" };

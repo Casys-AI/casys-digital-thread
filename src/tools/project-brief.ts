@@ -13,7 +13,10 @@ import type {
   ProjectBriefSourceKind,
 } from "../domain/project/project-brief.ts";
 import type { ContentFingerprint } from "../domain/thread/thread-snapshot.ts";
-import type { ProjectCapabilityProposal } from "../domain/capability/project-capability-authorization.ts";
+import type {
+  ProjectCapabilityEnvelopeDelta,
+  ProjectCapabilityProposal,
+} from "../domain/capability/project-capability-authorization.ts";
 import { ProjectCapabilityAuthorizationService } from "../application/control-plane/project-capability-authorization-service.ts";
 import {
   autoConfirms,
@@ -164,6 +167,8 @@ export function registerProjectBriefTools(
     );
     const current = await dependencies.projects.get(common.projectId);
     let proposal: ProjectCapabilityProposal;
+    let amendsAuthorizedCeiling = false;
+    let amendmentDelta: ProjectCapabilityEnvelopeDelta | null = null;
     if (
       current && isExactApprovedBriefBasis(
         current,
@@ -185,6 +190,11 @@ export function registerProjectBriefTools(
           "The approved brief no longer matches the reviewed capability proposal.",
         );
       }
+      // A crash between brief approval and ledger append re-enters here with
+      // no pending review left. The authorize call below re-derives the exact
+      // delta and fails closed; only the route is decided here.
+      amendsAuthorizedCeiling = await dependencies.capabilityAuthorization
+        .requiresPendingBriefAmendment(common.projectId, proposal);
     } else if (
       current && current.revision === common.expectedRevision &&
       isExactPendingBrief(current, briefSnapshotId, briefRevision, inputFingerprint)
@@ -202,7 +212,27 @@ export function registerProjectBriefTools(
           "The pending brief no longer matches the reviewed capability proposal.",
         );
       }
-      await dependencies.capabilityAuthorization.prepareInitial(proposal);
+      if (
+        await dependencies.capabilityAuthorization.requiresPendingBriefAmendment(
+          common.projectId,
+          proposal,
+        )
+      ) {
+        const review = await dependencies.capabilityAuthorization
+          .reviewPendingBriefAmendment(current);
+        if (
+          review.status !== "amendment-required" &&
+          review.status !== "withdrawal-required"
+        ) {
+          throw new TypeError(
+            `The later brief cannot amend the operational ceiling while its review status is ${review.status}.`,
+          );
+        }
+        amendsAuthorizedCeiling = true;
+        amendmentDelta = review.delta;
+      } else {
+        await dependencies.capabilityAuthorization.prepareInitial(proposal);
+      }
     } else {
       proposal = await dependencies.capabilityAuthorization.preparedProposal(
         common.projectId,
@@ -248,12 +278,16 @@ export function registerProjectBriefTools(
             : "The paired MCP host returned an accepted confirmation response.",
         },
       );
-      const finalized = await dependencies.capabilityAuthorization.finalizeInitial(
+      const finalized = await finalizeBriefCapability(
+        dependencies.capabilityAuthorization,
         snapshot,
         proposal,
+        amendsAuthorizedCeiling,
       );
       return projectResult(
-        `The existing exact brief approval was replayed and its prepared operational capability authorization was finalized at project revision ${snapshot.revision}.`,
+        amendsAuthorizedCeiling
+          ? `The existing exact brief approval was replayed and its operational capability amendment was authorized at project revision ${snapshot.revision}.`
+          : `The existing exact brief approval was replayed and its prepared operational capability authorization was finalized at project revision ${snapshot.revision}.`,
         snapshot,
         { capabilityAuthorization: finalized.effectiveEnvelope },
       );
@@ -277,12 +311,16 @@ export function registerProjectBriefTools(
           ),
         },
       );
-      const finalized = await dependencies.capabilityAuthorization.finalizeInitial(
+      const finalized = await finalizeBriefCapability(
+        dependencies.capabilityAuthorization,
         snapshot,
         proposal,
+        amendsAuthorizedCeiling,
       );
       return projectResult(
-        `YOLO local startup opt-in auto-confirmed the exact brief at project revision ${snapshot.revision}. No inputResponses or retryVerified value was fabricated.`,
+        amendsAuthorizedCeiling
+          ? `YOLO local startup opt-in auto-confirmed the exact later brief and authorized its operational capability amendment at project revision ${snapshot.revision}. No inputResponses or retryVerified value was fabricated.`
+          : `YOLO local startup opt-in auto-confirmed the exact brief at project revision ${snapshot.revision}. No inputResponses or retryVerified value was fabricated.`,
         snapshot,
         { capabilityAuthorization: finalized.effectiveEnvelope },
       );
@@ -296,6 +334,7 @@ export function registerProjectBriefTools(
           );
         })(),
         proposal,
+        amendmentDelta,
       );
     }
     if (!confirmation) {
@@ -324,12 +363,16 @@ export function registerProjectBriefTools(
         rationale,
       },
     );
-    const finalized = await dependencies.capabilityAuthorization.finalizeInitial(
+    const finalized = await finalizeBriefCapability(
+      dependencies.capabilityAuthorization,
       snapshot,
       proposal,
+      amendsAuthorizedCeiling,
     );
     return projectResult(
-      `The exact brief revision is now the canonical project intent at project revision ${snapshot.revision}. No technical evidence was created.`,
+      amendsAuthorizedCeiling
+        ? `The exact later brief revision is now the canonical project intent at project revision ${snapshot.revision} and its operational capability amendment is authorized. No technical evidence was created.`
+        : `The exact brief revision is now the canonical project intent at project revision ${snapshot.revision}. No technical evidence was created.`,
       snapshot,
       { capabilityAuthorization: finalized.effectiveEnvelope },
     );
@@ -773,6 +816,7 @@ function verificationAuthority(value: unknown, path: string) {
 function briefConfirmationRequest(
   project: EngineeringProjectSnapshot,
   proposal: ProjectCapabilityProposal,
+  delta: ProjectCapabilityEnvelopeDelta | null,
 ) {
   const brief = project.framing!.proposedBrief!;
   const objective = brief.items.find((item) => item.kind === "objective")!.statement;
@@ -784,13 +828,18 @@ function briefConfirmationRequest(
         params: {
           mode: "form",
           message:
-            `The agent consolidated this project brief: “${objective}”. This confirmation also authorizes the exact server-derived operational capability proposal ${proposal.capabilityProposalFingerprint.digest} (${proposal.bindings.length} semantic requirement(s), ${proposal.units.length} installable unit(s)). The structured proposal and initial-envelope delta below are display-only server facts; this form offers no capability, provider, image, tool, or argument selection. Runtime activation remains separately blocked wherever qualification/platform/security says so. Confirm this exact framing and operational ceiling, or decline and continue the conversation.`,
+            `The agent consolidated this project brief: “${objective}”. This confirmation also authorizes the exact server-derived operational capability proposal ${proposal.capabilityProposalFingerprint.digest} (${proposal.bindings.length} semantic requirement(s), ${proposal.units.length} installable unit(s))${
+              delta === null ? "" : " as an amendment to the authorized ceiling"
+            }. The structured proposal and envelope delta below are display-only server facts; this form offers no capability, provider, image, tool, or argument selection. Runtime activation remains separately blocked wherever qualification/platform/security says so. Confirm this exact framing and operational ceiling, or decline and continue the conversation.`,
           capabilityProposalFingerprint: structuredClone(
             proposal.capabilityProposalFingerprint,
           ),
           capabilityProposal: structuredClone(proposal),
-          /** The first envelope has no predecessor, so its exact delta is literal. */
-          capabilityEnvelopeDelta: null,
+          /**
+           * The first envelope has no predecessor, so its exact delta stays
+           * null. A later brief carries its literal amendment delta instead.
+           */
+          capabilityEnvelopeDelta: delta === null ? null : structuredClone(delta),
           requestedSchema: {
             type: "object",
             properties: {
@@ -909,6 +958,21 @@ function pendingBriefConfirmArgs(
     briefRevision: brief.revision,
     inputFingerprint: review.inputFingerprint,
   };
+}
+
+async function finalizeBriefCapability(
+  authorization: ProjectCapabilityAuthorizationService,
+  snapshot: EngineeringProjectSnapshot,
+  proposal: ProjectCapabilityProposal,
+  amend: boolean,
+) {
+  if (amend) {
+    return await authorization.authorizePendingBriefAmendment(
+      snapshot,
+      proposal.capabilityProposalFingerprint,
+    );
+  }
+  return await authorization.finalizeInitial(snapshot, proposal);
 }
 
 function isExactPendingBrief(

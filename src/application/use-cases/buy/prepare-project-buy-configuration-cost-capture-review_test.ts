@@ -1,16 +1,22 @@
 import { assertEquals } from "@std/assert";
 import { DESIGN_WRITE_GEOMETRY_TOOL } from "../../../domain/cad/canonical/canonical-write-geometry-step.ts";
 import { COMMERCE_READ_ERPNEXT_BUY_SOURCE_CAPABILITY } from "../../../domain/capability/engineering-capability.ts";
+import { BUY_DOCUMENTARY_ESTIMATE_SCHEMA } from "../../../domain/buy/buy-documentary-estimate.ts";
 import {
   BUY_FIXTURE_PARENT,
   BUY_FIXTURE_RESOURCE,
   BUY_FIXTURE_SITE,
   BUY_FIXTURE_STEP,
+  buyConfigurationDigest,
   buyConfigurationFixture,
+  buyDocumentaryEstimateFixture,
   buyPricingContext,
 } from "../../../domain/buy/buy-fixtures.ts";
 import { BUY_SOURCE_INSTANCE_KIND } from "../../../domain/buy/buy-source-capture.ts";
-import { deterministicJson } from "../../../domain/kernel/deterministic-json.ts";
+import {
+  deterministicJson,
+  sha256Hex,
+} from "../../../domain/kernel/deterministic-json.ts";
 import type {
   ThreadArtifact,
   ThreadSnapshot,
@@ -70,6 +76,142 @@ Deno.test(
     assertEquals(wrongFingerprint.reason.includes("parent geometry"), true);
   },
 );
+
+Deno.test("capture review admits a current documentary estimate", async () => {
+  const configuration = buyConfigurationFixture();
+  const digest = await buyConfigurationDigest(configuration);
+  const stored = await estimateResource(
+    buyDocumentaryEstimateFixture(digest),
+  );
+  const ready = await reviewWithResources(configuration, stored).execute({
+    ...command(),
+    estimateResourceUri: stored.uri,
+    estimateResourceDigest: stored.digest,
+  });
+  assertEquals(ready.status, "ready");
+  if (ready.status !== "ready") return;
+  assertEquals(ready.admission.estimate, {
+    resourceUri: stored.uri,
+    resourceDigest: stored.digest,
+    schemaVersion: BUY_DOCUMENTARY_ESTIMATE_SCHEMA,
+  });
+  assertEquals(
+    ready.decisionParameters.some((item) =>
+      item.key === "buy.capture.estimate.resource.digest"
+    ),
+    true,
+  );
+});
+
+Deno.test("capture review refuses a stale documentary estimate", async () => {
+  const configuration = buyConfigurationFixture();
+  const stored = await estimateResource(
+    buyDocumentaryEstimateFixture("0".repeat(64)),
+  );
+  const refused = await reviewWithResources(configuration, stored).execute({
+    ...command(),
+    estimateResourceUri: stored.uri,
+    estimateResourceDigest: stored.digest,
+  });
+  assertEquals(refused.status, "unresolved");
+  if (refused.status !== "unresolved") return;
+  assertEquals(refused.reason.includes("configuration digest"), true);
+});
+
+Deno.test("capture review refuses a half-named estimate input", async () => {
+  const configuration = buyConfigurationFixture();
+  const digest = await buyConfigurationDigest(configuration);
+  const stored = await estimateResource(
+    buyDocumentaryEstimateFixture(digest),
+  );
+  const refused = await reviewWithResources(configuration, stored).execute({
+    ...command(),
+    estimateResourceUri: stored.uri,
+  });
+  assertEquals(refused.status, "unresolved");
+});
+
+Deno.test("capture review refuses an estimate without a composed store", async () => {
+  const configuration = buyConfigurationFixture();
+  const digest = await buyConfigurationDigest(configuration);
+  const stored = await estimateResource(
+    buyDocumentaryEstimateFixture(digest),
+  );
+  const refused = await reviewFor(configuration).execute({
+    ...command(),
+    estimateResourceUri: stored.uri,
+    estimateResourceDigest: stored.digest,
+  });
+  assertEquals(refused.status, "unresolved");
+  if (refused.status !== "unresolved") return;
+  assertEquals(refused.reason.includes("no agent-resource store"), true);
+});
+
+async function estimateResource(
+  estimate: ReturnType<typeof buyDocumentaryEstimateFixture>,
+) {
+  const text = deterministicJson(estimate);
+  const bytes = new TextEncoder().encode(text);
+  const digest = await sha256Hex(bytes);
+  const uri = `casys://agent-resource-capture/sha256/${digest}`;
+  return {
+    uri,
+    digest,
+    text,
+    stored: {
+      reference: {
+        schemaVersion: "agent-resource-capture/1.0" as const,
+        uri,
+        name: "estimate-input.json",
+        mimeType: "application/json",
+        representation: "text" as const,
+        byteCount: bytes.byteLength,
+        fingerprint: { algorithm: "sha256" as const, digest },
+      },
+      bytes,
+    },
+  };
+}
+
+function reviewWithResources(
+  configuration: ReturnType<typeof buyConfigurationFixture>,
+  estimate: Awaited<ReturnType<typeof estimateResource>>,
+) {
+  const thread = snapshot([writeGeometryPrimary(), cadAssetStep()]);
+  return new PrepareProjectBuyConfigurationCostCaptureReview(
+    {
+      get: (id: string) => Promise.resolve(id === thread.id ? thread : undefined),
+      latest: () => Promise.resolve(thread),
+      save: () => Promise.reject(new Error("must not save")),
+    },
+    {
+      read: () => Promise.resolve(deterministicJson(configuration)),
+    },
+    {
+      resolve: () =>
+        Promise.resolve({
+          status: "qualified",
+          binding: {
+            capability: COMMERCE_READ_ERPNEXT_BUY_SOURCE_CAPABILITY,
+            qualification: "qualified",
+            sourceInstance: {
+              kind: BUY_SOURCE_INSTANCE_KIND,
+              siteId: BUY_FIXTURE_SITE,
+            },
+            adapter: {
+              id: "erpnext-buy-capture-fixture",
+              version: "0.0.0-fixture",
+            },
+          },
+        }),
+    },
+    undefined,
+    {
+      read: (uri: string) =>
+        Promise.resolve(uri === estimate.uri ? estimate.stored : undefined),
+    },
+  );
+}
 
 function reviewFor(configuration: ReturnType<typeof buyConfigurationFixture>) {
   const thread = snapshot([writeGeometryPrimary(), cadAssetStep()]);

@@ -65,3 +65,48 @@ export function isDisplayKindVisible(
 ): boolean {
   return visibleKinds[displayKindOf(node)] !== false;
 }
+
+/**
+ * Default Evidence map scope: head-snapshot entity kinds only. Revision
+ * history (`change`), attestation records (`consumption`) and derived
+ * analysis records (`analysis-node`) stay one gesture away instead of
+ * painted by default. Literal kinds only; nothing here interprets a record.
+ */
+export const CURRENT_EVIDENCE_KIND_PRESET: Record<DisplayKind, boolean> = {
+  "artifact": true,
+  "observation": true,
+  "requirement": true,
+  "evaluation": true,
+  "violation": true,
+  "change": false,
+  "consumption": false,
+  "action": true,
+  "analysis-node": false,
+  "part-definition": true,
+  "part-usage": true,
+  "attribute-usage": true,
+};
+
+export function isCurrentEvidenceKindPreset(
+  visibleKinds: Record<DisplayKind, boolean>,
+): boolean {
+  return (Object.keys(CURRENT_EVIDENCE_KIND_PRESET) as DisplayKind[]).every(
+    (kind) => visibleKinds[kind] === CURRENT_EVIDENCE_KIND_PRESET[kind],
+  );
+}
+
+export function isFullEvidenceKindScope(
+  visibleKinds: Record<DisplayKind, boolean>,
+): boolean {
+  return (Object.keys(CURRENT_EVIDENCE_KIND_PRESET) as DisplayKind[]).every(
+    (kind) => visibleKinds[kind] === true,
+  );
+}
+
+export function allEvidenceKindsVisible(): Record<DisplayKind, boolean> {
+  return Object.fromEntries(
+    (Object.keys(CURRENT_EVIDENCE_KIND_PRESET) as DisplayKind[]).map(
+      (kind) => [kind, true] as const,
+    ),
+  ) as Record<DisplayKind, boolean>;
+}

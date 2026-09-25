@@ -5,7 +5,10 @@ import {
   sha256Fingerprint,
 } from "../../domain/kernel/deterministic-json.ts";
 import { validateBuyConfiguration } from "../../domain/buy/buy-configuration.ts";
-import { computeBuyCostCandidate } from "../../domain/buy/buy-cost-bundle.ts";
+import {
+  BUY_COST_BUNDLE_SCHEMA,
+  computeBuyCostCandidate,
+} from "../../domain/buy/buy-cost-bundle.ts";
 import { selectBuyCostLines } from "../../domain/buy/buy-cost-selection.ts";
 import {
   buildBuyRecordedResult,
@@ -202,8 +205,12 @@ Deno.test("Buy projection preserves V1 and refuses missing retained priced data"
   const { result } = await buildBuyRecordedResult(fixture.capture, "current");
   assertEquals(result.schemaVersion, BUY_RECORDED_RESULT_SCHEMA);
   assertEquals("excludedLines" in result, false);
+  const base = fixture.capture.bundle;
+  if (base.schemaVersion !== BUY_COST_BUNDLE_SCHEMA) {
+    throw new Error("expected a v1 fixture bundle");
+  }
   for (const key of ["unitPrice", "currency", "citation"] as const) {
-    const lines = fixture.capture.bundle.lines.map((line) => ({
+    const lines = base.lines.map((line) => ({
       ...line,
       [key]: undefined,
     }));
@@ -211,7 +218,7 @@ Deno.test("Buy projection preserves V1 and refuses missing retained priced data"
       () =>
         buildBuyRecordedResult({
           ...fixture.capture,
-          bundle: { ...fixture.capture.bundle, lines },
+          bundle: { ...base, lines },
         }, "current"),
       TypeError,
       "requires retained price",
@@ -221,7 +228,7 @@ Deno.test("Buy projection preserves V1 and refuses missing retained priced data"
     () =>
       buildBuyRecordedResult({
         ...fixture.capture,
-        bundle: { ...fixture.capture.bundle, totals: [] },
+        bundle: { ...base, totals: [] },
       }, "current"),
     TypeError,
     "retained covered subtotal",

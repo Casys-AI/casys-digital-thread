@@ -1,4 +1,4 @@
-import { assertEquals, assertThrows } from "@std/assert";
+import { assertThrows } from "@std/assert";
 import type { ContentFingerprint } from "../../kernel/primitives.ts";
 import {
   assertCanonicalStepBytes,
@@ -241,5 +241,4 @@ Deno.test("static proof identity accepts matching STEP bytes and evidence", () =
     profileSha256: expected.executionProfileFingerprint.digest,
     hasEvidenceSha256: true,
   }, expected);
-  assertEquals(true, true);
 });

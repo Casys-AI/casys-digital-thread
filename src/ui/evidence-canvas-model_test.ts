@@ -7,6 +7,12 @@ import {
   paintedDossierMetric,
 } from "./src/thread/evidence-canvas-model.ts";
 import type { DisplayKind } from "./src/thread/graph-record-display.ts";
+import {
+  allEvidenceKindsVisible,
+  CURRENT_EVIDENCE_KIND_PRESET,
+  isCurrentEvidenceKindPreset,
+  isFullEvidenceKindScope,
+} from "./src/thread/graph-record-display.ts";
 import { buildEvidenceGraphModel } from "./src/thread/evidence-graph-model.ts";
 import type {
   ThreadEvidenceFamilyGraph,
@@ -115,6 +121,48 @@ Deno.test("component labels and dossier metrics remain graph-derived", () => {
     componentCount: 1,
   });
   assertEquals(linkedEvidenceDetail(1), "in 1 linked dossier");
+});
+
+Deno.test("current evidence preset keeps head entities and parks history kinds", () => {
+  assertEquals(
+    Object.entries(CURRENT_EVIDENCE_KIND_PRESET)
+      .filter(([, visible]) => !visible)
+      .map(([kind]) => kind)
+      .sort(),
+    ["analysis-node", "change", "consumption"],
+  );
+  assertEquals(
+    isCurrentEvidenceKindPreset({ ...CURRENT_EVIDENCE_KIND_PRESET }),
+    true,
+  );
+  assertEquals(
+    isFullEvidenceKindScope({ ...CURRENT_EVIDENCE_KIND_PRESET }),
+    false,
+  );
+  assertEquals(isCurrentEvidenceKindPreset(allKinds(true)), false);
+  assertEquals(isFullEvidenceKindScope(allKinds(true)), true);
+  const custom = { ...CURRENT_EVIDENCE_KIND_PRESET, artifact: false };
+  assertEquals(isCurrentEvidenceKindPreset(custom), false);
+  assertEquals(isFullEvidenceKindScope(custom), false);
+  assertEquals(allEvidenceKindsVisible(), allKinds(true));
+});
+
+Deno.test("current evidence preset paints entities and their recorded edges only", () => {
+  const artifact = node("part", "artifact", "digital-thread");
+  const change = node("rev", "change", "digital-thread");
+  const model = buildEvidenceGraphModel({
+    nodes: [artifact, change],
+    edges: [edge("changes", change.ref, artifact.ref)],
+  }, EMPTY_FAMILY_GRAPH);
+  const projection = buildExplorationKindProjection(
+    model,
+    { ...CURRENT_EVIDENCE_KIND_PRESET },
+  );
+
+  assertEquals(projection.nodes.map((item) => item.ref.id), ["part"]);
+  assertEquals(projection.edges, []);
+  assertEquals(projection.displayedCount, 1);
+  assertEquals(projection.hiddenByKindCount, 1);
 });
 
 function allKinds(value: boolean): Record<DisplayKind, boolean> {

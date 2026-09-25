@@ -459,40 +459,13 @@ export class ProjectCapabilityAuthorizationService {
     if (projectCapabilityProposalCovers(envelope.proposal, proposal)) {
       return { status: "covered", ledger, proposal, effectiveEnvelope: envelope };
     }
-    const evidence = await evaluateProjectCapabilityBindingEvidence({
+    return await this.classifyUncoveredDelta({
       project,
-      registry: this.dependencies.registry,
-      recordedPlans: this.dependencies.recordedPlans,
-      replacements: delta.bindingReplacements,
-    });
-    const methodChanges = delta.bindingReplacements.filter(
-      projectCapabilityBindingReplacementChangesMethod,
-    );
-    if (
-      methodChanges.some((replacement) =>
-        evidence.get(replacement.requirementKey) === "unresolved"
-      )
-    ) {
-      return {
-        status: "unresolved",
-        ledger,
-        proposal,
-        effectiveEnvelope: envelope,
-        delta,
-      };
-    }
-    return {
-      status: projectCapabilityChangeRequiresMethodTransition(
-          delta,
-          (requirementKey) => evidence.get(requirementKey) === "published",
-        )
-        ? "method-transition-required"
-        : "amendment-required",
       ledger,
+      envelope,
       proposal,
-      effectiveEnvelope: envelope,
       delta,
-    };
+    });
   }
 
   async authorizeAmendment(
@@ -502,54 +475,30 @@ export class ProjectCapabilityAuthorizationService {
   ): Promise<ProjectCapabilityLedger> {
     const review = await this.reviewPublishedPlan(project);
     if (review.status === "covered") {
-      if (
-        !fingerprintsEqual(
-          review.proposal.capabilityProposalFingerprint,
-          expectedProposalFingerprint,
-        )
-      ) {
-        throw new ProjectCapabilityAuthorizationError(
-          "The capability amendment retry no longer matches the exact server-derived proposal.",
-        );
-      }
-      // The ledger may have committed immediately before a process crash. A
-      // retry must converge its host lock before it is allowed to preload.
-      await this.reconcileHostAuthorization();
-      this.#schedulePreload(review.ledger);
-      return review.ledger;
+      return await this.#convergeCoveredRetry(
+        review.ledger,
+        review.proposal,
+        expectedProposalFingerprint,
+        "The capability amendment retry no longer matches the exact server-derived proposal.",
+      );
     }
     if (review.status !== "amendment-required") {
       throw new ProjectCapabilityAuthorizationError(
         `Capability amendment cannot be authorized while review status is ${review.status}.`,
       );
     }
-    if (
-      !fingerprintsEqual(
-        review.proposal.capabilityProposalFingerprint,
-        expectedProposalFingerprint,
-      )
-    ) {
-      throw new ProjectCapabilityAuthorizationError(
-        "The capability amendment no longer matches the exact server-derived proposal.",
-      );
-    }
-    const event = await eventWithFingerprint({
-      kind: "amendment-authorized" as const,
-      recordedAt: this.#now(),
-      previousEnvelopeFingerprint:
-        review.effectiveEnvelope.effectiveEnvelopeFingerprint,
-      proposalFingerprint: structuredClone(
-        review.proposal.capabilityProposalFingerprint,
-      ),
+    this.#requireExpectedProposal(
+      review.proposal,
+      expectedProposalFingerprint,
+      "The capability amendment no longer matches the exact server-derived proposal.",
+    );
+    return await this.commitAmendment({
+      projectId: project.project.id,
+      ledger: review.ledger,
+      envelope: review.effectiveEnvelope,
+      proposal: review.proposal,
       delta: review.delta,
     });
-    const amended = await this.append(project.project.id, review.ledger.revision, [
-      ...review.ledger.events,
-      event,
-    ]);
-    await this.reconcileHostAuthorization();
-    this.#schedulePreload(amended);
-    return amended;
   }
 
   /**
@@ -644,19 +593,12 @@ export class ProjectCapabilityAuthorizationService {
   ): Promise<ProjectCapabilityLedger> {
     const review = await this.reviewUnusedWithdrawal(project);
     if (review.status === "covered" || review.status === "no-change") {
-      if (
-        !fingerprintsEqual(
-          review.proposal.capabilityProposalFingerprint,
-          expectedProposalFingerprint,
-        )
-      ) {
-        throw new ProjectCapabilityAuthorizationError(
-          "The unused capability withdrawal retry no longer matches the exact server-derived proposal.",
-        );
-      }
-      await this.reconcileHostAuthorization();
-      this.#schedulePreload(review.ledger);
-      return review.ledger;
+      return await this.#convergeCoveredRetry(
+        review.ledger,
+        review.proposal,
+        expectedProposalFingerprint,
+        "The unused capability withdrawal retry no longer matches the exact server-derived proposal.",
+      );
     }
     if (
       review.status !== "withdrawal-required" ||
@@ -669,33 +611,290 @@ export class ProjectCapabilityAuthorizationService {
           : `Unused capability withdrawal cannot be authorized while review status is ${review.status}.`,
       );
     }
+    this.#requireExpectedProposal(
+      review.proposal,
+      expectedProposalFingerprint,
+      "The unused capability withdrawal no longer matches the exact server-derived proposal.",
+    );
+    return await this.commitAmendment({
+      projectId: project.project.id,
+      ledger: review.ledger,
+      envelope: review.effectiveEnvelope,
+      proposal: review.proposal,
+      delta: review.delta,
+    });
+  }
+
+  /**
+   * Compares a later pending brief's exact capability proposal against the
+   * current effective envelope. The published plan cannot see the pending
+   * brief's new capability, so this review derives demand from the brief
+   * intent itself. It never replaces historical authority: equivalent stays
+   * covered, widening needs an amendment, strict narrowing a withdrawal.
+   */
+  async reviewPendingBriefAmendment(
+    project: EngineeringProjectSnapshot,
+  ): Promise<ProjectCapabilityChangeReview> {
+    const proposal = await this.proposeForPendingBrief(project);
+    const ledger = await this.dependencies.ledgers.get(project.project.id);
+    const envelope = ledger?.effectiveEnvelope;
+    if (!ledger || !envelope) {
+      return { status: "not-authorized", ledger: null, proposal };
+    }
+    if (envelope.status === "revoked") {
+      return {
+        status: "revoked",
+        ledger,
+        proposal,
+        effectiveEnvelope: envelope,
+      };
+    }
+    return await this.classifyBriefAmendment({
+      project,
+      ledger,
+      envelope,
+      proposal,
+    });
+  }
+
+  /**
+   * Atomically associates the approved later brief with its authorized delta.
+   * The same call recrosses the exact approved-brief receipt the proposal
+   * names and appends the delta-only event; the human confirmation is the
+   * brief approval itself. A retry after a crash converges to covered.
+   */
+  async authorizePendingBriefAmendment(
+    approvedProject: EngineeringProjectSnapshot,
+    expectedProposalFingerprint:
+      ProjectCapabilityProposal["capabilityProposalFingerprint"],
+  ): Promise<ProjectCapabilityLedger> {
+    const proposal = await this.proposeForApprovedBrief(approvedProject);
+    const ledger = await this.dependencies.ledgers.get(approvedProject.project.id);
+    const envelope = ledger?.effectiveEnvelope;
+    if (!ledger || !envelope || envelope.status !== "authorized") {
+      throw new ProjectCapabilityAuthorizationError(
+        "Pending-brief capability amendment requires one currently authorized project envelope.",
+      );
+    }
+    const review = await this.classifyBriefAmendment({
+      project: approvedProject,
+      ledger,
+      envelope,
+      proposal,
+    });
+    if (review.status === "covered") {
+      return await this.#convergeCoveredRetry(
+        review.ledger,
+        review.proposal,
+        expectedProposalFingerprint,
+        "The pending-brief capability amendment retry no longer matches the exact reviewed proposal.",
+      );
+    }
+    if (
+      review.status !== "amendment-required" &&
+      review.status !== "withdrawal-required"
+    ) {
+      throw new ProjectCapabilityAuthorizationError(
+        review.status === "method-transition-required"
+          ? "Pending-brief capability amendment would switch a binding on a project with recorded proofs; use the method-transition path."
+          : `Pending-brief capability amendment cannot be authorized while review status is ${review.status}.`,
+      );
+    }
+    this.#requireExpectedProposal(
+      proposal,
+      expectedProposalFingerprint,
+      "The pending-brief capability amendment no longer matches the exact reviewed proposal.",
+    );
+    approvalReceipt(
+      approvedProject,
+      proposal,
+      "Pending-brief capability amendment",
+    );
+    return await this.commitAmendment({
+      projectId: approvedProject.project.id,
+      ledger,
+      envelope,
+      proposal,
+      delta: review.delta,
+    });
+  }
+
+  private async classifyBriefAmendment(input: {
+    readonly project: EngineeringProjectSnapshot;
+    readonly ledger: ProjectCapabilityLedger;
+    readonly envelope: ProjectCapabilityEffectiveEnvelope;
+    readonly proposal: ProjectCapabilityProposal;
+  }): Promise<ProjectCapabilityChangeReview> {
+    const { project, ledger, envelope, proposal } = input;
+    const delta = projectCapabilityEnvelopeDelta(envelope.proposal, proposal);
+    if (
+      proposal.status === "unresolved" &&
+      !unresolvedProposalOnlyRetainsAuthorizedBlockers(
+        envelope.proposal,
+        proposal,
+        [],
+        delta,
+      )
+    ) {
+      return {
+        status: "unresolved",
+        ledger,
+        proposal,
+        effectiveEnvelope: envelope,
+        delta,
+      };
+    }
+    if (projectCapabilityProposalCovers(envelope.proposal, proposal)) {
+      if (isStrictUnusedWithdrawalDelta(delta)) {
+        return {
+          status: "withdrawal-required",
+          ledger,
+          proposal,
+          effectiveEnvelope: envelope,
+          delta,
+        };
+      }
+      return { status: "covered", ledger, proposal, effectiveEnvelope: envelope };
+    }
+    return await this.classifyUncoveredDelta({
+      project,
+      ledger,
+      envelope,
+      proposal,
+      delta,
+    });
+  }
+
+  /**
+   * Shared fork for a delta the current envelope does not cover, whatever
+   * derived the successor proposal. Recorded binding evidence decides
+   * between amendment, method transition, and unresolved.
+   */
+  private async classifyUncoveredDelta(input: {
+    readonly project: EngineeringProjectSnapshot;
+    readonly ledger: ProjectCapabilityLedger;
+    readonly envelope: ProjectCapabilityEffectiveEnvelope;
+    readonly proposal: ProjectCapabilityProposal;
+    readonly delta: ProjectCapabilityEnvelopeDelta;
+  }): Promise<ProjectCapabilityChangeReview> {
+    const { project, ledger, envelope, proposal, delta } = input;
+    const evidence = await evaluateProjectCapabilityBindingEvidence({
+      project,
+      registry: this.dependencies.registry,
+      recordedPlans: this.dependencies.recordedPlans,
+      replacements: delta.bindingReplacements,
+    });
+    const methodChanges = delta.bindingReplacements.filter(
+      projectCapabilityBindingReplacementChangesMethod,
+    );
+    if (
+      methodChanges.some((replacement) =>
+        evidence.get(replacement.requirementKey) === "unresolved"
+      )
+    ) {
+      return {
+        status: "unresolved",
+        ledger,
+        proposal,
+        effectiveEnvelope: envelope,
+        delta,
+      };
+    }
+    return {
+      status: projectCapabilityChangeRequiresMethodTransition(
+          delta,
+          (requirementKey) => evidence.get(requirementKey) === "published",
+        )
+        ? "method-transition-required"
+        : "amendment-required",
+      ledger,
+      proposal,
+      effectiveEnvelope: envelope,
+      delta,
+    };
+  }
+
+  /**
+   * Domain route for a brief confirmation: an authorized envelope plus a
+   * non-equivalent ceiling means the later brief amends instead of
+   * initializing. First envelopes, equivalent restatements, and revoked
+   * envelopes (which no amendment may extend) stay on the initial route.
+   */
+  async requiresPendingBriefAmendment(
+    projectId: string,
+    proposal: ProjectCapabilityProposal,
+  ): Promise<boolean> {
+    const inspected = await this.inspect(projectId);
+    const envelope = inspected.effectiveEnvelope;
+    return inspected.authorization === "authorized" &&
+      envelope !== null &&
+      !(await projectCapabilityProposalsHaveEquivalentCeilings(
+        envelope.proposal,
+        proposal,
+      ));
+  }
+
+  #requireExpectedProposal(
+    proposal: ProjectCapabilityProposal,
+    expectedProposalFingerprint:
+      ProjectCapabilityProposal["capabilityProposalFingerprint"],
+    staleMessage: string,
+  ): void {
     if (
       !fingerprintsEqual(
-        review.proposal.capabilityProposalFingerprint,
+        proposal.capabilityProposalFingerprint,
         expectedProposalFingerprint,
       )
     ) {
-      throw new ProjectCapabilityAuthorizationError(
-        "The unused capability withdrawal no longer matches the exact server-derived proposal.",
-      );
+      throw new ProjectCapabilityAuthorizationError(staleMessage);
     }
+  }
+
+  /**
+   * A retry that finds its work already covered must still name the exact
+   * reviewed proposal, then converge the host lock before preloading: the
+   * ledger may have committed immediately before a process crash.
+   */
+  async #convergeCoveredRetry(
+    ledger: ProjectCapabilityLedger,
+    proposal: ProjectCapabilityProposal,
+    expectedProposalFingerprint:
+      ProjectCapabilityProposal["capabilityProposalFingerprint"],
+    staleMessage: string,
+  ): Promise<ProjectCapabilityLedger> {
+    this.#requireExpectedProposal(proposal, expectedProposalFingerprint, staleMessage);
+    await this.reconcileHostAuthorization();
+    this.#schedulePreload(ledger);
+    return ledger;
+  }
+
+  /**
+   * Single writer for delta-only authorization events. Every amendment path
+   * funnels through this append so the event shape cannot drift per caller.
+   */
+  private async commitAmendment(input: {
+    readonly projectId: string;
+    readonly ledger: ProjectCapabilityLedger;
+    readonly envelope: ProjectCapabilityEffectiveEnvelope;
+    readonly proposal: ProjectCapabilityProposal;
+    readonly delta: ProjectCapabilityEnvelopeDelta;
+  }): Promise<ProjectCapabilityLedger> {
     const event = await eventWithFingerprint({
       kind: "amendment-authorized" as const,
       recordedAt: this.#now(),
-      previousEnvelopeFingerprint:
-        review.effectiveEnvelope.effectiveEnvelopeFingerprint,
+      previousEnvelopeFingerprint: input.envelope.effectiveEnvelopeFingerprint,
       proposalFingerprint: structuredClone(
-        review.proposal.capabilityProposalFingerprint,
+        input.proposal.capabilityProposalFingerprint,
       ),
-      delta: review.delta,
+      delta: input.delta,
     });
-    const withdrawn = await this.append(project.project.id, review.ledger.revision, [
-      ...review.ledger.events,
+    const amended = await this.append(input.projectId, input.ledger.revision, [
+      ...input.ledger.events,
       event,
     ]);
     await this.reconcileHostAuthorization();
-    this.#schedulePreload(withdrawn);
-    return withdrawn;
+    this.#schedulePreload(amended);
+    return amended;
   }
 
   /**
@@ -1128,6 +1327,7 @@ function isExactPreparedAppend(
 function approvalReceipt(
   project: EngineeringProjectSnapshot,
   proposal: ProjectCapabilityProposal,
+  action = "Initial capability finalization",
 ): ProjectCapabilityApprovalReceipt {
   const brief = project.framing?.currentBrief;
   const approval = project.framing?.currentBriefApproval;
@@ -1142,7 +1342,7 @@ function approvalReceipt(
     !fingerprintsEqual(approval.inputFingerprint, proposal.brief.briefReviewFingerprint)
   ) {
     throw new ProjectCapabilityAuthorizationError(
-      "Initial capability finalization requires the exact approved brief receipt matching its prepared proposal.",
+      `${action} requires the exact approved brief receipt matching its proposal.`,
     );
   }
   return {

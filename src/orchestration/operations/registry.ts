@@ -81,6 +81,7 @@ import {
 import { RECONCILE_UNCERTAIN_WRITER_OPERATION } from "../../domain/record/reconcile-uncertain-writer-proposal.ts";
 import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../domain/record/requirements-brief-trace.ts";
 import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "../../domain/record/documentary-clause-response.ts";
+import { RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION } from "../../domain/record/pre-sizing-worksheet.ts";
 import { FEA_ISOLATED_STATIC_PROOF_OPERATION_DESCRIPTORS } from "./fea-isolated-static-proof.ts";
 import {
   ANALYZE_RUN_FEA_SENSITIVITY_OPERATION,
@@ -1776,6 +1777,23 @@ const OPERATIONS = [
       name: "approvedBrief",
       allowedSourceKinds: ["approved-brief"],
     }],
+  },
+  {
+    id: RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION.id,
+    version: RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION.version,
+    startingPoint: "idea-or-spec",
+    allowedBasisKinds: ["thread-snapshot"],
+    title: "Seal a source-backed pre-sizing worksheet",
+    description:
+      "Append one human-reviewed, versioned documentary pre-sizing worksheet with unit-bearing quantities, reopening immutable agent-resource captures or registered Thread artifacts. " +
+      "Human MRTR authorizes the act of recording the agent worksheet; it does not accept the numbers, create a requirement, or grant a verdict. " +
+      "A successor revision must name its exact predecessor without changing prior documents.",
+    workItemKind: "review",
+    riskClass: "consequential",
+    execution: "trusted",
+    runtimeDemand: NO_RUNTIME_DEMAND,
+    requiresAdditiveChange: true,
+    bindings: [],
   },
   {
     id: RECONCILE_UNCERTAIN_WRITER_OPERATION.id,

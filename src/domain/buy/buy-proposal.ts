@@ -26,6 +26,7 @@ import {
   type BuyPricingContext,
 } from "./buy-cost-bundle.ts";
 import { BUY_DECIMAL_SCHEMA } from "./buy-decimal.ts";
+import { BUY_DOCUMENTARY_ESTIMATE_SCHEMA } from "./buy-documentary-estimate.ts";
 
 export {
   BUY_CAPTURE_CONFIGURATION_COST_OPERATION,
@@ -58,10 +59,17 @@ export interface BuyDocumentRequest {
   readonly expectedModified?: string;
 }
 
+export interface BuyCaptureEstimateSource {
+  readonly resourceUri: string;
+  readonly resourceDigest: string;
+  readonly schemaVersion: typeof BUY_DOCUMENTARY_ESTIMATE_SCHEMA;
+}
+
 export interface BuyCaptureDecisionParameters {
   readonly configurationDigest: string;
   readonly configurationResourceUri: string;
   readonly configurationResourceDigest: string;
+  readonly estimate?: BuyCaptureEstimateSource;
   readonly schemaVersion: typeof BUY_CONFIGURATION_SCHEMA;
   readonly projectId: string;
   readonly subjectId: string;
@@ -91,6 +99,9 @@ export function encodeBuyCaptureDecisionParameters(
   params: BuyCaptureDecisionParameters,
 ): readonly EngineeringDecisionProposalParameter[] {
   assertFingerprint(params.configurationDigest, "configurationDigest");
+  if (params.estimate) {
+    assertFingerprint(params.estimate.resourceDigest, "estimate.resourceDigest");
+  }
   const result: EngineeringDecisionProposalParameter[] = [];
   const p = (
     key: string,
@@ -112,6 +123,23 @@ export function encodeBuyCaptureDecisionParameters(
     "Configuration agent-resource digest",
     params.configurationResourceDigest,
   );
+  if (params.estimate) {
+    p(
+      "buy.capture.estimate.resource.uri",
+      "Documentary estimate agent-resource URI",
+      params.estimate.resourceUri,
+    );
+    p(
+      "buy.capture.estimate.resource.digest",
+      "Documentary estimate agent-resource digest",
+      params.estimate.resourceDigest,
+    );
+    p(
+      "buy.capture.estimate.schemaVersion",
+      "Documentary estimate schema",
+      params.estimate.schemaVersion,
+    );
+  }
   p(
     "buy.capture.configuration.schemaVersion",
     "Configuration schema",
@@ -315,10 +343,12 @@ export function parseBuyCaptureDecisionParameters(
     configurationResourceDigest,
     "buy.capture.configuration.resource.digest",
   );
+  const estimate = parseEstimateSource(params, str);
   const parsed: BuyCaptureDecisionParameters = {
     configurationDigest,
     configurationResourceUri: str("buy.capture.configuration.resource.uri"),
     configurationResourceDigest,
+    ...(estimate ? { estimate } : {}),
     schemaVersion: BUY_CONFIGURATION_SCHEMA,
     projectId: str("buy.capture.project.id"),
     subjectId: str("buy.capture.project.subjectId"),
@@ -387,6 +417,32 @@ export function parseBuySealDecisionParameters(
     coverageStatus: coverageStatus as BuyCoverageStatus,
     sourceCaptureCount: count,
     sourceCaptureDigests,
+  };
+}
+
+function parseEstimateSource(
+  params: ReadonlyMap<string, string | number | boolean>,
+  str: (key: string) => string,
+): BuyCaptureEstimateSource | undefined {
+  const uriKey = "buy.capture.estimate.resource.uri";
+  const digestKey = "buy.capture.estimate.resource.digest";
+  const schemaKey = "buy.capture.estimate.schemaVersion";
+  if (!params.has(uriKey) && !params.has(digestKey) && !params.has(schemaKey)) {
+    return undefined;
+  }
+  const resourceDigest = str(digestKey);
+  assertFingerprint(resourceDigest, digestKey);
+  const schemaVersion = str(schemaKey);
+  if (schemaVersion !== BUY_DOCUMENTARY_ESTIMATE_SCHEMA) {
+    invalid(
+      "invalid_schema",
+      `buy.capture.estimate.schemaVersion must be ${BUY_DOCUMENTARY_ESTIMATE_SCHEMA}.`,
+    );
+  }
+  return {
+    resourceUri: str(uriKey),
+    resourceDigest,
+    schemaVersion: BUY_DOCUMENTARY_ESTIMATE_SCHEMA,
   };
 }
 

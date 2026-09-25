@@ -200,6 +200,12 @@ import {
   DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
 } from "./src/adapters/record/documentary-clause-response-store.ts";
 import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "./src/domain/record/documentary-clause-response.ts";
+import { RecordSealPreSizingWorksheetRunExecutor } from "./src/adapters/record/record-seal-pre-sizing-worksheet-run-executor.ts";
+import {
+  createPreSizingWorksheetStore,
+  DEFAULT_PRE_SIZING_WORKSHEET_DIRECTORY,
+} from "./src/adapters/record/pre-sizing-worksheet-store.ts";
+import { RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION } from "./src/domain/record/pre-sizing-worksheet.ts";
 import { FileLiveThreadUpdateStore } from "./src/adapters/shared/stores/live-thread-update-store.ts";
 import { FileEngineeringProjectRevisionStore } from "./src/adapters/shared/stores/engineering-project-store.ts";
 import {
@@ -525,6 +531,8 @@ export interface CreateConsoleServerOptions {
   requirementsRecapturePublicationDirectory?: string;
   /** Immutable documentary clause-response CAS; shared by writer and reader. */
   documentaryClauseResponseDirectory?: string;
+  /** Immutable pre-sizing worksheet CAS; shared by writer and reader. */
+  preSizingWorksheetDirectory?: string;
   printabilityCaseCaptureDirectory?: string;
   printabilityAttemptDirectory?: string;
   printabilityObservationCaptureDirectory?: string;
@@ -1455,6 +1463,18 @@ async function createProjectControl(
     commands: runtime.commands,
     lease,
   });
+  const preSizingWorksheetStore = createPreSizingWorksheetStore(
+    options.preSizingWorksheetDirectory ??
+      DEFAULT_PRE_SIZING_WORKSHEET_DIRECTORY,
+  );
+  const preSizingWorksheet = new RecordSealPreSizingWorksheetRunExecutor({
+    projects: runtime.projects,
+    snapshots: activeThreadSnapshots,
+    captures: preSizingWorksheetStore,
+    resources: reopenAgentResource,
+    commands: runtime.commands,
+    lease,
+  });
   const projectResponse = new ReadProjectResponse({
     projects: runtime.projects,
     snapshots: threadSnapshots,
@@ -2073,6 +2093,10 @@ async function createProjectControl(
           {
             operation: RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION,
             executor: documentaryClauseResponse,
+          },
+          {
+            operation: RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION,
+            executor: preSizingWorksheet,
           },
           {
             operation: RECONCILE_UNCERTAIN_WRITER_OPERATION,

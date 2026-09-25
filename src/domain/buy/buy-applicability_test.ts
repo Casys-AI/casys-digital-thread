@@ -4,11 +4,14 @@ import { DESIGN_WRITE_GEOMETRY_TOOL } from "../cad/canonical/canonical-write-geo
 import {
   buyGeometryApplicability,
   recrossBuyConfigurationThreadBasis,
+  recrossBuyDocumentaryEstimateBasis,
 } from "./buy-applicability.ts";
 import {
   BUY_FIXTURE_PARENT,
   BUY_FIXTURE_STEP,
+  buyConfigurationDigest,
   buyConfigurationFixture,
+  buyDocumentaryEstimateFixture,
 } from "./buy-fixtures.ts";
 
 const AT = "2026-08-15T00:00:00.000Z";
@@ -107,6 +110,60 @@ Deno.test("configuration basis and subject must match the exact Thread basis", (
     },
   );
   assertEquals(foreign.status, "refused");
+});
+
+Deno.test("estimate basis recross accepts the current basis and refuses stale bindings", async () => {
+  const configuration = buyConfigurationFixture();
+  const digest = await buyConfigurationDigest(configuration);
+  const basis = {
+    configuration,
+    configurationDigest: digest,
+    snapshotId: "snapshot.buy.r1",
+    revision: 1,
+    subjectId: "project:reviewed-project-v1",
+  };
+  assertEquals(
+    recrossBuyDocumentaryEstimateBasis(
+      buyDocumentaryEstimateFixture(digest),
+      basis,
+    ).status,
+    "current",
+  );
+  assertEquals(
+    recrossBuyDocumentaryEstimateBasis(
+      buyDocumentaryEstimateFixture("0".repeat(64)),
+      basis,
+    ).status,
+    "refused",
+  );
+  assertEquals(
+    recrossBuyDocumentaryEstimateBasis(
+      buyDocumentaryEstimateFixture(digest, {
+        basis: {
+          snapshotId: "snapshot.buy.prior",
+          revision: 1,
+          subjectId: "project:reviewed-project-v1",
+        },
+      }),
+      basis,
+    ).status,
+    "refused",
+  );
+  assertEquals(
+    recrossBuyDocumentaryEstimateBasis(
+      buyDocumentaryEstimateFixture(digest, {
+        geometry: {
+          parentArtifactId: `geometry-${BUY_FIXTURE_PARENT}`,
+          parentFingerprint: BUY_FIXTURE_PARENT,
+          stepArtifactId: "cad-asset-stale",
+          stepFingerprint: "0".repeat(64),
+          stepUri: "thread-artifact://reviewed-project-v1/cad-asset-stale",
+        },
+      }),
+      basis,
+    ).status,
+    "refused",
+  );
 });
 
 function cadAssetStep(): ThreadArtifact {

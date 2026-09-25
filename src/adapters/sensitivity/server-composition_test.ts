@@ -154,6 +154,42 @@ Deno.test("sensitivity live-FEA and base evaluation stay gated; vector correctio
     assertEquals(sysonWithoutJit.verifyEvaluateSensitivityBase, undefined);
     assertEquals(sysonWithoutJit.modelWriteSensitivityEdges, undefined);
 
+    const liveExecution = {
+      profiles: {},
+      execution: {
+        runner: { run: () => Promise.resolve({}) },
+        recovery: {},
+        publications: {},
+      },
+    } as unknown as Build123dExecutionComposition;
+    const withReuse = createSensitivityComposition({
+      ...baseOptions,
+      build123dExecution: liveExecution,
+      capabilityRuntimeObserver: {
+        observe: () => Promise.resolve(new Map()),
+      },
+      privateStateRoot: `${root}/sensitivity-private`,
+    });
+    assertInstanceOf(
+      withReuse.analyzeRunFeaSensitivity,
+      AnalyzeRunFeaSensitivityRunExecutor,
+    );
+    assertEquals(withReuse.analyzeRunFeaSensitivity.hasExperienceReuse, true);
+
+    const withoutObserver = createSensitivityComposition({
+      ...baseOptions,
+      build123dExecution: liveExecution,
+      privateStateRoot: `${root}/sensitivity-private-no-observer`,
+    });
+    assertInstanceOf(
+      withoutObserver.analyzeRunFeaSensitivity,
+      AnalyzeRunFeaSensitivityRunExecutor,
+    );
+    assertEquals(
+      withoutObserver.analyzeRunFeaSensitivity.hasExperienceReuse,
+      false,
+    );
+
     const source = await Deno.readTextFile(
       new URL("./server-composition.ts", import.meta.url),
     );
