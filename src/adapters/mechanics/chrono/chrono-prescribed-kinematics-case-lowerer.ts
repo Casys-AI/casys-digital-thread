@@ -1,4 +1,4 @@
-/** Fixed mcp-chrono 0.3.2 lowering for the prescribed-kinematics binding. */
+/** Fixed mcp-chrono 0.3.5 lowering for the prescribed-kinematics binding. */
 
 import type {
   PrescribedKinematicsCaseLowerer,
@@ -24,7 +24,7 @@ const CHRONO_CASE_SCHEMA = "chrono-prescribed-kinematics-case/1.0" as const;
 const LOWERING_SCHEMA = "chrono-prescribed-kinematics-lowering/1.0" as const;
 const CHRONO_BINDING = {
   unitId: "casys.mcp-chrono",
-  adapterVersion: "0.3.2",
+  adapterVersion: "0.3.5",
 } as const;
 const PROVIDER_ID = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const PROVIDER_MAX_ABS = 1_000_000;
@@ -200,7 +200,7 @@ export function lowerChronoCase(
       joint.ramp.endTimeS !== source.durationS
     ) {
       throw unsupported(
-        `Joint ${joint.jointId} has no exact full-duration linear ramp representable by Chrono 0.3.2.`,
+        `Joint ${joint.jointId} has no exact full-duration linear ramp representable by Chrono 0.3.5.`,
       );
     }
     return Object.freeze({
@@ -293,7 +293,7 @@ function assertProviderId(value: string, label: string): void {
   }
 }
 
-/** Mirror the catalogued mcp-chrono 0.3.2 numeric gate before any submission. */
+/** Mirror the catalogued mcp-chrono 0.3.5 numeric gate before any submission. */
 function assertChronoProviderBounds(value: ChronoPrescribedKinematicsCase): void {
   const finite = (number: number, path: string): void => {
     if (!Number.isFinite(number) || Math.abs(number) > PROVIDER_MAX_ABS) {

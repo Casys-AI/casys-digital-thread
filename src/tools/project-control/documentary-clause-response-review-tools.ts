@@ -1,4 +1,4 @@
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import type { ProjectDocumentaryClauseResponseReviewUseCase } from "../../application/ports/in/record/project-documentary-clause-response-review.ts";
 import { AGENT_RESOURCE_REFERENCE_SCHEMA } from "../../domain/resource/agent-resource-reference.ts";
 import {

@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
+import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-platform";
 import type { ProjectAdmittedSpiceRunReviewResult } from "../../application/ports/in/electrical/spice/admitted-run-review.ts";
 import type { ProjectAdmittedSpiceEvaluationReviewResult } from "../../application/ports/in/electrical/spice/evaluation/project-admitted-spice-evaluation-review.ts";
 import type { ProjectAdmittedSpiceEvaluationCloseoutReviewResult } from "../../application/ports/in/electrical/spice/evaluation/project-admitted-spice-evaluation-closeout-review.ts";

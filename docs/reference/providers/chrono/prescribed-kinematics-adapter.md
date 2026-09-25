@@ -4,7 +4,7 @@
 Audience: maintainer · Diátaxis: reference · Kind: provider contract
 
 This is the private adapter for the server-selected
-`chrono-prescribed-kinematics-adapter@0.3.2`. It is not an agent tool or a product
+`chrono-prescribed-kinematics-adapter@0.3.5`. It is not an agent tool or a product
 operation. The registered L3 operation, sealed case, ROP, runtime session and WAL select
 it; callers cannot supply a Chrono URL, bearer, tool, image, provider arguments, or
 recovery action.
@@ -14,7 +14,7 @@ recovery action.
 The lowerer reopens the exact sealed prescribed-kinematics source, proves its
 fingerprint and canonical bytes, then emits deterministic
 `chrono-prescribed-kinematics-case/1.0` JSON. Its fingerprint binds the source,
-`casys.mcp-chrono@0.3.2`, target schema, and `absolute-zero-angle-revolute-z-ramp-v1`
+`casys.mcp-chrono@0.3.5`, target schema, and `absolute-zero-angle-revolute-z-ramp-v1`
 mapping.
 
 Only one rooted revolute tree lowers: exactly one fixed `groundBodyId`; one parent per

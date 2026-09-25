@@ -156,10 +156,11 @@ narrow factory that reopens the provider's recorded evidence and schema rather t
 teaching the Workbench the provider payload. Test both the provider parser and
 reconciliation before enabling it.
 
-Chrono has no registrar binding here. Its published App `0.3.4` parser requires
-`provenance.server.version = 0.3.4`, while the registered execution provider is pinned
-to `0.3.2`; package installation alone cannot make that evidence compatible. This needs
-a separate provider-App compatibility change, not a forged session or version mapping.
+Chrono has no registrar binding here. Its published App `0.3.5` parser requires
+`provenance.server.version = 0.3.5`, matching the registered execution provider pin;
+historical `0.3.2`/`0.3.4` records stay incompatible with it. Bridging old evidence
+needs a separate provider-App compatibility change, not a forged session or version
+mapping.
 
 The display basis may advance while the exact unarchived evidence remains historical;
 the payload keeps that evidence's original capture/run provenance. Reconciliation

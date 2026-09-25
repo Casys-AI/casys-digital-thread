@@ -94,7 +94,7 @@ Deno.test("Chrono lifecycle authority accepts only the exact quarantined/malform
   }
 });
 
-Deno.test("Chrono lifecycle recross uses the sealed 0.3.1 lowering identity, not the active 0.3.2 lowerer", async () => {
+Deno.test("Chrono lifecycle recross uses the sealed 0.3.1 lowering identity, not the active 0.3.5 lowerer", async () => {
   const fixture = await recrossFixture({
     wal: { phase: "quarantined", reason: "malformed" },
   });

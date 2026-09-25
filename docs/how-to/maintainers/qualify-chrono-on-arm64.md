@@ -9,7 +9,7 @@ result when a later server check needs to know whether this host has an exact
 attestation.
 
 Do not replace any step with manual Docker `up`, `down`, `-v`, prune, or image removal.
-The only catalogued Chrono binding is `casys.mcp-chrono@0.3.2`. Qualification records
+The only catalogued Chrono binding is `casys.mcp-chrono@0.3.5`. Qualification records
 an exact host attestation for that binding; it does not start a normal project runtime
 or rewrite the repository catalogue.
 
@@ -18,7 +18,7 @@ or rewrite the repository catalogue.
 The only accepted candidate is `chrono-arm64-emulation-v1`: Docker daemon `linux/arm64`,
 target `linux/amd64`, mode `emulated`, launch group `casys-chrono@1.0.0`, and exact
 material
-`ghcr.io/casys-ai/mcp-chrono@sha256:2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557`.
+`ghcr.io/casys-ai/mcp-chrono@sha256:a56fc994c6ff6beb33b884a7a638cd5fc00281201f9ad5e5556ba790adb39c18`.
 
 Run:
 

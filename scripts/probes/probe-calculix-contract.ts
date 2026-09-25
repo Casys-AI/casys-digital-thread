@@ -1,9 +1,9 @@
 /**
- * Maintainer-only preflight for the pinned HTTP mcp-calculix 0.8.2 contract.
+ * Maintainer-only preflight for the pinned HTTP mcp-calculix 0.8.5 contract.
  *
  * This is deliberately not a generic MCP client. It can issue only
  * server/discover and tools/list against the code-owned loopback endpoint.
- * The published 0.8.2 provider has no /health route, so this probe does not
+ * The published 0.8.5 provider has no /health route, so this probe does not
  * invent one. It never sends tools/call, starts a mesh preflight, writes a
  * run, or reads a provider resource. Its result concerns the optional
  * sensitivity fleet only; it neither invokes nor establishes provenance for
@@ -15,10 +15,10 @@ import type { ContentFingerprint } from "../../src/domain/kernel/primitives.ts";
 
 const MANIFEST_PATH = new URL("../../config/mcp-fleet.json", import.meta.url);
 const MCP_PROTOCOL_VERSION = "2026-07-28";
-const IMAGE_DIGEST = "ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8";
+const IMAGE_DIGEST = "3fad853cdb720d6d50e4714d23c9e4cf7bb011fec7b10addad5945b045757123";
 const IMAGE = `ghcr.io/casys-ai/mcp-calculix@sha256:${IMAGE_DIGEST}`;
-const VERSION = "0.8.2";
-const REVISION = "6fb30a75c4876ad469cc472ffa8ca691e0a6b58b";
+const VERSION = "0.8.5";
+const REVISION = "a98151d505a8851e0021916c5fa0953418fd8cac";
 const RESULTS_VIEWER = "ui://mcp-calculix/results-viewer";
 export const MAX_ORDINARY_SOLVE_TIMEOUT_MS = 120_000;
 
@@ -37,9 +37,9 @@ export const CALCULIX_EXPECTED_TOOLS = [
   "calculix_solve_static_recorded",
 ] as const;
 
-/** SHA-256 over the 0.8.2 discovery identity and all listed tool schemas. */
+/** SHA-256 over the 0.8.5 discovery identity and all listed tool schemas. */
 export const CALCULIX_EXPECTED_CONTRACT_SHA256 =
-  "8e8b5c007299818908d424413483addf7fdde5928175c80d2817232b85839ed4";
+  "96fcac681292d7d48ca5d11c9e8630ff5bd61b95266f7b1b18f083c6c496b860";
 
 export interface ProbeCalculixContractOptions {
   /** Test seam only. Production reads config/mcp-fleet.json. */
@@ -130,7 +130,7 @@ export async function probeCalculixContract(
       baseline,
       "contract-divergent",
       {},
-      "The desired manifest no longer matches the reviewed mcp-calculix 0.8.2 contract; no alternate endpoint was probed.",
+      "The desired manifest no longer matches the reviewed mcp-calculix 0.8.5 contract; no alternate endpoint was probed.",
     );
   }
 
@@ -184,7 +184,7 @@ export async function calculixContractFingerprint(
     serverInfo.name !== "mcp-calculix" || serverInfo.version !== VERSION
   ) {
     throw new ContractDivergenceError(
-      "Discovery does not expose the reviewed mcp-calculix 0.8.2 identity.",
+      "Discovery does not expose the reviewed mcp-calculix 0.8.5 identity.",
     );
   }
   const supportedVersions = strings(
@@ -231,6 +231,7 @@ export async function calculixContractFingerprint(
   );
   if (
     !sameStringSet(viewerTools, [
+      "calculix_run_get",
       "calculix_solve_static",
       "calculix_solve_static_recorded",
     ])

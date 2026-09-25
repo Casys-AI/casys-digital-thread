@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import { registerProjectAssemblyIntegrityReviewTools } from "./assembly-integrity-review-tools.ts";
 
 Deno.test("assembly-integrity review tool registers only with its injected read-only use case", () => {

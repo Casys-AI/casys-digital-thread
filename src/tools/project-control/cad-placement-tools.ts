@@ -1,4 +1,4 @@
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import type { ProjectCadPlacementCaptureUseCase } from "../../application/ports/in/cad/placement/project-cad-placement-capture.ts";
 import {
   CAD_PLACEMENT_ANALYSIS_CAPTURE_LOCATOR_KIND,

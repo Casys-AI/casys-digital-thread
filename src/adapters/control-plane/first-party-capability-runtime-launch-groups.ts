@@ -9,9 +9,9 @@ import {
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import { FixedCapabilityRuntimeLaunchGroupRegistry } from "../../application/control-plane/capability-runtime-launch-group-registry.ts";
 import {
-  MCP_CALCULIX_082_IMAGE_REFERENCE,
-  MCP_CHRONO_032_IMAGE_REFERENCE,
-  MCP_DFM_010_IMAGE_REFERENCE,
+  MCP_CALCULIX_085_IMAGE_REFERENCE,
+  MCP_CHRONO_035_IMAGE_REFERENCE,
+  MCP_DFM_030_IMAGE_REFERENCE,
 } from "./first-party-capability-runtime-identities.ts";
 
 export const POSTGRES_IMAGE_REFERENCE =
@@ -19,9 +19,9 @@ export const POSTGRES_IMAGE_REFERENCE =
 export const SYSON_IMAGE_REFERENCE =
   "ghcr.io/casys-ai/syson@sha256:d372ae26e5d32e5c599fa7c1599d42c73cf9a54e101cfe6f77175f313d7d84e9" as const;
 export const MCP_SYSON_IMAGE_REFERENCE =
-  "ghcr.io/casys-ai/mcp-syson@sha256:87eee6e35a636124d5ba6911492a245d69edcdf1ba67575676c22a0e9d7ce65e" as const;
-export const MCP_BUILD123D_061_IMAGE_REFERENCE =
-  "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d" as const;
+  "ghcr.io/casys-ai/mcp-syson@sha256:df00198b1fd33504871e93834bc6616bcfcc09a85d4cd8f6348434c38c09c0ab" as const;
+export const MCP_BUILD123D_070_IMAGE_REFERENCE =
+  "ghcr.io/casys-ai/mcp-build123d@sha256:aa9ae1264294ddb47e3686c3a2b46c79cbc3971a8ec5cee6cee79bf6a7bcc5a9" as const;
 
 /**
  * SysON is only exposed through mcp-syson on 3009. The UI's historical 8180
@@ -61,8 +61,8 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
   const calculixComposeContent = deterministicJson({
     services: {
       "mcp-calculix": {
-        image: MCP_CALCULIX_082_IMAGE_REFERENCE,
-        // mcp-calculix 0.8.2 owns HTTP startup through its published `http`
+        image: MCP_CALCULIX_085_IMAGE_REFERENCE,
+        // mcp-calculix 0.8.5 owns HTTP startup through its published `http`
         // mode. H1 proves lifecycle readiness through the sealed read-only MCP
         // tools/list handshake below; provider health never becomes a
         // qualification or engineering verdict.
@@ -105,7 +105,7 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
       material(
         "casys.mcp-calculix",
         "mcp-calculix-image",
-        MCP_CALCULIX_082_IMAGE_REFERENCE,
+        MCP_CALCULIX_085_IMAGE_REFERENCE,
         "mcp-calculix",
         "casys-mcp-calculix-v1",
       ),
@@ -136,7 +136,7 @@ export async function createFirstPartyCapabilityRuntimeLaunchGroups(): Promise<
 async function createFirstPartyDfmLaunchGroup(): Promise<
   CapabilityRuntimeLaunchGroup
 > {
-  const image = MCP_DFM_010_IMAGE_REFERENCE;
+  const image = MCP_DFM_030_IMAGE_REFERENCE;
   const composeContent = deterministicJson({
     services: {
       "mcp-dfm": {
@@ -193,7 +193,7 @@ async function createFirstPartyDfmLaunchGroup(): Promise<
 async function createFirstPartyChronoLaunchGroup(): Promise<
   CapabilityRuntimeLaunchGroup
 > {
-  const image = MCP_CHRONO_032_IMAGE_REFERENCE;
+  const image = MCP_CHRONO_035_IMAGE_REFERENCE;
   const chronoComposeContent = deterministicJson({
     services: {
       "mcp-chrono": {
@@ -428,7 +428,7 @@ async function build123dLaunchGroup(input: {
   const composeContent = deterministicJson({
     services: {
       [input.serviceName]: {
-        image: MCP_BUILD123D_061_IMAGE_REFERENCE,
+        image: MCP_BUILD123D_070_IMAGE_REFERENCE,
         ports: [`127.0.0.1:${input.port}:3014`],
         volumes: [`${input.volume}:/exports`],
         // Exact limits from the reviewed provider Compose contract. The image
@@ -459,7 +459,7 @@ async function build123dLaunchGroup(input: {
       material(
         input.unitId,
         input.materialId,
-        MCP_BUILD123D_061_IMAGE_REFERENCE,
+        MCP_BUILD123D_070_IMAGE_REFERENCE,
         input.serviceName,
         input.projectName,
       ),

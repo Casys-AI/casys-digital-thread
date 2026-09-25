@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
+import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-platform";
 import { registerProjectProductNavigationTools } from "./product-navigation-tools.ts";
 import {
   PRODUCT_EXPLORE_SCHEMA,

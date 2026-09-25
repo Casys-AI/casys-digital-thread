@@ -1,5 +1,5 @@
 /**
- * Maintainer-only preflight for the pinned HTTP mcp-build123d 0.6.1 contract.
+ * Maintainer-only preflight for the pinned HTTP mcp-build123d 0.7.0 contract.
  *
  * It can issue only GET /health, server/discover, tools/list, and resources/list
  * against the code-owned loopback endpoint. It never sends tools/call, executes
@@ -14,6 +14,9 @@ import { BUILD123D_EXPORT_TIMEOUT_MS } from "../../src/adapters/cad/canonical/bu
 const MANIFEST_PATH = new URL("../../config/mcp-fleet.json", import.meta.url);
 const MCP_PROTOCOL_VERSION = "2026-07-28";
 const RESULTS_VIEWER = "ui://mcp-build123d/results-viewer";
+const ASSEMBLY_VIEWER = "ui://mcp-build123d/assembly-viewer";
+const DRAWING_VIEWER = "ui://mcp-build123d/drawing-viewer";
+const EXPECTED_VIEWERS = [RESULTS_VIEWER, ASSEMBLY_VIEWER, DRAWING_VIEWER] as const;
 
 export const BUILD123D_ENDPOINT = {
   mcpUrl: "http://127.0.0.1:3014/mcp",
@@ -29,34 +32,35 @@ export const BUILD123D_EXPECTED_TOOLS = [
   "build123d_execute",
   "build123d_export",
   "build123d_observe_assembly_integrity",
+  "build123d_project_2d",
 ] as const;
 
 export const BUILD123D_RELEASE = {
   image:
-    "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d",
-  releaseTag: "v0.6.1",
-  version: "0.6.1",
-  revision: "beaeb648a979437cce8676da103a39d9eb312290",
-  imageIndexDigest: "765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d",
+    "ghcr.io/casys-ai/mcp-build123d@sha256:aa9ae1264294ddb47e3686c3a2b46c79cbc3971a8ec5cee6cee79bf6a7bcc5a9",
+  releaseTag: "v0.7.0",
+  version: "0.7.0",
+  revision: "b831c16019e4e09e66c4e5567f9ee70310fb8785",
+  imageIndexDigest: "aa9ae1264294ddb47e3686c3a2b46c79cbc3971a8ec5cee6cee79bf6a7bcc5a9",
   platformManifests: {
-    "linux/amd64": "e040ee6385df909d481ac58ec290a1b13f50ca40b0e48eec58949fb5efde8309",
-    "linux/arm64": "420d9ba94b71605443ee59cc1160f94e17ead0c5b6a3f5e7a80f76dffa1ea84b",
+    "linux/amd64": "602811b98614fdbde0722db44858d8e7595fe324a0ad6e41a407aa3a5fc24f9f",
+    "linux/arm64": "3bcd149aea766882338564ebfb12f22727218e9419e1a4e5d122e2a14789cb9a",
   },
   ociLabels: {
-    "org.opencontainers.image.created": "2026-08-28T16:59:19Z",
+    "org.opencontainers.image.created": "2026-09-24T01:51:16Z",
     "org.opencontainers.image.description": "Qualified Build123d MCP provider",
     "org.opencontainers.image.licenses": "MIT",
-    "org.opencontainers.image.revision": "beaeb648a979437cce8676da103a39d9eb312290",
+    "org.opencontainers.image.revision": "b831c16019e4e09e66c4e5567f9ee70310fb8785",
     "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-build123d",
     "org.opencontainers.image.title": "mcp-build123d",
     "org.opencontainers.image.url": "https://github.com/denoland/deno_docker",
-    "org.opencontainers.image.version": "0.6.1",
+    "org.opencontainers.image.version": "0.7.0",
   },
 } as const;
 
-/** SHA-256 over the 0.6.1 discovery identity and exact listed tool schemas. */
+/** SHA-256 over the 0.7.0 discovery identity and exact listed tool schemas. */
 export const BUILD123D_EXPECTED_CONTRACT_SHA256 =
-  "43801a71a10eb91959b616947b6ca028fa2ca05e8bf010159180fbf1067f68fa";
+  "a4ac099a47eaebdc3dd41b5da1e2a6b5818835cea09c78995f791294ca3011a0";
 
 export interface ProbeBuild123dContractOptions {
   readonly manifestText?: string;
@@ -137,7 +141,7 @@ export async function probeBuild123dContract(
       baseline,
       "contract-divergent",
       {},
-      "The desired manifest no longer matches the reviewed mcp-build123d 0.6.1 contract; no alternate endpoint was probed.",
+      "The desired manifest no longer matches the reviewed mcp-build123d 0.7.0 contract; no alternate endpoint was probed.",
     );
   }
 
@@ -208,7 +212,7 @@ export async function build123dContractFingerprint(
     serverInfo.version !== BUILD123D_RELEASE.version
   ) {
     throw new ContractDivergenceError(
-      "Health and discovery do not expose one concordant mcp-build123d 0.6.1 identity.",
+      "Health and discovery do not expose one concordant mcp-build123d 0.7.0 identity.",
     );
   }
   const supportedVersions = strings(
@@ -233,11 +237,19 @@ export async function build123dContractFingerprint(
     observer.inputSchema,
     "assembly observation inputSchema",
   );
+  const observerInputProperties = record(
+    observerInput.properties,
+    "assembly observation inputSchema properties",
+  );
   if (
-    !Array.isArray(observerInput.required) || !observerInput.required.includes("step")
+    observerInput.type !== "object" ||
+    observerInput.additionalProperties !== false ||
+    observerInput.minProperties !== 1 ||
+    observerInput.maxProperties !== 1 ||
+    !sameStringSet(Object.keys(observerInputProperties), ["step", "stepResource"])
   ) {
     throw new ContractDivergenceError(
-      "Assembly observation must require one STEP envelope.",
+      "Assembly observation must accept exactly one exclusive STEP envelope.",
     );
   }
   const observerOutput = record(
@@ -261,7 +273,7 @@ export async function build123dContractFingerprint(
       .const !== BUILD123D_RELEASE.version
   ) {
     throw new ContractDivergenceError(
-      "Assembly observation packageVersion is not 0.6.1.",
+      "Assembly observation packageVersion is not 0.7.0.",
     );
   }
   const method = record(outputProperties.method, "assembly observation method schema");
@@ -277,10 +289,12 @@ export async function build123dContractFingerprint(
       "Assembly observation does not declare the reviewed OCCT method.",
     );
   }
+  assertProjectionSchemas(byName.get("build123d_project_2d")!);
   if (
     viewerResourceUri(byName.get("build123d_execute")!) !== RESULTS_VIEWER ||
     viewerResourceUri(byName.get("build123d_export")!) !== RESULTS_VIEWER ||
-    viewerResourceUri(observer) !== undefined
+    viewerResourceUri(observer) !== ASSEMBLY_VIEWER ||
+    viewerResourceUri(byName.get("build123d_project_2d")!) !== DRAWING_VIEWER
   ) {
     throw new ContractDivergenceError(
       "Build123d viewer attachments differ from the reviewed surface.",
@@ -333,8 +347,8 @@ function parseDesiredIdentity(
       matchesRelease(build123d) && matchesRelease(sandbox) &&
       sameStringSet(stringArray(build123d.expectedTools), BUILD123D_EXPECTED_TOOLS) &&
       sameStringSet(stringArray(sandbox.expectedTools), BUILD123D_EXPECTED_TOOLS) &&
-      sameStringSet(stringArray(build123d.expectedViews), [RESULTS_VIEWER]) &&
-      sameStringSet(stringArray(sandbox.expectedViews), [RESULTS_VIEWER]),
+      sameStringSet(stringArray(build123d.expectedViews), [...EXPECTED_VIEWERS]) &&
+      sameStringSet(stringArray(sandbox.expectedViews), [...EXPECTED_VIEWERS]),
     imageDigestVerified: false,
   };
 }
@@ -435,7 +449,7 @@ function report(
       ? {
         serverFixedCad: "declared",
         assemblyIntegrityObservation: "declared",
-        viewerUris: [RESULTS_VIEWER],
+        viewerUris: [...EXPECTED_VIEWERS],
       }
       : {
         serverFixedCad: "unresolved",
@@ -476,6 +490,65 @@ function observedSurface(
   };
 }
 
+function assertProjectionSchemas(tool: Record<string, unknown>): void {
+  const input = record(tool.inputSchema, "build123d_project_2d inputSchema");
+  const forms = input.oneOf;
+  if (!Array.isArray(forms) || forms.length !== 2 || !forms.every(isRecord)) {
+    throw new ContractDivergenceError(
+      "2D projection must expose exactly the exclusive inline and owned-STEP forms.",
+    );
+  }
+  const inlineRequired = strings(
+    record(forms[0], "2D projection inline form").required,
+    "2D projection inline required",
+  );
+  if (!sameStringSet(inlineRequired, ["step"])) {
+    throw new ContractDivergenceError(
+      "2D projection inline form must require step.",
+    );
+  }
+  const ownedRequired = strings(
+    record(forms[1], "2D projection owned-STEP form").required,
+    "2D projection owned-STEP required",
+  );
+  if (!sameStringSet(ownedRequired, ["stepResource"])) {
+    throw new ContractDivergenceError(
+      "2D projection owned-STEP form must require stepResource.",
+    );
+  }
+  const output = record(tool.outputSchema, "build123d_project_2d outputSchema");
+  const outputRequired = strings(output.required, "2D projection output required");
+  if (
+    !sameStringSet(outputRequired, [
+      "schemaVersion",
+      "kind",
+      "sourceStep",
+      "engine",
+      "method",
+      "envelopeMm",
+      "views",
+    ])
+  ) {
+    throw new ContractDivergenceError(
+      "2D projection output must carry the fixed projection envelope.",
+    );
+  }
+  const outputProperties = record(
+    output.properties,
+    "2D projection outputSchema properties",
+  );
+  if (
+    record(outputProperties.schemaVersion, "2D projection schemaVersion").const !==
+      "io.casys.mcp-build123d.drawing-projection/1.0" ||
+    record(outputProperties.kind, "2D projection kind").const !==
+      "drawing-projection"
+  ) {
+    throw new ContractDivergenceError(
+      "2D projection output must declare the reviewed drawing-projection identity.",
+    );
+  }
+}
+
 function assertExecutionTimeout(tool: Record<string, unknown>, name: string): void {
   const input = record(tool.inputSchema, `${name} inputSchema`);
   const properties = record(input.properties, `${name} inputSchema properties`);
@@ -494,7 +567,7 @@ function assertResources(resources: readonly Record<string, unknown>[]): void {
   const uris = resources.flatMap((resource) =>
     typeof resource.uri === "string" ? [resource.uri] : []
   );
-  if (!sameStringSet(uris, [RESULTS_VIEWER])) {
+  if (!sameStringSet(uris, [...EXPECTED_VIEWERS])) {
     throw new ContractDivergenceError(
       "resources/list does not expose exactly the reviewed viewer surface.",
     );

@@ -80,7 +80,7 @@ services:
   mcp-syson:
     # The dedicated provider owns its own server entrypoint. Keep this distinct
     # from the shared engineering toolchain used by the CAD services.
-    image: "${MCP_SYSON_IMAGE:-ghcr.io/casys-ai/mcp-syson@sha256:87eee6e35a636124d5ba6911492a245d69edcdf1ba67575676c22a0e9d7ce65e}"
+    image: "${MCP_SYSON_IMAGE:-ghcr.io/casys-ai/mcp-syson@sha256:df00198b1fd33504871e93834bc6616bcfcc09a85d4cd8f6348434c38c09c0ab}"
     # Do not reintroduce the legacy `syson` command token: the dedicated image
     # already starts server.ts, so only valid server arguments belong here.
     command: ["--port=3009", "--hostname=0.0.0.0"]
@@ -96,7 +96,7 @@ services:
   mcp-build123d:
     # The dedicated provider image owns its ENTRYPOINT and default HTTP CMD.
     # Do not restore the legacy engineering-toolchain `build123d` subcommand.
-    image: "${MCP_BUILD123D_IMAGE:-ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d}"
+    image: "${MCP_BUILD123D_IMAGE:-ghcr.io/casys-ai/mcp-build123d@sha256:aa9ae1264294ddb47e3686c3a2b46c79cbc3971a8ec5cee6cee79bf6a7bcc5a9}"
     ports:
       - "127.0.0.1:3014:3014"
     volumes:
@@ -132,7 +132,7 @@ services:
   mcp-build123d-sandbox:
     # Same dedicated provider release, but the private volume and server-owned
     # admission boundary below remain distinct from the canonical service.
-    image: "${MCP_BUILD123D_IMAGE:-ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d}"
+    image: "${MCP_BUILD123D_IMAGE:-ghcr.io/casys-ai/mcp-build123d@sha256:aa9ae1264294ddb47e3686c3a2b46c79cbc3971a8ec5cee6cee79bf6a7bcc5a9}"
     ports:
       - "127.0.0.1:3024:3014"
     volumes:
@@ -193,7 +193,7 @@ services:
   # content-addressed submitted netlist; its legacy-path compatibility input may only
   # snapshot an artifact already present here — it never writes into this volume.
   mcp-dfm:
-    image: "${MCP_DFM_IMAGE:-ghcr.io/casys-ai/mcp-dfm@sha256:a31aa702e45e4445c67454f807832b60455211664fa98ff36f54948aedec4fb9}"
+    image: "${MCP_DFM_IMAGE:-ghcr.io/casys-ai/mcp-dfm@sha256:fd161cfd936773fa551e281d1ae371f7edc544f996eb966e6466d5ff49f384f5}"
     ports:
       - "127.0.0.1:3018:3018"
     volumes:
@@ -212,7 +212,7 @@ services:
     networks: [chain]
 
   mcp-tolerance:
-    image: "${MCP_TOLERANCE_IMAGE:-ghcr.io/casys-ai/mcp-tolerance@sha256:fb84ac18847561c9003d0ca19111fa8ab2afe7e99dfcd325129de279dff01aea}"
+    image: "${MCP_TOLERANCE_IMAGE:-ghcr.io/casys-ai/mcp-tolerance@sha256:185c7f34de40104747323fb524db8c2f783066f176b19ae4e8c777f78849c81f}"
     ports:
       - "127.0.0.1:3019:3019"
     healthcheck:
@@ -229,7 +229,7 @@ services:
     networks: [chain]
 
   mcp-prusaslicer:
-    image: "${MCP_PRUSASLICER_IMAGE:-ghcr.io/casys-ai/mcp-prusaslicer@sha256:52bb17da9db8fa59e62ce49d5695cd9982ea91fb0150f720e029ef9612f0a342}"
+    image: "${MCP_PRUSASLICER_IMAGE:-ghcr.io/casys-ai/mcp-prusaslicer@sha256:e63093777eff5f766e51acf1afe7cdb3b0e20c133cff93ad0d3e3b9b979e1ab3}"
     ports:
       - "127.0.0.1:3022:3022"
     volumes:
@@ -248,7 +248,7 @@ services:
     networks: [chain]
 
   mcp-spice:
-    image: "${MCP_SPICE_IMAGE:-ghcr.io/casys-ai/mcp-spice@sha256:80f8d6b34dc55e623daf936faea5ff9ee75871331aa88d7339191ea17584991b}"
+    image: "${MCP_SPICE_IMAGE:-ghcr.io/casys-ai/mcp-spice@sha256:e5bcf112ec37d71d9a02dfcb1c65af0ed77fe497e97e16e931bfb6baa0dd367d}"
     ports:
       - "127.0.0.1:3023:3023"
     volumes:

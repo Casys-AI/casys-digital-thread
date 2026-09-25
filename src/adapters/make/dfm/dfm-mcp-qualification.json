@@ -1,5 +1,5 @@
 {
-  "source": "Archived live mcp-dfm 0.1.0 probes. structuredContent copied verbatim from qualif-dfm-calls.json; mismatch from dfm-mismatch-test.json.",
+  "source": "Measured values verbatim from live mcp-dfm 0.1.0 probes of step 9273149a (qualif-dfm-calls.json; mismatch from dfm-mismatch-test.json). volume_status/minimum_thickness_status grafted per the live 0.3.0 contract: verified values observed on examples/bracket/bracket.step (7e8bcb45) against mcp-dfm 0.3.0 fd161cfd on 2026-09-25. mesh_topology/ray_coverage omitted: the atelier parser does not read them.",
   "expected_step_sha256": "9273149a5203a13ef3b14f7e70062e76ee106eaaf5ba474e98e1cd9116cdc270",
   "dfm_check_envelope": {
     "violations": [],
@@ -8,7 +8,9 @@
       "y_mm": 135,
       "z_mm": 18,
       "volume_mm3": 211499.99999999555,
-      "mass_kg": 0.571049999999988
+      "volume_status": "computed",
+      "mass_kg": 0.571049999999988,
+      "mass_status": "computed"
     },
     "limits_declared": {
       "build_volume_mm": {
@@ -39,6 +41,7 @@
         -22.561103908022428,
         -3
       ],
+      "minimum_thickness_status": "sampled",
       "sample_count": 500,
       "valid_ray_count": 500
     },

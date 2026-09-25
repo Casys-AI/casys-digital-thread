@@ -3,7 +3,7 @@
  * use case. MCP exposure is bound after McpApp construction.
  */
 
-import type { McpApp } from "@casys/mcp-server";
+import type { McpApp } from "@casys/mcp-platform";
 import type { ThermalMethodSheetStore } from "../../application/ports/out/modelica/thermal-method-sheet-store.ts";
 import type { ElectricalObservationMethodSheetStore } from "../../application/ports/out/electrical/observation-method-sheet-store.ts";
 import type { ProjectResourceCaptureUseCase } from "../../application/ports/in/resource/project-resource-capture.ts";

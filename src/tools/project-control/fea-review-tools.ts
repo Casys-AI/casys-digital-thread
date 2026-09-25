@@ -1,4 +1,4 @@
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import type { ProjectFeaProofCaseCaptureUseCase } from "../../application/ports/in/fea/seal-case/project-fea-proof-case-capture.ts";
 import type { ProjectFeaProofSealReviewUseCase } from "../../application/ports/in/fea/seal-case/project-fea-proof-seal-review.ts";
 import type { ProjectFeaIsolatedRunReviewUseCase } from "../../application/ports/in/fea/isolated-v3/project-fea-isolated-run-review.ts";

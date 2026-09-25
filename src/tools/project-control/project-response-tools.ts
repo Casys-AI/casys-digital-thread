@@ -6,7 +6,7 @@
  * internal result through ProjectResponseUseCase.project.
  */
 
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import {
   PROJECT_BRIEF_ITEM_KINDS,

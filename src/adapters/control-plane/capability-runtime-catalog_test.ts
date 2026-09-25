@@ -200,10 +200,10 @@ Deno.test("atomic first-party runtime catalogue exposes only runtime materials a
   assertEquals(sensitivity?.profile, null);
   assertEquals(sensitivity?.unitIds, ["casys.mcp-calculix"]);
   const calculix = catalog.units.find((unit) => unit.id === "casys.mcp-calculix");
-  assertEquals(calculix?.version, "0.8.2");
+  assertEquals(calculix?.version, "0.8.5");
   assertEquals(
     calculix?.materials[0]?.imageReference,
-    "ghcr.io/casys-ai/mcp-calculix@sha256:ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
+    "ghcr.io/casys-ai/mcp-calculix@sha256:3fad853cdb720d6d50e4714d23c9e4cf7bb011fec7b10addad5945b045757123",
   );
   assertEquals(calculix?.materials[0]?.platforms, ["linux/amd64", "linux/arm64"]);
   assertEquals(calculix?.materials[0]?.launchGroup?.id, "casys-mcp-calculix");
@@ -270,10 +270,10 @@ Deno.test("atomic first-party runtime catalogue exposes only runtime materials a
     "1.2.0",
   );
   const chrono = catalog.units.find((unit) => unit.id === "casys.mcp-chrono");
-  assertEquals(chrono?.version, "0.3.2");
+  assertEquals(chrono?.version, "0.3.5");
   assertEquals(
     chrono?.materials[0]?.imageReference,
-    "ghcr.io/casys-ai/mcp-chrono@sha256:2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557",
+    "ghcr.io/casys-ai/mcp-chrono@sha256:a56fc994c6ff6beb33b884a7a638cd5fc00281201f9ad5e5556ba790adb39c18",
   );
   assertEquals(chrono?.materials[0]?.platforms, ["linux/amd64"]);
   assertEquals(chrono?.materials[0]?.effects, {

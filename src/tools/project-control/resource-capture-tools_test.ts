@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
+import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-platform";
 import { registerProjectResourceCaptureTools } from "./resource-capture-tools.ts";
 import type { AgentResourceCaptureReview } from "../../domain/resource/agent-resource-capture.ts";
 

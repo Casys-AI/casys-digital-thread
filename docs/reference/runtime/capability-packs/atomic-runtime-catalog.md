@@ -66,8 +66,8 @@ publish none. See [capability runtime connection](capability-runtime-connection.
 | `casys.mcp-calculix`                     | CalculiX HTTP sensitivity service       | 3015                  | Separate unqualified S1 binding                                                                                                                                                                                                                                                                        |
 | `casys.modelica-worker`                  | One physical Modelica microVM           | —                     | Host/security reviewed for the shared image bytes. Two bindings/profiles: `openmodelica-qualified-kit` (qualified, pinned LinearThermalRamp kit only) and `openmodelica-admitted-modelica` (literally unqualified). Sharing the image does not qualify the admitted method.                            |
 | `casys.spice-worker`                     | Admitted ngspice runtime microVM        | —                     | One exact runtime material only. Its trusted Dockerfile source is internal bootstrap metadata, not a project-plan or JIT prerequisite; not HTTP `mcp-spice`                                                                                                                                            |
-| `casys.mcp-chrono`                       | mcp-chrono 0.3.2 persistent MCP service | 3025                  | Linux/amd64 only; catalogue baseline `unqualified`. Effective host mode is the attestation overlay, not this table                                                                                                                                                                                     |
-| `casys.mcp-dfm`                          | mcp-dfm 0.1.0 persistent MCP service    | 3018                  | Measured DFM checks; catalogue binding `mcp-dfm-measured-checks` is `qualified`. Private `dfm-exports` volume. Root Compose on the same port collides.                                                                                                                                                 |
+| `casys.mcp-chrono`                       | mcp-chrono 0.3.5 persistent MCP service | 3025                  | Linux/amd64 only; catalogue baseline `unqualified`. Effective host mode is the attestation overlay, not this table                                                                                                                                                                                     |
+| `casys.mcp-dfm`                          | mcp-dfm 0.3.0 persistent MCP service    | 3018                  | Measured DFM checks; catalogue binding `mcp-dfm-measured-checks` is `qualified`. Private `dfm-exports` volume. Root Compose on the same port collides.                                                                                                                                                 |
 
 Every material records persistence, service/volume, network, bind-mount, privileged
 container, socket, device, secret-slot, licence and security effects. No material has a
@@ -83,12 +83,12 @@ id/version/fingerprint reference. The three `casys.syson-stack` materials share 
 `casys-syson@1.0.1` group reference. Build123d has two separate immutable one-service
 groups: `casys-build123d-sandbox@1.0.0` (`mcp-build123d-sandbox`, 3024 → 3014,
 `build123d-sandbox-exports:/exports`) and `casys-build123d-observation@1.0.0`
-(`mcp-build123d`, 3014 → 3014, `exports:/exports`). Both pin Build123d 0.6.1 digest
-`sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d`, have no
+(`mcp-build123d`, 3014 → 3014, `exports:/exports`). Both pin Build123d 0.7.0 digest
+`sha256:aa9ae1264294ddb47e3686c3a2b46c79cbc3971a8ec5cee6cee79bf6a7bcc5a9`, have no
 shared named network or invented healthcheck, and retain their volumes.
 Catalogue/project data cannot carry Compose commands, provider endpoints, tools,
-arguments or secret values. `casys.mcp-chrono@0.3.2` names the separate single-service
-`casys-chrono@1.0.0` group. `casys.mcp-calculix@0.8.2` names the separate single-service
+arguments or secret values. `casys.mcp-chrono@0.3.5` names the separate single-service
+`casys-chrono@1.0.0` group. `casys.mcp-calculix@0.8.5` names the separate single-service
 `casys-mcp-calculix@1.0.0` group in Compose project `casys-mcp-calculix-v1`. Its
 immutable Compose body remains in the server-only H1 registry, has no Docker
 healthcheck, and retains exactly `calculix-inputs:/inputs`,
@@ -116,7 +116,7 @@ does not rewrite this catalogue or the Microsandbox runtime digest. See
 
 The semantic capability `mechanics.observe-static-structural-sensitivity@1` names only
 two static-structural sensitivity observations, never a verdict. Its concrete
-`calculix-http-static-sensitivity@1` binding points to `casys.mcp-calculix@0.8.2` and
+`calculix-http-static-sensitivity@1` binding points to `casys.mcp-calculix@0.8.5` and
 its sealed `casys-mcp-calculix@1.0.0` group, but its repository baseline remains
 deliberately `unqualified`. The group declares only the published `http` command,
 loopback 3015 and its three retained private volumes: `calculix-inputs:/inputs`,

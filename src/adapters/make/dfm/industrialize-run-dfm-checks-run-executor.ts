@@ -31,7 +31,7 @@ import { openLeaseBoundCapabilityRuntimeMcpClient } from "../../../application/c
 import { requiredQualifiedPersistentComposePublication } from "../../../application/control-plane/capability-runtime-persistent-compose-publication.ts";
 import type { ResolvedCapabilityRuntimeOperation } from "../../../domain/capability/runtime/capability-runtime-supervision.ts";
 import type { CapabilityRuntimeMaterialIdentity } from "../../../domain/capability/runtime/capability-runtime-material.ts";
-import { MCP_DFM_010_IMAGE_REFERENCE } from "../../control-plane/first-party-capability-runtime-identities.ts";
+import { MCP_DFM_030_IMAGE_REFERENCE } from "../../control-plane/first-party-capability-runtime-identities.ts";
 import {
   EngineeringProjectCommandError,
   type EngineeringProjectCommandService,
@@ -1294,8 +1294,8 @@ function exactDfmMaterial(
     );
   }
   const material = binding.materials[0]!;
-  const expectedDigest = MCP_DFM_010_IMAGE_REFERENCE.slice(
-    MCP_DFM_010_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
+  const expectedDigest = MCP_DFM_030_IMAGE_REFERENCE.slice(
+    MCP_DFM_030_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
   );
   if (
     material.unitId !== "casys.mcp-dfm" ||

@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import {
   type ProjectControlToolDependencies,
   registerProjectControlTools,

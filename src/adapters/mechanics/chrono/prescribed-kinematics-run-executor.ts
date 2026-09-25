@@ -122,7 +122,7 @@ import {
   threadWriteBasisLeaseScope,
 } from "../../shared/thread-write-basis-guard.ts";
 import {
-  MCP_CHRONO_032_IMAGE_REFERENCE,
+  MCP_CHRONO_035_IMAGE_REFERENCE,
 } from "../../control-plane/first-party-capability-runtime-identities.ts";
 import {
   firstPartyChronoLaunchGroupReference,
@@ -825,14 +825,14 @@ async function runtimeProvenance(
   const material = binding.materials[0]!;
   const lifecycle = binding.hostLifecycles[0]!;
   const expectedLaunchGroup = await firstPartyChronoLaunchGroupReference();
-  const expectedImageDigest = MCP_CHRONO_032_IMAGE_REFERENCE.slice(
-    MCP_CHRONO_032_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
+  const expectedImageDigest = MCP_CHRONO_035_IMAGE_REFERENCE.slice(
+    MCP_CHRONO_035_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
   );
   if (
     binding.binding.id !== "chrono-prescribed-kinematics" ||
     binding.binding.version !== "1" ||
     binding.adapter.id !== "chrono-prescribed-kinematics-adapter" ||
-    binding.adapter.version !== "0.3.2" ||
+    binding.adapter.version !== "0.3.5" ||
     binding.adapter.source !==
       "src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts" ||
     binding.profile !== null ||

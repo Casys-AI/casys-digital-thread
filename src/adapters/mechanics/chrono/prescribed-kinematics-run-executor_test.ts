@@ -91,7 +91,7 @@ import {
   recordingCapabilityRuntimeSession,
 } from "../../../testing/capability-runtime-execution-session-test-support.ts";
 import {
-  MCP_CHRONO_032_IMAGE_REFERENCE,
+  MCP_CHRONO_035_IMAGE_REFERENCE,
 } from "../../control-plane/first-party-capability-runtime-identities.ts";
 import {
   firstPartyChronoLaunchGroupReference,
@@ -1039,7 +1039,7 @@ function recordedKinematicsObservation(): RunPrescribedKinematicsObservationResu
       outcomeSha256: fingerprint.digest,
       requestId: "rop2-prescribed-kinematics-recorded",
       recordedAt: L3_AT,
-      engine: { name: "chrono", version: "0.3.2" },
+      engine: { name: "chrono", version: "0.3.5" },
       runtime: {
         binding: "chrono-prescribed-kinematics",
         pythonVersion: "3.12",
@@ -1461,8 +1461,8 @@ async function chronoOperationalCapability(
   projectId: string,
 ): Promise<ResolvedCapabilityRuntimeOperation> {
   const launchGroup = await firstPartyChronoLaunchGroupReference();
-  const imageDigest = MCP_CHRONO_032_IMAGE_REFERENCE.slice(
-    MCP_CHRONO_032_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
+  const imageDigest = MCP_CHRONO_035_IMAGE_REFERENCE.slice(
+    MCP_CHRONO_035_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
   );
   const material = {
     unitId: "casys.mcp-chrono",
@@ -1488,7 +1488,7 @@ async function chronoOperationalCapability(
       effectiveQualification: "qualified",
       adapter: {
         id: "chrono-prescribed-kinematics-adapter",
-        version: "0.3.2",
+        version: "0.3.5",
         source: "src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts",
       },
       profile: null,

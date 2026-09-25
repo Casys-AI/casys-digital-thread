@@ -18,7 +18,7 @@ const RUNTIME = {
   },
   launchGroup: {
     id: "casys-mcp-calculix",
-    version: "0.8.2",
+    version: "0.8.5",
     fingerprint: { algorithm: "sha256" as const, digest: "2".repeat(64) },
   },
 };

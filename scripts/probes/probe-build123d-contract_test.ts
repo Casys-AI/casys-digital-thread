@@ -17,17 +17,22 @@ const MANIFEST = JSON.stringify({
     }),
   ],
 });
-const HEALTH = { status: "ok", server: "mcp-build123d", version: "0.6.1" };
+const HEALTH = { status: "ok", server: "mcp-build123d", version: "0.7.0" };
 const DISCOVERY = {
   supportedVersions: ["2026-07-28"],
-  serverInfo: { name: "mcp-build123d", version: "0.6.1" },
+  serverInfo: { name: "mcp-build123d", version: "0.7.0" },
   resultType: "complete",
 };
-const RESOURCES = [{ uri: "ui://mcp-build123d/results-viewer" }];
+const RESOURCES = [
+  { uri: "ui://mcp-build123d/results-viewer" },
+  { uri: "ui://mcp-build123d/assembly-viewer" },
+  { uri: "ui://mcp-build123d/drawing-viewer" },
+];
 const TOOLS = [
   executionTool("build123d_execute", "ui://mcp-build123d/results-viewer"),
   executionTool("build123d_export", "ui://mcp-build123d/results-viewer"),
   assemblyObservationTool(),
+  projectionTool(),
 ];
 
 Deno.test("Build123d preflight uses the read-only discovery surface and accepts its reviewed fingerprint", async () => {
@@ -56,7 +61,7 @@ Deno.test("Build123d preflight uses the read-only discovery surface and accepts 
 Deno.test("Build123d preflight rejects fleet drift before network", async () => {
   const fake = new FakeBuild123dFetch();
   const changed = JSON.parse(MANIFEST) as { servers: Array<Record<string, unknown>> };
-  changed.servers[1]!.image = "ghcr.io/casys-ai/mcp-build123d:0.6.1";
+  changed.servers[1]!.image = "ghcr.io/casys-ai/mcp-build123d:0.7.0";
   const result = await probeBuild123dContract({
     manifestText: JSON.stringify(changed),
     fetch: fake.fetch,
@@ -112,10 +117,14 @@ function server(
     providerIdentity: {
       ...BUILD123D_RELEASE,
       contractFingerprint:
-        "43801a71a10eb91959b616947b6ca028fa2ca05e8bf010159180fbf1067f68fa",
+        "a4ac099a47eaebdc3dd41b5da1e2a6b5818835cea09c78995f791294ca3011a0",
     },
     expectedTools: BUILD123D_EXPECTED_TOOLS,
-    expectedViews: ["ui://mcp-build123d/results-viewer"],
+    expectedViews: [
+      "ui://mcp-build123d/results-viewer",
+      "ui://mcp-build123d/assembly-viewer",
+      "ui://mcp-build123d/drawing-viewer",
+    ],
   };
 }
 
@@ -142,16 +151,48 @@ function assemblyObservationTool(): Record<string, unknown> {
     name: "build123d_observe_assembly_integrity",
     inputSchema: {
       type: "object",
-      required: ["step"],
-      properties: { step: { type: "object" } },
+      additionalProperties: false,
+      minProperties: 1,
+      maxProperties: 1,
+      properties: { step: { type: "object" }, stepResource: { type: "object" } },
     },
     outputSchema: {
       type: "object",
       properties: {
-        producer: { properties: { packageVersion: { const: "0.6.1" } } },
+        producer: { properties: { packageVersion: { const: "0.7.0" } } },
         method: { properties: { id: { const: "occt-assembly-integrity-v1" } } },
       },
     },
+    _meta: { ui: { resourceUri: "ui://mcp-build123d/assembly-viewer" } },
+  };
+}
+
+function projectionTool(): Record<string, unknown> {
+  return {
+    name: "build123d_project_2d",
+    inputSchema: {
+      oneOf: [
+        { type: "object", required: ["step"] },
+        { type: "object", required: ["stepResource"] },
+      ],
+    },
+    outputSchema: {
+      type: "object",
+      required: [
+        "schemaVersion",
+        "kind",
+        "sourceStep",
+        "engine",
+        "method",
+        "envelopeMm",
+        "views",
+      ],
+      properties: {
+        schemaVersion: { const: "io.casys.mcp-build123d.drawing-projection/1.0" },
+        kind: { const: "drawing-projection" },
+      },
+    },
+    _meta: { ui: { resourceUri: "ui://mcp-build123d/drawing-viewer" } },
   };
 }
 

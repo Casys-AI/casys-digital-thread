@@ -72,7 +72,7 @@ Deno.test("Chrono adapter sends fixed tool sequence with bearer at fetch only", 
 
   assertEquals(run.state, "recorded");
   if (run.state !== "recorded") throw new Error("The fixture must record a run.");
-  // mcp-chrono 0.3.2 publishes exactly these nine provider-owned limits. It
+  // mcp-chrono 0.3.5 publishes exactly these nine provider-owned limits. It
   // deliberately does not know the Digital Thread manufacturability limit.
   assertEquals(run.record.notEvaluated, [
     "collision",
@@ -530,8 +530,8 @@ function recordView(
       outcome_sha256: OUTCOME_SHA,
       request_id: REQUEST_ID,
       recorded_at: "2026-08-29T00:00:00.000Z",
-      package: { name: "@casys/mcp-chrono", version: "0.3.2" },
-      provider: { name: "casys-chrono", version: "0.3.2" },
+      package: { name: "@casys/mcp-chrono", version: "0.3.5" },
+      provider: { name: "casys-chrono", version: "0.3.5" },
       worker: { source_sha256: WORKER_SHA },
       runtime: { binding: "pychrono", python_version: "3.13.0" },
       server_runtime: { deno_version: "2.9.6" },

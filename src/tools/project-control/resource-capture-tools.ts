@@ -1,4 +1,4 @@
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import type { ProjectResourceCaptureUseCase } from "../../application/ports/in/resource/project-resource-capture.ts";
 import type { AgentResourceExposure } from "../../application/ports/out/resource/agent-resource-exposure.ts";
 import type { AgentResourceCaptureReview } from "../../domain/resource/agent-resource-capture.ts";

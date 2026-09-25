@@ -24,10 +24,10 @@ const MANIFEST = JSON.stringify({
   }],
 });
 
-const HEALTH = { status: "ok", server: "mcp-spice", version: "0.5.2" };
+const HEALTH = { status: "ok", server: "mcp-spice", version: "0.6.2" };
 const DISCOVERY = {
   supportedVersions: ["2026-07-28"],
-  serverInfo: { name: "mcp-spice", version: "0.5.2" },
+  serverInfo: { name: "mcp-spice", version: "0.6.2" },
   instructions:
     "Both submitted and legacy-path netlists are limited to 1 MiB; each observable kind is limited to 32 names. Transient wrdata is bounded to 8 MiB and 50,000 samples before reduction.",
   resultType: "complete",
@@ -46,6 +46,9 @@ const TOOLS = [
     ["node_stats", "sweep"],
     true,
   ),
+  tool("spice_simulation_dispatch_get", ["request_sha256"], ["dispatch"]),
+  tool("spice_simulation_receipt_get", ["receipt_sha256"], ["receipt"]),
+  tool("spice_simulation_result_get", ["outcome_sha256"], ["outcome"]),
 ];
 
 Deno.test("spice preflight uses discovery only and accepts the reviewed fingerprint", async () => {
@@ -137,7 +140,7 @@ Deno.test("one nested schema change invalidates the canonical contract", async (
 });
 
 Deno.test("spice preflight rejects a missing DC tool or changed declared budget", async () => {
-  const withoutDc = TOOLS.slice(0, -1);
+  const withoutDc = TOOLS.filter((item) => item.name !== "spice_simulate_dc");
   const missingDc = await probeSpiceContract({
     manifestText: MANIFEST,
     fetch: new FakeSpiceFetch({ tools: withoutDc }).fetch,

@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertRejects } from "@std/assert";
-import { type McpApp, type MCPTool, SchemaValidator } from "@casys/mcp-server";
+import { type McpApp, type MCPTool, SchemaValidator } from "@casys/mcp-platform";
 import { FileByteStore } from "../../adapters/shared/cas/file-byte-store.ts";
 import { FileBuyCostEstimatePreviewEvidenceStore } from "../../adapters/buy/file-buy-cost-estimate-preview-evidence-store.ts";
 import {

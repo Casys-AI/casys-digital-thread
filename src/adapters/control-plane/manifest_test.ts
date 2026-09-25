@@ -37,9 +37,12 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
       "build123d_execute",
       "build123d_export",
       "build123d_observe_assembly_integrity",
+      "build123d_project_2d",
     ]);
     assertEquals(build123d?.expectedViews, [
       "ui://mcp-build123d/results-viewer",
+      "ui://mcp-build123d/assembly-viewer",
+      "ui://mcp-build123d/drawing-viewer",
     ]);
   }
   const erpnext = manifest.servers.find((server) => server.id === "erpnext");
@@ -77,7 +80,7 @@ Deno.test("loadFleetManifest accepts the workspace manifest and preserves postur
   assertEquals(calculix?.required, false);
 });
 
-Deno.test("CalculiX desired identity pins the published 0.8.2 index, labels, and timeout ceiling", async () => {
+Deno.test("CalculiX desired identity pins the published 0.8.5 index, labels, and timeout ceiling", async () => {
   const raw = JSON.parse(await Deno.readTextFile("config/mcp-fleet.json")) as {
     servers: Array<Record<string, unknown>>;
   };
@@ -85,53 +88,53 @@ Deno.test("CalculiX desired identity pins the published 0.8.2 index, labels, and
   assert(calculix, "fleet manifest is missing CalculiX");
   assertEquals(
     calculix.image,
-    "ghcr.io/casys-ai/mcp-calculix@sha256:ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
+    "ghcr.io/casys-ai/mcp-calculix@sha256:3fad853cdb720d6d50e4714d23c9e4cf7bb011fec7b10addad5945b045757123",
   );
   assertEquals(calculix.providerIdentity, {
-    version: "0.8.2",
-    revision: "6fb30a75c4876ad469cc472ffa8ca691e0a6b58b",
+    version: "0.8.5",
+    revision: "a98151d505a8851e0021916c5fa0953418fd8cac",
     imageIndexDigest:
-      "ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
+      "3fad853cdb720d6d50e4714d23c9e4cf7bb011fec7b10addad5945b045757123",
     ociLabels: {
       "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-calculix",
       "org.opencontainers.image.title": "mcp-calculix",
-      "org.opencontainers.image.version": "0.8.2",
-      "org.opencontainers.image.revision": "6fb30a75c4876ad469cc472ffa8ca691e0a6b58b",
+      "org.opencontainers.image.version": "0.8.5",
+      "org.opencontainers.image.revision": "a98151d505a8851e0021916c5fa0953418fd8cac",
     },
     contractFingerprint:
-      "8e8b5c007299818908d424413483addf7fdde5928175c80d2817232b85839ed4",
+      "96fcac681292d7d48ca5d11c9e8630ff5bd61b95266f7b1b18f083c6c496b860",
     ordinarySolveTimeoutMaxMs: 120000,
   });
 });
 
-Deno.test("Build123d desired identities pin the dedicated 0.6.1 multi-arch provider contract", async () => {
+Deno.test("Build123d desired identities pin the dedicated 0.7.0 multi-arch provider contract", async () => {
   const raw = JSON.parse(await Deno.readTextFile("config/mcp-fleet.json")) as {
     servers: Array<Record<string, unknown>>;
   };
   const expectedImage =
-    "ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d";
+    "ghcr.io/casys-ai/mcp-build123d@sha256:aa9ae1264294ddb47e3686c3a2b46c79cbc3971a8ec5cee6cee79bf6a7bcc5a9";
   const expectedIdentity = {
-    releaseTag: "v0.6.1",
-    version: "0.6.1",
-    revision: "beaeb648a979437cce8676da103a39d9eb312290",
+    releaseTag: "v0.7.0",
+    version: "0.7.0",
+    revision: "b831c16019e4e09e66c4e5567f9ee70310fb8785",
     imageIndexDigest:
-      "765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d",
+      "aa9ae1264294ddb47e3686c3a2b46c79cbc3971a8ec5cee6cee79bf6a7bcc5a9",
     platformManifests: {
-      "linux/amd64": "e040ee6385df909d481ac58ec290a1b13f50ca40b0e48eec58949fb5efde8309",
-      "linux/arm64": "420d9ba94b71605443ee59cc1160f94e17ead0c5b6a3f5e7a80f76dffa1ea84b",
+      "linux/amd64": "602811b98614fdbde0722db44858d8e7595fe324a0ad6e41a407aa3a5fc24f9f",
+      "linux/arm64": "3bcd149aea766882338564ebfb12f22727218e9419e1a4e5d122e2a14789cb9a",
     },
     ociLabels: {
-      "org.opencontainers.image.created": "2026-08-28T16:59:19Z",
+      "org.opencontainers.image.created": "2026-09-24T01:51:16Z",
       "org.opencontainers.image.description": "Qualified Build123d MCP provider",
       "org.opencontainers.image.licenses": "MIT",
-      "org.opencontainers.image.revision": "beaeb648a979437cce8676da103a39d9eb312290",
+      "org.opencontainers.image.revision": "b831c16019e4e09e66c4e5567f9ee70310fb8785",
       "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-build123d",
       "org.opencontainers.image.title": "mcp-build123d",
       "org.opencontainers.image.url": "https://github.com/denoland/deno_docker",
-      "org.opencontainers.image.version": "0.6.1",
+      "org.opencontainers.image.version": "0.7.0",
     },
     contractFingerprint:
-      "43801a71a10eb91959b616947b6ca028fa2ca05e8bf010159180fbf1067f68fa",
+      "a4ac099a47eaebdc3dd41b5da1e2a6b5818835cea09c78995f791294ca3011a0",
   };
   for (const id of ["build123d", "build123d-sandbox"]) {
     const build123d = raw.servers.find((server) => server.id === id);
@@ -176,7 +179,7 @@ Deno.test("toolchain Compose defaults remain in parity with fleet desired images
   assertEquals(syson.command, ["--port=3009", "--hostname=0.0.0.0"]);
   assertEquals(
     composeImageDefault(syson.image, "mcp-syson", "MCP_SYSON_IMAGE").defaultImage,
-    "ghcr.io/casys-ai/mcp-syson@sha256:87eee6e35a636124d5ba6911492a245d69edcdf1ba67575676c22a0e9d7ce65e",
+    "ghcr.io/casys-ai/mcp-syson@sha256:df00198b1fd33504871e93834bc6616bcfcc09a85d4cd8f6348434c38c09c0ab",
   );
 
   for (const serviceName of ["mcp-build123d", "mcp-build123d-sandbox"]) {

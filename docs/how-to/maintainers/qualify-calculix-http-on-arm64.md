@@ -22,7 +22,7 @@ deno task capability:qualify review --candidate=calculix-http-arm64-native-v1
 
 The candidate requires an observed and targeted Docker daemon `linux/arm64`, mode
 `native`, launch group `casys-mcp-calculix@1.0.0` in Compose project
-`casys-mcp-calculix-v1`, and the pinned `casys.mcp-calculix@0.8.2` material with its
+`casys-mcp-calculix-v1`, and the pinned `casys.mcp-calculix@0.8.5` material with its
 unchanged image digest. The group retains exactly `calculix-inputs:/inputs`,
 `calculix-runs:/var/lib/mcp-calculix-runs`, and `calculix-exports:/exports`. `/exports`
 is required by the image but remains private and retained: it is never proof/evidence or

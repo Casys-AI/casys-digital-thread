@@ -1,5 +1,5 @@
 /**
- * Fixed mcp-calculix 0.8.2 adapter for the sensitivity vertical.
+ * Fixed mcp-calculix 0.8.5 adapter for the sensitivity vertical.
  *
  * The application port never exposes an endpoint, tool name, volume, service
  * name, provider picker or argument envelope. This adapter owns the exact
@@ -1019,7 +1019,7 @@ function parseRecordedExecutionIdentity(
   );
   literalValue(
     server.version,
-    "0.8.2",
+    "0.8.5",
     "$calculixCapturedRequest.execution_identity.server.version",
   );
   const method = exactRecord(
@@ -1079,7 +1079,7 @@ function parseRecordedExecutionIdentity(
   );
   return {
     schema_version: "1.0",
-    server: { package: "@casys/mcp-calculix", version: "0.8.2" },
+    server: { package: "@casys/mcp-calculix", version: "0.8.5" },
     method: { id: MCP_CALCULIX_RECORDED_STATIC_TOOL, version: "1.0" },
     lowering: { id: "calculix.static.abaqus-deck", version: "1.0" },
     engines: { gmsh, ccx },

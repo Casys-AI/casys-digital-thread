@@ -1,4 +1,4 @@
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import type { ProjectAssemblyIntegrityEvaluationCloseoutReviewUseCase } from "../../application/ports/in/cad/assembly-integrity/project-assembly-integrity-evaluation-closeout-review.ts";
 import {
   OBJECT_OUTPUT_SCHEMA,

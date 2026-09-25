@@ -9,21 +9,19 @@ only `GET /health`, MCP `server/discover`, `tools/list`, and `resources/list` at
 code-owned loopback endpoint. It never issues `tools/call`, reads an artifact resource,
 executes CAD, or selects a provider argument.
 
-## Reviewed 0.6.1 OCI identity
+## Reviewed 0.7.0 OCI identity
 
 Both Compose services pin the dedicated multi-architecture OCI index:
 
-`ghcr.io/casys-ai/mcp-build123d@sha256:765d73ca6a15b6112d3693a298514ae4ff1a8ce85485cf5cf4074b41c218142d`
+`ghcr.io/casys-ai/mcp-build123d@sha256:aa9ae1264294ddb47e3686c3a2b46c79cbc3971a8ec5cee6cee79bf6a7bcc5a9`
 
-| Field                           | Reviewed value                                                            |
-| ------------------------------- | ------------------------------------------------------------------------- |
-| Release tag                     | `v0.6.1`                                                                  |
-| Source tag commit               | `beaeb648a979437cce8676da103a39d9eb312290`                                |
-| Release hardening commit        | `84ccc91`                                                                 |
-| README-only post-release commit | `f0cebfc`                                                                 |
-| Runtime                         | Deno `2.9.6`                                                              |
-| Linux AMD64 manifest            | `sha256:e040ee6385df909d481ac58ec290a1b13f50ca40b0e48eec58949fb5efde8309` |
-| Linux ARM64 manifest            | `sha256:420d9ba94b71605443ee59cc1160f94e17ead0c5b6a3f5e7a80f76dffa1ea84b` |
+| Field                | Reviewed value                                                            |
+| -------------------- | ------------------------------------------------------------------------- |
+| Release tag          | `v0.7.0`                                                                  |
+| Source tag commit    | `b831c16019e4e09e66c4e5567f9ee70310fb8785`                                |
+| Runtime              | Deno `2.9.6`                                                              |
+| Linux AMD64 manifest | `sha256:602811b98614fdbde0722db44858d8e7595fe324a0ad6e41a407aa3a5fc24f9f` |
+| Linux ARM64 manifest | `sha256:3bcd149aea766882338564ebfb12f22727218e9419e1a4e5d122e2a14789cb9a` |
 
 The index exposes SBOM/provenance attestations. The local candidate verifies the exact
 OCI labels `source`, `revision`, and `version` alongside its cache digest; that is a
@@ -35,12 +33,16 @@ legacy `engineering-toolchain` `build123d` subcommand.
 
 ## Declared discovery surface
 
-The exact live `0.6.1` discovery/schema fingerprint is
-`sha256:43801a71a10eb91959b616947b6ca028fa2ca05e8bf010159180fbf1067f68fa`. The declared
-names are `build123d_execute`, `build123d_export`, and
-`build123d_observe_assembly_integrity`; the only declared viewer resource is
-`ui://mcp-build123d/results-viewer`. A changed schema, viewer URI, release identity, or
-fleet/Compose pin makes the preflight literal `contract-divergent`.
+The exact live `0.7.0` discovery/schema fingerprint is
+`sha256:a4ac099a47eaebdc3dd41b5da1e2a6b5818835cea09c78995f791294ca3011a0`. The declared
+names are `build123d_execute`, `build123d_export`,
+`build123d_observe_assembly_integrity`, and `build123d_project_2d`; the declared viewer
+resources are `ui://mcp-build123d/results-viewer`,
+`ui://mcp-build123d/assembly-viewer`, and `ui://mcp-build123d/drawing-viewer`.
+`build123d_project_2d` returns fixed STEP-to-SVG inspection views only; it is not a
+dimensioned manufacturing drawing and the atelier calls no new tool for it. A changed
+schema, viewer URI, release identity, or fleet/Compose pin makes the preflight literal
+`contract-divergent`.
 
 For `build123d_export`, the server-owned `timeout_ms` argument is an integer in
 `[1, 60000]`; the Digital Thread submits its fixed maximum, `60000`. This provider

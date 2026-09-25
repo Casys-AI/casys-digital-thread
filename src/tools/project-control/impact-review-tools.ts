@@ -1,6 +1,6 @@
 /** Project-control surface for draft impact-manifest capture and closed review. */
 
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import {
   type ProjectCrossDomainImpactManifestCaptureCommand,
   type ProjectCrossDomainImpactManifestCaptureUseCase,

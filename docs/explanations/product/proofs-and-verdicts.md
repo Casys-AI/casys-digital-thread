@@ -77,7 +77,7 @@ a distinction worth keeping while the simulation path still awaits its first rea
 
 ## Why MCP Apps do not collapse the boundary
 
-`mcp-server` transports tools and resources using the stateless `2026-07-28` contract.
+`mcp-platform` transports tools and resources using the stateless `2026-07-28` contract.
 The Console MCP tools observe those stages read-only (`console_snapshot`). The native
 Workbench projects one linked `ThreadSnapshot` as generic records and relationships. An
 exact registered whole MCP App may present one recorded anchor in the Workbench's

@@ -234,7 +234,7 @@ placements, assembly/definition formats, and strict flat MRTR round-trip
 
 #### [`src/adapters/cad/canonical/geometry-draft-capture.ts`](../../../src/adapters/cad/canonical/geometry-draft-capture.ts)
 
-Calls `build123d_export`, validates the mcp-build123d 0.6.1
+Calls `build123d_export`, validates the mcp-build123d 0.7.0
 `build123d-export-artifact/1.0` URI, MIME, byte count and SHA-256, rereads only that MCP
 resource, then persists draft JSON + verified binary assets in the draft stores; never
 writes a `ThreadSnapshot`.

@@ -8,7 +8,7 @@
  * normative authority. The executor never invents a build volume, a
  * thickness limit, an overhang angle, or a Z-min filter.
  *
- * Deviation from the mission brief's "STL" wording: live mcp-dfm 0.1.0
+ * Deviation from the mission brief's "STL" wording: live mcp-dfm 0.3.0
  * tools take `step_path` + `expected_step_sha256` (probes in the archived
  * qualification JSON). The existing printability observe path already binds
  * `model/step`. This schema therefore attests a STEP artefact. A `model/stl`

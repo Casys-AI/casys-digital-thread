@@ -1,4 +1,4 @@
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import type { ProjectRequirementsBriefTraceReviewUseCase } from "../../application/ports/in/architecture/requirements/project-requirements-brief-trace-review.ts";
 import {
   OBJECT_OUTPUT_SCHEMA,

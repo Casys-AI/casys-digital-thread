@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertRejects, assertStringIncludes } from "@std/assert";
-import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
+import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-platform";
 import type { ProjectAdmittedGeometryExportResult } from "../../application/ports/in/cad/canonical/project-admitted-geometry-export.ts";
 import type { ProjectBuild123dExecutionReviewResult } from "../../application/ports/in/cad/isolated/project-build123d-execution-review.ts";
 import type { ProjectIsolatedGeometrySealReviewResult } from "../../application/ports/in/cad/sealed-isolated/project-isolated-geometry-seal-review.ts";

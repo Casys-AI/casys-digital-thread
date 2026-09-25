@@ -12,7 +12,7 @@ acquisition for each sealed group is allowed; provider selection stays code-owne
 ## Candidates
 
 The only code-owned candidate is `chrono-arm64-emulation-v1`. It binds
-`chrono-prescribed-kinematics@1` to `casys.mcp-chrono@0.3.2` / `casys-chrono@1.0.0` on
+`chrono-prescribed-kinematics@1` to `casys.mcp-chrono@0.3.5` / `casys-chrono@1.0.0` on
 an observed `linux/arm64` Docker daemon, targeting `linux/amd64` as `emulated`. The
 fixture is the fixed two-body one-hinge source (`duration=1`, `timeStep=1/64`, 65
 samples) owned by server code. The matching specification
@@ -21,7 +21,7 @@ bytes, protocol and criteria (including pose/residual tolerances). An older atte
 cannot make the binding effective after that spec changes.
 
 `calculix-http-arm64-native-v1` binds `calculix-http-static-sensitivity@1.0.0` to
-`casys.mcp-calculix@0.8.2` / `casys-mcp-calculix@1.0.0` on an observed and targeted
+`casys.mcp-calculix@0.8.5` / `casys-mcp-calculix@1.0.0` on an observed and targeted
 `linux/arm64` Docker daemon in `native` mode. Its fixed bracket fixture closes the STEP
 bytes, mesh, material, support, load, recorded request, factual displacement/stress
 bounds, nine-resource ledger and the `resources/list` bijection. The matching
@@ -29,7 +29,7 @@ bounds, nine-resource ledger and the `resources/list` bijection. The matching
 case, protocol and criteria. No caller can substitute a provider, image, endpoint,
 method argument or product source.
 
-The successor retains the provider/unit `casys.mcp-calculix@0.8.2` and its pinned image
+The successor retains the provider/unit `casys.mcp-calculix@0.8.5` and its pinned image
 digest. Its sealed Compose project is `casys-mcp-calculix-v1`, with exactly
 `calculix-inputs:/inputs`, `calculix-runs:/var/lib/mcp-calculix-runs`, and
 `calculix-exports:/exports`. `/exports` is required by the image but is private and

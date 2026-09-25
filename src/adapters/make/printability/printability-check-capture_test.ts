@@ -103,6 +103,7 @@ Deno.test("parseDfmThicknessResult persists only area_mm2 and centroid_mm", () =
       measured: {
         min_thickness_mm: 0.8,
         min_position_mm: [1, 2, 3],
+        minimum_thickness_status: "sampled",
         sample_count: 10,
         valid_ray_count: 8,
       },
@@ -114,4 +115,29 @@ Deno.test("parseDfmThicknessResult persists only area_mm2 and centroid_mm", () =
     1.2,
   );
   assertEquals(result.violations, [{ area_mm2: 1, centroid_mm: [0, 0, 0] }]);
+});
+
+Deno.test("parseDfmThicknessResult refuses a provider-flagged unverified minimum", () => {
+  assertThrows(
+    () =>
+      parseDfmThicknessResult(
+        {
+          violations: [],
+          measured: {
+            min_thickness_mm: 0.8,
+            min_position_mm: [1, 2, 3],
+            minimum_thickness_status: "unverified",
+            sample_count: 10,
+            valid_ray_count: 8,
+          },
+          limits_declared: { min_thickness_mm: 1.2 },
+          not_checked: [],
+          input_artifact: { sha256: DIGEST },
+        },
+        DIGEST,
+        1.2,
+      ),
+    Error,
+    "not provider-verified",
+  );
 });

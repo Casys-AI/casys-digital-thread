@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import { registerProjectRequirementsRecaptureReviewTools } from "./requirements-recapture-review-tools.ts";
 
 Deno.test("requirements recapture review tool registers only with its exact read-only use case", () => {

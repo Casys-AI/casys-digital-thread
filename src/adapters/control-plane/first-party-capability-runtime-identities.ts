@@ -27,14 +27,14 @@ export const LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE =
 
 export { LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE } from "../../domain/modelica/local-execution-image.ts";
 
-/** Published mcp-chrono 0.3.2 Linux/amd64 OCI index, pinned without a tag. */
-export const MCP_CHRONO_032_IMAGE_REFERENCE =
-  "ghcr.io/casys-ai/mcp-chrono@sha256:2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557" as const;
+/** Published mcp-chrono 0.3.5 Linux/amd64 OCI index, pinned without a tag. */
+export const MCP_CHRONO_035_IMAGE_REFERENCE =
+  "ghcr.io/casys-ai/mcp-chrono@sha256:a56fc994c6ff6beb33b884a7a638cd5fc00281201f9ad5e5556ba790adb39c18" as const;
 
-/** Published mcp-calculix 0.8.2 OCI index, pinned without a tag. */
-export const MCP_CALCULIX_082_IMAGE_REFERENCE =
-  "ghcr.io/casys-ai/mcp-calculix@sha256:ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8" as const;
+/** Published mcp-calculix 0.8.5 OCI index, pinned without a tag. */
+export const MCP_CALCULIX_085_IMAGE_REFERENCE =
+  "ghcr.io/casys-ai/mcp-calculix@sha256:3fad853cdb720d6d50e4714d23c9e4cf7bb011fec7b10addad5945b045757123" as const;
 
-/** Published mcp-dfm 0.1.0 OCI index, pinned without a tag. Same digest as fleet. */
-export const MCP_DFM_010_IMAGE_REFERENCE =
-  "ghcr.io/casys-ai/mcp-dfm@sha256:a31aa702e45e4445c67454f807832b60455211664fa98ff36f54948aedec4fb9" as const;
+/** Published mcp-dfm 0.3.0 OCI index, pinned without a tag. Same digest as fleet. */
+export const MCP_DFM_030_IMAGE_REFERENCE =
+  "ghcr.io/casys-ai/mcp-dfm@sha256:fd161cfd936773fa551e281d1ae371f7edc544f996eb966e6466d5ff49f384f5" as const;

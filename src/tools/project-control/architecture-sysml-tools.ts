@@ -1,4 +1,4 @@
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import type {
   ProjectArchitectureSysmlPreviewUseCase,
 } from "../../application/ports/in/architecture/agent-seal/project-architecture-sysml-preview.ts";

@@ -1,5 +1,5 @@
 import { assert, assertEquals } from "@std/assert";
-import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
+import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-platform";
 import type { EngineeringProjectCommandService } from "../application/use-cases/project/engineering-project-command-service.ts";
 import type {
   EngineeringAgentRun,

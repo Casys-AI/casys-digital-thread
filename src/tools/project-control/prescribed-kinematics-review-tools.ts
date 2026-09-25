@@ -1,6 +1,6 @@
 /** Read-only review tools for the prescribed-kinematics vertical. */
 
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import type { ProjectPrescribedKinematicsCaseReviewUseCase } from "../../application/ports/in/mechanics/prescribed-kinematics/project-prescribed-kinematics-case-review.ts";
 import type {
   ProjectPrescribedKinematicsNextHopReviewUseCase,

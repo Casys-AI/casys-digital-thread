@@ -10,7 +10,7 @@ import type { ContentFingerprint } from "../../domain/kernel/primitives.ts";
 import type { SensitivityStaticStructuralMethod } from "../../domain/sensitivity/study/sensitivity-study.ts";
 import { lowerRecordedCalculixStaticRequest } from "../sensitivity/live-fea/mcp-calculix-sensitivity-solver.ts";
 import { createFirstPartyCapabilityRuntimeCatalog } from "./first-party-capability-binding-catalog.ts";
-import { MCP_CALCULIX_082_IMAGE_REFERENCE } from "./first-party-capability-runtime-identities.ts";
+import { MCP_CALCULIX_085_IMAGE_REFERENCE } from "./first-party-capability-runtime-identities.ts";
 import { firstPartyCalculixLaunchGroupReference } from "./first-party-capability-runtime-launch-groups.ts";
 
 export const CALCULIX_HTTP_ARM64_NATIVE_QUALIFICATION_CANDIDATE_ID =
@@ -50,7 +50,7 @@ export interface CalculixHttpRuntimeQualificationCandidate {
   readonly profile: null;
   readonly unit: {
     readonly id: "casys.mcp-calculix";
-    readonly version: "0.8.2";
+    readonly version: "0.8.5";
     readonly manifestFingerprint: ContentFingerprint;
   };
   readonly material: {
@@ -104,8 +104,8 @@ export async function createFirstPartyCalculixHttpRuntimeQualificationCandidates
     binding.adapter.id !== "calculix-http-static-sensitivity-adapter" ||
     binding.adapter.version !== "1.0.0" || binding.profile !== null ||
     binding.unitIds.length !== 1 || binding.unitIds[0] !== unit.id ||
-    unit.version !== "0.8.2" || material.id !== "mcp-calculix-image" ||
-    material.imageReference !== MCP_CALCULIX_082_IMAGE_REFERENCE ||
+    unit.version !== "0.8.5" || material.id !== "mcp-calculix-image" ||
+    material.imageReference !== MCP_CALCULIX_085_IMAGE_REFERENCE ||
     launchGroup.id !== "casys-mcp-calculix" || launchGroup.version !== "1.0.0"
   ) {
     throw new TypeError(
@@ -150,7 +150,7 @@ export async function createFirstPartyCalculixHttpRuntimeQualificationCandidates
     material: {
       unitId: unit.id,
       materialId: material.id,
-      imageDigest: imageDigest(MCP_CALCULIX_082_IMAGE_REFERENCE),
+      imageDigest: imageDigest(MCP_CALCULIX_085_IMAGE_REFERENCE),
     } as const,
     launchGroup,
     observedHostPlatform: "linux/arm64" as const,

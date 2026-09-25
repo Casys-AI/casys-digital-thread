@@ -1,6 +1,6 @@
 /** Buy documentary-estimate preview writes draft evidence only. No ERP dispatch. */
 
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import {
   type BoundedBuyCostEstimatePreview,
   type BoundedBuyCostEstimatePreviewOutcome,

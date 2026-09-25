@@ -28,9 +28,9 @@ direct Chrono client or a different provider.
 
 ## Catalogued OCI identity
 
-The catalogue pins the `0.3.2` Linux/amd64 OCI index
-`ghcr.io/casys-ai/mcp-chrono@sha256:2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557`.
-Its OCI revision is `18e118453111391eae632f8f5ec737e6c9f04847`. These are supply-chain
+The catalogue pins the `0.3.5` Linux/amd64 OCI index
+`ghcr.io/casys-ai/mcp-chrono@sha256:a56fc994c6ff6beb33b884a7a638cd5fc00281201f9ad5e5556ba790adb39c18`.
+Its OCI revision is `982172b2da286ed550380a59b8014569a88a1820`. These are supply-chain
 identity facts only: they do not qualify a host or alter the literal `unqualified`
 catalogue baseline.
 

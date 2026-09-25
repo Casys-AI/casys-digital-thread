@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import { McpApp } from "@casys/mcp-server";
+import { McpApp } from "@casys/mcp-platform";
 import { parseAgentResourceEnvelope } from "../../domain/resource/agent-resource-envelope.ts";
 import { encodeCanonicalBase64 } from "../../domain/resource/agent-resource-envelope.ts";
 import { FileAgentResourceStore } from "./file-agent-resource-store.ts";

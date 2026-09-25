@@ -13,7 +13,7 @@ an agent any runtime selection authority.
 
 The currently reviewed first-party material is limited to the platforms literally
 declared by each atomic material. The SysON stack, private Build123d sandbox and
-CalculiX worker each have a `linux/arm64` claim. The separate `casys.mcp-calculix@0.8.2`
+CalculiX worker each have a `linux/arm64` claim. The separate `casys.mcp-calculix@0.8.5`
 material declares both `linux/arm64` and `linux/amd64`; on this ARM64 host its future
 live qualification must attest the native ARM64 manifest, not an emulated AMD64
 fallback. The catalogue makes no general AMD64 claim for the isolated CalculiX worker. A
@@ -39,8 +39,8 @@ record passed its exact worker qualification. None of those observations rewrite
 receipt states or either catalogue licence. Other first-party materials keep their
 existing licence states. The catalogue remains `productionEligible: false`.
 
-`casys.mcp-chrono@0.3.2` is a separate, digest-pinned Linux/amd64 material:
-`ghcr.io/casys-ai/mcp-chrono@sha256:2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557`.
+`casys.mcp-chrono@0.3.5` is a separate, digest-pinned Linux/amd64 material:
+`ghcr.io/casys-ai/mcp-chrono@sha256:a56fc994c6ff6beb33b884a7a638cd5fc00281201f9ad5e5556ba790adb39c18`.
 It is a loopback-only service on port 3025, has a preserved `chrono-data` volume and
 requires only the local `chrono-mcp-bearer-token` secret slot. It declares no privileged
 mode, Docker socket, device or bind mount. Its source is MIT, but its aggregate OCI

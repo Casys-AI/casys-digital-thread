@@ -16,24 +16,27 @@ export const SPICE_EXPECTED_TOOLS = [
   "spice_simulate_op",
   "spice_simulate_tran",
   "spice_simulate_dc",
+  "spice_simulation_dispatch_get",
+  "spice_simulation_receipt_get",
+  "spice_simulation_result_get",
 ] as const;
 
 /** Reviewed desired OCI identity. It is not a runtime-image observation. */
 export const SPICE_RELEASE = {
   image:
-    "ghcr.io/casys-ai/mcp-spice@sha256:80f8d6b34dc55e623daf936faea5ff9ee75871331aa88d7339191ea17584991b",
-  version: "0.5.2",
-  revision: "0575f2d0efdca30965c5b155187b78d9412fb1d1",
+    "ghcr.io/casys-ai/mcp-spice@sha256:e5bcf112ec37d71d9a02dfcb1c65af0ed77fe497e97e16e931bfb6baa0dd367d",
+  version: "0.6.2",
+  revision: "4594d605b20ac77f0044fe3e8b53cb44fe870b8d",
   ociLabels: {
-    "org.opencontainers.image.created": "2026-08-28T15:49:55.406Z",
+    "org.opencontainers.image.created": "2026-08-31T15:47:13.822Z",
     "org.opencontainers.image.description":
       "MCP oracle for circuit verification — ngspice batch operating point and reduced transients. The server owns the .control block.",
     "org.opencontainers.image.licenses": "MIT",
-    "org.opencontainers.image.revision": "0575f2d0efdca30965c5b155187b78d9412fb1d1",
+    "org.opencontainers.image.revision": "4594d605b20ac77f0044fe3e8b53cb44fe870b8d",
     "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-spice",
     "org.opencontainers.image.title": "mcp-spice",
     "org.opencontainers.image.url": "https://github.com/Casys-AI/mcp-spice",
-    "org.opencontainers.image.version": "0.5.2",
+    "org.opencontainers.image.version": "0.6.2",
   },
 } as const;
 
@@ -55,9 +58,9 @@ export const SPICE_EXECUTION_BUDGETS = {
   timeoutSeconds: { default: 30, min: 1, max: 300 },
 } as const;
 
-/** Reviewed 2026-08-29 identity, tool schemas, and execution-budget projection. */
+/** Reviewed 2026-09-25 identity, tool schemas, and execution-budget projection. */
 export const SPICE_CONTRACT_SHA256 =
-  "5873f79d571a67aeafd74f1749ae4a4172a692cfdf9fbab2c8032df95d0d2e8a";
+  "59a09e5e63fb246d5ea067fbc13a77bc5723bfa49b6620544ddd188c7b4ca958";
 
 export const SPICE_ENDPOINT = {
   mcpUrl: "http://127.0.0.1:3023/mcp",
@@ -240,7 +243,7 @@ export async function spiceContractFingerprint(
   }
   if (!sameStringSet([...byName.keys()], SPICE_EXPECTED_TOOLS)) {
     throw new ContractDivergenceError(
-      "tools/list does not expose exactly the four reviewed mcp-spice tools.",
+      "tools/list does not expose exactly the seven reviewed mcp-spice tools.",
     );
   }
 
@@ -416,7 +419,10 @@ function report(
 
 const GAPS = [
   ["watt-observation", "No listed output schema exposes power in W."],
-  ["provider-readback", "No run id or provider readback method is listed."],
+  [
+    "provider-readback",
+    "Listed receipt/result/dispatch readbacks stay discovery-only; this probe never calls them.",
+  ],
   [
     "runtime-budget-enforcement",
     "This read-only probe verifies discovery/schema bounds and reports release-qualified private limits, but never submits or runs a circuit to test runtime enforcement.",

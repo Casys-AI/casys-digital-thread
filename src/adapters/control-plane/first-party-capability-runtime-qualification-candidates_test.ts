@@ -16,14 +16,14 @@ Deno.test("the first-party Chrono qualification candidate is exact and code-owne
   assertEquals(candidate.binding, { id: "chrono-prescribed-kinematics", version: "1" });
   assertEquals(candidate.contract, {
     id: "chrono-prescribed-kinematics-adapter",
-    version: "0.3.2",
+    version: "0.3.5",
     source: "src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts",
   });
   assertEquals(candidate.unit.id, "casys.mcp-chrono");
-  assertEquals(candidate.unit.version, "0.3.2");
+  assertEquals(candidate.unit.version, "0.3.5");
   assertEquals(
     candidate.material.imageDigest,
-    "2e9b7d5b27e344499fe233ff4e0a1fcdbbe77c8f83bd78ee0cdbc26eb7a74557",
+    "a56fc994c6ff6beb33b884a7a638cd5fc00281201f9ad5e5556ba790adb39c18",
   );
   assertEquals(candidate.launchGroup.id, "casys-chrono");
   assertEquals(candidate.launchGroup.version, "1.0.0");
@@ -34,7 +34,7 @@ Deno.test("the first-party Chrono qualification candidate is exact and code-owne
   assertEquals(candidate.fixture.source.joints.length, 1);
   assertEquals(candidate.fingerprint, {
     algorithm: "sha256",
-    digest: "36664d5dad8f1eaad59f669bce97508e465e90464c096f8aa213375cab5ea2fa",
+    digest: "c6c5f4462cdc47f4b41b0ca323a1296be11ad8bd4f71732fa0f57615e249fca2",
   });
   assertEquals(Object.isFrozen(candidate), true);
 });

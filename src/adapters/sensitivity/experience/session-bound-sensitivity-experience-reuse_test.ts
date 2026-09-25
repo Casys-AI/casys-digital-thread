@@ -806,7 +806,7 @@ function sensitivityRuntimeOperation(
       effectiveQualification: "qualified" as const,
       adapter: {
         id: "casys.mcp-calculix",
-        version: "0.8.2",
+        version: "0.8.5",
         source: "fixture",
       },
       profile: null,

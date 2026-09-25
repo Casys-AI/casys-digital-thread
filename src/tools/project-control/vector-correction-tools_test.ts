@@ -1,5 +1,5 @@
 import { assertEquals } from "@std/assert";
-import type { McpApp } from "@casys/mcp-server";
+import type { McpApp } from "@casys/mcp-platform";
 import { registerProjectVectorCorrectionTools } from "./vector-correction-tools.ts";
 
 class CapturingApp {

@@ -46,7 +46,7 @@ import {
   testResolvedCapabilityRuntimeOperation,
 } from "../../../testing/capability-runtime-execution-session-test-support.ts";
 import { firstPartyDfmLaunchGroupReference } from "../../control-plane/first-party-capability-runtime-launch-groups.ts";
-import { MCP_DFM_010_IMAGE_REFERENCE } from "../../control-plane/first-party-capability-runtime-identities.ts";
+import { MCP_DFM_030_IMAGE_REFERENCE } from "../../control-plane/first-party-capability-runtime-identities.ts";
 import type { CapabilitySessionGeometryExportStagerFactory } from "../../../application/ports/out/make/geometry-export-stager.ts";
 
 const AT = "2026-08-15T00:00:00.000Z";
@@ -800,8 +800,8 @@ function executorDeps(fixture: Awaited<ReturnType<typeof createFixture>>) {
 
 async function dfmOperationalCapability(projectId: string) {
   const launchGroup = await firstPartyDfmLaunchGroupReference();
-  const imageDigest = MCP_DFM_010_IMAGE_REFERENCE.slice(
-    MCP_DFM_010_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
+  const imageDigest = MCP_DFM_030_IMAGE_REFERENCE.slice(
+    MCP_DFM_030_IMAGE_REFERENCE.lastIndexOf("@sha256:") + "@sha256:".length,
   );
   return testResolvedCapabilityRuntimeOperation({
     projectId,

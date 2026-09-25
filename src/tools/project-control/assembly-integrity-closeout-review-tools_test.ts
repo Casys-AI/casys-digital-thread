@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import type { ProjectAssemblyIntegrityEvaluationCloseoutReviewResult } from "../../application/ports/in/cad/assembly-integrity/project-assembly-integrity-evaluation-closeout-review.ts";
 import { registerProjectAssemblyIntegrityCloseoutReviewTools } from "./assembly-integrity-closeout-review-tools.ts";
 

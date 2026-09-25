@@ -113,7 +113,7 @@ Ni la CI ni le serveur MCP ne lisent ce dossier.
 - `deno fmt` : `lineWidth` 88, sauf `src/ui/src` à 80. Seule vérité : `deno task fmt`
   complet, qui enchaîne les deux passes.
 - Dépendances via l'import map de `deno.json` (JSR uniquement) ; `minimumDependencyAge`
-  d'un jour, sauf `@casys/mcp-server`.
+  d'un jour, sauf `@casys/mcp-platform`.
 - Commits conventionnels (`feat:`, `fix:`, `docs:`, `chore:`, `refactor:`), suffixe
   `[skip ci]` sur les commits de travail courants.
 - Tests `_test.ts` co-localisés ; les tests UI sont des tests **Deno** à la racine de

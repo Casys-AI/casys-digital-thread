@@ -1,5 +1,5 @@
 import { assertEquals, assertStringIncludes } from "@std/assert";
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import { registerProjectGeometryModuleExportTools } from "./geometry-module-export-tools.ts";
 
 Deno.test("geometry-module export tools register only when the use case is composed", () => {

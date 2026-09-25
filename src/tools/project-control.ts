@@ -1,4 +1,4 @@
-import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
+import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-platform";
 import {
   deterministicJson,
   fingerprintsEqual,

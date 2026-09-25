@@ -1,6 +1,6 @@
 /** Read-only Buy capture/seal review. No ERP dispatch. */
 
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import type {
   ProjectBuyConfigurationCostCaptureReviewUseCase,
 } from "../../application/ports/in/buy/project-buy-configuration-cost-capture-review.ts";
@@ -66,7 +66,7 @@ const BUY_BASIS_SCHEMA = {
 const projectBuyCaptureReviewTool: MCPTool = {
   name: "project_buy_configuration_cost_capture_review",
   description:
-    "Prepare the exact human-review identity and canonical MRTR parameters for buy.capture-configuration-cost@1 from a source-backed configuration, canonical STEP, ERP document refs and pricing scope. This read-only tool does not call ERP, create BOM/RFQ/PO documents, or grant dispatch.",
+    "Prepare the exact human-review identity and canonical MRTR parameters for buy.capture-configuration-cost@1 from a source-backed configuration, an optional source-backed documentary estimate, canonical STEP, ERP document refs and pricing scope. This read-only tool does not call ERP, create BOM/RFQ/PO documents, or grant dispatch.",
   inputSchema: {
     type: "object",
     properties: {
@@ -74,6 +74,8 @@ const projectBuyCaptureReviewTool: MCPTool = {
       basis: BUY_BASIS_SCHEMA,
       configurationResourceUri: { type: "string", minLength: 1 },
       configurationResourceDigest: { type: "string", pattern: "^[a-f0-9]{64}$" },
+      estimateResourceUri: { type: "string", minLength: 1 },
+      estimateResourceDigest: { type: "string", pattern: "^[a-f0-9]{64}$" },
       geometryArtifactId: { type: "string", minLength: 1 },
       geometryArtifactFingerprint: { type: "string", pattern: "^[a-f0-9]{64}$" },
       documents: {

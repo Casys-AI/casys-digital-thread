@@ -964,7 +964,7 @@ async function createFixture(options: {
     },
     launchGroup: {
       id: "casys-mcp-calculix",
-      version: "0.8.2",
+      version: "0.8.5",
       fingerprint: { algorithm: "sha256" as const, digest: "5".repeat(64) },
     },
   };
@@ -1179,7 +1179,7 @@ function sensitivityRuntimeOperation(build123dImageDigest: string) {
       },
       binding: { id: "calculix-static-sensitivity", version: "1" },
       effectiveQualification: "qualified" as const,
-      adapter: { id: "casys.mcp-calculix", version: "0.8.2", source: "fixture" },
+      adapter: { id: "casys.mcp-calculix", version: "0.8.5", source: "fixture" },
       profile: null,
       materials: [material],
       runtimeModes: [{
@@ -1193,7 +1193,7 @@ function sensitivityRuntimeOperation(build123dImageDigest: string) {
         kind: "persistent-compose" as const,
         launchGroup: {
           id: "casys-mcp-calculix",
-          version: "0.8.2",
+          version: "0.8.5",
           fingerprint: { algorithm: "sha256" as const, digest: "5".repeat(64) },
         },
       }],

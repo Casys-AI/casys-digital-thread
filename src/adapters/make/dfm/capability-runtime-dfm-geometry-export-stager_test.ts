@@ -314,7 +314,7 @@ Deno.test("DFM staging refuses a lease that does not cover the exact material", 
       factory.forActiveCapabilitySession({
         lease: {
           ...leaseFor(group, material),
-          materialKeys: ["casys.mcp-calculix@mcp-calculix-image0.8.2"],
+          materialKeys: ["casys.mcp-calculix@mcp-calculix-image0.8.5"],
         },
         launchGroup: capabilityRuntimeLaunchGroupReference(group),
         material,

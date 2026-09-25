@@ -12,12 +12,12 @@ registry enrolls six persistent topologies: `casys-syson@1.0.1` (Postgres, SysON
 historical SysON UI port 8180 is not part of `casys-syson`.
 
 `casys-chrono@1.0.0` is a one-service topology. The topology itself does not carry a
-qualification claim. The immutable catalogue baseline for `casys.mcp-chrono@0.3.2`
+qualification claim. The immutable catalogue baseline for `casys.mcp-chrono@0.3.5`
 remains `unqualified`; effective host qualification is the matching attestation overlay
 on [local runtime and ports](../local-runtime-and-ports.md). The probe that appends that
 overlay is the private [local runtime qualification](local-runtime-qualification.md)
 CLI, not an MCP operation, Workbench command, or engineering run. The HTTP
-`casys.mcp-calculix@0.8.2` catalogue baseline likewise remains `unqualified`; only its
+`casys.mcp-calculix@0.8.5` catalogue baseline likewise remains `unqualified`; only its
 own exact host-local attestation can make the matching native binding effective.
 
 The CalculiX successor group is `casys-mcp-calculix@1.0.0`, with Compose project

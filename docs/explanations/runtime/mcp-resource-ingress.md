@@ -56,7 +56,7 @@ through those JSON codecs.
 - Payload: at most 262144 bytes (the source-document ceiling). STEP, STL, and images
   stay outside this contract.
 - Process: the Console MCP binds loopback only.
-- Registry: `@casys/mcp-server` 0.26 keeps a process-local resource map. Bind restores
+- Registry: `@casys/mcp-platform` 0.28 keeps a process-local resource map. Bind restores
   it from the on-disk payload store and sidecar metadata. `resources/list` currently
   lists that whole map with no per-resource auth or pagination policy.
 

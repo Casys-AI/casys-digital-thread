@@ -1,4 +1,4 @@
-import { McpApp } from "@casys/mcp-server";
+import { McpApp } from "@casys/mcp-platform";
 import {
   INTERACTIVE_PROJECT_APPROVAL_MODE,
   LOCAL_YOLO_PROJECT_APPROVAL_MODE,
@@ -1579,6 +1579,7 @@ async function createProjectControl(
     captures: buyCandidateCaptures,
     configurations: buyConfigurationReader,
     bindings: buyErpRuntime.bindings,
+    resources: agentResourceIngress.store,
     lease,
     capabilityRuntime,
     capabilityRuntimeSession,
@@ -1603,6 +1604,7 @@ async function createProjectControl(
       buyConfigurationReader,
       buyErpRuntime.bindings,
       runtime.projects,
+      agentResourceIngress.store,
     );
   const buyConfigurationCostSealReview =
     new PrepareProjectBuyConfigurationCostSealReview(

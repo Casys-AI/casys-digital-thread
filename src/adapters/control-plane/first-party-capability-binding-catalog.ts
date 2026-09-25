@@ -40,9 +40,9 @@ import {
   LOCAL_BUILD123D_EXECUTION_IMAGE_REFERENCE,
   LOCAL_GEOMETRY_MODULE_ASSEMBLY_IMAGE_REFERENCE,
   LOCAL_MODELICA_EXECUTION_IMAGE_REFERENCE,
-  MCP_CALCULIX_082_IMAGE_REFERENCE,
-  MCP_CHRONO_032_IMAGE_REFERENCE,
-  MCP_DFM_010_IMAGE_REFERENCE,
+  MCP_CALCULIX_085_IMAGE_REFERENCE,
+  MCP_CHRONO_035_IMAGE_REFERENCE,
+  MCP_DFM_030_IMAGE_REFERENCE,
 } from "./first-party-capability-runtime-identities.ts";
 import {
   type AtomicCapabilityRuntimeMaterial,
@@ -59,7 +59,7 @@ import {
   firstPartyChronoLaunchGroupReference,
   firstPartyDfmLaunchGroupReference,
   firstPartySysonLaunchGroupReference,
-  MCP_BUILD123D_061_IMAGE_REFERENCE,
+  MCP_BUILD123D_070_IMAGE_REFERENCE,
   MCP_SYSON_IMAGE_REFERENCE,
   POSTGRES_IMAGE_REFERENCE,
   SYSON_IMAGE_REFERENCE,
@@ -136,7 +136,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
     unit("casys.mcp-build123d-sandbox", [
       composeMaterial(
         "mcp-build123d-sandbox-image",
-        MCP_BUILD123D_061_IMAGE_REFERENCE,
+        MCP_BUILD123D_070_IMAGE_REFERENCE,
         ["linux/amd64", "linux/arm64"],
         "mcp-build123d-sandbox",
         "loopback-only",
@@ -147,11 +147,11 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "reviewed",
         build123dSandboxLaunchGroup,
       ),
-    ], "0.6.1"),
+    ], "0.7.0"),
     unit("casys.mcp-build123d-observation", [
       composeMaterial(
         "mcp-build123d-observation-image",
-        MCP_BUILD123D_061_IMAGE_REFERENCE,
+        MCP_BUILD123D_070_IMAGE_REFERENCE,
         ["linux/amd64", "linux/arm64"],
         "mcp-build123d",
         "loopback-only",
@@ -162,7 +162,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "reviewed",
         build123dObservationLaunchGroup,
       ),
-    ], "0.6.1"),
+    ], "0.7.0"),
     unit("casys.build123d-isolated-worker", [
       microvmMaterial(
         "build123d-isolated-worker-image",
@@ -192,7 +192,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
     unit("casys.mcp-calculix", [
       composeMaterial(
         "mcp-calculix-image",
-        MCP_CALCULIX_082_IMAGE_REFERENCE,
+        MCP_CALCULIX_085_IMAGE_REFERENCE,
         ["linux/amd64", "linux/arm64"],
         "mcp-calculix",
         "loopback-only",
@@ -205,7 +205,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "reviewed",
         calculixLaunchGroup,
       ),
-    ], "0.8.2"),
+    ], "0.8.5"),
     unit("casys.modelica-worker", [
       microvmMaterial(
         "modelica-worker-image",
@@ -222,11 +222,11 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "reviewed",
       ),
     ], "1.1.0"),
-    unit("casys.mcp-chrono", [chronoMaterial(chronoLaunchGroup)], "0.3.2"),
+    unit("casys.mcp-chrono", [chronoMaterial(chronoLaunchGroup)], "0.3.5"),
     unit("casys.mcp-dfm", [
       composeMaterial(
         "mcp-dfm-image",
-        MCP_DFM_010_IMAGE_REFERENCE,
+        MCP_DFM_030_IMAGE_REFERENCE,
         ["linux/amd64", "linux/arm64"],
         "mcp-dfm",
         "loopback-only",
@@ -235,7 +235,7 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "reviewed",
         dfmLaunchGroup,
       ),
-    ], "0.1.0"),
+    ], "0.3.0"),
   ]);
   return await validateCapabilityRuntimeCatalog({
     schemaVersion: CAPABILITY_RUNTIME_CATALOG_SCHEMA_VERSION,
@@ -437,12 +437,12 @@ export async function createFirstPartyCapabilityRuntimeCatalog(): Promise<
         "execution",
         "unqualified",
         "chrono-prescribed-kinematics-adapter",
-        "0.3.2",
+        "0.3.5",
         null,
         ["casys.mcp-chrono"],
         "src/adapters/mechanics/chrono/chrono-prescribed-kinematics-client.ts",
         [
-          "Only mcp-chrono 0.3.2 at its immutable Linux/amd64 digest is catalogued.",
+          "Only mcp-chrono 0.3.5 at its immutable Linux/amd64 digest is catalogued.",
           "On an ARM64 host the material can be emulated only after an explicit qualification probe; it is never claimed native.",
           "The binding exposes factual prescribed-kinematics observations, not collision, contact, clearance, force, strength, safety, or product verdicts.",
         ],
@@ -569,7 +569,7 @@ function chronoMaterial(
     id: "mcp-chrono-image",
     kind: "compose-service",
     imageReference: cataloguedImageReference(
-      MCP_CHRONO_032_IMAGE_REFERENCE,
+      MCP_CHRONO_035_IMAGE_REFERENCE,
       "mcp-chrono-image",
     ),
     platforms: ["linux/amd64"],

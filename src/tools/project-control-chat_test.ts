@@ -4,7 +4,7 @@ import type {
   MCPTool,
   ToolHandler,
   ToolHandlerContext,
-} from "@casys/mcp-server";
+} from "@casys/mcp-platform";
 import type { EngineeringProjectCommandService } from "../application/use-cases/project/engineering-project-command-service.ts";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import type {

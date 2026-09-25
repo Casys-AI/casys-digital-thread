@@ -67,7 +67,7 @@ operations, for `verify.observe-assembly-integrity@1` through
 before `design.write-geometry@1`; that operation only promotes verified bytes.
 Enrollment is not a running service. Do not start root Compose to work around an
 `unavailable` runtime. Product FEA `@3` uses the local CalculiX microVM
-(`casys.calculix-worker`), not HTTP `mcp-calculix`. HTTP `casys.mcp-calculix@0.8.2`
+(`casys.calculix-worker`), not HTTP `mcp-calculix`. HTTP `casys.mcp-calculix@0.8.5`
 remains catalogue-`unqualified` and non-activable. An `unavailable` local run is not a
 completed proof.
 

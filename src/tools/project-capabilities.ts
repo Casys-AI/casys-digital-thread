@@ -1,4 +1,4 @@
-import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-server";
+import type { McpApp, MCPTool, ToolHandlerContext } from "@casys/mcp-platform";
 import type { EngineeringProjectSnapshot } from "../domain/project/engineering-project.ts";
 import type { EngineeringProjectRevisionStore } from "../application/ports/out/engineering-project-revision-store.ts";
 import {

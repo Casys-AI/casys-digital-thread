@@ -49,7 +49,7 @@ const HOST_IDENTITY = { algorithm: "sha256" as const, digest: "a".repeat(64) };
 const RUN_ID = "r-11111111-1111-1111-1111-111111111111";
 const EXECUTION_IDENTITY = {
   schema_version: "1.0",
-  server: { package: "@casys/mcp-calculix", version: "0.8.2" },
+  server: { package: "@casys/mcp-calculix", version: "0.8.5" },
   method: { id: "calculix_solve_static_recorded", version: "1.0" },
   lowering: { id: "calculix.static.abaqus-deck", version: "1.0" },
   engines: {

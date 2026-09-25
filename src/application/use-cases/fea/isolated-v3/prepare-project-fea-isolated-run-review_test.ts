@@ -1,5 +1,5 @@
 import { assertEquals, assertExists } from "@std/assert";
-import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
+import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-platform";
 import { canonicalProofText } from "../../../../domain/fea/seal-case/fea-proof-proposal.ts";
 import { parseFeaProofCaseCapture } from "../../../../domain/fea/seal-case/fea-proof-case-capture.ts";
 import { validateMechanicalProofCase } from "../../../../domain/fea/seal-case/mechanical-proof-case.ts";

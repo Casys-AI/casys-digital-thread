@@ -1,4 +1,4 @@
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import type { ControlPlane } from "../application/control-plane/control-plane.ts";
 
 /** Retired human MCP App URI. The server must not register this resource. */

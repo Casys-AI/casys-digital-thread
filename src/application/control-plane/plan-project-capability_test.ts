@@ -54,7 +54,7 @@ Deno.test("project capability planner selects exact trusted bindings and dedupli
   });
   assertEquals(
     plan.materials.filter((material) =>
-      material.imageReference.includes("mcp-build123d@sha256:765d73ca")
+      material.imageReference.includes("mcp-build123d@sha256:aa9ae126")
     ).length,
     2,
   );

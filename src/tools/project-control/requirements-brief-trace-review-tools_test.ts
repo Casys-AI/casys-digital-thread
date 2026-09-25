@@ -1,5 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "@std/assert";
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import { registerProjectRequirementsBriefTraceReviewTools } from "./requirements-brief-trace-review-tools.ts";
 
 Deno.test("requirements brief trace review tool registers only with its exact read-only use case", () => {

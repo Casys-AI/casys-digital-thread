@@ -4,7 +4,7 @@ import {
   type MCPTool,
   SchemaValidator,
   type ToolHandler,
-} from "@casys/mcp-server";
+} from "@casys/mcp-platform";
 import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
 import type {
   ProjectResponseItem,

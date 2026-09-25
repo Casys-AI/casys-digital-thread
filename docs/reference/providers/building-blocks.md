@@ -11,7 +11,7 @@ This page remains the responsibility and artifact index.
 
 | Building block         | Owns                                                                             | Does not own                                                           |
 | ---------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `mcp-server`           | Stateless MCP tools, resources and HTTP transport                                | Engineering truth or product layout                                    |
+| `mcp-platform`         | Stateless MCP tools, resources and HTTP transport                                | Engineering truth or product layout                                    |
 | `mcp-view`             | Optional provider result-viewer runtime (other repos). Not this atelier cockpit  | Workflow execution, evidence authority, or the native Workbench        |
 | `mcp-syson`            | SysML model, requirements, constraints and explicit verdicts                     | Physical calculations                                                  |
 | `mcp-build123d`        | CAD programs, geometry metrics and content-addressed exports                     | FEA results or product verdicts                                        |

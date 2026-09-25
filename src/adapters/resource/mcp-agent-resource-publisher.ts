@@ -5,7 +5,7 @@
  * is preserved from capture metadata. Discovery restores after restart.
  */
 
-import type { McpApp, ResourceContent } from "@casys/mcp-server";
+import type { McpApp, ResourceContent } from "@casys/mcp-platform";
 import type { AgentResourceExposure } from "../../application/ports/out/resource/agent-resource-exposure.ts";
 import type { AgentResourceStore } from "../../application/ports/out/resource/agent-resource-store.ts";
 import type { AgentResourceReference } from "../../domain/resource/agent-resource-capture.ts";

@@ -30,10 +30,10 @@ Deno.test("the first-party CalculiX HTTP qualification candidate is exact, nativ
   });
   assertEquals(candidate.profile, null);
   assertEquals(candidate.unit.id, "casys.mcp-calculix");
-  assertEquals(candidate.unit.version, "0.8.2");
+  assertEquals(candidate.unit.version, "0.8.5");
   assertEquals(
     candidate.material.imageDigest,
-    "ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8",
+    "3fad853cdb720d6d50e4714d23c9e4cf7bb011fec7b10addad5945b045757123",
   );
   assertEquals(candidate.launchGroup.id, "casys-mcp-calculix");
   assertEquals(candidate.launchGroup.version, "1.0.0");

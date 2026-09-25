@@ -1,4 +1,4 @@
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import type { ProjectSensitivityBaseEvaluationReviewUseCase } from "../../application/ports/in/sensitivity/base-evaluation/project-sensitivity-base-evaluation-review.ts";
 import type { ProjectSensitivityEdgesReviewUseCase } from "../../application/ports/in/sensitivity/edges/project-sensitivity-edges-review.ts";
 import { OBJECT_OUTPUT_SCHEMA, READ_ONLY_ANNOTATIONS } from "./mcp-tool-schemas.ts";

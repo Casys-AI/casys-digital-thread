@@ -542,7 +542,7 @@ async function createHarness() {
         },
         launchGroup: {
           id: "casys-mcp-calculix",
-          version: "0.8.2",
+          version: "0.8.5",
           fingerprint: fingerprint("2".repeat(64)),
         },
       };

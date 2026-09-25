@@ -15,15 +15,15 @@ report is desired configuration, never a runtime claim.
 
 `config/mcp-fleet.json` and `docker-compose.yml` pin the optional local provider to the
 multi-architecture OCI index
-`ghcr.io/casys-ai/mcp-spice@sha256:80f8d6b34dc55e623daf936faea5ff9ee75871331aa88d7339191ea17584991b`.
+`ghcr.io/casys-ai/mcp-spice@sha256:e5bcf112ec37d71d9a02dfcb1c65af0ed77fe497e97e16e931bfb6baa0dd367d`.
 The manifest's `release` extension is documentation consumed by the preflight, not a
 new control-plane authority field. It records the separately qualified desired image:
 
 | Field | Exact value |
 | ----- | ----------- |
-| package / health / discovery version | `0.5.2` |
-| OCI revision | `0575f2d0efdca30965c5b155187b78d9412fb1d1` |
-| OCI created | `2026-08-28T15:49:55.406Z` |
+| package / health / discovery version | `0.6.2` |
+| OCI revision | `4594d605b20ac77f0044fe3e8b53cb44fe870b8d` |
+| OCI created | `2026-08-31T15:47:13.822Z` |
 | source / URL | `https://github.com/Casys-AI/mcp-spice` |
 | title / license | `mcp-spice` / `MIT` |
 | description | `MCP oracle for circuit verification — ngspice batch operating point and reduced transients. The server owns the .control block.` |
@@ -46,10 +46,14 @@ The code-owned endpoint is `mcp-spice` at `127.0.0.1:3023`. Its exact reviewed
   earliest timestamps in seconds.
 - `spice_simulate_dc` — one server-owned voltage-source sweep with reduced voltage and
   current summaries; never a raw transfer curve.
+- `spice_simulation_dispatch_get` — read one acknowledged durable dispatch by
+  request SHA-256 for recovery.
+- `spice_simulation_receipt_get` — read one immutable documentary receipt by SHA-256.
+- `spice_simulation_result_get` — read one immutable documentary outcome by SHA-256.
 
 The D2 fingerprint is
-`sha256:5873f79d571a67aeafd74f1749ae4a4172a692cfdf9fbab2c8032df95d0d2e8a`. It covers the concordant provider identity,
-supported MCP versions, all four exact `{name,inputSchema,outputSchema}` projections,
+`sha256:59a09e5e63fb246d5ea067fbc13a77bc5723bfa49b6620544ddd188c7b4ca958`. It covers the concordant provider identity,
+supported MCP versions, all seven exact `{name,inputSchema,outputSchema}` projections,
 and the reviewed execution-budget projection below. A changed observed identity,
 schema, tool set, or code-owned reviewed projection is `contract-divergent` and
 requires a new D2 review.
@@ -71,7 +75,8 @@ cannot inspect the image to verify them. This is not an executed boundary test. 
 read-only preflight never submits a byte or runs ngspice, so it cannot prove runtime
 enforcement, a typed `tools/call` error envelope, or a replayable provider run.
 `spice_simulate_op`, `spice_simulate_tran`, and `spice_simulate_dc` expose only reduced
-results; no provider run-readback method is listed. W remains unresolved.
+results; the three run-readback methods stay discovery-only and are never called by
+this probe. W remains unresolved.
 
 ## Authority remains unchanged
 

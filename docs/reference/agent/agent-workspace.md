@@ -549,7 +549,7 @@ This pair is the measured authority. It does not replace
 `industrialize.observe-printability@1`, which stays the documentary estimate path
 (observations only, no evaluation).
 
-Live mcp-dfm 0.1.0 tools take `step_path` + `expected_step_sha256`, not STL.
+Live mcp-dfm 0.3.0 tools take `step_path` + `expected_step_sha256`, not STL.
 `build_volume_mm` is an object `{x, y, z}`. The sealed case must declare the Z-min
 bed-contact filter; the executor applies that signed filter and traces it. It must not
 invent a min-Z heuristic. A check fail is publishable with a named violation.

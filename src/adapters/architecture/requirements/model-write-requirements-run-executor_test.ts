@@ -21,7 +21,7 @@
 
 import { assertEquals, assertExists, assertRejects, assertThrows } from "@std/assert";
 import { CapabilityRuntimeConnectionError } from "../../../application/ports/out/capability/capability-runtime-connection.ts";
-import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-server";
+import type { McpApp, MCPTool, ToolHandler } from "@casys/mcp-platform";
 import { REGISTERED_ENGINEERING_OPERATION_REGISTRY } from "../../../orchestration/operations/registry.ts";
 import {
   approvedBriefBasisForProject,

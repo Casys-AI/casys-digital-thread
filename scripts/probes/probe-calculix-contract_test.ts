@@ -7,8 +7,8 @@ import {
   probeCalculixContract,
 } from "./probe-calculix-contract.ts";
 
-const IMAGE_DIGEST = "ea933089d0941dd7c45d7e00a825be64c412edbb334a05dc568745ce885abfc8";
-const REVISION = "6fb30a75c4876ad469cc472ffa8ca691e0a6b58b";
+const IMAGE_DIGEST = "3fad853cdb720d6d50e4714d23c9e4cf7bb011fec7b10addad5945b045757123";
+const REVISION = "a98151d505a8851e0021916c5fa0953418fd8cac";
 const VIEWER = "ui://mcp-calculix/results-viewer";
 const MANIFEST = JSON.stringify({
   servers: [{
@@ -17,17 +17,17 @@ const MANIFEST = JSON.stringify({
     mcpUrl: CALCULIX_ENDPOINT.mcpUrl,
     image: `ghcr.io/casys-ai/mcp-calculix@sha256:${IMAGE_DIGEST}`,
     providerIdentity: {
-      version: "0.8.2",
+      version: "0.8.5",
       revision: REVISION,
       imageIndexDigest: IMAGE_DIGEST,
       ociLabels: {
         "org.opencontainers.image.source": "https://github.com/Casys-AI/mcp-calculix",
         "org.opencontainers.image.title": "mcp-calculix",
-        "org.opencontainers.image.version": "0.8.2",
+        "org.opencontainers.image.version": "0.8.5",
         "org.opencontainers.image.revision": REVISION,
       },
       contractFingerprint:
-        "8e8b5c007299818908d424413483addf7fdde5928175c80d2817232b85839ed4",
+        "96fcac681292d7d48ca5d11c9e8630ff5bd61b95266f7b1b18f083c6c496b860",
       ordinarySolveTimeoutMaxMs: MAX_ORDINARY_SOLVE_TIMEOUT_MS,
     },
     expectedTools: CALCULIX_EXPECTED_TOOLS,
@@ -37,7 +37,7 @@ const MANIFEST = JSON.stringify({
 
 const DISCOVERY = {
   supportedVersions: ["2026-07-28"],
-  serverInfo: { name: "mcp-calculix", version: "0.8.2" },
+  serverInfo: { name: "mcp-calculix", version: "0.8.5" },
   resultType: "complete",
 };
 const TOOLS = CALCULIX_EXPECTED_TOOLS.map((name) => tool(name));
@@ -68,7 +68,7 @@ Deno.test("CalculiX preflight uses MCP discovery without inventing a health rout
 Deno.test("CalculiX preflight rejects desired release drift before network", async () => {
   const fake = new FakeCalculixFetch();
   const result = await probeCalculixContract({
-    manifestText: MANIFEST.replace("0.8.2", "0.8.3"),
+    manifestText: MANIFEST.replace("0.8.5", "0.8.3"),
     fetch: fake.fetch,
   });
 
@@ -173,7 +173,8 @@ class FakeCalculixFetch {
 }
 
 function tool(name: string): Record<string, unknown> {
-  const hasViewer = name === "calculix_solve_static" ||
+  const hasViewer = name === "calculix_run_get" ||
+    name === "calculix_solve_static" ||
     name === "calculix_solve_static_recorded";
   const inputSchema = objectSchema(["step_path"]);
   if (ordinarySolveNames().includes(name)) {

@@ -4,7 +4,7 @@ import type {
   MCPTool,
   ToolHandler,
   ToolHandlerContext,
-} from "@casys/mcp-server";
+} from "@casys/mcp-platform";
 import type { CockpitFocusStore } from "../application/ports/out/project/cockpit-focus-store.ts";
 import type { CockpitFocusSnapshot } from "../domain/project/cockpit-focus.ts";
 import { registerCockpitFocusTools } from "./cockpit-focus.ts";

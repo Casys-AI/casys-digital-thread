@@ -5,7 +5,7 @@
  * Source bytes stay on project_source_* / project_resource_capture.
  */
 
-import type { McpApp, MCPTool } from "@casys/mcp-server";
+import type { McpApp, MCPTool } from "@casys/mcp-platform";
 import type { ProductNavigationUseCase } from "../../application/ports/in/product-navigation/product-navigation.ts";
 import type {
   ProductNavigationBasis,

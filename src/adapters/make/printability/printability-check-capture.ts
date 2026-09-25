@@ -111,6 +111,11 @@ export function parseDfmThicknessResult(
     persistDfmViolationZone(item, `dfm_check_min_thickness violations[${i}]`)
   );
   const measuredRoot = requireObject(root.measured, "dfm_check_min_thickness measured");
+  if (measuredRoot.minimum_thickness_status !== "sampled") {
+    throw new Error(
+      "dfm_check_min_thickness measured.min_thickness_mm is not provider-verified (minimum_thickness_status); refusing to persist it as measured. Inspect ray_coverage.",
+    );
+  }
   const rawPos = measuredRoot.min_position_mm;
   if (!Array.isArray(rawPos) || rawPos.length !== 3) {
     throw new TypeError(

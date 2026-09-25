@@ -146,6 +146,26 @@ Deno.test("the SHA-256 attestation mismatch is fail-closed on the recorded envel
   );
 });
 
+Deno.test("a provider-flagged unverified envelope volume is fail-closed", () => {
+  const value = structuredClone(qualification.dfm_check_envelope);
+  (value.measured as Record<string, unknown>).volume_status = "unverified";
+  assertThrows(
+    () => parseDfmEnvelopeResult(value, LIVE_SHA256, { x: 250, y: 210, z: 200 }),
+    Error,
+    "not provider-verified",
+  );
+});
+
+Deno.test("a provider-flagged unverified minimum thickness is fail-closed", () => {
+  const value = structuredClone(qualification.dfm_check_min_thickness);
+  (value.measured as Record<string, unknown>).minimum_thickness_status = "unverified";
+  assertThrows(
+    () => parseDfmThicknessResult(value, LIVE_SHA256, 2),
+    Error,
+    "not provider-verified",
+  );
+});
+
 Deno.test("the DFM check capture reread accepts the recorded qualification envelope", () => {
   const capture = validateDfmCheckCapture(validCapture());
   assertEquals(capture.evaluations.status, "fail");

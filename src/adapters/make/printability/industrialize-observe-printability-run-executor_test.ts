@@ -490,6 +490,7 @@ class FakeDfm {
           measured: {
             min_thickness_mm: 0.8,
             min_position_mm: [1, 2, 3],
+            minimum_thickness_status: "sampled",
             sample_count: 10,
             valid_ray_count: 8,
           },
