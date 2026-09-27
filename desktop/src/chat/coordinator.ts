@@ -9,7 +9,15 @@ import {
   type ChatMessageDto,
   type ChatPendingInteractionDto,
   type ChatSnapshotDto,
+  type ChatToolViewerDto,
+  type ChatViewerJson,
+  type ChatViewerSessionDto,
   DESKTOP_CHAT_PROTOCOL,
+  isChatOpaqueId,
+  isChatViewerToolName,
+  isChatViewerUiUri,
+  parseChatViewerArguments,
+  parseChatViewerJson,
 } from "../../../src/presentation/desktop/chat/contracts.ts";
 import {
   type ChatMcpProbeOutcome,
@@ -32,9 +40,22 @@ import {
   validateElicitationContent,
 } from "./sanitize.ts";
 import type { ChatConversationStore, StoredConversation } from "./store.ts";
+import {
+  type ChatViewerBackend,
+  createRefusingViewerBackend,
+  viewerResourceScope,
+} from "./viewer-backend.ts";
 
 const AGENT_NAME = "casys-codex";
 const SESSION_PREFIX = "casys-desktop-exclusive";
+const TOOL_RESULTS_MAX = 20;
+const TOOL_RESULT_JSON_MAX = 262_144;
+/**
+ * Viewer resource bytes must fit the 1M-char chat IPC line after base64
+ * (x4/3) plus the JSON envelope. Whole App documents never cross IPC:
+ * `viewer.open` pins identity and the renderer fetches bytes separately.
+ */
+const VIEWER_RESOURCE_IPC_MAX_BYTES = 524_288;
 
 interface ConversationState {
   readonly id: string;
@@ -51,6 +72,11 @@ interface ConversationState {
    * coordinator seeds only the ids a key has never seen.
    */
   knownByKey: Map<string, Set<string>>;
+  /**
+   * Exact MCP tool results captured from runtime events, newest last.
+   * Only results of the attached server carrying an App URI are retained.
+   */
+  toolResults: CapturedToolResult[];
   readonly title: string;
   readonly createdAt: string;
   updatedAt: string;
@@ -75,6 +101,18 @@ interface PendingInteraction {
   readonly abort: () => void;
 }
 
+interface CapturedToolResult {
+  readonly toolCallId: string;
+  readonly server: string;
+  readonly tool: string;
+  readonly messageId: string;
+  readonly appUri: string;
+  readonly failed: boolean;
+  readonly input: Readonly<Record<string, ChatViewerJson>>;
+  readonly result: ChatViewerJson;
+  readonly capturedAt: string;
+}
+
 export interface ChatCoordinatorOptions {
   /** One adapter per MCP set, keyed by chatRuntimeKey. */
   readonly runtimes: ReadonlyMap<string, ChatRuntimeAdapter>;
@@ -85,6 +123,8 @@ export interface ChatCoordinatorOptions {
   readonly store: ChatConversationStore;
   /** Private host path. It is never copied into a renderer DTO. */
   readonly workspaceRoot: string;
+  /** Owning-session MCP backend for live viewer Apps. Refuses when absent. */
+  readonly viewerBackend?: ChatViewerBackend;
   readonly now?: () => Date;
   readonly newId?: () => string;
 }
@@ -97,6 +137,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
   ) => Promise<ChatMcpProbeOutcome>;
   readonly #store: ChatConversationStore;
   readonly #workspaceRoot: string;
+  readonly #viewerBackend: ChatViewerBackend;
   readonly #now: () => Date;
   readonly #newId: () => string;
   readonly #conversations = new Map<string, ConversationState>();
@@ -111,6 +152,8 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     this.#probeMcp = options.probeMcp;
     this.#store = options.store;
     this.#workspaceRoot = options.workspaceRoot;
+    this.#viewerBackend = options.viewerBackend ??
+      createRefusingViewerBackend("Live viewer Apps are unavailable.");
     this.#now = options.now ?? (() => new Date());
     this.#newId = options.newId ?? (() => crypto.randomUUID());
     for (const adapter of options.runtimes.values()) {
@@ -201,6 +244,48 @@ export class ChatCoordinator implements RuntimeInteractionSink {
           conversationId = request.conversationId;
           await this.#disableMcp(conversationId);
           break;
+        case "viewer.open": {
+          conversationId = request.conversationId;
+          const viewer = await this.#openViewer(conversationId, request.toolCallId);
+          return Object.freeze({
+            protocol: DESKTOP_CHAT_PROTOCOL,
+            requestId: request.requestId,
+            ok: true,
+            conversationId,
+            viewer,
+          });
+        }
+        case "viewer.tool-call": {
+          conversationId = request.conversationId;
+          const viewerResult = await this.#viewerToolCall(
+            conversationId,
+            request.toolCallId,
+            request.name,
+            request.arguments,
+          );
+          return Object.freeze({
+            protocol: DESKTOP_CHAT_PROTOCOL,
+            requestId: request.requestId,
+            ok: true,
+            conversationId,
+            viewerResult,
+          });
+        }
+        case "viewer.resource-read": {
+          conversationId = request.conversationId;
+          const viewerResource = await this.#viewerResourceRead(
+            conversationId,
+            request.toolCallId,
+            request.uri,
+          );
+          return Object.freeze({
+            protocol: DESKTOP_CHAT_PROTOCOL,
+            requestId: request.requestId,
+            ok: true,
+            conversationId,
+            viewerResource,
+          });
+        }
       }
       return Object.freeze({
         protocol: DESKTOP_CHAT_PROTOCOL,
@@ -260,6 +345,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         : `${SESSION_PREFIX}/standalone/${id}`,
       mcpTools: [],
       knownByKey: new Map(),
+      toolResults: [],
       title: title ?? (kind === "project" ? `Project ${projectId}` : "Standalone chat"),
       status: "idle",
       createdAt: now,
@@ -397,7 +483,10 @@ export class ChatCoordinator implements RuntimeInteractionSink {
           ? ""
           : ` — ${clean(event.status, 80)}`;
         const id = this.#append(conversation, "assistant", "tool", `${title}${suffix}`);
-        if (id !== undefined) touched.push(id);
+        if (id !== undefined) {
+          touched.push(id);
+          this.#captureToolResult(conversation, event, id);
+        }
       } else {
         const id = this.#append(
           conversation,
@@ -410,6 +499,150 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       await this.#persist();
     }
     return touched;
+  }
+
+  /**
+   * Retain the exact MCP tool result for the live viewer. Only results of
+   * the attached server carrying a server-scoped App URI are kept; anything
+   * else (missing ids, foreign server, oversize, unparsable) is ignored so
+   * the transcript stays the source of truth.
+   */
+  #captureToolResult(
+    conversation: ConversationState,
+    event: Extract<RuntimeEvent, { type: "tool_call" }>,
+    messageId: string,
+  ): void {
+    if (
+      conversation.kind !== "standalone" || conversation.mcpId === undefined ||
+      conversation.mcpStatus !== "connected" || event.toolCallId === undefined
+    ) return;
+    const input = parseMcpRawInput(event.rawInput);
+    if (input === undefined || input.server !== conversation.mcpId) return;
+    const output = parseMcpRawOutput(event.rawOutput);
+    if (output === undefined) return;
+    const appUri = viewerAppUri(
+      output.result,
+      this.#mcpExpectedViews(conversation.mcpId),
+    );
+    if (appUri === undefined) return;
+    let parsedInput: Readonly<Record<string, ChatViewerJson>>;
+    let parsedResult: ChatViewerJson;
+    try {
+      parsedInput = parseChatViewerArguments(input.arguments ?? {});
+      parsedResult = parseChatViewerJson(output.result);
+      if (
+        JSON.stringify(parsedInput).length > TOOL_RESULT_JSON_MAX ||
+        JSON.stringify(parsedResult).length > TOOL_RESULT_JSON_MAX
+      ) return;
+    } catch {
+      return;
+    }
+    conversation.toolResults = [
+      ...conversation.toolResults.filter((entry) =>
+        entry.toolCallId !== event.toolCallId
+      ),
+      {
+        toolCallId: event.toolCallId,
+        server: input.server,
+        tool: input.tool,
+        messageId,
+        appUri,
+        failed: output.error !== null && output.error !== undefined,
+        input: parsedInput,
+        result: parsedResult,
+        capturedAt: this.#now().toISOString(),
+      },
+    ].slice(-TOOL_RESULTS_MAX);
+  }
+
+  #viewerConversation(conversationId: string): ConversationState {
+    const conversation = this.#conversation(conversationId);
+    if (
+      conversation.kind !== "standalone" || conversation.mcpId === undefined ||
+      conversation.mcpStatus !== "connected"
+    ) {
+      throw new Error("The live viewer requires a connected MCP session.");
+    }
+    if (conversation.status === "closed") throw new Error("conversation is closed");
+    return conversation;
+  }
+
+  #viewerEntry(
+    conversation: ConversationState,
+    toolCallId: string,
+  ): CapturedToolResult {
+    const entry = conversation.toolResults.find((candidate) =>
+      candidate.toolCallId === toolCallId
+    );
+    if (entry === undefined || entry.server !== conversation.mcpId) {
+      throw new Error("Unknown viewer session for this conversation.");
+    }
+    return entry;
+  }
+
+  async #openViewer(
+    conversationId: string,
+    toolCallId: string,
+  ): Promise<ChatViewerSessionDto> {
+    const conversation = this.#viewerConversation(conversationId);
+    const entry = this.#viewerEntry(conversation, toolCallId);
+    if (!this.#mcpExpectedViews(entry.server).includes(entry.appUri)) {
+      throw new Error("Unknown viewer session for this conversation.");
+    }
+    const app = await this.#viewerBackend.resolveApp(entry.server, entry.appUri);
+    return Object.freeze({
+      toolCallId: entry.toolCallId,
+      tool: entry.tool,
+      server: entry.server,
+      appUri: entry.appUri,
+      app: Object.freeze({
+        uri: app.uri,
+        mimeType: app.mimeType,
+        bytes: app.bytes.byteLength,
+        fingerprint: app.fingerprint,
+      }),
+      toolInput: entry.input,
+      toolResult: entry.result,
+      // Renderer contract: regex names, at most 64. Authorization still
+      // checks the full conversation list by exact name.
+      serverTools: Object.freeze(
+        conversation.mcpTools.filter(isChatViewerToolName).slice(0, 64),
+      ),
+    });
+  }
+
+  async #viewerToolCall(
+    conversationId: string,
+    toolCallId: string,
+    name: string,
+    args: Readonly<Record<string, ChatViewerJson>>,
+  ): Promise<ChatViewerJson> {
+    const conversation = this.#viewerConversation(conversationId);
+    const entry = this.#viewerEntry(conversation, toolCallId);
+    if (!conversation.mcpTools.includes(name)) {
+      throw new Error("The session cannot authorize this tool.");
+    }
+    const result = await this.#viewerBackend.callTool(entry.server, name, args);
+    const parsed = parseChatViewerJson(result);
+    if (JSON.stringify(parsed).length > TOOL_RESULT_JSON_MAX) {
+      throw new Error("Viewer tool result is too large for the chat IPC line.");
+    }
+    return parsed;
+  }
+
+  async #viewerResourceRead(conversationId: string, toolCallId: string, uri: string) {
+    const conversation = this.#viewerConversation(conversationId);
+    const entry = this.#viewerEntry(conversation, toolCallId);
+    const admitted = this.#mcpExpectedViews(entry.server);
+    const scope = viewerResourceScope(admitted);
+    const inViewScope = admitted.includes(uri) ||
+      (scope !== undefined && uri.startsWith(scope));
+    const inArtifactScope = uri.startsWith(`casys://${entry.server}/`);
+    if (!inViewScope && !inArtifactScope) {
+      throw new Error("The session cannot authorize this resource.");
+    }
+    const result = await this.#viewerBackend.readResource(entry.server, uri);
+    return parseViewerResourcePayload(uri, result);
   }
 
   async #requestElicitation(
@@ -619,13 +852,13 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     await this.#detachHandle(conversation, "MCP attachment changed");
     conversation.mcpId = server.id;
     conversation.mcpStatus = "connected";
-    conversation.mcpTools = [...probe.tools];
+    conversation.mcpTools = sanitizeMcpTools(probe.tools);
     conversation.sessionKey = standaloneSessionKey(conversation.id, server.id);
     this.#append(
       conversation,
       "system",
       "status",
-      `${server.displayName} connected (${probe.tools.length} tools). The agent session restarts with it.`,
+      `${server.displayName} connected (${conversation.mcpTools.length} tools). The agent session restarts with it.`,
     );
     await this.#persist();
   }
@@ -686,6 +919,10 @@ export class ChatCoordinator implements RuntimeInteractionSink {
 
   #mcpDisplayName(mcpId: string): string {
     return this.#mcpServers.find((entry) => entry.id === mcpId)?.displayName ?? mcpId;
+  }
+
+  #mcpExpectedViews(mcpId: string): readonly string[] {
+    return this.#mcpServers.find((entry) => entry.id === mcpId)?.expectedViews ?? [];
   }
 
   async #stop(): Promise<void> {
@@ -807,9 +1044,25 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         id: conversation.mcpId,
         displayName: this.#mcpDisplayName(conversation.mcpId),
         status: conversation.mcpStatus,
-        tools: Object.freeze([...conversation.mcpTools]),
+        // Renderer contract caps the conversation tool list at 64 names;
+        // authorization still checks the full conversation list by name.
+        tools: Object.freeze(conversation.mcpTools.slice(0, 64)),
       });
     }
+    // List only viewers of the currently attached server. Entries stay
+    // stored across an MCP switch for later persistence (#51); unopenable
+    // stale buttons must not leak into another server's listing.
+    const viewers: ChatToolViewerDto[] = includeMessages
+      ? conversation.toolResults.filter((entry) => entry.server === conversation.mcpId)
+        .map((entry) =>
+          Object.freeze({
+            toolCallId: entry.toolCallId,
+            messageId: entry.messageId,
+            tool: entry.tool,
+            appUri: entry.appUri,
+          })
+        )
+      : [];
     return Object.freeze({
       id: conversation.id,
       kind: conversation.kind,
@@ -825,6 +1078,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       ...(conversation.pending === undefined
         ? {}
         : { pendingInteraction: conversation.pending.dto }),
+      viewers: Object.freeze(viewers),
     });
   }
 
@@ -852,8 +1106,9 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       sessionKey: stored.sessionKey,
       ...(mcpAttached ? { mcpId } : {}),
       ...(mcpAttached ? { mcpStatus } : {}),
-      mcpTools: mcpAttached ? [...(stored.mcpTools ?? [])] : [],
+      mcpTools: mcpAttached ? sanitizeMcpTools(stored.mcpTools) : [],
       knownByKey: restoreKnownByKey(stored),
+      toolResults: restoreToolResults(stored),
       title: stored.title,
       status: stored.status === "running" || stored.status === "queued"
         ? "idle"
@@ -876,6 +1131,19 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         ...(entry.mcpStatus === undefined ? {} : { mcpStatus: entry.mcpStatus }),
         mcpTools: Object.freeze([...entry.mcpTools]),
         knownMessageIdsByKey: serializeKnownByKey(entry),
+        toolResults: Object.freeze(entry.toolResults.map((result) =>
+          Object.freeze({
+            toolCallId: result.toolCallId,
+            server: result.server,
+            tool: result.tool,
+            messageId: result.messageId,
+            appUri: result.appUri,
+            failed: result.failed,
+            input: result.input,
+            result: result.result,
+            capturedAt: result.capturedAt,
+          })
+        )),
         sessionKey: entry.sessionKey,
         title: entry.title,
         status: entry.status,
@@ -964,6 +1232,60 @@ function restoreKnownByKey(stored: StoredConversation): Map<string, Set<string>>
   return known;
 }
 
+/** Provider tool names the conversation DTO admits: non-empty text ≤128. */
+function sanitizeMcpTools(names: unknown): string[] {
+  if (!Array.isArray(names)) return [];
+  return names.filter((name): name is string =>
+    typeof name === "string" && name.trim() !== "" && name.length <= 128
+  );
+}
+
+function restoreToolResults(stored: StoredConversation): CapturedToolResult[] {
+  const results = stored.toolResults;
+  if (!Array.isArray(results)) return [];
+  const restored: CapturedToolResult[] = [];
+  for (const entry of results.slice(-TOOL_RESULTS_MAX)) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) continue;
+    const candidate = entry as Record<string, unknown>;
+    // Restore only entries the renderer contract admits; a tampered store
+    // must degrade to fewer viewers, never to an unparsable snapshot.
+    if (
+      !isChatOpaqueId(candidate.toolCallId) ||
+      typeof candidate.server !== "string" || candidate.server === "" ||
+      !isChatViewerToolName(candidate.tool) ||
+      !isChatOpaqueId(candidate.messageId) ||
+      !isChatViewerUiUri(candidate.appUri) ||
+      typeof candidate.failed !== "boolean" ||
+      typeof candidate.capturedAt !== "string" ||
+      !Number.isFinite(Date.parse(candidate.capturedAt))
+    ) continue;
+    let input: Readonly<Record<string, ChatViewerJson>>;
+    let result: ChatViewerJson;
+    try {
+      input = parseChatViewerArguments(candidate.input ?? {});
+      result = parseChatViewerJson(candidate.result);
+      if (
+        JSON.stringify(input).length > TOOL_RESULT_JSON_MAX ||
+        JSON.stringify(result).length > TOOL_RESULT_JSON_MAX
+      ) continue;
+    } catch {
+      continue;
+    }
+    restored.push({
+      toolCallId: candidate.toolCallId,
+      server: candidate.server,
+      tool: candidate.tool,
+      messageId: candidate.messageId,
+      appUri: candidate.appUri,
+      failed: candidate.failed,
+      input,
+      result,
+      capturedAt: candidate.capturedAt,
+    });
+  }
+  return restored;
+}
+
 function serializeKnownByKey(
   conversation: ConversationState,
 ): Record<string, readonly string[]> {
@@ -982,6 +1304,115 @@ function serializeKnownByKey(
     if (ids.length > 0) record[key] = Object.freeze(ids);
   }
   return Object.freeze(record);
+}
+
+function parseMcpRawInput(
+  value: unknown,
+): { server: string; tool: string; arguments?: unknown } | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const input = value as Record<string, unknown>;
+  if (typeof input.server !== "string" || typeof input.tool !== "string") {
+    return undefined;
+  }
+  // Keep only tool names the renderer contract admits: anything else is
+  // ignored so a hostile provider name can never break snapshot parsing.
+  if (input.server === "" || !isChatViewerToolName(input.tool)) {
+    return undefined;
+  }
+  return { server: input.server, tool: input.tool, arguments: input.arguments };
+}
+
+function parseMcpRawOutput(
+  value: unknown,
+): { result: unknown; error: unknown } | undefined {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return undefined;
+  }
+  const output = value as Record<string, unknown>;
+  if (!("result" in output)) return undefined;
+  return { result: output.result, error: output.error };
+}
+
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(offset, offset + chunkSize));
+  }
+  return btoa(binary);
+}
+
+function parseViewerResourcePayload(uri: string, value: unknown) {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    throw new Error("Resource read returned an unexpected payload.");
+  }
+  const contents = (value as Record<string, unknown>).contents;
+  if (!Array.isArray(contents) || contents.length !== 1) {
+    throw new Error("Resource read returned an unexpected payload.");
+  }
+  const entry = contents[0] as Record<string, unknown>;
+  if (
+    entry.uri !== uri || typeof entry.mimeType !== "string" ||
+    entry.mimeType === "" || entry.mimeType.length > 200
+  ) {
+    throw new Error("Resource read returned an unexpected payload.");
+  }
+  let bytes: Uint8Array;
+  if (typeof entry.text === "string") {
+    bytes = new TextEncoder().encode(entry.text);
+  } else if (typeof entry.blob === "string") {
+    bytes = base64ToBytes(entry.blob);
+  } else {
+    throw new Error("Resource read returned an unexpected payload.");
+  }
+  if (bytes.byteLength === 0) {
+    throw new Error("Resource read returned an invalid size.");
+  }
+  if (bytes.byteLength > VIEWER_RESOURCE_IPC_MAX_BYTES) {
+    throw new Error("Resource read is too large for the chat IPC line.");
+  }
+  return Object.freeze({
+    uri,
+    mimeType: entry.mimeType,
+    bytes: bytes.byteLength,
+    encoding: "base64",
+    data: bytesToBase64(bytes),
+  });
+}
+
+function base64ToBytes(data: string): Uint8Array {
+  if (!/^[A-Za-z0-9+/]*={0,2}$/.test(data)) {
+    throw new Error("Resource read returned an unexpected payload.");
+  }
+  const binary = atob(data);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
+}
+
+/** App URI named by the exact result, admitted only as an expected view. */
+function viewerAppUri(
+  result: unknown,
+  expectedViews: readonly string[],
+): string | undefined {
+  if (typeof result !== "object" || result === null || Array.isArray(result)) {
+    return undefined;
+  }
+  const meta = (result as Record<string, unknown>)._meta;
+  if (typeof meta !== "object" || meta === null || Array.isArray(meta)) {
+    return undefined;
+  }
+  const ui = (meta as Record<string, unknown>).ui;
+  if (typeof ui !== "object" || ui === null || Array.isArray(ui)) return undefined;
+  const uri = (ui as Record<string, unknown>).resourceUri;
+  if (typeof uri !== "string" || !expectedViews.includes(uri)) {
+    return undefined;
+  }
+  return uri;
 }
 
 const SEED_MAX_MESSAGES = 30;

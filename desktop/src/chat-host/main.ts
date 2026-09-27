@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 import pins from "../../chat-runtime/pins.json" with { type: "json" };
 import { ChatCoordinator } from "../chat/coordinator.ts";
 import { connectableMcpServers, probeChatMcpServer } from "../chat/mcp-servers.ts";
+import { createRegistryViewerBackend } from "../chat/viewer-backend.ts";
 import { chatRuntimeKey } from "../chat/runtime-port.ts";
 import {
   CHAT_HOST_COMPONENT_VERSION,
@@ -105,6 +106,7 @@ const coordinator = await ChatCoordinator.create({
   runtimes,
   mcpServers,
   probeMcp: (server) => probeChatMcpServer(server),
+  viewerBackend: createRegistryViewerBackend({ servers: mcpServers }),
   store: new NodeChatConversationStore(join(dataRoot, "chat")),
   workspaceRoot: join(dataRoot, "workspace"),
 });

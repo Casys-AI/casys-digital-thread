@@ -99,7 +99,36 @@ function validatedServer(server: Record<string, unknown>): ChatMcpServerConfig {
     mcpUrl,
     healthUrl,
     expectedTools,
+    expectedViews: expectedViews(server, id),
   };
+}
+
+function expectedViews(
+  server: Record<string, unknown>,
+  id: string,
+): readonly string[] {
+  const views = server.expectedViews;
+  if (views === undefined) return [];
+  if (
+    !Array.isArray(views) ||
+    !views.every((view): view is string =>
+      typeof view === "string" && isViewerUiUri(view)
+    )
+  ) {
+    throw new TypeError(
+      `Fleet ${id} expectedViews must be an array of ui:// view URIs.`,
+    );
+  }
+  return [...views];
+}
+
+function isViewerUiUri(value: string): boolean {
+  if (
+    !value.startsWith("ui://") || value.length > 500 || /\s/.test(value)
+  ) return false;
+  const rest = value.slice("ui://".length);
+  const slash = rest.indexOf("/");
+  return slash > 0 && slash < rest.length - 1;
 }
 
 function desiredServer(server: ChatMcpServerConfig): DesiredServer {

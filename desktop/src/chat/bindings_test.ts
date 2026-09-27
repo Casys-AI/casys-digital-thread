@@ -2,6 +2,7 @@ import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import {
   CHAT_COMMAND_BINDING,
   CHAT_SNAPSHOT_BINDING,
+  CHAT_VIEWER_APP_BINDING,
   type DesktopChatBindingHost,
   registerDesktopChatBindings,
 } from "./bindings.ts";
@@ -9,15 +10,19 @@ import {
   type ChatConversationDto,
   DESKTOP_CHAT_PROTOCOL,
 } from "../../../src/presentation/desktop/chat/contracts.ts";
+import type { ChatViewerBackend } from "./viewer-backend.ts";
 
-Deno.test("Desktop registers only two narrow, versioned Chat bindings", async () => {
+Deno.test("Desktop registers only three narrow, versioned Chat bindings", async () => {
   const handlers = new Map<string, (input: unknown) => unknown>();
   registerDesktopChatBindings({
     bind(name, handler) {
       handlers.set(name, handler);
     },
   });
-  assertEquals([...handlers.keys()], [CHAT_SNAPSHOT_BINDING, CHAT_COMMAND_BINDING]);
+  assertEquals(
+    [...handlers.keys()],
+    [CHAT_SNAPSHOT_BINDING, CHAT_COMMAND_BINDING, CHAT_VIEWER_APP_BINDING],
+  );
   assertEquals(
     await handlers.get(CHAT_SNAPSHOT_BINDING)?.({ protocol: DESKTOP_CHAT_PROTOCOL }),
     {
@@ -42,6 +47,21 @@ Deno.test("Desktop registers only two narrow, versioned Chat bindings", async ()
       error: "The packaged Chat Host is unavailable.",
     },
   );
+  assertEquals(
+    await handlers.get(CHAT_VIEWER_APP_BINDING)?.({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "request-app-1",
+      server: "build123d",
+      uri: "ui://build123d/results-viewer",
+      fingerprint: `sha256:${"0".repeat(64)}`,
+    }),
+    {
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "request-app-1",
+      ok: false,
+      error: "Live viewer Apps are unavailable on this Desktop target.",
+    },
+  );
   await assertRejects(() =>
     Promise.resolve(
       handlers.get(CHAT_COMMAND_BINDING)?.({
@@ -52,6 +72,67 @@ Deno.test("Desktop registers only two narrow, versioned Chat bindings", async ()
         text: "",
       }),
     )
+  );
+});
+
+Deno.test("viewer App binding ships bytes only on fingerprint match", async () => {
+  const handlers = new Map<string, (input: unknown) => unknown>();
+  const fingerprint = `sha256:${"1".repeat(64)}`;
+  const viewerApp: ChatViewerBackend = {
+    resolveApp: (server, uri) =>
+      Promise.resolve({
+        uri,
+        mimeType: "text/html;profile=mcp-app",
+        bytes: new TextEncoder().encode("<app/>"),
+        fingerprint,
+      }),
+    callTool: () => Promise.reject(new Error("not used")),
+    readResource: () => Promise.reject(new Error("not used")),
+  };
+  registerDesktopChatBindings(
+    { bind: (name, handler) => handlers.set(name, handler) },
+    undefined,
+    undefined,
+    undefined,
+    viewerApp,
+  );
+  const fetch = handlers.get(CHAT_VIEWER_APP_BINDING);
+  assertEquals(
+    await fetch?.({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "request-app-match",
+      server: "build123d",
+      uri: "ui://build123d/results-viewer",
+      fingerprint,
+    }),
+    {
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "request-app-match",
+      ok: true,
+      app: {
+        uri: "ui://build123d/results-viewer",
+        mimeType: "text/html;profile=mcp-app",
+        bytes: 6,
+        fingerprint,
+        encoding: "base64",
+        data: btoa("<app/>"),
+      },
+    },
+  );
+  assertEquals(
+    await fetch?.({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "request-app-rotated",
+      server: "build123d",
+      uri: "ui://build123d/results-viewer",
+      fingerprint: `sha256:${"2".repeat(64)}`,
+    }),
+    {
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "request-app-rotated",
+      ok: false,
+      error: "Viewer App bytes no longer match the pinned fingerprint.",
+    },
   );
 });
 
@@ -484,6 +565,7 @@ function conversation(
     status: "idle",
     createdAt: "2026-08-23T00:00:00.000Z",
     updatedAt: "2026-08-23T00:00:00.000Z",
+    viewers: Object.freeze([]),
     messages: Object.freeze(
       message === undefined ? [] : [{
         id: `message:${id}`,
@@ -507,6 +589,7 @@ function standaloneConversation(
     status: "idle",
     createdAt: "2026-08-23T00:00:00.000Z",
     updatedAt: "2026-08-23T00:00:00.000Z",
+    viewers: Object.freeze([]),
     messages: Object.freeze(
       message === undefined ? [] : [{
         id: `message:${id}`,

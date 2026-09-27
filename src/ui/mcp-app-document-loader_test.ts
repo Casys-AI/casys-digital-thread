@@ -234,6 +234,18 @@ Deno.test("whole-App plan admits formatting whitespace between html and head", (
   );
 });
 
+Deno.test("whole-App plan keeps script indices past length-changing case folds", () => {
+  // U+0130 lowercases to two code units; scanning must not shift the
+  // script offsets sliced from the original document.
+  const dotted = APP_HTML.replace("<style>", "<style>İ");
+  const plan = planMcpAppDocument(dotted);
+  assertEquals(
+    plan.scriptSource,
+    "globalThis.first = 1; globalThis.second = 2; globalThis.moduleUrl = import.meta.url;",
+  );
+  assertEquals(plan.htmlWithoutScript.includes("<script"), false);
+});
+
 Deno.test("whole-App loader revokes the HTML Blob on stale abort", async () => {
   const session = await sessionFor(APP_BYTES);
   const abort = new AbortController();

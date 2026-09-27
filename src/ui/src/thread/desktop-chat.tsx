@@ -12,11 +12,19 @@ import {
   type ChatFormFieldDto,
   type ChatPendingInteractionDto,
   type ChatSnapshotDto,
+  type ChatViewerAppBytesDto,
+  type ChatViewerAppFetchResponse,
+  type ChatViewerJson,
+  type ChatViewerResourceDto,
+  type ChatViewerSessionDto,
   DESKTOP_CHAT_PROTOCOL,
   type DesktopChatBindingCommandRequest,
   parseChatCommandResponse,
   parseChatSnapshotDto,
+  parseChatViewerAppFetchResponse,
+  parseChatViewerArguments,
 } from "../../../presentation/desktop/chat/contracts.ts";
+import { type ChatViewerDispatch, ChatViewerPanel } from "./chat-viewer-panel.tsx";
 import {
   type CatalogueCommandResponse,
   type CatalogueEntryDto,
@@ -34,6 +42,13 @@ interface DesktopBindings {
   casysChatCommand(
     input: DesktopChatBindingCommandRequest,
   ): Promise<ChatCommandResponse>;
+  casysChatViewerApp(input: {
+    readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
+    readonly requestId: string;
+    readonly server: string;
+    readonly uri: string;
+    readonly fingerprint: string;
+  }): Promise<ChatViewerAppFetchResponse>;
   casysCatalogueSnapshot(input: {
     readonly protocol: typeof DESKTOP_CATALOGUE_PROTOCOL;
   }): Promise<CatalogueSnapshotDto>;
@@ -67,9 +82,7 @@ export function DesktopChat(
   const fixedPanelAvailable = typeof projectId === "string" &&
     projectId.length > 0;
   const fixedProjectPanel = fixedPanelAvailable && wideDesktop;
-  const compactModal = fixedPanelAvailable
-    ? smallProjectModal
-    : fallbackCompactModal;
+  const compactModal = fixedPanelAvailable ? smallProjectModal : fallbackCompactModal;
   const projectSheet = fixedPanelAvailable && !wideDesktop && !compactModal;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const previousPresentationRef = useRef({ open, compactModal });
@@ -88,9 +101,7 @@ export function DesktopChat(
       const next = parseChatSnapshotDto(
         await bindings.casysChatSnapshot({
           protocol: DESKTOP_CHAT_PROTOCOL,
-          ...(typeof selectedId === "string"
-            ? { conversationId: selectedId }
-            : {}),
+          ...(typeof selectedId === "string" ? { conversationId: selectedId } : {}),
         }),
       );
       setSnapshot(next);
@@ -165,6 +176,90 @@ export function DesktopChat(
     [bindings, refresh],
   );
 
+  const viewerDispatch: ChatViewerDispatch | undefined = bindings === undefined
+    ? undefined
+    : {
+      openViewer: async (
+        conversationId: string,
+        toolCallId: string,
+      ): Promise<ChatViewerSessionDto> => {
+        const response = parseChatCommandResponse(
+          await bindings.casysChatCommand({
+            protocol: DESKTOP_CHAT_PROTOCOL,
+            requestId: requestId(),
+            command: "viewer.open",
+            conversationId,
+            toolCallId,
+          }),
+        );
+        if (!response.ok || response.viewer === undefined) {
+          throw new Error(response.error ?? "Viewer failed to open.");
+        }
+        return response.viewer;
+      },
+      callViewerTool: async (
+        conversationId: string,
+        toolCallId: string,
+        name: string,
+        args: unknown,
+      ): Promise<ChatViewerJson> => {
+        const response = parseChatCommandResponse(
+          await bindings.casysChatCommand({
+            protocol: DESKTOP_CHAT_PROTOCOL,
+            requestId: requestId(),
+            command: "viewer.tool-call",
+            conversationId,
+            toolCallId,
+            name,
+            arguments: parseChatViewerArguments(args),
+          }),
+        );
+        if (!response.ok || response.viewerResult === undefined) {
+          throw new Error(response.error ?? "Viewer tool call failed.");
+        }
+        return response.viewerResult;
+      },
+      readViewerResource: async (
+        conversationId: string,
+        toolCallId: string,
+        uri: string,
+      ): Promise<ChatViewerResourceDto> => {
+        const response = parseChatCommandResponse(
+          await bindings.casysChatCommand({
+            protocol: DESKTOP_CHAT_PROTOCOL,
+            requestId: requestId(),
+            command: "viewer.resource-read",
+            conversationId,
+            toolCallId,
+            uri,
+          }),
+        );
+        if (!response.ok || response.viewerResource === undefined) {
+          throw new Error(response.error ?? "Viewer resource read failed.");
+        }
+        return response.viewerResource;
+      },
+      fetchApp: async (
+        server: string,
+        uri: string,
+        fingerprint: string,
+      ): Promise<ChatViewerAppBytesDto> => {
+        const response = parseChatViewerAppFetchResponse(
+          await bindings.casysChatViewerApp({
+            protocol: DESKTOP_CHAT_PROTOCOL,
+            requestId: requestId(),
+            server,
+            uri,
+            fingerprint,
+          }),
+        );
+        if (!response.ok || response.app === undefined) {
+          throw new Error(response.error ?? "Viewer App fetch failed.");
+        }
+        return response.app;
+      },
+    };
+
   const standaloneConversations =
     snapshot?.conversations.filter((conversation) =>
       conversation.kind === "standalone"
@@ -238,6 +333,7 @@ export function DesktopChat(
             connectableMcps={snapshot?.connectableMcps ?? []}
             busy={busy}
             command={command}
+            viewerDispatch={viewerDispatch}
           />
         )
         : (
@@ -476,8 +572,8 @@ function CreateConversationForm({
           <>
             <p className="desktop-chat-interaction-kind">No project attached</p>
             <p>
-              A normal conversation with the configured agent. No brief, model,
-              or project is required; connect a tool when the task needs one.
+              A normal conversation with the configured agent. No brief, model, or
+              project is required; connect a tool when the task needs one.
             </p>
             <Button
               type="submit"
@@ -526,9 +622,11 @@ function Conversation({
   connectableMcps,
   busy,
   command,
+  viewerDispatch,
 }: CommandProps & {
   readonly conversation: ChatConversationDto;
   readonly connectableMcps: readonly ChatConnectableMcpDto[];
+  readonly viewerDispatch: ChatViewerDispatch | undefined;
 }): JSX.Element {
   const [text, setText] = useState("");
   const standalone = conversation.kind === "standalone";
@@ -588,6 +686,14 @@ function Conversation({
                 : "Host"}
             </span>
             <p>{message.text}</p>
+            {viewerDispatch !== undefined && (
+              <ChatViewerPanel
+                conversationId={conversation.id}
+                viewers={conversation.viewers}
+                messageId={message.id}
+                dispatch={viewerDispatch}
+              />
+            )}
           </li>
         ))}
       </ol>
@@ -682,9 +788,7 @@ function Interaction({
           {interaction.options.map((option) => (
             <Button
               type="button"
-              variant={option.decision.startsWith("allow")
-                ? "default"
-                : "outline"}
+              variant={option.decision.startsWith("allow") ? "default" : "outline"}
               size="sm"
               key={option.decision}
               disabled={busy}
@@ -971,9 +1075,7 @@ function ChatField({
         id={id}
         type={inputType}
         required={field.required}
-        value={typeof value === "string" || typeof value === "number"
-          ? value
-          : ""}
+        value={typeof value === "string" || typeof value === "number" ? value : ""}
         min={field.type === "number" || field.type === "integer"
           ? field.minimum
           : undefined}
@@ -1136,9 +1238,7 @@ function CatalogueView({
     );
   }
   const defaults =
-    snapshot?.entries.filter((entry) => entry.isDefault).map((entry) =>
-      entry.id
-    ) ??
+    snapshot?.entries.filter((entry) => entry.isDefault).map((entry) => entry.id) ??
       [];
   return (
     <div className="desktop-chat-catalogue">
@@ -1205,9 +1305,7 @@ function CatalogueEntryCard({
   readonly onProbe: () => void;
   readonly onToggleDefault: () => void;
 }): JSX.Element {
-  const attached = conversation?.kind === "standalone"
-    ? conversation.mcp
-    : undefined;
+  const attached = conversation?.kind === "standalone" ? conversation.mcp : undefined;
   const attachedMine = attached?.id === entry.id;
   const busyTurn = conversation?.status === "running" ||
     conversation?.status === "queued";
@@ -1239,9 +1337,7 @@ function CatalogueEntryCard({
         <StateBadge label="Running" on={entry.availability.running} />
         <StateBadge label="Capable" on={entry.availability.capable} />
         <Badge
-          variant={entry.availability.engine === "ready"
-            ? "success"
-            : "warning"}
+          variant={entry.availability.engine === "ready" ? "success" : "warning"}
           className="desktop-chat-state font-mono text-[9px] uppercase tracking-[0.08em]"
         >
           engine {entry.availability.engine}
@@ -1260,8 +1356,7 @@ function CatalogueEntryCard({
       <ul>
         {entry.tools.map((tool) => (
           <li key={tool.name}>
-            <code>{tool.name}</code> — {tool.summary} In: {tool.inputs} Out:
-            {" "}
+            <code>{tool.name}</code> — {tool.summary} In: {tool.inputs} Out:{" "}
             {tool.results}
           </li>
         ))}
@@ -1279,17 +1374,14 @@ function CatalogueEntryCard({
         {entry.viewers.map((viewer) => (
           <li key={viewer.uri}>
             {viewer.label} (<code>{viewer.uri}</code>) —{" "}
-            {viewer.hostSupport === "available"
-              ? "available in Casys"
-              : "planned"}
+            {viewer.hostSupport === "available" ? "available in Casys" : "planned"}
             {viewer.note ? `: ${viewer.note}` : ""}
           </li>
         ))}
       </ul>
       <p className="desktop-chat-interaction-kind">Tested distribution</p>
       <p>
-        {entry.distribution.version} ({entry.distribution.release}), revision
-        {" "}
+        {entry.distribution.version} ({entry.distribution.release}), revision{" "}
         <code>{entry.distribution.revision}</code>
       </p>
       <p className="desktop-chat-interaction-kind">Platforms</p>
@@ -1351,9 +1443,7 @@ function CatalogueEntryCard({
             disabled={busy || busyTurn}
             onClick={enable}
           >
-            {attached === undefined
-              ? "Enable in this chat"
-              : "Switch to this tool"}
+            {attached === undefined ? "Enable in this chat" : "Switch to this tool"}
           </Button>
         )}
         {conversation?.kind === "standalone" &&
@@ -1595,7 +1685,5 @@ function requestId(): string {
 }
 
 function readError(cause: unknown): string {
-  return cause instanceof Error
-    ? cause.message
-    : "Desktop Chat is unavailable.";
+  return cause instanceof Error ? cause.message : "Desktop Chat is unavailable.";
 }

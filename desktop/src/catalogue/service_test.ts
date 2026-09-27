@@ -26,6 +26,7 @@ const FLEET_SERVER: ChatMcpServerConfig = {
   mcpUrl: "http://127.0.0.1:3014/mcp",
   healthUrl: "http://127.0.0.1:3014/health",
   expectedTools: ["build123d_execute"],
+  expectedViews: ["ui://mcp-build123d/results-viewer"],
 };
 
 function engine(

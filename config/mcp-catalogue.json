@@ -46,8 +46,8 @@
         {
           "uri": "ui://mcp-build123d/results-viewer",
           "label": "Geometry results",
-          "hostSupport": "planned",
-          "note": "Provider viewer. Host rendering lands in #50."
+          "hostSupport": "available",
+          "note": "Provider viewer. Live standalone hosting proven in #50 against provider 0.7.0."
         },
         {
           "uri": "ui://mcp-build123d/assembly-viewer",

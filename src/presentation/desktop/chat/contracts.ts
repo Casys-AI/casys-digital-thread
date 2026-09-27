@@ -146,6 +146,61 @@ export interface ChatConversationDto {
   readonly messages: readonly ChatMessageDto[];
   readonly mcp?: ChatConversationMcpDto;
   readonly pendingInteraction?: ChatPendingInteractionDto;
+  readonly viewers: readonly ChatToolViewerDto[];
+}
+
+/**
+ * One captured MCP tool result viewable as a live MCP App. Identity only:
+ * the exact result bytes cross only through `viewer.open`.
+ */
+export interface ChatToolViewerDto {
+  readonly toolCallId: string;
+  readonly messageId: string;
+  readonly tool: string;
+  readonly appUri: string;
+}
+
+/** Bounded JSON carried between the viewer backend and the renderer. */
+export type ChatViewerJson =
+  | null
+  | boolean
+  | number
+  | string
+  | readonly ChatViewerJson[]
+  | { readonly [key: string]: ChatViewerJson };
+
+export interface ChatViewerAppDto {
+  readonly uri: string;
+  readonly mimeType: string;
+  readonly bytes: number;
+  /**
+   * Fingerprint pinned by the owning session at open time. The renderer
+   * fetches the bytes from the Desktop viewer route and attests them
+   * against this fingerprint before framing: App documents exceed the
+   * chat-host IPC line budget and never cross it.
+   */
+  readonly fingerprint: string;
+}
+
+export interface ChatViewerSessionDto {
+  readonly toolCallId: string;
+  readonly tool: string;
+  readonly server: string;
+  readonly appUri: string;
+  readonly app: ChatViewerAppDto;
+  readonly toolInput: Readonly<Record<string, ChatViewerJson>>;
+  /** The exact captured tool result, delivered so the App never re-executes. */
+  readonly toolResult: ChatViewerJson;
+  /** Probed tools of the owning session; the only names the App may call. */
+  readonly serverTools: readonly string[];
+}
+
+export interface ChatViewerResourceDto {
+  readonly uri: string;
+  readonly mimeType: string;
+  readonly bytes: number;
+  readonly encoding: "base64";
+  readonly data: string;
 }
 
 export interface ChatSnapshotRequest {
@@ -217,7 +272,33 @@ export type ChatCommandRequest =
     readonly conversationId: string;
     readonly correlationId: string;
     readonly action: "accept" | "decline" | "cancel";
-    readonly content?: Readonly<Record<string, string | number | boolean | string[]>>;
+    readonly content?: Readonly<
+      Record<string, string | number | boolean | string[]>
+    >;
+  }
+  | {
+    readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
+    readonly requestId: string;
+    readonly command: "viewer.open";
+    readonly conversationId: string;
+    readonly toolCallId: string;
+  }
+  | {
+    readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
+    readonly requestId: string;
+    readonly command: "viewer.tool-call";
+    readonly conversationId: string;
+    readonly toolCallId: string;
+    readonly name: string;
+    readonly arguments: Readonly<Record<string, ChatViewerJson>>;
+  }
+  | {
+    readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
+    readonly requestId: string;
+    readonly command: "viewer.resource-read";
+    readonly conversationId: string;
+    readonly toolCallId: string;
+    readonly uri: string;
   };
 
 export interface ChatCommandResponse {
@@ -226,6 +307,9 @@ export interface ChatCommandResponse {
   readonly ok: boolean;
   readonly conversationId?: string;
   readonly error?: string;
+  readonly viewer?: ChatViewerSessionDto;
+  readonly viewerResult?: ChatViewerJson;
+  readonly viewerResource?: ChatViewerResourceDto;
 }
 
 export type DesktopChatBindingCommandRequest = ChatCommandRequest | {
@@ -235,13 +319,49 @@ export type DesktopChatBindingCommandRequest = ChatCommandRequest | {
   readonly url: string;
 };
 
+/**
+ * Whole App document fetch, served desktop-side outside the chat-host IPC
+ * line budget. App bytes are the provider's static shell: they carry no
+ * session data, so the owning session is proven by `viewer.open` (which
+ * pins `fingerprint`) rather than by this fetch. The desktop refuses
+ * before shipping megabytes when the fetched bytes no longer match the
+ * pinned fingerprint.
+ */
+export interface ChatViewerAppFetchRequest {
+  readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
+  readonly requestId: string;
+  readonly server: string;
+  readonly uri: string;
+  readonly fingerprint: string;
+}
+
+export interface ChatViewerAppBytesDto {
+  readonly uri: string;
+  readonly mimeType: string;
+  readonly bytes: number;
+  readonly fingerprint: string;
+  readonly encoding: "base64";
+  readonly data: string;
+}
+
+export interface ChatViewerAppFetchResponse {
+  readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
+  readonly requestId: string;
+  readonly ok: boolean;
+  readonly app?: ChatViewerAppBytesDto;
+  readonly error?: string;
+}
+
 const PROJECT_ID = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,127}$/;
 const OPAQUE_ID = /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,159}$/;
 
 export function parseChatSnapshotRequest(value: unknown): ChatSnapshotRequest {
   const input = record(value, "snapshot request");
   protocol(input.protocol);
-  const conversationId = optionalOpaqueId(input.conversationId, "conversationId");
+  const conversationId = optionalOpaqueId(
+    input.conversationId,
+    "conversationId",
+  );
   return Object.freeze({
     protocol: DESKTOP_CHAT_PROTOCOL,
     ...(conversationId === undefined ? {} : { conversationId }),
@@ -303,6 +423,40 @@ export function parseChatCommandRequest(value: unknown): ChatCommandRequest {
       conversationId,
     });
   }
+  if (
+    command === "viewer.open" || command === "viewer.tool-call" ||
+    command === "viewer.resource-read"
+  ) {
+    const toolCallId = opaqueId(input.toolCallId, "toolCallId");
+    if (command === "viewer.open") {
+      return Object.freeze({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId,
+        command,
+        conversationId,
+        toolCallId,
+      });
+    }
+    if (command === "viewer.tool-call") {
+      return Object.freeze({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId,
+        command,
+        conversationId,
+        toolCallId,
+        name: viewerToolName(input.name),
+        arguments: viewerArguments(input.arguments),
+      });
+    }
+    return Object.freeze({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId,
+      command,
+      conversationId,
+      toolCallId,
+      uri: viewerResourceUri(input.uri),
+    });
+  }
   const correlationId = opaqueId(input.correlationId, "correlationId");
   if (command === "permission.resolve") {
     const decision = input.decision;
@@ -347,7 +501,9 @@ export function parseChatCommandRequest(value: unknown): ChatCommandRequest {
 export function parseCasysProjectId(value: unknown): string {
   const projectId = text(value, "projectId", 128);
   if (!PROJECT_ID.test(projectId)) {
-    throw new TypeError("projectId must be an explicit Casys project identifier");
+    throw new TypeError(
+      "projectId must be an explicit Casys project identifier",
+    );
   }
   return projectId;
 }
@@ -366,6 +522,65 @@ export function parseDesktopChatBindingCommandRequest(
   });
 }
 
+export function parseChatViewerAppFetchRequest(
+  value: unknown,
+): ChatViewerAppFetchRequest {
+  const input = record(value, "viewer App fetch request");
+  protocol(input.protocol);
+  return Object.freeze({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: opaqueId(input.requestId, "requestId"),
+    server: opaqueId(input.server, "viewer App server"),
+    uri: viewerUiUri(input.uri),
+    fingerprint: viewerFingerprint(input.fingerprint),
+  });
+}
+
+/** Reconstructs the renderer DTO and drops every unregistered sidecar field. */
+export function parseChatViewerAppFetchResponse(
+  value: unknown,
+): ChatViewerAppFetchResponse {
+  const input = record(value, "viewer App fetch response");
+  protocol(input.protocol);
+  const requestId = opaqueId(input.requestId, "requestId");
+  if (typeof input.ok !== "boolean") {
+    throw new TypeError("viewer App fetch response state is invalid");
+  }
+  if (!input.ok) {
+    return Object.freeze({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId,
+      ok: false,
+      error: text(
+        input.error ?? "Viewer App fetch failed.",
+        "viewer App error",
+        500,
+      ),
+    });
+  }
+  return Object.freeze({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId,
+    ok: true,
+    app: parseViewerAppBytesDto(input.app),
+  });
+}
+
+function parseViewerAppBytesDto(value: unknown): ChatViewerAppBytesDto {
+  const input = record(value, "viewer App bytes");
+  if (input.encoding !== "base64") {
+    throw new TypeError("viewer App bytes encoding is invalid");
+  }
+  return Object.freeze({
+    uri: viewerUiUri(input.uri),
+    mimeType: text(input.mimeType, "viewer App media type", 200),
+    bytes: viewerByteCount(input.bytes, "viewer App bytes"),
+    fingerprint: viewerFingerprint(input.fingerprint),
+    encoding: "base64",
+    data: viewerBase64(input.data, "viewer App data"),
+  });
+}
+
 export function validateExternalHttpsUrl(value: unknown): string {
   const input = text(value, "external URL", 4_000);
   const url = new URL(input);
@@ -373,7 +588,9 @@ export function validateExternalHttpsUrl(value: unknown): string {
     url.protocol !== "https:" || url.username !== "" || url.password !== "" ||
     url.hostname === ""
   ) {
-    throw new TypeError("external URL must be an HTTPS URL without credentials");
+    throw new TypeError(
+      "external URL must be an HTTPS URL without credentials",
+    );
   }
   return url.toString();
 }
@@ -406,8 +623,12 @@ export function parseChatSnapshotDto(value: unknown): ChatSnapshotDto {
   if (!Array.isArray(input.conversations) || input.conversations.length > 100) {
     throw new TypeError("chat conversation list is invalid");
   }
-  const conversations = Object.freeze(input.conversations.map(parseConversationDto));
-  if (!Array.isArray(input.connectableMcps) || input.connectableMcps.length > 32) {
+  const conversations = Object.freeze(
+    input.conversations.map(parseConversationDto),
+  );
+  if (
+    !Array.isArray(input.connectableMcps) || input.connectableMcps.length > 32
+  ) {
     throw new TypeError("chat connectable MCP list is invalid");
   }
   const connectableMcps = Object.freeze(
@@ -435,14 +656,29 @@ export function parseChatCommandResponse(value: unknown): ChatCommandResponse {
   if (typeof input.ok !== "boolean") {
     throw new TypeError("command response ok is invalid");
   }
-  const conversationId = optionalOpaqueId(input.conversationId, "conversationId");
+  const conversationId = optionalOpaqueId(
+    input.conversationId,
+    "conversationId",
+  );
   const error = optionalText(input.error, "error", 1_000);
+  const viewer = input.viewer === undefined
+    ? undefined
+    : parseViewerSessionDto(input.viewer);
+  const viewerResult = input.viewerResult === undefined
+    ? undefined
+    : viewerJson(input.viewerResult, "viewer result");
+  const viewerResource = input.viewerResource === undefined
+    ? undefined
+    : parseViewerResourceDto(input.viewerResource);
   return Object.freeze({
     protocol: DESKTOP_CHAT_PROTOCOL,
     requestId,
     ok: input.ok,
     ...(conversationId === undefined ? {} : { conversationId }),
     ...(error === undefined ? {} : { error }),
+    ...(viewer === undefined ? {} : { viewer }),
+    ...(viewerResult === undefined ? {} : { viewerResult }),
+    ...(viewerResource === undefined ? {} : { viewerResource }),
   });
 }
 
@@ -478,6 +714,9 @@ function parseConversationDto(value: unknown): ChatConversationDto {
   const pendingInteraction = input.pendingInteraction === undefined
     ? undefined
     : parsePendingInteractionDto(input.pendingInteraction);
+  if (!Array.isArray(input.viewers) || input.viewers.length > 20) {
+    throw new TypeError("conversation viewers are invalid");
+  }
   return Object.freeze({
     id: opaqueId(input.id, "conversation id"),
     kind,
@@ -489,6 +728,60 @@ function parseConversationDto(value: unknown): ChatConversationDto {
     messages: Object.freeze(input.messages.map(parseMessageDto)),
     ...(mcp === undefined ? {} : { mcp }),
     ...(pendingInteraction === undefined ? {} : { pendingInteraction }),
+    viewers: Object.freeze(input.viewers.map(parseToolViewerDto)),
+  });
+}
+
+function parseToolViewerDto(value: unknown): ChatToolViewerDto {
+  const input = record(value, "tool viewer");
+  return Object.freeze({
+    toolCallId: opaqueId(input.toolCallId, "viewer toolCallId"),
+    messageId: opaqueId(input.messageId, "viewer messageId"),
+    tool: viewerToolName(input.tool),
+    appUri: viewerUiUri(input.appUri),
+  });
+}
+
+function parseViewerSessionDto(value: unknown): ChatViewerSessionDto {
+  const input = record(value, "viewer session");
+  if (!Array.isArray(input.serverTools) || input.serverTools.length > 64) {
+    throw new TypeError("viewer server tools are invalid");
+  }
+  return Object.freeze({
+    toolCallId: opaqueId(input.toolCallId, "viewer toolCallId"),
+    tool: viewerToolName(input.tool),
+    server: opaqueId(input.server, "viewer server"),
+    appUri: viewerUiUri(input.appUri),
+    app: parseViewerAppDto(input.app),
+    toolInput: viewerArguments(input.toolInput),
+    toolResult: viewerJson(input.toolResult, "viewer tool result"),
+    serverTools: Object.freeze(
+      input.serverTools.map((entry) => viewerToolName(entry)),
+    ),
+  });
+}
+
+function parseViewerAppDto(value: unknown): ChatViewerAppDto {
+  const input = record(value, "viewer app");
+  return Object.freeze({
+    uri: viewerUiUri(input.uri),
+    mimeType: text(input.mimeType, "viewer app media type", 200),
+    bytes: viewerByteCount(input.bytes, "viewer app bytes"),
+    fingerprint: viewerFingerprint(input.fingerprint),
+  });
+}
+
+function parseViewerResourceDto(value: unknown): ChatViewerResourceDto {
+  const input = record(value, "viewer resource");
+  if (input.encoding !== "base64") {
+    throw new TypeError("viewer resource encoding is invalid");
+  }
+  return Object.freeze({
+    uri: viewerResourceUri(input.uri),
+    mimeType: text(input.mimeType, "viewer resource media type", 200),
+    bytes: viewerByteCount(input.bytes, "viewer resource bytes"),
+    encoding: "base64",
+    data: viewerBase64(input.data, "viewer resource data"),
   });
 }
 
@@ -577,7 +870,9 @@ function parsePendingInteractionDto(value: unknown): ChatPendingInteractionDto {
   if (input.type === "elicitation-url") {
     const urlText = text(input.url, "elicitation URL", 4_000);
     const url = new URL(urlText);
-    if (url.protocol !== "https:" || url.username !== "" || url.password !== "") {
+    if (
+      url.protocol !== "https:" || url.username !== "" || url.password !== ""
+    ) {
       throw new TypeError("elicitation URL is invalid");
     }
     return Object.freeze({
@@ -600,10 +895,15 @@ function parsePendingInteractionDto(value: unknown): ChatPendingInteractionDto {
     ...(optionalText(input.title, "elicitation title", 240) === undefined
       ? {}
       : { title: optionalText(input.title, "elicitation title", 240) }),
-    ...(optionalText(input.description, "elicitation description", 1_000) === undefined
+    ...(optionalText(input.description, "elicitation description", 1_000) ===
+        undefined
       ? {}
       : {
-        description: optionalText(input.description, "elicitation description", 1_000),
+        description: optionalText(
+          input.description,
+          "elicitation description",
+          1_000,
+        ),
       }),
     fields: Object.freeze(input.fields.map(parseFormFieldDto)),
   });
@@ -614,9 +914,9 @@ function parseFormFieldDto(value: unknown): ChatFormFieldDto {
   const base = {
     name: text(input.name, "field name", 128),
     label: text(input.label, "field label", 160),
-    ...(optionalText(input.description, "field description", 600) === undefined
-      ? {}
-      : { description: optionalText(input.description, "field description", 600) }),
+    ...(optionalText(input.description, "field description", 600) === undefined ? {} : {
+      description: optionalText(input.description, "field description", 600),
+    }),
     required: input.required === true,
   };
   if (input.type === "text") {
@@ -670,9 +970,16 @@ function parseFormFieldDto(value: unknown): ChatFormFieldDto {
     return Object.freeze({
       value: text(option.value, "option value", 1_000),
       label: text(option.label, "option label", 160),
-      ...(optionalText(option.description, "option description", 600) === undefined
+      ...(optionalText(option.description, "option description", 600) ===
+          undefined
         ? {}
-        : { description: optionalText(option.description, "option description", 600) }),
+        : {
+          description: optionalText(
+            option.description,
+            "option description",
+            600,
+          ),
+        }),
     });
   }));
   if (input.type === "select") {
@@ -709,7 +1016,10 @@ function optionalNonNegativeInteger(
   return { [name]: value as number };
 }
 
-function optionalFiniteNumber(value: unknown, name: string): Record<string, number> {
+function optionalFiniteNumber(
+  value: unknown,
+  name: string,
+): Record<string, number> {
   if (value === undefined) return {};
   if (typeof value !== "number" || !Number.isFinite(value)) {
     throw new TypeError(`${name} is invalid`);
@@ -739,7 +1049,9 @@ function record(value: unknown, name: string): Record<string, unknown> {
 
 function text(value: unknown, name: string, max: number): string {
   if (typeof value !== "string" || value.trim() === "" || value.length > max) {
-    throw new TypeError(`${name} must be non-empty text of at most ${max} characters`);
+    throw new TypeError(
+      `${name} must be non-empty text of at most ${max} characters`,
+    );
   }
   return value.trim();
 }
@@ -751,7 +1063,11 @@ function boundedText(value: unknown, name: string, max: number): string {
   return value;
 }
 
-function optionalText(value: unknown, name: string, max: number): string | undefined {
+function optionalText(
+  value: unknown,
+  name: string,
+  max: number,
+): string | undefined {
   return value === undefined ? undefined : text(value, name, max);
 }
 
@@ -761,8 +1077,173 @@ function opaqueId(value: unknown, name: string): string {
   return candidate;
 }
 
+export function isChatOpaqueId(value: unknown): value is string {
+  // Equivalent to opaqueId acceptance: the charset admits no whitespace
+  // and requires at least one character, so trim() adds nothing.
+  return typeof value === "string" && value.length <= 160 &&
+    OPAQUE_ID.test(value);
+}
+
 function optionalOpaqueId(value: unknown, name: string): string | undefined {
   return value === undefined ? undefined : opaqueId(value, name);
+}
+
+const VIEWER_TOOL_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+const VIEWER_FINGERPRINT = /^sha256:[a-f0-9]{64}$/;
+const VIEWER_BASE64 = /^[A-Za-z0-9+/]*={0,2}$/;
+const VIEWER_JSON_MAX_DEPTH = 10;
+const VIEWER_JSON_MAX_NODES = 20_000;
+const VIEWER_JSON_MAX_STRING = 65_536;
+const VIEWER_JSON_MAX_BYTES = 1_048_576;
+const VIEWER_DATA_MAX_CHARS = 12_000_000;
+const VIEWER_BYTES_MAX = 8_388_608;
+
+function viewerToolName(value: unknown): string {
+  if (!isChatViewerToolName(value)) {
+    throw new TypeError("viewer tool name is invalid");
+  }
+  return value;
+}
+
+/**
+ * Non-throwing renderer-shape predicates. The host filters provider and
+ * stored names through these before retaining them, so a hostile tool name
+ * can never break whole-snapshot or viewer-session parsing downstream.
+ */
+export function isChatViewerToolName(value: unknown): value is string {
+  return typeof value === "string" && VIEWER_TOOL_NAME.test(value);
+}
+
+function viewerUiUri(value: unknown): string {
+  if (!isChatViewerUiUri(value)) {
+    throw new TypeError("viewer App URI is invalid");
+  }
+  return value;
+}
+
+export function isChatViewerUiUri(value: unknown): value is string {
+  return typeof value === "string" && value.startsWith("ui://") &&
+    value.length <= 500 && !/\s/.test(value);
+}
+
+/**
+ * Viewer resource URI: whole-App `ui://` views plus provider-issued
+ * `casys://` artifacts scoped to the owning server. Ownership is
+ * authorized later against the owning session; this only pins the
+ * syntactic shape.
+ */
+function viewerResourceUri(value: unknown): string {
+  if (
+    typeof value !== "string" ||
+    (!value.startsWith("ui://") && !value.startsWith("casys://")) ||
+    value.length > 500 ||
+    /\s/.test(value)
+  ) {
+    throw new TypeError("viewer resource URI is invalid");
+  }
+  return value;
+}
+
+function viewerByteCount(value: unknown, name: string): number {
+  if (
+    !Number.isSafeInteger(value) || (value as number) < 0 ||
+    (value as number) > VIEWER_BYTES_MAX
+  ) {
+    throw new TypeError(`${name} is invalid`);
+  }
+  return value as number;
+}
+
+function viewerFingerprint(value: unknown): string {
+  if (typeof value !== "string" || !VIEWER_FINGERPRINT.test(value)) {
+    throw new TypeError("viewer fingerprint is invalid");
+  }
+  return value;
+}
+
+function viewerBase64(value: unknown, name: string): string {
+  if (
+    typeof value !== "string" || value.length > VIEWER_DATA_MAX_CHARS ||
+    !VIEWER_BASE64.test(value)
+  ) {
+    throw new TypeError(`${name} is invalid`);
+  }
+  return value;
+}
+
+/** Bounded tool-argument record shared by viewer commands and result capture. */
+export function parseChatViewerArguments(
+  value: unknown,
+): Readonly<Record<string, ChatViewerJson>> {
+  return viewerArguments(value);
+}
+
+/** Bounded JSON value shared by viewer responses and result capture. */
+export function parseChatViewerJson(value: unknown): ChatViewerJson {
+  return viewerJson(value, "viewer JSON");
+}
+
+function viewerArguments(
+  value: unknown,
+): Readonly<Record<string, ChatViewerJson>> {
+  const parsed = viewerJson(
+    record(value, "viewer arguments"),
+    "viewer arguments",
+  );
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    throw new TypeError("viewer arguments must be an object");
+  }
+  return parsed as Readonly<Record<string, ChatViewerJson>>;
+}
+
+function viewerJson(value: unknown, name: string): ChatViewerJson {
+  const budget = { nodes: 0 };
+  const parsed = viewerJsonNode(value, name, 0, budget);
+  if (JSON.stringify(parsed).length > VIEWER_JSON_MAX_BYTES) {
+    throw new TypeError(`${name} is too large`);
+  }
+  return parsed;
+}
+
+function viewerJsonNode(
+  value: unknown,
+  name: string,
+  depth: number,
+  budget: { nodes: number },
+): ChatViewerJson {
+  if (depth > VIEWER_JSON_MAX_DEPTH) throw new TypeError(`${name} is too deep`);
+  budget.nodes += 1;
+  if (budget.nodes > VIEWER_JSON_MAX_NODES) {
+    throw new TypeError(`${name} has too many nodes`);
+  }
+  if (value === null || typeof value === "boolean") return value;
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) throw new TypeError(`${name} is invalid`);
+    return value;
+  }
+  if (typeof value === "string") {
+    if (value.length > VIEWER_JSON_MAX_STRING) {
+      throw new TypeError(`${name} contains an oversized string`);
+    }
+    return value;
+  }
+  if (Array.isArray(value)) {
+    if (value.length > 1_000) throw new TypeError(`${name} array is too long`);
+    return Object.freeze(
+      value.map((entry) => viewerJsonNode(entry, name, depth + 1, budget)),
+    );
+  }
+  if (typeof value !== "object") throw new TypeError(`${name} is invalid`);
+  const entries = Object.entries(value as Record<string, unknown>);
+  if (entries.length > 500) throw new TypeError(`${name} object is too large`);
+  const output: Record<string, ChatViewerJson> = {};
+  for (const [key, entry] of entries) {
+    if (key.length === 0 || key.length > 256) {
+      throw new TypeError(`${name} contains an invalid key`);
+    }
+    output[key] = viewerJsonNode(entry, name, depth + 1, budget);
+  }
+  return Object.freeze(output);
 }
 
 function elicitationContent(
@@ -775,7 +1256,9 @@ function elicitationContent(
       throw new TypeError("elicitation content contains an invalid field name");
     }
     if (typeof entry === "string") {
-      if (entry.length > 8_000) throw new TypeError("elicitation text is too long");
+      if (entry.length > 8_000) {
+        throw new TypeError("elicitation text is too long");
+      }
       output[key] = entry;
     } else if (typeof entry === "number" && Number.isFinite(entry)) {
       output[key] = entry;

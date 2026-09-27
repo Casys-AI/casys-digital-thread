@@ -3,8 +3,7 @@ import {
   type ThreadViewerSession,
 } from "../../../presentation/workbench/thread/viewer-sessions.ts";
 
-export const MCP_APP_SCRIPT_NONCE_META_NAME =
-  "casys-mcp-app-script-nonce" as const;
+export const MCP_APP_SCRIPT_NONCE_META_NAME = "casys-mcp-app-script-nonce" as const;
 export const MCP_APP_DOCUMENT_MIME_TYPE = "text/html;profile=mcp-app" as const;
 
 /**
@@ -220,7 +219,10 @@ export function planMcpAppDocument(html: string): McpAppDocumentPlan {
     throw new Error("External or module-preload links are not admitted.");
   }
 
-  const lower = html.toLowerCase();
+  // ASCII-only case fold: String.toLowerCase() can change string length
+  // (e.g. U+0130 folds to two code units), which would shift every index
+  // used to slice `html`. Script tokens only need ASCII insensitivity.
+  const lower = html.replace(/[A-Z]/g, (letter) => letter.toLowerCase());
   let scan = 0;
   let scriptStart = -1;
   let scriptEnd = -1;

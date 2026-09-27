@@ -3,6 +3,7 @@ import { ChatCoordinator } from "./coordinator.ts";
 import {
   type ChatCommandRequest,
   DESKTOP_CHAT_PROTOCOL,
+  parseChatCommandResponse,
 } from "../../../src/presentation/desktop/chat/contracts.ts";
 import {
   type ChatMcpProbeOutcome,
@@ -18,6 +19,7 @@ import {
   type RuntimeTurnResult,
 } from "./runtime-port.ts";
 import { MemoryChatConversationStore, type StoredConversation } from "./store.ts";
+import type { ChatViewerBackend } from "./viewer-backend.ts";
 import { parseChatSnapshotDto } from "../../../src/presentation/desktop/chat/contracts.ts";
 
 Deno.test("ChatCoordinator binds one project, streams sanitized events, and preserves FIFO", async () => {
@@ -1316,12 +1318,14 @@ const TEST_MCP_SERVER: ChatMcpServerConfig = {
   mcpUrl: "http://127.0.0.1:3014/mcp",
   healthUrl: "http://127.0.0.1:3014/health",
   expectedTools: ["t_one"],
+  expectedViews: ["ui://mcp-build123d/results-viewer"],
 };
 
 function standalonePool(options: {
   probeTools?: readonly string[];
   probeError?: string;
   store?: MemoryChatConversationStore;
+  viewerBackend?: ChatViewerBackend;
 } = {}): {
   readonly project: FakeRuntimeAdapter;
   readonly standalone: FakeRuntimeAdapter;
@@ -1363,6 +1367,9 @@ function standalonePool(options: {
           });
         },
         ...(options.store === undefined ? {} : { store: options.store }),
+        ...(options.viewerBackend === undefined
+          ? {}
+          : { viewerBackend: options.viewerBackend }),
       });
     },
   };
@@ -1376,6 +1383,7 @@ function coordinatorWith(
     mcpServers?: readonly ChatMcpServerConfig[];
     probeMcp?: (server: ChatMcpServerConfig) => Promise<ChatMcpProbeOutcome>;
     store?: MemoryChatConversationStore;
+    viewerBackend?: ChatViewerBackend;
   } = {},
 ): Promise<ChatCoordinator> {
   let sequence = 0;
@@ -1393,6 +1401,9 @@ function coordinatorWith(
           error: "no MCP configured",
         })),
     store: options.store ?? new MemoryChatConversationStore(),
+    ...(options.viewerBackend === undefined
+      ? {}
+      : { viewerBackend: options.viewerBackend }),
     workspaceRoot: "/private/chat-workspace",
     now: () => new Date(1_700_000_000_000 + sequence++),
     newId: () => String(sequence++),
@@ -1557,3 +1568,524 @@ class FakeRuntimeAdapter implements ChatRuntimeAdapter {
     return Promise.resolve();
   }
 }
+
+const VIEWER_APP_URI = "ui://mcp-build123d/results-viewer";
+const VIEWER_APP_HTML = "<!doctype html><html><body>viewer</body></html>";
+
+class FakeViewerBackend implements ChatViewerBackend {
+  readonly appCalls: Array<{ server: string; uri: string }> = [];
+  readonly toolCalls: Array<{ server: string; name: string }> = [];
+  readonly resourceCalls: Array<{ server: string; uri: string }> = [];
+
+  async resolveApp(server: string, uri: string) {
+    this.appCalls.push({ server, uri });
+    const bytes = new TextEncoder().encode(VIEWER_APP_HTML);
+    return {
+      uri,
+      mimeType: "text/html;profile=mcp-app",
+      bytes,
+      fingerprint: `sha256:${"01".repeat(32)}`,
+    };
+  }
+
+  async callTool(server: string, name: string, _args: unknown): Promise<unknown> {
+    this.toolCalls.push({ server, name });
+    return { echoed: name };
+  }
+
+  async readResource(server: string, uri: string): Promise<unknown> {
+    this.resourceCalls.push({ server, uri });
+    return {
+      contents: [{
+        uri,
+        mimeType: "model/step",
+        blob: "c3RlcA==",
+      }],
+    };
+  }
+}
+
+async function enableTestMcp(
+  coordinator: ChatCoordinator,
+  conversationId: string,
+): Promise<void> {
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-viewer",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  if (!enabled.ok) throw new Error("mcp.enable failed");
+}
+
+function viewerToolResult(volume: number): Record<string, unknown> {
+  return {
+    volume,
+    _meta: { ui: { resourceUri: VIEWER_APP_URI } },
+  };
+}
+
+Deno.test("viewer captures the exact tool result and opens the expected App", async () => {
+  const backend = new FakeViewerBackend();
+  const pool = standalonePool({ probeTools: ["t_one"], viewerBackend: backend });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await coordinator.command(send("r1", conversationId, "Model a box"));
+  await until(() => pool.mcp.turns.length === 1);
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "t_one",
+    toolCallId: "tool-call-1",
+    rawInput: {
+      server: "build123d",
+      tool: "t_one",
+      arguments: { script: "result = 1" },
+    },
+    rawOutput: { result: viewerToolResult(1000) },
+  });
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+
+  const viewers = coordinator.snapshot(conversationId).conversations[0].viewers;
+  assertEquals(viewers.length, 1);
+  assertEquals(viewers[0]?.toolCallId, "tool-call-1");
+  assertEquals(viewers[0]?.tool, "t_one");
+  assertEquals(viewers[0]?.appUri, VIEWER_APP_URI);
+
+  const opened = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "open-1",
+    command: "viewer.open",
+    conversationId,
+    toolCallId: "tool-call-1",
+  });
+  assert(opened.ok);
+  assertEquals(opened.viewer?.app.uri, VIEWER_APP_URI);
+  assertEquals(
+    opened.viewer?.app.bytes,
+    new TextEncoder().encode(VIEWER_APP_HTML).length,
+  );
+  assertEquals(opened.viewer?.toolInput, { script: "result = 1" });
+  assertEquals<unknown>(opened.viewer?.toolResult, viewerToolResult(1000));
+  assertEquals(opened.viewer?.serverTools, ["t_one"]);
+  assertEquals(backend.appCalls, [{ server: "build123d", uri: VIEWER_APP_URI }]);
+
+  const called = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "call-1",
+    command: "viewer.tool-call",
+    conversationId,
+    toolCallId: "tool-call-1",
+    name: "t_one",
+    arguments: {},
+  });
+  assert(called.ok);
+  assertEquals(called.viewerResult, { echoed: "t_one" });
+
+  const read = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "read-1",
+    command: "viewer.resource-read",
+    conversationId,
+    toolCallId: "tool-call-1",
+    uri: "ui://mcp-build123d/exports/box.step",
+  });
+  assert(read.ok);
+  assertEquals(read.viewerResource?.mimeType, "model/step");
+  assertEquals(read.viewerResource?.data, "c3RlcA==");
+  await coordinator.stop();
+});
+
+Deno.test("viewer ignores results outside the owning server or expected views", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await coordinator.command(send("r1", conversationId, "Model a box"));
+  await until(() => pool.mcp.turns.length === 1);
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "foreign",
+    toolCallId: "tool-call-foreign",
+    rawInput: { server: "other", tool: "t_one", arguments: {} },
+    rawOutput: { result: viewerToolResult(1) },
+  });
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "unknown-view",
+    toolCallId: "tool-call-unknown-view",
+    rawInput: { server: "build123d", tool: "t_one", arguments: {} },
+    rawOutput: {
+      result: {
+        volume: 2,
+        _meta: { ui: { resourceUri: "ui://mcp-build123d/unknown-viewer" } },
+      },
+    },
+  });
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "no-view",
+    toolCallId: "tool-call-no-view",
+    rawInput: { server: "build123d", tool: "t_one", arguments: {} },
+    rawOutput: { result: { volume: 3 } },
+  });
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  assertEquals(
+    coordinator.snapshot(conversationId).conversations[0].viewers,
+    [],
+  );
+  await coordinator.stop();
+});
+
+Deno.test("viewer refuses unknown sessions, tools, and out-of-scope resources", async () => {
+  const backend = new FakeViewerBackend();
+  const pool = standalonePool({ probeTools: ["t_one"], viewerBackend: backend });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await coordinator.command(send("r1", conversationId, "Model a box"));
+  await until(() => pool.mcp.turns.length === 1);
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "t_one",
+    toolCallId: "tool-call-1",
+    rawInput: { server: "build123d", tool: "t_one", arguments: {} },
+    rawOutput: { result: viewerToolResult(1000) },
+  });
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+
+  const unknown = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "open-unknown",
+    command: "viewer.open",
+    conversationId,
+    toolCallId: "tool-call-missing",
+  });
+  assertEquals(unknown.ok, false);
+  assertEquals(backend.appCalls.length, 0);
+
+  const foreignTool = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "call-foreign",
+    command: "viewer.tool-call",
+    conversationId,
+    toolCallId: "tool-call-1",
+    name: "t_two",
+    arguments: {},
+  });
+  assertEquals(foreignTool.ok, false);
+  assertEquals(backend.toolCalls.length, 0);
+
+  const foreignResource = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "read-foreign",
+    command: "viewer.resource-read",
+    conversationId,
+    toolCallId: "tool-call-1",
+    uri: "ui://mcp-other/exports/box.step",
+  });
+  assertEquals(foreignResource.ok, false);
+  assertEquals(backend.resourceCalls.length, 0);
+
+  const artifact = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "read-artifact",
+    command: "viewer.resource-read",
+    conversationId,
+    toolCallId: "tool-call-1",
+    uri: "casys://build123d/artifacts/abc.glb",
+  });
+  assert(artifact.ok);
+  assertEquals(backend.resourceCalls.length, 1);
+  await coordinator.stop();
+});
+
+Deno.test("viewer sessions stay bound to their conversation", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const first = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, first);
+  await coordinator.command(send("r1", first, "Model a box"));
+  await until(() => pool.mcp.turns.length === 1);
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "t_one",
+    toolCallId: "tool-call-1",
+    rawInput: { server: "build123d", tool: "t_one", arguments: {} },
+    rawOutput: { result: viewerToolResult(1000) },
+  });
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() => coordinator.snapshot(first).conversations[0].status === "idle");
+
+  const second = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, second);
+  const crossed = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "open-crossed",
+    command: "viewer.open",
+    conversationId: second,
+    toolCallId: "tool-call-1",
+  });
+  assertEquals(crossed.ok, false);
+  assertEquals(coordinator.snapshot(second).conversations[0].viewers, []);
+  await coordinator.stop();
+});
+
+Deno.test("oversize tool results are not captured for the viewer", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await coordinator.command(send("r1", conversationId, "Model a box"));
+  await until(() => pool.mcp.turns.length === 1);
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "t_one",
+    toolCallId: "tool-call-big",
+    rawInput: { server: "build123d", tool: "t_one", arguments: {} },
+    rawOutput: {
+      result: {
+        blob: "x".repeat(300_000),
+        _meta: { ui: { resourceUri: VIEWER_APP_URI } },
+      },
+    },
+  });
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  assertEquals(
+    coordinator.snapshot(conversationId).conversations[0].viewers,
+    [],
+  );
+  await coordinator.stop();
+});
+
+Deno.test("viewer commands refuse without a connected MCP session", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  const opened = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "open-detached",
+    command: "viewer.open",
+    conversationId,
+    toolCallId: "tool-call-1",
+  });
+  assertEquals(opened.ok, false);
+  await coordinator.stop();
+});
+
+async function captureViewerResult(
+  pool: ReturnType<typeof standalonePool>,
+  coordinator: ChatCoordinator,
+  conversationId: string,
+  calls: ReadonlyArray<{ toolCallId: string; tool: string }>,
+): Promise<void> {
+  await coordinator.command(send("r1", conversationId, "Model a box"));
+  await until(() => pool.mcp.turns.length === 1);
+  for (const call of calls) {
+    pool.mcp.turns[0].events.push({
+      type: "tool_call",
+      text: call.tool,
+      toolCallId: call.toolCallId,
+      rawInput: { server: "build123d", tool: call.tool, arguments: {} },
+      rawOutput: { result: viewerToolResult(11) },
+    });
+  }
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+}
+
+Deno.test("viewer capture ignores provider tool names outside the renderer shape", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await captureViewerResult(pool, coordinator, conversationId, [
+    { toolCallId: "tool-call-hostile", tool: "evil tool/x" },
+    { toolCallId: "tool-call-1", tool: "t_one" },
+  ]);
+  const snapshot = coordinator.snapshot(conversationId);
+  assertEquals(
+    snapshot.conversations[0].viewers.map((viewer) => viewer.toolCallId),
+    ["tool-call-1"],
+  );
+  parseChatSnapshotDto(snapshot);
+  await coordinator.stop();
+});
+
+Deno.test("probe and restore keep only DTO-admitted tool names", async () => {
+  const store = new MemoryChatConversationStore();
+  const pool = standalonePool({
+    probeTools: ["t_one", "", "bad name/x", "y".repeat(129)],
+    store,
+  });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  const snapshot = coordinator.snapshot(conversationId);
+  // The conversation list admits display names (text ≤128); only empty
+  // and oversize names drop. Viewer paths enforce the strict regex.
+  assertEquals(snapshot.conversations[0].mcp?.tools, ["t_one", "bad name/x"]);
+  parseChatSnapshotDto(snapshot);
+  await coordinator.stop();
+
+  const validResult = {
+    toolCallId: "tool-call-1",
+    server: "build123d",
+    tool: "t_one",
+    messageId: "message-1",
+    appUri: VIEWER_APP_URI,
+    failed: false,
+    input: {},
+    result: viewerToolResult(3),
+    capturedAt: "2026-09-27T00:00:00.000Z",
+  };
+  await store.save([{
+    id: conversationId,
+    kind: "standalone",
+    sessionKey: `casys-desktop-exclusive/standalone/${conversationId}/mcp/build123d`,
+    title: "Standalone",
+    status: "idle",
+    createdAt: "2026-09-27T00:00:00.000Z",
+    updatedAt: "2026-09-27T00:00:00.000Z",
+    messages: [],
+    mcpId: "build123d",
+    mcpStatus: "connected",
+    mcpTools: ["t_one", "", "bad name", 42],
+    toolResults: [
+      validResult,
+      { ...validResult, toolCallId: "tool-call-bad-tool", tool: "evil tool" },
+      { ...validResult, toolCallId: "bad id" },
+      {
+        ...validResult,
+        toolCallId: "tool-call-bad-uri",
+        appUri: "https://example.com/evil.html",
+      },
+    ],
+  } as unknown as StoredConversation]);
+  const revived = await standalonePool({ store }).coordinator();
+  const revivedSnapshot = revived.snapshot(conversationId);
+  assertEquals(revivedSnapshot.conversations[0].mcp?.tools, ["t_one", "bad name"]);
+  assertEquals(
+    revivedSnapshot.conversations[0].viewers.map((viewer) => viewer.toolCallId),
+    ["tool-call-1"],
+  );
+  parseChatSnapshotDto(revivedSnapshot);
+  await revived.stop();
+});
+
+Deno.test("viewer.open advertises only renderer-shaped server tools within the cap", async () => {
+  const tools = [
+    "t_one",
+    "bad name/x",
+    ...Array.from(
+      { length: 70 },
+      (_, index) => `t_${String(index).padStart(2, "0")}`,
+    ),
+  ];
+  const backend = new FakeViewerBackend();
+  const pool = standalonePool({ probeTools: tools, viewerBackend: backend });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await captureViewerResult(pool, coordinator, conversationId, [
+    { toolCallId: "tool-call-1", tool: "t_one" },
+  ]);
+  const opened = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "open-1",
+    command: "viewer.open",
+    conversationId,
+    toolCallId: "tool-call-1",
+  });
+  assert(opened.ok);
+  const serverTools = opened.viewer?.serverTools ?? [];
+  assertEquals(serverTools.length, 64);
+  assertEquals(serverTools[0], "t_one");
+  assertEquals(serverTools.includes("bad name/x"), false);
+  parseChatCommandResponse(opened);
+  await coordinator.stop();
+});
+
+Deno.test("viewer listing hides entries from a detached server", async () => {
+  const backend = new FakeViewerBackend();
+  const pool = standalonePool({ probeTools: ["t_one"], viewerBackend: backend });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await captureViewerResult(pool, coordinator, conversationId, [
+    { toolCallId: "tool-call-1", tool: "t_one" },
+  ]);
+  assertEquals(
+    coordinator.snapshot(conversationId).conversations[0].viewers.length,
+    1,
+  );
+  const disabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "disable-1",
+    command: "mcp.disable",
+    conversationId,
+  });
+  assert(disabled.ok);
+  assertEquals(
+    coordinator.snapshot(conversationId).conversations[0].viewers,
+    [],
+  );
+  await enableTestMcp(coordinator, conversationId);
+  assertEquals(
+    coordinator.snapshot(conversationId).conversations[0].viewers.length,
+    1,
+  );
+  const opened = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "open-again",
+    command: "viewer.open",
+    conversationId,
+    toolCallId: "tool-call-1",
+  });
+  assert(opened.ok);
+  await coordinator.stop();
+});
+
+class HugeMimeViewerBackend extends FakeViewerBackend {
+  override async readResource(server: string, uri: string): Promise<unknown> {
+    return {
+      contents: [{ uri, mimeType: "x".repeat(201), blob: "c3RlcA==" }],
+    };
+  }
+}
+
+Deno.test("viewer resource-read refuses oversized provider media types", async () => {
+  const backend = new HugeMimeViewerBackend();
+  const pool = standalonePool({ probeTools: ["t_one"], viewerBackend: backend });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await captureViewerResult(pool, coordinator, conversationId, [
+    { toolCallId: "tool-call-1", tool: "t_one" },
+  ]);
+  const read = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "read-1",
+    command: "viewer.resource-read",
+    conversationId,
+    toolCallId: "tool-call-1",
+    uri: "ui://mcp-build123d/exports/box.step",
+  });
+  assertEquals(read.ok, false);
+  await coordinator.stop();
+});

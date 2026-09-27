@@ -1,7 +1,24 @@
 import type {
   ChatConversationStatus,
   ChatMessageDto,
+  ChatViewerJson,
 } from "../../../src/presentation/desktop/chat/contracts.ts";
+import {
+  parseChatViewerArguments,
+  parseChatViewerJson,
+} from "../../../src/presentation/desktop/chat/contracts.ts";
+
+export interface StoredToolResult {
+  readonly toolCallId: string;
+  readonly server: string;
+  readonly tool: string;
+  readonly messageId: string;
+  readonly appUri: string;
+  readonly failed: boolean;
+  readonly input: Readonly<Record<string, ChatViewerJson>>;
+  readonly result: ChatViewerJson;
+  readonly capturedAt: string;
+}
 
 export interface StoredConversation {
   readonly id: string;
@@ -21,6 +38,8 @@ export interface StoredConversation {
    * a missing map as "no session holds anything yet".
    */
   readonly knownMessageIdsByKey?: Record<string, readonly string[]>;
+  /** Exact MCP tool results retained for live viewer Apps, newest last. */
+  readonly toolResults?: readonly StoredToolResult[];
   readonly sessionKey: string;
   readonly title: string;
   readonly status: ChatConversationStatus;
@@ -222,6 +241,9 @@ function readMetadata(value: unknown): Omit<StoredConversation, "messages"> {
   const knownMessageIdsByKey = entry.knownMessageIdsByKey === undefined
     ? undefined
     : readKnownByKey(entry.knownMessageIdsByKey);
+  const toolResults = entry.toolResults === undefined
+    ? undefined
+    : readToolResults(entry.toolResults);
   return {
     id: requiredString(entry.id, "conversation id"),
     ...(kind === undefined ? {} : { kind }),
@@ -230,6 +252,7 @@ function readMetadata(value: unknown): Omit<StoredConversation, "messages"> {
     ...(mcpStatus === undefined ? {} : { mcpStatus }),
     ...(mcpTools === undefined ? {} : { mcpTools }),
     ...(knownMessageIdsByKey === undefined ? {} : { knownMessageIdsByKey }),
+    ...(toolResults === undefined ? {} : { toolResults }),
     sessionKey: requiredString(entry.sessionKey, "session key"),
     title: requiredString(entry.title, "conversation title"),
     status,
@@ -303,6 +326,40 @@ function readKnownByKey(value: unknown): Record<string, readonly string[]> {
     parsed[key] = readStringList(ids, "known message ids", 400, 128);
   }
   return Object.freeze(parsed);
+}
+
+function readToolResults(value: unknown): readonly StoredToolResult[] {
+  if (!Array.isArray(value) || value.length > 20) {
+    throw new TypeError("tool results are invalid");
+  }
+  return Object.freeze(value.map((entry) => {
+    const candidate = object(entry, "tool result");
+    const toolCallId = requiredString(candidate.toolCallId, "tool result id");
+    const server = requiredString(candidate.server, "tool result server");
+    const tool = requiredString(candidate.tool, "tool result tool");
+    const messageId = requiredString(candidate.messageId, "tool result message");
+    const appUri = requiredString(candidate.appUri, "tool result App URI");
+    if (
+      toolCallId.length > 160 || server.length > 160 || tool.length > 128 ||
+      messageId.length > 160 || !appUri.startsWith("ui://") || appUri.length > 500
+    ) {
+      throw new TypeError("tool result is invalid");
+    }
+    if (typeof candidate.failed !== "boolean") {
+      throw new TypeError("tool result is invalid");
+    }
+    return Object.freeze({
+      toolCallId,
+      server,
+      tool,
+      messageId,
+      appUri,
+      failed: candidate.failed,
+      input: parseChatViewerArguments(candidate.input ?? {}),
+      result: parseChatViewerJson(candidate.result),
+      capturedAt: requiredDate(candidate.capturedAt, "tool result capturedAt"),
+    });
+  }));
 }
 
 function requiredDate(value: unknown, name: string): string {

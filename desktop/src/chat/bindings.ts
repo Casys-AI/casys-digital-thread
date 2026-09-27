@@ -1,15 +1,19 @@
 import {
   type ChatCommandResponse,
   type ChatSnapshotDto,
+  type ChatViewerAppFetchResponse,
   DESKTOP_CHAT_PROTOCOL,
   parseChatCommandRequest,
   parseChatSnapshotRequest,
+  parseChatViewerAppFetchRequest,
   parseDesktopChatBindingCommandRequest,
 } from "../../../src/presentation/desktop/chat/contracts.ts";
 import type { ExternalUrlOpener } from "./external-url.ts";
+import { type ChatViewerBackend, encodeViewerBytes } from "./viewer-backend.ts";
 
 export const CHAT_SNAPSHOT_BINDING = "casysChatSnapshot" as const;
 export const CHAT_COMMAND_BINDING = "casysChatCommand" as const;
+export const CHAT_VIEWER_APP_BINDING = "casysChatViewerApp" as const;
 
 export interface DesktopChatBindingHost {
   snapshot(
@@ -34,6 +38,7 @@ export function registerDesktopChatBindings(
   host?: DesktopChatBindingHost,
   externalUrl?: ExternalUrlOpener,
   projectFocus?: DesktopChatProjectFocusAuthority,
+  viewerApp?: ChatViewerBackend,
 ): void {
   // Project owner per conversation id; undefined marks a standalone chat.
   const conversationProjects = new Map<string, string | undefined>();
@@ -102,6 +107,58 @@ export function registerDesktopChatBindings(
       conversationProjects.set(response.conversationId, input.projectId);
     }
     return response;
+  });
+  window.bind(CHAT_VIEWER_APP_BINDING, async (value: unknown) => {
+    let input: ReturnType<typeof parseChatViewerAppFetchRequest>;
+    try {
+      input = parseChatViewerAppFetchRequest(value);
+    } catch {
+      return Object.freeze({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId: "invalid",
+        ok: false,
+        error: "Viewer App fetch request is invalid.",
+      }) satisfies ChatViewerAppFetchResponse;
+    }
+    if (viewerApp === undefined) {
+      return Object.freeze({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId: input.requestId,
+        ok: false,
+        error: "Live viewer Apps are unavailable on this Desktop target.",
+      }) satisfies ChatViewerAppFetchResponse;
+    }
+    try {
+      const app = await viewerApp.resolveApp(input.server, input.uri);
+      if (app.fingerprint !== input.fingerprint) {
+        return Object.freeze({
+          protocol: DESKTOP_CHAT_PROTOCOL,
+          requestId: input.requestId,
+          ok: false,
+          error: "Viewer App bytes no longer match the pinned fingerprint.",
+        }) satisfies ChatViewerAppFetchResponse;
+      }
+      return Object.freeze({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId: input.requestId,
+        ok: true,
+        app: Object.freeze({
+          uri: app.uri,
+          mimeType: app.mimeType,
+          bytes: app.bytes.byteLength,
+          fingerprint: app.fingerprint,
+          encoding: "base64",
+          data: encodeViewerBytes(app.bytes),
+        }),
+      }) satisfies ChatViewerAppFetchResponse;
+    } catch (error) {
+      return Object.freeze({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId: input.requestId,
+        ok: false,
+        error: error instanceof Error ? error.message : "Viewer App fetch failed.",
+      }) satisfies ChatViewerAppFetchResponse;
+    }
   });
 }
 

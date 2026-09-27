@@ -69,6 +69,14 @@ export type RuntimeEvent =
     readonly title?: string;
     readonly status?: string;
     readonly kind?: string;
+    readonly toolCallId?: string;
+    /**
+     * Exact MCP tool input/output forwarded by the agent runtime when the
+     * adapter populates them (`{server, tool, arguments}` /
+     * `{result, error}`). The coordinator validates before retaining.
+     */
+    readonly rawInput?: unknown;
+    readonly rawOutput?: unknown;
   };
 
 export type RuntimeTurnResult =
@@ -143,6 +151,12 @@ export interface ChatMcpServerConfig {
   readonly mcpUrl: string;
   readonly healthUrl: string;
   readonly expectedTools: readonly string[];
+  /**
+   * Exact `ui://` App views the fleet manifest admits for this server.
+   * Empty when the manifest declares none: attachment still works, but
+   * no viewer App opens and no viewer resource reads are authorized.
+   */
+  readonly expectedViews: readonly string[];
 }
 
 export type ChatMcpProbeOutcome =
