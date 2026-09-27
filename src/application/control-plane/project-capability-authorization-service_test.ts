@@ -1647,3 +1647,399 @@ Deno.test("a later brief that switches a recorded binding requires a method tran
     await Deno.remove(directory, { recursive: true });
   }
 });
+
+Deno.test("a later brief that withdraws a recorded binding requires a method transition", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "capability-brief-withdraw-" });
+  try {
+    let tick = 0;
+    const now = () =>
+      new Date(Date.parse("2026-09-13T00:00:00.000Z") + ++tick * 1_000).toISOString();
+    const projects = new FileEngineeringProjectRevisionStore(directory);
+    const briefs = new ProjectBriefCommandService(projects, now);
+    const catalog = await catalogWithChronoAdapterVersion("0.3.1");
+    const ledgers = new InMemoryProjectCapabilityLedgerStore();
+    const predecessor = authorizationForCatalog(catalog, ledgers, now);
+    const started = await briefs.startProject(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "start",
+        projectId: "brief-withdraw-proven",
+        projectName: "Brief withdraw proven",
+        issuedAt: "2026-09-12T23:59:00.000Z",
+        intent: "Observe prescribed kinematics after a CAD baseline.",
+        intentSource: { kind: "human", reference: "conversation" },
+      },
+    );
+    const items = [
+      item("objective", "objective", "Observe a mechanism."),
+      item("mission", "mission-scenario", "Capture CAD then kinematics."),
+      {
+        ...item("success", "success-criterion", "The result is reviewable."),
+        dependsOnItemIds: [],
+      },
+      {
+        ...item(
+          "kinematics",
+          "verification-activity",
+          "Observe prescribed rigid-body kinematics.",
+        ),
+        dependsOnItemIds: ["success"],
+        verificationAuthority: { id: "prescribed-kinematics", version: "1.0" },
+      },
+    ];
+    const proposed = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose",
+        projectId: started.project.id,
+        expectedRevision: started.revision,
+        issuedAt: "2026-09-12T23:59:10.000Z",
+        items,
+      },
+    );
+    const proposal = await predecessor.proposeForPendingBrief(proposed);
+    await predecessor.prepareInitial(proposal);
+    const review = proposed.framing!.proposalReview!;
+    const approved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve",
+        projectId: proposed.project.id,
+        expectedRevision: proposed.revision,
+        issuedAt: "2026-09-12T23:59:20.000Z",
+        briefSnapshotId: review.briefSnapshotId,
+        briefRevision: review.briefRevision,
+        inputFingerprint: review.inputFingerprint,
+        rationale: "Confirmed.",
+      },
+    );
+    await predecessor.finalizeInitial(approved, proposal);
+
+    const later = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose-later",
+        projectId: approved.project.id,
+        expectedRevision: approved.revision,
+        issuedAt: "2026-09-12T23:59:30.000Z",
+        items: items.filter((entry) => entry.id !== "kinematics"),
+      },
+    );
+    const evidenceProject = {
+      ...later,
+      threadSnapshots: [threadSnapshot()],
+      workItems: [
+        plannedWorkItem({
+          id: "wi-baseline",
+          status: "completed",
+          kind: "define",
+          operationId: "baseline.from-approved-brief",
+          operationVersion: "1",
+        }),
+        chronoWorkItem(),
+      ],
+      agentRuns: [completedCadRun(), completedChronoRun()],
+    };
+    const recorded = kinematicsPlan("0.3.1");
+    const withPublished = authorizationForCatalog(catalog, ledgers, now, {
+      read: () =>
+        Promise.resolve({
+          ...recorded,
+          run: { ...recorded.run, projectId: "brief-withdraw-proven" },
+          operationalCapability: {
+            ...recorded.operationalCapability,
+            projectId: "brief-withdraw-proven",
+          },
+        }),
+    });
+    const blocked = await withPublished.reviewPendingBriefAmendment(
+      evidenceProject as unknown as EngineeringProjectSnapshot,
+    );
+    assertEquals(blocked.status, "method-transition-required");
+    if (blocked.status !== "method-transition-required") {
+      throw new Error("unreachable");
+    }
+    const laterPending = later.framing!.proposalReview!;
+    const laterApproved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve-later",
+        projectId: later.project.id,
+        expectedRevision: later.revision,
+        issuedAt: "2026-09-12T23:59:40.000Z",
+        briefSnapshotId: laterPending.briefSnapshotId,
+        briefRevision: laterPending.briefRevision,
+        inputFingerprint: laterPending.inputFingerprint,
+        rationale: "Confirmed.",
+      },
+    );
+    const laterApprovedWithRuns = {
+      ...laterApproved,
+      threadSnapshots: evidenceProject.threadSnapshots,
+      workItems: evidenceProject.workItems,
+      agentRuns: evidenceProject.agentRuns,
+    };
+    await assertRejects(
+      () =>
+        withPublished.authorizePendingBriefAmendment(
+          laterApprovedWithRuns as unknown as EngineeringProjectSnapshot,
+          blocked.proposal.capabilityProposalFingerprint,
+        ),
+      ProjectCapabilityAuthorizationError,
+      "method-transition path",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("unused withdrawal of a recorded binding requires a method transition", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "capability-unused-proven-" });
+  try {
+    let tick = 0;
+    const now = () =>
+      new Date(Date.parse("2026-09-13T00:00:00.000Z") + ++tick * 1_000).toISOString();
+    const projects = new FileEngineeringProjectRevisionStore(directory);
+    const briefs = new ProjectBriefCommandService(projects, now);
+    const catalog = await catalogWithChronoAdapterVersion("0.3.1");
+    const ledgers = new InMemoryProjectCapabilityLedgerStore();
+    const predecessor = authorizationForCatalog(catalog, ledgers, now);
+    const started = await briefs.startProject(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "start",
+        projectId: "brief-unused-proven",
+        projectName: "Brief unused proven",
+        issuedAt: "2026-09-12T23:59:00.000Z",
+        intent: "Observe prescribed kinematics, then drop it from the plan.",
+        intentSource: { kind: "human", reference: "conversation" },
+      },
+    );
+    const proposed = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose",
+        projectId: started.project.id,
+        expectedRevision: started.revision,
+        issuedAt: "2026-09-12T23:59:10.000Z",
+        items: [
+          item("objective", "objective", "Observe a mechanism."),
+          item("mission", "mission-scenario", "Capture CAD then kinematics."),
+          {
+            ...item("success", "success-criterion", "The result is reviewable."),
+            dependsOnItemIds: [],
+          },
+          {
+            ...item(
+              "kinematics",
+              "verification-activity",
+              "Observe prescribed rigid-body kinematics.",
+            ),
+            dependsOnItemIds: ["success"],
+            verificationAuthority: { id: "prescribed-kinematics", version: "1.0" },
+          },
+        ],
+      },
+    );
+    const proposal = await predecessor.proposeForPendingBrief(proposed);
+    await predecessor.prepareInitial(proposal);
+    const review = proposed.framing!.proposalReview!;
+    const approved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve",
+        projectId: proposed.project.id,
+        expectedRevision: proposed.revision,
+        issuedAt: "2026-09-12T23:59:20.000Z",
+        briefSnapshotId: review.briefSnapshotId,
+        briefRevision: review.briefRevision,
+        inputFingerprint: review.inputFingerprint,
+        rationale: "Confirmed.",
+      },
+    );
+    await predecessor.finalizeInitial(approved, proposal);
+
+    // The published plan drops kinematics (cancelled leaf) while the Chrono
+    // proof and its resolved plan stay recorded.
+    const evidencePlan = publishedProject(approved, {
+      threadSnapshots: [threadSnapshot()],
+      workItems: [
+        plannedWorkItem({
+          id: "wi-baseline",
+          status: "completed",
+          kind: "define",
+          operationId: "baseline.from-approved-brief",
+          operationVersion: "1",
+        }),
+        { ...chronoWorkItem(), status: "cancelled" as const },
+      ],
+      agentRuns: [completedChronoRun()],
+    } as unknown as {
+      readonly threadSnapshots: EngineeringProjectSnapshot["threadSnapshots"];
+      readonly workItems: EngineeringProjectSnapshot["workItems"];
+      readonly agentRuns: EngineeringProjectSnapshot["agentRuns"];
+    });
+    const recorded = kinematicsPlan("0.3.1");
+    const withPublished = authorizationForCatalog(catalog, ledgers, now, {
+      read: () =>
+        Promise.resolve({
+          ...recorded,
+          run: { ...recorded.run, projectId: "brief-unused-proven" },
+          operationalCapability: {
+            ...recorded.operationalCapability,
+            projectId: "brief-unused-proven",
+          },
+        }),
+    });
+    const blocked = await withPublished.reviewUnusedWithdrawal(evidencePlan);
+    assertEquals(blocked.status, "method-transition-required");
+    if (blocked.status !== "method-transition-required") {
+      throw new Error("unreachable");
+    }
+    await assertRejects(
+      () =>
+        withPublished.authorizeUnusedWithdrawal(
+          evidencePlan,
+          blocked.proposal.capabilityProposalFingerprint,
+        ),
+      ProjectCapabilityAuthorizationError,
+      "method-transition path",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("a pending-brief amendment resumes the exact unclaimed file revision after a crash", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "capability-amendment-retry-" });
+  try {
+    let tick = 0;
+    const now = () =>
+      new Date(Date.parse("2026-09-13T00:00:00.000Z") + ++tick * 1_000).toISOString();
+    const projects = new FileEngineeringProjectRevisionStore(directory);
+    const briefs = new ProjectBriefCommandService(projects, now);
+    const storeDirectory = `${directory}/capability-ledgers`;
+    const setup = await authorizationService(
+      new FileProjectCapabilityLedgerStore(storeDirectory),
+      now,
+    );
+    const started = await briefs.startProject(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "start",
+        projectId: "capability-amendment-retry",
+        projectName: "Capability amendment retry",
+        issuedAt: "2026-09-12T23:59:00.000Z",
+        intent: "Verify an assembly.",
+        intentSource: { kind: "human", reference: "conversation" },
+      },
+    );
+    const proposed = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose",
+        projectId: started.project.id,
+        expectedRevision: started.revision,
+        issuedAt: "2026-09-12T23:59:10.000Z",
+        items: baselineItems(),
+      },
+    );
+    const proposal = await setup.proposeForPendingBrief(proposed);
+    await setup.prepareInitial(proposal);
+    const review = proposed.framing!.proposalReview!;
+    const approved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve",
+        projectId: proposed.project.id,
+        expectedRevision: proposed.revision,
+        issuedAt: "2026-09-12T23:59:20.000Z",
+        briefSnapshotId: review.briefSnapshotId,
+        briefRevision: review.briefRevision,
+        inputFingerprint: review.inputFingerprint,
+        rationale: "Confirmed.",
+      },
+    );
+    const finalized = await setup.finalizeInitial(approved, proposal);
+    assertEquals(finalized.revision, 2);
+
+    const narrowed = await briefs.proposeBrief(
+      { kind: "agent", actorId: "test" },
+      {
+        commandId: "propose-narrowed",
+        projectId: approved.project.id,
+        expectedRevision: approved.revision,
+        issuedAt: "2026-09-12T23:59:30.000Z",
+        items: baselineItems().filter((entry) => entry.id !== "assembly"),
+      },
+    );
+    const withdrawal = await setup.reviewPendingBriefAmendment(narrowed);
+    assertEquals(withdrawal.status, "withdrawal-required");
+    if (withdrawal.status !== "withdrawal-required") {
+      throw new Error("unreachable");
+    }
+    const narrowedPending = narrowed.framing!.proposalReview!;
+    const narrowedApproved = await briefs.approveBrief(
+      { kind: "human", actorId: "operator" },
+      {
+        commandId: "approve-narrowed",
+        projectId: narrowed.project.id,
+        expectedRevision: narrowed.revision,
+        issuedAt: "2026-09-12T23:59:40.000Z",
+        briefSnapshotId: narrowedPending.briefSnapshotId,
+        briefRevision: narrowedPending.briefRevision,
+        inputFingerprint: narrowedPending.inputFingerprint,
+        rationale: "Confirmed narrowing.",
+      },
+    );
+    const crashing = await authorizationService(
+      new CrashAfterPendingLedgerStore(storeDirectory),
+      now,
+    );
+    await assertRejects(
+      () =>
+        crashing.authorizePendingBriefAmendment(
+          narrowedApproved,
+          withdrawal.proposal.capabilityProposalFingerprint,
+        ),
+      Error,
+      "simulated crash after pending persistence",
+    );
+    const pendingBytes = await Deno.readTextFile(
+      `${storeDirectory}/capability-amendment-retry/0000000003.json.pending`,
+    );
+    const pendingTail = (JSON.parse(pendingBytes) as ProjectCapabilityLedger).events.at(
+      -1,
+    );
+
+    // A fresh service and a fresh file-store instance must reuse the persisted
+    // event body rather than rebuilding it with its later `now()` value.
+    const resumed = await authorizationService(
+      new FileProjectCapabilityLedgerStore(storeDirectory),
+      now,
+    );
+    const recovered = await resumed.authorizePendingBriefAmendment(
+      narrowedApproved,
+      withdrawal.proposal.capabilityProposalFingerprint,
+    );
+    assertEquals(recovered.revision, 3);
+    assertEquals(
+      recovered.events.map((event) => event.kind),
+      ["initial-prepared", "initial-authorized", "amendment-authorized"],
+    );
+    assertEquals(
+      deterministicJson(recovered.events.at(-1)),
+      deterministicJson(pendingTail),
+    );
+    assertEquals(recovered.effectiveEnvelope?.status, "authorized");
+    const before = finalized.effectiveEnvelope?.proposal.bindings.map((binding) =>
+      binding.requirement.id
+    ) ?? [];
+    const after = recovered.effectiveEnvelope?.proposal.bindings.map((binding) =>
+      binding.requirement.id
+    ) ?? [];
+    assertEquals(after.length < before.length, true);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});

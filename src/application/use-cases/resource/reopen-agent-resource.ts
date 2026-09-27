@@ -52,9 +52,9 @@ export interface ReopenedAgentResourceBytes {
 }
 
 export class ReopenAgentResource {
-  readonly #store: AgentResourceStore;
+  readonly #store: Pick<AgentResourceStore, "read">;
 
-  constructor(store: AgentResourceStore) {
+  constructor(store: Pick<AgentResourceStore, "read">) {
     this.#store = store;
   }
 

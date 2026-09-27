@@ -503,7 +503,9 @@ export class ProjectCapabilityAuthorizationService {
 
   /**
    * Plans the exact current planned ceiling without retaining unused brief
-   * capacity. Dropping unused bindings is not a method transition.
+   * capacity. Dropping bindings with no published method evidence is not a
+   * method transition; a removal the recorded proofs still bind needs the
+   * method-transition path instead.
    */
   async reviewUnusedWithdrawal(
     project: EngineeringProjectSnapshot,
@@ -564,13 +566,13 @@ export class ProjectCapabilityAuthorizationService {
     if (projectCapabilityProposalCovers(envelope.proposal, proposal)) {
       const delta = withdrawalDelta;
       if (isStrictUnusedWithdrawalDelta(delta)) {
-        return {
-          status: "withdrawal-required",
+        return await this.classifyUnusedWithdrawalDelta({
+          project,
           ledger,
+          envelope,
           proposal,
-          effectiveEnvelope: envelope,
           delta,
-        };
+        });
       }
       return { status: "no-change", ledger, proposal, effectiveEnvelope: envelope };
     }
@@ -746,13 +748,13 @@ export class ProjectCapabilityAuthorizationService {
     }
     if (projectCapabilityProposalCovers(envelope.proposal, proposal)) {
       if (isStrictUnusedWithdrawalDelta(delta)) {
-        return {
-          status: "withdrawal-required",
+        return await this.classifyUnusedWithdrawalDelta({
+          project,
           ledger,
+          envelope,
           proposal,
-          effectiveEnvelope: envelope,
           delta,
-        };
+        });
       }
       return { status: "covered", ledger, proposal, effectiveEnvelope: envelope };
     }
@@ -807,6 +809,58 @@ export class ProjectCapabilityAuthorizationService {
         )
         ? "method-transition-required"
         : "amendment-required",
+      ledger,
+      proposal,
+      effectiveEnvelope: envelope,
+      delta,
+    };
+  }
+
+  /**
+   * Shared fork for a strict unused withdrawal: every binding replacement
+   * drops a prior binding, which changes the versioned method by definition.
+   * Recorded binding evidence therefore decides before any withdrawal may be
+   * authorized: published proof on a removed requirement needs a method
+   * transition, unverifiable evidence on a method-changing replacement stays
+   * unresolved, and only a proof-free removal is a withdrawal.
+   */
+  private async classifyUnusedWithdrawalDelta(input: {
+    readonly project: EngineeringProjectSnapshot;
+    readonly ledger: ProjectCapabilityLedger;
+    readonly envelope: ProjectCapabilityEffectiveEnvelope;
+    readonly proposal: ProjectCapabilityProposal;
+    readonly delta: ProjectCapabilityEnvelopeDelta;
+  }): Promise<ProjectCapabilityChangeReview> {
+    const { project, ledger, envelope, proposal, delta } = input;
+    const evidence = await evaluateProjectCapabilityBindingEvidence({
+      project,
+      registry: this.dependencies.registry,
+      recordedPlans: this.dependencies.recordedPlans,
+      replacements: delta.bindingReplacements,
+    });
+    const methodChanges = delta.bindingReplacements.filter(
+      projectCapabilityBindingReplacementChangesMethod,
+    );
+    if (
+      methodChanges.some((replacement) =>
+        evidence.get(replacement.requirementKey) === "unresolved"
+      )
+    ) {
+      return {
+        status: "unresolved",
+        ledger,
+        proposal,
+        effectiveEnvelope: envelope,
+        delta,
+      };
+    }
+    return {
+      status: projectCapabilityChangeRequiresMethodTransition(
+          delta,
+          (requirementKey) => evidence.get(requirementKey) === "published",
+        )
+        ? "method-transition-required"
+        : "withdrawal-required",
       ledger,
       proposal,
       effectiveEnvelope: envelope,
@@ -879,6 +933,29 @@ export class ProjectCapabilityAuthorizationService {
     readonly proposal: ProjectCapabilityProposal;
     readonly delta: ProjectCapabilityEnvelopeDelta;
   }): Promise<ProjectCapabilityLedger> {
+    const pending = await this.dependencies.ledgers.getPending(input.projectId);
+    if (pending) {
+      if (
+        !isExactAmendmentAppend(
+          input.ledger,
+          pending,
+          input.envelope,
+          input.proposal,
+          input.delta,
+        )
+      ) {
+        throw new ProjectCapabilityAuthorizationError(
+          "A different unclaimed capability ledger revision is pending; amendment fails closed.",
+        );
+      }
+      const resumed = await this.dependencies.ledgers.append(
+        pending,
+        input.ledger.revision,
+      );
+      await this.reconcileHostAuthorization();
+      this.#schedulePreload(resumed);
+      return resumed;
+    }
     const event = await eventWithFingerprint({
       kind: "amendment-authorized" as const,
       recordedAt: this.#now(),
@@ -1322,6 +1399,37 @@ function isExactPreparedAppend(
       tail.proposal.capabilityProposalFingerprint,
       proposal.capabilityProposalFingerprint,
     );
+}
+
+/**
+ * A pending file may only be completed by the exact amendment command that
+ * produced it: same history prefix, same envelope basis, same proposal, same
+ * delta. `recordedAt` is the writer's wall clock, not amendment identity, so
+ * it is never compared. It remains unauthorised until `append` claims it.
+ */
+function isExactAmendmentAppend(
+  current: ProjectCapabilityLedger,
+  pending: ProjectCapabilityLedger,
+  envelope: ProjectCapabilityEffectiveEnvelope,
+  proposal: ProjectCapabilityProposal,
+  delta: ProjectCapabilityEnvelopeDelta,
+): boolean {
+  const priorEvents = current.events;
+  const tail = pending.events.at(-1);
+  return pending.revision === current.revision + 1 &&
+    pending.events.length === priorEvents.length + 1 &&
+    deterministicJson(pending.events.slice(0, -1)) ===
+      deterministicJson(priorEvents) &&
+    tail?.kind === "amendment-authorized" &&
+    fingerprintsEqual(
+      tail.previousEnvelopeFingerprint,
+      envelope.effectiveEnvelopeFingerprint,
+    ) &&
+    fingerprintsEqual(
+      tail.proposalFingerprint,
+      proposal.capabilityProposalFingerprint,
+    ) &&
+    deterministicJson(tail.delta) === deterministicJson(delta);
 }
 
 function approvalReceipt(
