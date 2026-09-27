@@ -10,9 +10,11 @@ import {
   type ChatPendingInteractionDto,
   type ChatSnapshotDto,
   type ChatToolViewerDto,
+  type ChatViewerArtifactRecord,
   type ChatViewerJson,
   type ChatViewerSessionDto,
   DESKTOP_CHAT_PROTOCOL,
+  extractViewerArtifactRecords,
   isChatOpaqueId,
   isChatViewerToolName,
   isChatViewerUiUri,
@@ -39,7 +41,12 @@ import {
   sanitizePermissionRequest,
   validateElicitationContent,
 } from "./sanitize.ts";
-import type { ChatConversationStore, StoredConversation } from "./store.ts";
+import type {
+  ChatConversationStore,
+  StoredConversation,
+  StoredWorkArtifact,
+} from "./store.ts";
+import { STORE_MCP_TOOLS_MAX } from "./store-codec.ts";
 import {
   type ChatViewerBackend,
   createRefusingViewerBackend,
@@ -56,6 +63,13 @@ const TOOL_RESULT_JSON_MAX = 262_144;
  * `viewer.open` pins identity and the renderer fetches bytes separately.
  */
 const VIEWER_RESOURCE_IPC_MAX_BYTES = 524_288;
+/**
+ * Retained-bytes policy (#51): an artifact larger than this is recorded as
+ * missing with an explicit reason instead of archived. Same value as the
+ * IPC cap so every saved byte stays servable and exportable.
+ */
+const WORK_ARCHIVE_MAX_BYTES = 524_288;
+const WORK_ARCHIVE_MAX_ARTIFACTS = 8;
 
 interface ConversationState {
   readonly id: string;
@@ -111,6 +125,17 @@ interface CapturedToolResult {
   readonly input: Readonly<Record<string, ChatViewerJson>>;
   readonly result: ChatViewerJson;
   readonly capturedAt: string;
+  /** Per-conversation revision and digest; absent before saving existed. */
+  readonly revision?: number;
+  readonly resultDigest?: string;
+  readonly artifacts?: readonly StoredWorkArtifact[];
+}
+
+/** Fetched export: verified bytes or a missing-with-reason outcome. */
+interface ArchivePayload {
+  readonly record: ChatViewerArtifactRecord;
+  readonly bytes?: Uint8Array;
+  readonly reason?: string;
 }
 
 export interface ChatCoordinatorOptions {
@@ -178,6 +203,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     const conversations = ordered.map((entry) =>
       this.#toDto(entry, selected === entry.id)
     );
+    const retention = this.#store.retention();
     return Object.freeze({
       protocol: DESKTOP_CHAT_PROTOCOL,
       host: this.#host,
@@ -193,6 +219,9 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         ),
       ),
       ...(selected === undefined ? {} : { selectedConversationId: selected }),
+      ...(retention === undefined
+        ? {}
+        : { retention: Object.freeze({ ...retention }) }),
     });
   }
 
@@ -485,7 +514,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         const id = this.#append(conversation, "assistant", "tool", `${title}${suffix}`);
         if (id !== undefined) {
           touched.push(id);
-          this.#captureToolResult(conversation, event, id);
+          await this.#captureToolResult(conversation, event, id);
         }
       } else {
         const id = this.#append(
@@ -505,13 +534,15 @@ export class ChatCoordinator implements RuntimeInteractionSink {
    * Retain the exact MCP tool result for the live viewer. Only results of
    * the attached server carrying a server-scoped App URI are kept; anything
    * else (missing ids, foreign server, oversize, unparsable) is ignored so
-   * the transcript stays the source of truth.
+   * the transcript stays the source of truth. Retained entries also archive
+   * their export bytes eagerly (#51): provider-side exports are
+   * process-local and would not survive a provider restart otherwise.
    */
-  #captureToolResult(
+  async #captureToolResult(
     conversation: ConversationState,
     event: Extract<RuntimeEvent, { type: "tool_call" }>,
     messageId: string,
-  ): void {
+  ): Promise<void> {
     if (
       conversation.kind !== "standalone" || conversation.mcpId === undefined ||
       conversation.mcpStatus !== "connected" || event.toolCallId === undefined
@@ -537,6 +568,42 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     } catch {
       return;
     }
+    // A same-id redelivery replaces the entry but keeps its revision:
+    // revisions identify result versions, not observation counts.
+    const previous = conversation.toolResults.find((entry) =>
+      entry.toolCallId === event.toolCallId
+    );
+    const revision = previous?.revision ??
+      maxToolRevision(conversation.toolResults) + 1;
+    const resultDigest = `sha256:${await sha256Hex(
+      new TextEncoder().encode(JSON.stringify(parsedResult)),
+    )}`;
+    const payloads = await this.#fetchArchivePayloads(input.server, parsedResult);
+    const artifacts = payloads.map((payload) =>
+      Object.freeze({
+        uri: payload.record.uri,
+        fileName: archiveFileName(
+          payload.record.uri,
+          input.tool,
+          revision,
+          payload.record.mimeType,
+        ),
+        mimeType: payload.record.mimeType,
+        bytes: payload.record.bytes,
+        sha256: payload.record.sha256,
+        ...(payload.bytes === undefined
+          ? { state: "missing" as const, reason: payload.reason }
+          : {
+            state: "saved" as const,
+            savedAt: this.#now().toISOString(),
+          }),
+      })
+    );
+    // Append the entry and queue its bytes with no await between: any persist
+    // snapshotting from here on references the manifest, and the tail runs
+    // the byte writes before the manifest persist below. A stale snapshot
+    // queued earlier runs before the bytes exist, so prune can never eat
+    // bytes ahead of their manifest.
     conversation.toolResults = [
       ...conversation.toolResults.filter((entry) =>
         entry.toolCallId !== event.toolCallId
@@ -551,8 +618,108 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         input: parsedInput,
         result: parsedResult,
         capturedAt: this.#now().toISOString(),
+        revision,
+        resultDigest,
+        artifacts: Object.freeze(artifacts),
       },
     ].slice(-TOOL_RESULTS_MAX);
+    const writes = payloads.flatMap((payload) =>
+      payload.bytes === undefined ? [] : [payload]
+    ).map((payload) =>
+      this.#afterPersistTail(() =>
+        this.#store.saveArtifact(
+          payload.record.sha256,
+          payload.bytes as Uint8Array,
+        )
+      ).then(
+        () => ({ sha256: payload.record.sha256, saved: true as const }),
+        () => ({ sha256: payload.record.sha256, saved: false as const }),
+      )
+    );
+    const outcomes = await Promise.all(writes);
+    const failed = new Set(
+      outcomes.filter((outcome) => !outcome.saved).map((outcome) => outcome.sha256),
+    );
+    if (failed.size > 0) {
+      conversation.toolResults = conversation.toolResults.map((entry) =>
+        entry.toolCallId === event.toolCallId
+          ? {
+            ...entry,
+            artifacts: (entry.artifacts ?? []).map((artifact) =>
+              artifact.state === "saved" && failed.has(artifact.sha256)
+                ? {
+                  ...artifact,
+                  state: "missing" as const,
+                  reason: "The retained bytes could not be written.",
+                }
+                : artifact
+            ),
+          }
+          : entry
+      );
+    }
+    await this.#persist();
+  }
+
+  /**
+   * Best-effort eager fetch of the result's export records. Every record
+   * resolves to verified bytes or a missing-with-reason outcome; archival
+   * never fails the turn. Byte writes commit separately through the persist
+   * tail (see capture).
+   */
+  async #fetchArchivePayloads(
+    server: string,
+    result: ChatViewerJson,
+  ): Promise<readonly ArchivePayload[]> {
+    const records = extractViewerArtifactRecords(result).slice(
+      0,
+      WORK_ARCHIVE_MAX_ARTIFACTS,
+    );
+    const payloads: ArchivePayload[] = [];
+    for (const record of records) {
+      if (record.bytes > WORK_ARCHIVE_MAX_BYTES) {
+        payloads.push({
+          record,
+          reason: "The export exceeds the 512 KiB retained-bytes cap.",
+        });
+        continue;
+      }
+      try {
+        // Transport failures keep the generic read-failed reason; only
+        // shape failures unwrap to their own accurate message.
+        const raw = await this.#viewerBackend.readResource(server, record.uri);
+        let payload: ReturnType<typeof parseViewerResourcePayload>;
+        try {
+          payload = parseViewerResourcePayload(record.uri, raw, "live");
+        } catch (error) {
+          throw new ArchiveMismatchError(
+            error instanceof Error
+              ? error.message
+              : "The provider read failed before the bytes were retained.",
+          );
+        }
+        const bytes = base64ToBytes(payload.data);
+        if (bytes.byteLength !== record.bytes) {
+          throw new ArchiveMismatchError(
+            "The provider's export changed size before it was retained.",
+          );
+        }
+        if ((await sha256Hex(bytes)) !== record.sha256) {
+          throw new ArchiveMismatchError(
+            "The provider's export failed the digest check.",
+          );
+        }
+        payloads.push({ record, bytes });
+      } catch (error) {
+        payloads.push({
+          record,
+          reason: error instanceof ArchiveMismatchError
+            ? error.message
+            : "The provider read failed before the bytes were retained.",
+        });
+      }
+    }
+    return payloads;
   }
 
   #viewerConversation(conversationId: string): ConversationState {
@@ -641,8 +808,50 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     if (!inViewScope && !inArtifactScope) {
       throw new Error("The session cannot authorize this resource.");
     }
+    // Retained artifact bytes win over a live read: the archive is the
+    // exact saved result, while provider-side exports may have moved on or
+    // vanished with a provider restart. View-scope resources always read
+    // live; they are never archived.
+    const archived = entry.artifacts?.find((artifact) =>
+      artifact.uri === uri && artifact.state === "saved"
+    );
+    if (archived !== undefined) {
+      const bytes = await this.#store.loadArtifact(archived.sha256);
+      if (
+        bytes !== undefined && bytes.byteLength === archived.bytes &&
+        (await sha256Hex(bytes)) === archived.sha256
+      ) {
+        return Object.freeze({
+          uri,
+          mimeType: archived.mimeType,
+          bytes: bytes.byteLength,
+          encoding: "base64",
+          data: bytesToBase64(bytes),
+          source: "saved",
+        });
+      }
+      // Stale manifest (pruned or tampered bytes): mark missing honestly
+      // and fall through to a live read instead of failing the viewer.
+      conversation.toolResults = conversation.toolResults.map((candidate) =>
+        candidate.toolCallId === entry.toolCallId
+          ? {
+            ...candidate,
+            artifacts: (candidate.artifacts ?? []).map((artifact) =>
+              artifact.sha256 === archived.sha256
+                ? {
+                  ...artifact,
+                  state: "missing" as const,
+                  reason: "The retained bytes are no longer stored.",
+                }
+                : artifact
+            ),
+          }
+          : candidate
+      );
+      void this.#persist();
+    }
     const result = await this.#viewerBackend.readResource(entry.server, uri);
-    return parseViewerResourcePayload(uri, result);
+    return parseViewerResourcePayload(uri, result, "live");
   }
 
   async #requestElicitation(
@@ -1060,6 +1269,32 @@ export class ChatCoordinator implements RuntimeInteractionSink {
             messageId: entry.messageId,
             tool: entry.tool,
             appUri: entry.appUri,
+            ...(entry.revision === undefined || entry.resultDigest === undefined
+              ? {}
+              : {
+                archive: Object.freeze({
+                  revision: entry.revision,
+                  resultDigest: entry.resultDigest,
+                  server: entry.server,
+                  capturedAt: entry.capturedAt,
+                  failed: entry.failed,
+                  artifacts: Object.freeze(
+                    (entry.artifacts ?? []).map((artifact) =>
+                      Object.freeze({
+                        uri: artifact.uri,
+                        fileName: artifact.fileName,
+                        mimeType: artifact.mimeType,
+                        bytes: artifact.bytes,
+                        sha256: artifact.sha256,
+                        state: artifact.state,
+                        ...(artifact.reason === undefined
+                          ? {}
+                          : { reason: artifact.reason }),
+                      })
+                    ),
+                  ),
+                }),
+              }),
           })
         )
       : [];
@@ -1129,7 +1364,9 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         ...(entry.projectId === undefined ? {} : { projectId: entry.projectId }),
         ...(entry.mcpId === undefined ? {} : { mcpId: entry.mcpId }),
         ...(entry.mcpStatus === undefined ? {} : { mcpStatus: entry.mcpStatus }),
-        mcpTools: Object.freeze([...entry.mcpTools]),
+        // The store cannot hold more names than its tamper-guard budget;
+        // the session keeps the full authorization list.
+        mcpTools: Object.freeze(entry.mcpTools.slice(0, STORE_MCP_TOOLS_MAX)),
         knownMessageIdsByKey: serializeKnownByKey(entry),
         toolResults: Object.freeze(entry.toolResults.map((result) =>
           Object.freeze({
@@ -1142,6 +1379,15 @@ export class ChatCoordinator implements RuntimeInteractionSink {
             input: result.input,
             result: result.result,
             capturedAt: result.capturedAt,
+            ...(result.revision === undefined ? {} : { revision: result.revision }),
+            ...(result.resultDigest === undefined
+              ? {}
+              : { resultDigest: result.resultDigest }),
+            ...(result.artifacts === undefined ? {} : {
+              artifacts: Object.freeze(
+                result.artifacts.map((artifact) => Object.freeze({ ...artifact })),
+              ),
+            }),
           })
         )),
         sessionKey: entry.sessionKey,
@@ -1152,8 +1398,22 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         messages: Object.freeze([...entry.messages]),
       })
     );
-    this.#persistTail = this.#persistTail.then(() => this.#store.save(snapshot));
-    return this.#persistTail;
+    return this.#afterPersistTail(() => this.#store.save(snapshot));
+  }
+
+  /**
+   * Serialize store commits in call order. The tail survives individual
+   * failures (each caller still observes its own) so one failed write can
+   * never brick later persistence. Artifact bytes commit through the same
+   * tail so a stale snapshot can never prune bytes ahead of their manifest.
+   */
+  #afterPersistTail<T>(task: () => Promise<T>): Promise<T> {
+    const run = this.#persistTail.then(task, task);
+    this.#persistTail = run.then(
+      () => undefined,
+      () => undefined,
+    );
+    return run;
   }
 }
 
@@ -1271,6 +1531,19 @@ function restoreToolResults(stored: StoredConversation): CapturedToolResult[] {
     } catch {
       continue;
     }
+    // Archive fields degrade to unsaved on any shape violation: a tampered
+    // manifest must never brick the viewer itself.
+    const revision = Number.isSafeInteger(candidate.revision) &&
+        (candidate.revision as number) >= 1
+      ? candidate.revision as number
+      : undefined;
+    const resultDigest = typeof candidate.resultDigest === "string" &&
+        /^sha256:[a-f0-9]{64}$/.test(candidate.resultDigest)
+      ? candidate.resultDigest
+      : undefined;
+    const artifacts = readRestoredArtifacts(candidate.artifacts);
+    const archived = revision !== undefined && resultDigest !== undefined &&
+      artifacts !== undefined;
     restored.push({
       toolCallId: candidate.toolCallId,
       server: candidate.server,
@@ -1281,9 +1554,65 @@ function restoreToolResults(stored: StoredConversation): CapturedToolResult[] {
       input,
       result,
       capturedAt: candidate.capturedAt,
+      ...(archived
+        ? {
+          revision: revision as number,
+          resultDigest: resultDigest as string,
+          artifacts: artifacts as readonly StoredWorkArtifact[],
+        }
+        : {}),
     });
   }
   return restored;
+}
+
+function readRestoredArtifacts(
+  value: unknown,
+): readonly StoredWorkArtifact[] | undefined {
+  if (value === undefined) return [];
+  if (!Array.isArray(value)) return undefined;
+  const artifacts: StoredWorkArtifact[] = [];
+  for (const entry of value.slice(0, WORK_ARCHIVE_MAX_ARTIFACTS)) {
+    if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+      return undefined;
+    }
+    const candidate = entry as Record<string, unknown>;
+    if (
+      typeof candidate.uri !== "string" ||
+      (!candidate.uri.startsWith("ui://") && !candidate.uri.startsWith("casys://")) ||
+      candidate.uri.length > 500 ||
+      typeof candidate.fileName !== "string" || candidate.fileName === "" ||
+      candidate.fileName.length > 128 || candidate.fileName.includes("/") ||
+      candidate.fileName.includes("\\") ||
+      typeof candidate.mimeType !== "string" || candidate.mimeType === "" ||
+      candidate.mimeType.length > 200 ||
+      !Number.isSafeInteger(candidate.bytes) || (candidate.bytes as number) < 0 ||
+      (candidate.bytes as number) > 33_554_432 ||
+      typeof candidate.sha256 !== "string" ||
+      !/^[a-f0-9]{64}$/.test(candidate.sha256) ||
+      (candidate.state !== "saved" && candidate.state !== "missing") ||
+      (candidate.reason !== undefined &&
+        (typeof candidate.reason !== "string" || candidate.reason.length > 200)) ||
+      (candidate.savedAt !== undefined &&
+        (typeof candidate.savedAt !== "string" ||
+          !Number.isFinite(Date.parse(candidate.savedAt))))
+    ) {
+      return undefined;
+    }
+    artifacts.push({
+      uri: candidate.uri,
+      fileName: candidate.fileName,
+      mimeType: candidate.mimeType,
+      bytes: candidate.bytes as number,
+      sha256: candidate.sha256,
+      state: candidate.state,
+      ...(candidate.reason === undefined ? {} : { reason: candidate.reason as string }),
+      ...(candidate.savedAt === undefined
+        ? {}
+        : { savedAt: candidate.savedAt as string }),
+    });
+  }
+  return artifacts;
 }
 
 function serializeKnownByKey(
@@ -1344,13 +1673,20 @@ function bytesToBase64(bytes: Uint8Array): string {
   return btoa(binary);
 }
 
-function parseViewerResourcePayload(uri: string, value: unknown) {
+function parseViewerResourcePayload(
+  uri: string,
+  value: unknown,
+  source: "saved" | "live",
+) {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     throw new Error("Resource read returned an unexpected payload.");
   }
   const contents = (value as Record<string, unknown>).contents;
-  if (!Array.isArray(contents) || contents.length !== 1) {
+  if (!Array.isArray(contents)) {
     throw new Error("Resource read returned an unexpected payload.");
+  }
+  if (contents.length !== 1) {
+    throw new Error("Resource read returned multiple content blocks.");
   }
   const entry = contents[0] as Record<string, unknown>;
   if (
@@ -1363,7 +1699,11 @@ function parseViewerResourcePayload(uri: string, value: unknown) {
   if (typeof entry.text === "string") {
     bytes = new TextEncoder().encode(entry.text);
   } else if (typeof entry.blob === "string") {
-    bytes = base64ToBytes(entry.blob);
+    try {
+      bytes = base64ToBytes(entry.blob);
+    } catch {
+      throw new Error("Resource read returned an unexpected payload.");
+    }
   } else {
     throw new Error("Resource read returned an unexpected payload.");
   }
@@ -1379,7 +1719,65 @@ function parseViewerResourcePayload(uri: string, value: unknown) {
     bytes: bytes.byteLength,
     encoding: "base64",
     data: bytesToBase64(bytes),
+    source,
   });
+}
+
+async function sha256Hex(bytes: Uint8Array): Promise<string> {
+  const digest = await crypto.subtle.digest("SHA-256", Uint8Array.from(bytes));
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+class ArchiveMismatchError extends Error {}
+
+function maxToolRevision(results: readonly CapturedToolResult[]): number {
+  let max = 0;
+  for (const entry of results) {
+    if (entry.revision !== undefined && entry.revision > max) max = entry.revision;
+  }
+  return max;
+}
+
+function archiveExtension(mimeType: string): string {
+  switch (mimeType) {
+    case "model/gltf-binary":
+      return "glb";
+    case "model/step":
+      return "step";
+    case "application/pdf":
+      return "pdf";
+    case "text/plain":
+      return "txt";
+    case "text/html":
+      return "html";
+    case "image/png":
+      return "png";
+    case "image/jpeg":
+      return "jpg";
+    case "application/json":
+      return "json";
+    default:
+      return "bin";
+  }
+}
+
+/** Export file suggestion: URI leaf sanitized, else tool/revision based. */
+function archiveFileName(
+  uri: string,
+  tool: string,
+  revision: number,
+  mimeType: string,
+): string {
+  const leaf = (uri.split("/").pop() ?? "").replace(
+    /[^A-Za-z0-9._-]+/g,
+    "-",
+  ).replace(/^-+|-+$/g, "");
+  if (leaf !== "" && leaf !== "." && leaf !== ".." && leaf.includes(".")) {
+    return leaf.slice(0, 128);
+  }
+  return `${tool}-v${revision}.${archiveExtension(mimeType)}`.slice(0, 128);
 }
 
 function base64ToBytes(data: string): Uint8Array {

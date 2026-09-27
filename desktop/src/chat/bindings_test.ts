@@ -1,6 +1,7 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import {
   CHAT_COMMAND_BINDING,
+  CHAT_SAVE_FILE_BINDING,
   CHAT_SNAPSHOT_BINDING,
   CHAT_VIEWER_APP_BINDING,
   type DesktopChatBindingHost,
@@ -12,7 +13,7 @@ import {
 } from "../../../src/presentation/desktop/chat/contracts.ts";
 import type { ChatViewerBackend } from "./viewer-backend.ts";
 
-Deno.test("Desktop registers only three narrow, versioned Chat bindings", async () => {
+Deno.test("Desktop registers only four narrow, versioned Chat bindings", async () => {
   const handlers = new Map<string, (input: unknown) => unknown>();
   registerDesktopChatBindings({
     bind(name, handler) {
@@ -21,7 +22,12 @@ Deno.test("Desktop registers only three narrow, versioned Chat bindings", async 
   });
   assertEquals(
     [...handlers.keys()],
-    [CHAT_SNAPSHOT_BINDING, CHAT_COMMAND_BINDING, CHAT_VIEWER_APP_BINDING],
+    [
+      CHAT_SNAPSHOT_BINDING,
+      CHAT_COMMAND_BINDING,
+      CHAT_VIEWER_APP_BINDING,
+      CHAT_SAVE_FILE_BINDING,
+    ],
   );
   assertEquals(
     await handlers.get(CHAT_SNAPSHOT_BINDING)?.({ protocol: DESKTOP_CHAT_PROTOCOL }),
@@ -62,6 +68,20 @@ Deno.test("Desktop registers only three narrow, versioned Chat bindings", async 
       error: "Live viewer Apps are unavailable on this Desktop target.",
     },
   );
+  assertEquals(
+    await handlers.get(CHAT_SAVE_FILE_BINDING)?.({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "save-1",
+      fileName: "box-v1.glb",
+      data: "Z2xiAA==",
+    }),
+    {
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "save-1",
+      ok: false,
+      error: "File export is unavailable on this Desktop target.",
+    },
+  );
   await assertRejects(() =>
     Promise.resolve(
       handlers.get(CHAT_COMMAND_BINDING)?.({
@@ -79,7 +99,7 @@ Deno.test("viewer App binding ships bytes only on fingerprint match", async () =
   const handlers = new Map<string, (input: unknown) => unknown>();
   const fingerprint = `sha256:${"1".repeat(64)}`;
   const viewerApp: ChatViewerBackend = {
-    resolveApp: (server, uri) =>
+    resolveApp: (_server, uri) =>
       Promise.resolve({
         uri,
         mimeType: "text/html;profile=mcp-app",
@@ -132,6 +152,89 @@ Deno.test("viewer App binding ships bytes only on fingerprint match", async () =
       requestId: "request-app-rotated",
       ok: false,
       error: "Viewer App bytes no longer match the pinned fingerprint.",
+    },
+  );
+});
+
+Deno.test("save-file binding decodes bytes and reports the saved path", async () => {
+  const handlers = new Map<string, (input: unknown) => unknown>();
+  const saved: Array<{ fileName: string; bytes: Uint8Array }> = [];
+  registerDesktopChatBindings(
+    { bind: (name, handler) => handlers.set(name, handler) },
+    undefined,
+    undefined,
+    undefined,
+    undefined,
+    {
+      saveFile: (fileName, data) => {
+        saved.push({ fileName, bytes: data });
+        return Promise.resolve({
+          path: `/Downloads/${fileName}`,
+          bytes: data.byteLength,
+        });
+      },
+    },
+  );
+  assertEquals(
+    await handlers.get(CHAT_SAVE_FILE_BINDING)?.({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "save-2",
+      fileName: "box-v1.glb",
+      data: "Z2xiAA==",
+    }),
+    {
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "save-2",
+      ok: true,
+      path: "/Downloads/box-v1.glb",
+      bytes: 4,
+    },
+  );
+  assertEquals(saved.length, 1);
+  assertEquals(saved[0].fileName, "box-v1.glb");
+  assertEquals(saved[0].bytes, new Uint8Array([0x67, 0x6c, 0x62, 0x00]));
+  assertEquals(
+    await handlers.get(CHAT_SAVE_FILE_BINDING)?.({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "save-3",
+      fileName: "../escape.glb",
+      data: "Z2xiAA==",
+    }),
+    {
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "invalid",
+      ok: false,
+      error: "File export request is invalid.",
+    },
+  );
+  assertEquals(
+    await handlers.get(CHAT_SAVE_FILE_BINDING)?.({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "save-4",
+      fileName: "box-v1.glb",
+      data: "ab=c",
+    }),
+    {
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "invalid",
+      ok: false,
+      error: "File export request is invalid.",
+    },
+  );
+  // Padding-only input passes the alphabet shape but cannot decode: the
+  // binding reports invalid data instead of a raw engine message.
+  assertEquals(
+    await handlers.get(CHAT_SAVE_FILE_BINDING)?.({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "save-5",
+      fileName: "box-v1.glb",
+      data: "==",
+    }),
+    {
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "save-5",
+      ok: false,
+      error: "File export data is invalid.",
     },
   );
 });

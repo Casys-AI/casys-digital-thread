@@ -4,9 +4,28 @@ import type {
   ChatViewerJson,
 } from "../../../src/presentation/desktop/chat/contracts.ts";
 import {
-  parseChatViewerArguments,
-  parseChatViewerJson,
-} from "../../../src/presentation/desktop/chat/contracts.ts";
+  ARTIFACT_FILE_SUFFIX,
+  artifactFileName,
+  CHAT_STORE_SCHEMA,
+  CHAT_TRANSCRIPT_SCHEMA,
+  CONVERSATION_ID_PATTERN,
+  isArtifactSha,
+  readConversationIndex,
+  readTranscriptData,
+  referencedArtifactDigests,
+} from "./store-codec.ts";
+
+/** Retained export file: manifest entry plus its sidecar-byte state. */
+export interface StoredWorkArtifact {
+  readonly uri: string;
+  readonly fileName: string;
+  readonly mimeType: string;
+  readonly bytes: number;
+  readonly sha256: string;
+  readonly state: "saved" | "missing";
+  readonly reason?: string;
+  readonly savedAt?: string;
+}
 
 export interface StoredToolResult {
   readonly toolCallId: string;
@@ -18,6 +37,12 @@ export interface StoredToolResult {
   readonly input: Readonly<Record<string, ChatViewerJson>>;
   readonly result: ChatViewerJson;
   readonly capturedAt: string;
+  /** Per-conversation result revision, 1-based; absent before saving existed. */
+  readonly revision?: number;
+  /** `sha256:<hex>` over the canonical exact result JSON. */
+  readonly resultDigest?: string;
+  /** Retained export bytes; absent when nothing was archived. */
+  readonly artifacts?: readonly StoredWorkArtifact[];
 }
 
 export interface StoredConversation {
@@ -48,13 +73,26 @@ export interface StoredConversation {
   readonly messages: readonly ChatMessageDto[];
 }
 
+/** Bounded retention backing saved work; undefined means unbounded. */
+export interface ChatStoreRetention {
+  readonly days: number;
+  readonly maxConversations: number;
+}
+
 export interface ChatConversationStore {
   load(): Promise<readonly StoredConversation[]>;
   save(conversations: readonly StoredConversation[]): Promise<void>;
+  /** Retain exact artifact bytes keyed by hex digest. */
+  saveArtifact(sha256: string, bytes: Uint8Array): Promise<void>;
+  /** Load retained bytes, or undefined when never saved or pruned. */
+  loadArtifact(sha256: string): Promise<Uint8Array | undefined>;
+  /** Retention policy backing saved work; undefined when unbounded. */
+  retention(): ChatStoreRetention | undefined;
 }
 
 export class MemoryChatConversationStore implements ChatConversationStore {
   #value: readonly StoredConversation[] = [];
+  readonly #artifacts = new Map<string, Uint8Array>();
 
   load(): Promise<readonly StoredConversation[]> {
     return Promise.resolve(structuredClone(this.#value));
@@ -62,7 +100,29 @@ export class MemoryChatConversationStore implements ChatConversationStore {
 
   save(conversations: readonly StoredConversation[]): Promise<void> {
     this.#value = structuredClone(conversations);
+    const referenced = referencedArtifactDigests(this.#value);
+    for (const sha256 of [...this.#artifacts.keys()]) {
+      if (!referenced.has(sha256)) this.#artifacts.delete(sha256);
+    }
     return Promise.resolve();
+  }
+
+  saveArtifact(sha256: string, bytes: Uint8Array): Promise<void> {
+    if (!isArtifactSha(sha256)) {
+      return Promise.reject(new TypeError("artifact digest is invalid"));
+    }
+    this.#artifacts.set(sha256, Uint8Array.from(bytes));
+    return Promise.resolve();
+  }
+
+  loadArtifact(sha256: string): Promise<Uint8Array | undefined> {
+    if (!isArtifactSha(sha256)) return Promise.resolve(undefined);
+    const bytes = this.#artifacts.get(sha256);
+    return Promise.resolve(bytes === undefined ? undefined : Uint8Array.from(bytes));
+  }
+
+  retention(): ChatStoreRetention | undefined {
+    return undefined;
   }
 }
 
@@ -72,17 +132,6 @@ export interface FileChatConversationStoreOptions {
   readonly retentionDays?: number;
   readonly maxConversations?: number;
   readonly maxMessagesPerConversation?: number;
-}
-
-interface StoredIndex {
-  readonly schemaVersion: "casys-desktop-chat-store/1.0";
-  readonly conversations: readonly Omit<StoredConversation, "messages">[];
-}
-
-interface StoredTranscript {
-  readonly schemaVersion: "casys-desktop-chat-transcript/1.0";
-  readonly conversationId: string;
-  readonly messages: readonly ChatMessageDto[];
 }
 
 /**
@@ -105,9 +154,11 @@ export class FileChatConversationStore implements ChatConversationStore {
   }
 
   async load(): Promise<readonly StoredConversation[]> {
-    let index: StoredIndex;
+    let index: ReturnType<typeof readConversationIndex>;
     try {
-      index = readIndex(JSON.parse(await Deno.readTextFile(this.#indexPath())));
+      index = readConversationIndex(
+        JSON.parse(await Deno.readTextFile(this.#indexPath())),
+      );
     } catch (error) {
       if (error instanceof Deno.errors.NotFound) return [];
       throw error;
@@ -117,7 +168,7 @@ export class FileChatConversationStore implements ChatConversationStore {
     for (const metadata of index.conversations) {
       if (Date.parse(metadata.updatedAt) < cutoff) continue;
       try {
-        const transcript = readTranscript(
+        const transcript = readTranscriptData(
           JSON.parse(await Deno.readTextFile(this.#transcriptPath(metadata.id))),
           metadata.id,
         );
@@ -140,6 +191,7 @@ export class FileChatConversationStore implements ChatConversationStore {
 
   async save(conversations: readonly StoredConversation[]): Promise<void> {
     await Deno.mkdir(`${this.#root}/transcripts`, { recursive: true, mode: 0o700 });
+    await Deno.mkdir(`${this.#root}/artifacts`, { recursive: true, mode: 0o700 });
     const cutoff = this.#now().getTime() - this.#retentionMs;
     const retained = [...conversations]
       .filter((entry) => Date.parse(entry.updatedAt) >= cutoff)
@@ -147,7 +199,7 @@ export class FileChatConversationStore implements ChatConversationStore {
       .slice(0, this.#maxConversations);
     for (const entry of retained) {
       await atomicWriteJson(this.#transcriptPath(entry.id), {
-        schemaVersion: "casys-desktop-chat-transcript/1.0",
+        schemaVersion: CHAT_TRANSCRIPT_SCHEMA,
         conversationId: entry.id,
         messages: entry.messages.slice(-this.#maxMessages),
       });
@@ -155,26 +207,71 @@ export class FileChatConversationStore implements ChatConversationStore {
     const retainedFiles = new Set(retained.map((entry) => `${entry.id}.json`));
     for await (const entry of Deno.readDir(`${this.#root}/transcripts`)) {
       if (
-        entry.isFile && /^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,159}\.json$/.test(entry.name) &&
+        entry.isFile && transcriptFileName(entry.name) &&
         !retainedFiles.has(entry.name)
       ) await Deno.remove(`${this.#root}/transcripts/${entry.name}`);
     }
     await atomicWriteJson(this.#indexPath(), {
-      schemaVersion: "casys-desktop-chat-store/1.0",
+      schemaVersion: CHAT_STORE_SCHEMA,
       conversations: retained.map(({ messages: _messages, ...metadata }) => metadata),
     });
+    // Message pruning never drops artifact bytes: only bytes unreferenced
+    // by every retained conversation prune, on conversation retention.
+    await this.#pruneArtifacts(referencedArtifactDigests(retained));
+  }
+
+  async saveArtifact(sha256: string, bytes: Uint8Array): Promise<void> {
+    await Deno.mkdir(`${this.#root}/artifacts`, { recursive: true, mode: 0o700 });
+    const temporary = `${this.#artifactPath(sha256)}.tmp`;
+    await Deno.writeFile(temporary, bytes, { mode: 0o600 });
+    await Deno.rename(temporary, this.#artifactPath(sha256));
+  }
+
+  async loadArtifact(sha256: string): Promise<Uint8Array | undefined> {
+    if (!isArtifactSha(sha256)) return undefined;
+    try {
+      return await Deno.readFile(this.#artifactPath(sha256));
+    } catch (error) {
+      if (error instanceof Deno.errors.NotFound) return undefined;
+      throw error;
+    }
+  }
+
+  retention(): ChatStoreRetention | undefined {
+    return {
+      days: this.#retentionMs / 86_400_000,
+      maxConversations: this.#maxConversations,
+    };
+  }
+
+  async #pruneArtifacts(referenced: ReadonlySet<string>): Promise<void> {
+    for await (const entry of Deno.readDir(`${this.#root}/artifacts`)) {
+      if (!entry.isFile || !entry.name.endsWith(ARTIFACT_FILE_SUFFIX)) continue;
+      const sha256 = entry.name.slice(0, -ARTIFACT_FILE_SUFFIX.length);
+      if (!isArtifactSha(sha256) || referenced.has(sha256)) continue;
+      await Deno.remove(`${this.#root}/artifacts/${entry.name}`);
+    }
   }
 
   #indexPath(): string {
     return `${this.#root}/conversations.json`;
   }
 
+  #artifactPath(sha256: string): string {
+    return `${this.#root}/artifacts/${artifactFileName(sha256)}`;
+  }
+
   #transcriptPath(id: string): string {
-    if (!/^[a-zA-Z0-9][a-zA-Z0-9._:-]{0,159}$/.test(id)) {
+    if (!CONVERSATION_ID_PATTERN.test(id)) {
       throw new TypeError("conversation id is invalid");
     }
     return `${this.#root}/transcripts/${id}.json`;
   }
+}
+
+function transcriptFileName(name: string): boolean {
+  return name.endsWith(".json") &&
+    CONVERSATION_ID_PATTERN.test(name.slice(0, -".json".length));
 }
 
 async function atomicWriteJson(path: string, value: unknown): Promise<void> {
@@ -183,187 +280,4 @@ async function atomicWriteJson(path: string, value: unknown): Promise<void> {
     mode: 0o600,
   });
   await Deno.rename(temporary, path);
-}
-
-function readIndex(value: unknown): StoredIndex {
-  const record = object(value, "chat index");
-  if (
-    record.schemaVersion !== "casys-desktop-chat-store/1.0" ||
-    !Array.isArray(record.conversations)
-  ) {
-    throw new TypeError("chat index has an unsupported schema");
-  }
-  return {
-    schemaVersion: "casys-desktop-chat-store/1.0",
-    conversations: record.conversations.map(readMetadata),
-  };
-}
-
-function readTranscript(value: unknown, id: string): StoredTranscript {
-  const record = object(value, "chat transcript");
-  if (
-    record.schemaVersion !== "casys-desktop-chat-transcript/1.0" ||
-    record.conversationId !== id || !Array.isArray(record.messages)
-  ) {
-    throw new TypeError("chat transcript has an unsupported schema");
-  }
-  return {
-    schemaVersion: "casys-desktop-chat-transcript/1.0",
-    conversationId: id,
-    messages: record.messages.map(readMessage),
-  };
-}
-
-function readMetadata(value: unknown): Omit<StoredConversation, "messages"> {
-  const entry = object(value, "conversation metadata");
-  const status = entry.status;
-  if (
-    status !== "idle" && status !== "queued" && status !== "running" &&
-    status !== "failed" && status !== "closed"
-  ) throw new TypeError("conversation status is invalid");
-  const kind = entry.kind;
-  if (kind !== undefined && kind !== "project" && kind !== "standalone") {
-    throw new TypeError("conversation kind is invalid");
-  }
-  const projectId = entry.projectId === undefined
-    ? undefined
-    : requiredString(entry.projectId, "project id");
-  const mcpId = entry.mcpId === undefined
-    ? undefined
-    : requiredString(entry.mcpId, "conversation MCP id");
-  const mcpStatus = entry.mcpStatus;
-  if (mcpStatus !== undefined && mcpStatus !== "connected" && mcpStatus !== "failed") {
-    throw new TypeError("conversation MCP status is invalid");
-  }
-  const mcpTools = entry.mcpTools === undefined
-    ? undefined
-    : readStringList(entry.mcpTools, "conversation MCP tools", 64, 128);
-  const knownMessageIdsByKey = entry.knownMessageIdsByKey === undefined
-    ? undefined
-    : readKnownByKey(entry.knownMessageIdsByKey);
-  const toolResults = entry.toolResults === undefined
-    ? undefined
-    : readToolResults(entry.toolResults);
-  return {
-    id: requiredString(entry.id, "conversation id"),
-    ...(kind === undefined ? {} : { kind }),
-    ...(projectId === undefined ? {} : { projectId }),
-    ...(mcpId === undefined ? {} : { mcpId }),
-    ...(mcpStatus === undefined ? {} : { mcpStatus }),
-    ...(mcpTools === undefined ? {} : { mcpTools }),
-    ...(knownMessageIdsByKey === undefined ? {} : { knownMessageIdsByKey }),
-    ...(toolResults === undefined ? {} : { toolResults }),
-    sessionKey: requiredString(entry.sessionKey, "session key"),
-    title: requiredString(entry.title, "conversation title"),
-    status,
-    createdAt: requiredDate(entry.createdAt, "createdAt"),
-    updatedAt: requiredDate(entry.updatedAt, "updatedAt"),
-  };
-}
-
-function readMessage(value: unknown): ChatMessageDto {
-  const message = object(value, "chat message");
-  const role = message.role;
-  const kind = message.kind;
-  if (role !== "user" && role !== "assistant" && role !== "system") {
-    throw new TypeError("chat message role is invalid");
-  }
-  if (
-    kind !== "text" && kind !== "thought" && kind !== "tool" &&
-    kind !== "status" && kind !== "error"
-  ) {
-    throw new TypeError("chat message kind is invalid");
-  }
-  return Object.freeze({
-    id: requiredString(message.id, "message id"),
-    role,
-    kind,
-    text: requiredString(message.text, "message text"),
-    createdAt: requiredDate(message.createdAt, "message createdAt"),
-  });
-}
-
-function object(value: unknown, name: string): Record<string, unknown> {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    throw new TypeError(`${name} must be an object`);
-  }
-  return value as Record<string, unknown>;
-}
-
-function requiredString(value: unknown, name: string): string {
-  if (typeof value !== "string" || value === "") {
-    throw new TypeError(`${name} is invalid`);
-  }
-  return value;
-}
-
-function readStringList(
-  value: unknown,
-  name: string,
-  maxItems: number,
-  maxLength: number,
-): readonly string[] {
-  if (!Array.isArray(value) || value.length > maxItems) {
-    throw new TypeError(`${name} is invalid`);
-  }
-  return Object.freeze(value.map((entry) => {
-    if (typeof entry !== "string" || entry === "" || entry.length > maxLength) {
-      throw new TypeError(`${name} is invalid`);
-    }
-    return entry;
-  }));
-}
-
-function readKnownByKey(value: unknown): Record<string, readonly string[]> {
-  const record = object(value, "known message ids by key");
-  const entries = Object.entries(record);
-  if (entries.length > 16) throw new TypeError("known message ids by key is invalid");
-  const parsed: Record<string, readonly string[]> = {};
-  for (const [key, ids] of entries) {
-    if (key === "" || key.length > 200) {
-      throw new TypeError("known message ids by key is invalid");
-    }
-    parsed[key] = readStringList(ids, "known message ids", 400, 128);
-  }
-  return Object.freeze(parsed);
-}
-
-function readToolResults(value: unknown): readonly StoredToolResult[] {
-  if (!Array.isArray(value) || value.length > 20) {
-    throw new TypeError("tool results are invalid");
-  }
-  return Object.freeze(value.map((entry) => {
-    const candidate = object(entry, "tool result");
-    const toolCallId = requiredString(candidate.toolCallId, "tool result id");
-    const server = requiredString(candidate.server, "tool result server");
-    const tool = requiredString(candidate.tool, "tool result tool");
-    const messageId = requiredString(candidate.messageId, "tool result message");
-    const appUri = requiredString(candidate.appUri, "tool result App URI");
-    if (
-      toolCallId.length > 160 || server.length > 160 || tool.length > 128 ||
-      messageId.length > 160 || !appUri.startsWith("ui://") || appUri.length > 500
-    ) {
-      throw new TypeError("tool result is invalid");
-    }
-    if (typeof candidate.failed !== "boolean") {
-      throw new TypeError("tool result is invalid");
-    }
-    return Object.freeze({
-      toolCallId,
-      server,
-      tool,
-      messageId,
-      appUri,
-      failed: candidate.failed,
-      input: parseChatViewerArguments(candidate.input ?? {}),
-      result: parseChatViewerJson(candidate.result),
-      capturedAt: requiredDate(candidate.capturedAt, "tool result capturedAt"),
-    });
-  }));
-}
-
-function requiredDate(value: unknown, name: string): string {
-  const text = requiredString(value, name);
-  if (!Number.isFinite(Date.parse(text))) throw new TypeError(`${name} is invalid`);
-  return text;
 }

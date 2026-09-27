@@ -1,19 +1,23 @@
 import {
   type ChatCommandResponse,
+  type ChatSaveFileResponse,
   type ChatSnapshotDto,
   type ChatViewerAppFetchResponse,
   DESKTOP_CHAT_PROTOCOL,
   parseChatCommandRequest,
+  parseChatSaveFileRequest,
   parseChatSnapshotRequest,
   parseChatViewerAppFetchRequest,
   parseDesktopChatBindingCommandRequest,
 } from "../../../src/presentation/desktop/chat/contracts.ts";
 import type { ExternalUrlOpener } from "./external-url.ts";
+import { decodeSaveFileBytes, type DesktopChatFileSaver } from "./file-saver.ts";
 import { type ChatViewerBackend, encodeViewerBytes } from "./viewer-backend.ts";
 
 export const CHAT_SNAPSHOT_BINDING = "casysChatSnapshot" as const;
 export const CHAT_COMMAND_BINDING = "casysChatCommand" as const;
 export const CHAT_VIEWER_APP_BINDING = "casysChatViewerApp" as const;
+export const CHAT_SAVE_FILE_BINDING = "casysChatSaveFile" as const;
 
 export interface DesktopChatBindingHost {
   snapshot(
@@ -39,6 +43,7 @@ export function registerDesktopChatBindings(
   externalUrl?: ExternalUrlOpener,
   projectFocus?: DesktopChatProjectFocusAuthority,
   viewerApp?: ChatViewerBackend,
+  fileSaver?: DesktopChatFileSaver,
 ): void {
   // Project owner per conversation id; undefined marks a standalone chat.
   const conversationProjects = new Map<string, string | undefined>();
@@ -158,6 +163,55 @@ export function registerDesktopChatBindings(
         ok: false,
         error: error instanceof Error ? error.message : "Viewer App fetch failed.",
       }) satisfies ChatViewerAppFetchResponse;
+    }
+  });
+  window.bind(CHAT_SAVE_FILE_BINDING, async (value: unknown) => {
+    let input: ReturnType<typeof parseChatSaveFileRequest>;
+    try {
+      input = parseChatSaveFileRequest(value);
+    } catch {
+      return Object.freeze({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId: "invalid",
+        ok: false,
+        error: "File export request is invalid.",
+      }) satisfies ChatSaveFileResponse;
+    }
+    if (fileSaver === undefined) {
+      return Object.freeze({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId: input.requestId,
+        ok: false,
+        error: "File export is unavailable on this Desktop target.",
+      }) satisfies ChatSaveFileResponse;
+    }
+    let bytes: Uint8Array;
+    try {
+      bytes = decodeSaveFileBytes(input.data);
+    } catch {
+      return Object.freeze({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId: input.requestId,
+        ok: false,
+        error: "File export data is invalid.",
+      }) satisfies ChatSaveFileResponse;
+    }
+    try {
+      const saved = await fileSaver.saveFile(input.fileName, bytes);
+      return Object.freeze({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId: input.requestId,
+        ok: true,
+        path: saved.path,
+        bytes: saved.bytes,
+      }) satisfies ChatSaveFileResponse;
+    } catch (error) {
+      return Object.freeze({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId: input.requestId,
+        ok: false,
+        error: error instanceof Error ? error.message : "File export failed.",
+      }) satisfies ChatSaveFileResponse;
     }
   });
 }

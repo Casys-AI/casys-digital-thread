@@ -158,6 +158,39 @@ export interface ChatToolViewerDto {
   readonly messageId: string;
   readonly tool: string;
   readonly appUri: string;
+  /**
+   * Saved-work summary (#51). Absent on entries captured before saving
+   * existed or whose archive record was dropped: the renderer shows those
+   * as explicitly unsaved, never as saved.
+   */
+  readonly archive?: ChatViewerArchiveDto;
+}
+
+/** One saved artifact file: identity plus its retention state. */
+export interface ChatViewerArtifactDto {
+  readonly uri: string;
+  readonly fileName: string;
+  readonly mimeType: string;
+  readonly bytes: number;
+  readonly sha256: string;
+  readonly state: "saved" | "missing";
+  readonly reason?: string;
+}
+
+/** Saved-work summary for one result version: source, receipt, exports. */
+export interface ChatViewerArchiveDto {
+  readonly revision: number;
+  readonly resultDigest: string;
+  readonly server: string;
+  readonly capturedAt: string;
+  readonly failed: boolean;
+  readonly artifacts: readonly ChatViewerArtifactDto[];
+}
+
+/** Store retention policy backing the session work list, when bounded. */
+export interface ChatRetentionDto {
+  readonly days: number;
+  readonly maxConversations: number;
 }
 
 /** Bounded JSON carried between the viewer backend and the renderer. */
@@ -201,6 +234,8 @@ export interface ChatViewerResourceDto {
   readonly bytes: number;
   readonly encoding: "base64";
   readonly data: string;
+  /** Byte origin: retained archive bytes or a live provider read. */
+  readonly source: "saved" | "live";
 }
 
 export interface ChatSnapshotRequest {
@@ -215,6 +250,8 @@ export interface ChatSnapshotDto {
   readonly connectableMcps: readonly ChatConnectableMcpDto[];
   readonly selectedConversationId?: string;
   readonly error?: string;
+  /** Store retention backing saved work; absent when unbounded. */
+  readonly retention?: ChatRetentionDto;
 }
 
 export type ChatCommandRequest =
@@ -566,6 +603,132 @@ export function parseChatViewerAppFetchResponse(
   });
 }
 
+export interface ChatSaveFileRequest {
+  readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
+  readonly requestId: string;
+  readonly fileName: string;
+  readonly data: string;
+}
+
+export interface ChatSaveFileResponse {
+  readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
+  readonly requestId: string;
+  readonly ok: boolean;
+  readonly path?: string;
+  readonly bytes?: number;
+  readonly error?: string;
+}
+
+/**
+ * Renderer→Desktop file export (#51). The Desktop host re-sanitizes the
+ * name, writes outside the chat data root, and reports the exact path.
+ */
+export function parseChatSaveFileRequest(value: unknown): ChatSaveFileRequest {
+  const input = record(value, "save file request");
+  protocol(input.protocol);
+  return Object.freeze({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: opaqueId(input.requestId, "requestId"),
+    fileName: viewerFileName(input.fileName),
+    data: viewerBase64(input.data, "save file data"),
+  });
+}
+
+export function parseChatSaveFileResponse(value: unknown): ChatSaveFileResponse {
+  const input = record(value, "save file response");
+  protocol(input.protocol);
+  const requestId = opaqueId(input.requestId, "requestId");
+  if (typeof input.ok !== "boolean") {
+    throw new TypeError("save file response state is invalid");
+  }
+  if (!input.ok) {
+    return Object.freeze({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId,
+      ok: false,
+      error: text(input.error ?? "File export failed.", "save file error", 500),
+    });
+  }
+  const bytes = input.bytes;
+  if (!Number.isSafeInteger(bytes) || (bytes as number) < 0) {
+    throw new TypeError("save file bytes are invalid");
+  }
+  return Object.freeze({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId,
+    ok: true,
+    path: text(input.path, "save file path", 1_024),
+    bytes: bytes as number,
+  });
+}
+
+/** Versioned export artifact record carried inside an exact tool result. */
+export interface ChatViewerArtifactRecord {
+  readonly uri: string;
+  readonly mimeType: string;
+  readonly bytes: number;
+  readonly sha256: string;
+}
+
+const VIEWER_EXPORT_ARTIFACT_SCHEMA = "build123d-export-artifact/1.0";
+
+/**
+ * Artifact records the host retains bytes for. Mirrors the renderer's
+ * `liveHostReadResources` admission shape; the renderer keeps its own
+ * fingerprint-bound registration for blob-URL serving.
+ */
+export function extractViewerArtifactRecords(
+  result: ChatViewerJson,
+): readonly ChatViewerArtifactRecord[] {
+  if (typeof result !== "object" || result === null || Array.isArray(result)) {
+    return [];
+  }
+  const structured = (result as Record<string, ChatViewerJson>).structuredContent;
+  if (
+    typeof structured !== "object" || structured === null || Array.isArray(structured)
+  ) {
+    return [];
+  }
+  const files = (structured as Record<string, ChatViewerJson>).files;
+  if (!Array.isArray(files)) return [];
+  const records: ChatViewerArtifactRecord[] = [];
+  const seen = new Set<string>();
+  for (const file of files.slice(0, 8)) {
+    if (typeof file !== "object" || file === null || Array.isArray(file)) continue;
+    const artifact = (file as Record<string, ChatViewerJson>).artifact;
+    if (typeof artifact !== "object" || artifact === null || Array.isArray(artifact)) {
+      continue;
+    }
+    const fields = artifact as Record<string, ChatViewerJson>;
+    if (fields.schemaVersion !== VIEWER_EXPORT_ARTIFACT_SCHEMA) continue;
+    const uri = fields.uri;
+    if (
+      typeof uri !== "string" ||
+      (!uri.startsWith("casys://") && !uri.startsWith("ui://"))
+    ) continue;
+    const mimeType = fields.mimeType;
+    if (
+      typeof mimeType !== "string" || mimeType === "" || mimeType.length > 200
+    ) continue;
+    const bytes = fields.bytes;
+    if (
+      typeof bytes !== "number" || !Number.isSafeInteger(bytes) || bytes < 1 ||
+      bytes > 33_554_432
+    ) continue;
+    const sha256 = fields.sha256;
+    // Dedupe by locator, not content: the same bytes under two URIs still
+    // need one manifest record per URI so each reopens from the archive.
+    const locator = `${sha256}\0${uri}`;
+    if (
+      typeof sha256 !== "string" || !VIEWER_ARTIFACT_DIGEST.test(sha256) ||
+      seen.has(locator)
+    ) continue;
+    seen.add(locator);
+    records.push({ uri, mimeType, bytes, sha256 });
+  }
+  return Object.freeze(records);
+}
+
 function parseViewerAppBytesDto(value: unknown): ChatViewerAppBytesDto {
   const input = record(value, "viewer App bytes");
   if (input.encoding !== "base64") {
@@ -639,6 +802,9 @@ export function parseChatSnapshotDto(value: unknown): ChatSnapshotDto {
     "selectedConversationId",
   );
   const error = optionalText(input.error, "error", 1_000);
+  const retention = input.retention === undefined
+    ? undefined
+    : parseRetentionDto(input.retention);
   return Object.freeze({
     protocol: DESKTOP_CHAT_PROTOCOL,
     host,
@@ -646,6 +812,25 @@ export function parseChatSnapshotDto(value: unknown): ChatSnapshotDto {
     connectableMcps,
     ...(selectedConversationId === undefined ? {} : { selectedConversationId }),
     ...(error === undefined ? {} : { error }),
+    ...(retention === undefined ? {} : { retention }),
+  });
+}
+
+function parseRetentionDto(value: unknown): ChatRetentionDto {
+  const input = record(value, "chat retention");
+  const days = input.days;
+  const maxConversations = input.maxConversations;
+  if (
+    !Number.isSafeInteger(days) || (days as number) < 1 ||
+    (days as number) > 3_650 ||
+    !Number.isSafeInteger(maxConversations) || (maxConversations as number) < 1 ||
+    (maxConversations as number) > 10_000
+  ) {
+    throw new TypeError("chat retention is invalid");
+  }
+  return Object.freeze({
+    days: days as number,
+    maxConversations: maxConversations as number,
   });
 }
 
@@ -734,11 +919,61 @@ function parseConversationDto(value: unknown): ChatConversationDto {
 
 function parseToolViewerDto(value: unknown): ChatToolViewerDto {
   const input = record(value, "tool viewer");
+  const archive = input.archive === undefined
+    ? undefined
+    : parseViewerArchiveDto(input.archive);
   return Object.freeze({
     toolCallId: opaqueId(input.toolCallId, "viewer toolCallId"),
     messageId: opaqueId(input.messageId, "viewer messageId"),
     tool: viewerToolName(input.tool),
     appUri: viewerUiUri(input.appUri),
+    ...(archive === undefined ? {} : { archive }),
+  });
+}
+
+function parseViewerArchiveDto(value: unknown): ChatViewerArchiveDto {
+  const input = record(value, "viewer archive");
+  const revision = input.revision;
+  if (
+    !Number.isSafeInteger(revision) || (revision as number) < 1 ||
+    (revision as number) > 1_000_000
+  ) {
+    throw new TypeError("viewer archive revision is invalid");
+  }
+  if (!Array.isArray(input.artifacts) || input.artifacts.length > 8) {
+    throw new TypeError("viewer archive artifacts are invalid");
+  }
+  if (typeof input.failed !== "boolean") {
+    throw new TypeError("viewer archive state is invalid");
+  }
+  return Object.freeze({
+    revision: revision as number,
+    resultDigest: viewerFingerprint(input.resultDigest),
+    server: opaqueId(input.server, "viewer archive server"),
+    capturedAt: isoDate(input.capturedAt, "viewer archive capturedAt"),
+    failed: input.failed,
+    artifacts: Object.freeze(
+      input.artifacts.map(parseViewerArtifactDto),
+    ),
+  });
+}
+
+function parseViewerArtifactDto(value: unknown): ChatViewerArtifactDto {
+  const input = record(value, "viewer artifact");
+  const state = input.state;
+  if (state !== "saved" && state !== "missing") {
+    throw new TypeError("viewer artifact state is invalid");
+  }
+  return Object.freeze({
+    uri: viewerResourceUri(input.uri),
+    fileName: viewerFileName(input.fileName),
+    mimeType: text(input.mimeType, "viewer artifact media type", 200),
+    bytes: viewerDeclaredBytes(input.bytes, "viewer artifact bytes"),
+    sha256: viewerArtifactDigest(input.sha256),
+    state,
+    ...(input.reason === undefined
+      ? {}
+      : { reason: text(input.reason, "viewer artifact reason", 200) }),
   });
 }
 
@@ -776,12 +1011,17 @@ function parseViewerResourceDto(value: unknown): ChatViewerResourceDto {
   if (input.encoding !== "base64") {
     throw new TypeError("viewer resource encoding is invalid");
   }
+  const source = input.source;
+  if (source !== "saved" && source !== "live") {
+    throw new TypeError("viewer resource source is invalid");
+  }
   return Object.freeze({
     uri: viewerResourceUri(input.uri),
     mimeType: text(input.mimeType, "viewer resource media type", 200),
     bytes: viewerByteCount(input.bytes, "viewer resource bytes"),
     encoding: "base64",
     data: viewerBase64(input.data, "viewer resource data"),
+    source,
   });
 }
 
@@ -1154,6 +1394,22 @@ function viewerByteCount(value: unknown, name: string): number {
   return value as number;
 }
 
+const VIEWER_DECLARED_BYTES_MAX = 33_554_432;
+
+/**
+ * Provider-declared export sizes (manifest only, never served bytes).
+ * Served bytes stay under the IPC and viewer byte caps elsewhere.
+ */
+function viewerDeclaredBytes(value: unknown, name: string): number {
+  if (
+    !Number.isSafeInteger(value) || (value as number) < 0 ||
+    (value as number) > VIEWER_DECLARED_BYTES_MAX
+  ) {
+    throw new TypeError(`${name} is invalid`);
+  }
+  return value as number;
+}
+
 function viewerFingerprint(value: unknown): string {
   if (typeof value !== "string" || !VIEWER_FINGERPRINT.test(value)) {
     throw new TypeError("viewer fingerprint is invalid");
@@ -1161,9 +1417,28 @@ function viewerFingerprint(value: unknown): string {
   return value;
 }
 
+const VIEWER_ARTIFACT_DIGEST = /^[a-f0-9]{64}$/;
+
+function viewerArtifactDigest(value: unknown): string {
+  if (typeof value !== "string" || !VIEWER_ARTIFACT_DIGEST.test(value)) {
+    throw new TypeError("viewer artifact digest is invalid");
+  }
+  return value;
+}
+
+function viewerFileName(value: unknown): string {
+  const name = text(value, "viewer artifact file name", 128);
+  if (name.includes("/") || name.includes("\\") || name === "." || name === "..") {
+    throw new TypeError("viewer artifact file name is invalid");
+  }
+  return name;
+}
+
 function viewerBase64(value: unknown, name: string): string {
   if (
     typeof value !== "string" || value.length > VIEWER_DATA_MAX_CHARS ||
+    // Length % 4 == 1 can never decode (atob throws InvalidCharacterError).
+    value.length % 4 === 1 ||
     !VIEWER_BASE64.test(value)
   ) {
     throw new TypeError(`${name} is invalid`);

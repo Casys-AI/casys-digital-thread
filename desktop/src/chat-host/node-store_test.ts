@@ -28,6 +28,125 @@ Deno.test("Chat Host persists metadata and bounded transcript outside Thread and
   }
 });
 
+Deno.test("Chat Host store round-trips standalone kind, MCP, and viewer archive", async () => {
+  const root = await Deno.makeTempDir({ prefix: "casys-chat-store-" });
+  try {
+    const now = new Date("2026-09-27T12:00:00.000Z");
+    const store = new NodeChatConversationStore(root, { now: () => now });
+    const sha256 = "ab".repeat(32);
+    await store.saveArtifact(sha256, new TextEncoder().encode("glb-bytes"));
+    const entry: StoredConversation = {
+      id: "conversation:solo",
+      kind: "standalone",
+      sessionKey: "casys-desktop-exclusive/standalone/conversation:solo",
+      title: "Standalone",
+      status: "idle",
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      messages: [],
+      mcpId: "build123d",
+      mcpStatus: "connected",
+      mcpTools: ["build123d_export"],
+      toolResults: [
+        {
+          toolCallId: "tool-call-1",
+          server: "build123d",
+          tool: "build123d_export",
+          messageId: "message-1",
+          appUri: "ui://mcp-build123d/results-viewer",
+          failed: false,
+          input: { script: "result = 1" },
+          result: { volume: 1000 },
+          capturedAt: now.toISOString(),
+          revision: 1,
+          resultDigest: `sha256:${"cd".repeat(32)}`,
+          artifacts: [
+            {
+              uri: `casys://build123d/artifacts/${sha256}.glb`,
+              fileName: `${sha256}.glb`,
+              mimeType: "model/gltf-binary",
+              bytes: 9,
+              sha256,
+              state: "saved",
+              savedAt: now.toISOString(),
+            },
+          ],
+        },
+      ],
+    };
+    await store.save([entry]);
+    const loaded = await store.load();
+    assertEquals(loaded.length, 1);
+    assertEquals(loaded[0].kind, "standalone");
+    assertEquals(loaded[0].mcpId, "build123d");
+    assertEquals(loaded[0].mcpTools, ["build123d_export"]);
+    assertEquals(loaded[0].toolResults?.length, 1);
+    assertEquals(loaded[0].toolResults?.[0].revision, 1);
+    assertEquals(
+      loaded[0].toolResults?.[0].artifacts?.[0].state,
+      "saved",
+    );
+    assertEquals(
+      new TextDecoder().decode(await store.loadArtifact(sha256)),
+      "glb-bytes",
+    );
+    assertEquals(store.retention(), { days: 30, maxConversations: 50 });
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
+Deno.test("Chat Host store prunes only bytes unreferenced by retained work", async () => {
+  const root = await Deno.makeTempDir({ prefix: "casys-chat-store-" });
+  try {
+    const now = new Date("2026-09-27T12:00:00.000Z");
+    const store = new NodeChatConversationStore(root, { now: () => now });
+    const kept = "11".repeat(32);
+    const dropped = "22".repeat(32);
+    await store.saveArtifact(kept, new Uint8Array([1]));
+    await store.saveArtifact(dropped, new Uint8Array([2]));
+    const entry: StoredConversation = {
+      id: "conversation:solo",
+      kind: "standalone",
+      sessionKey: "casys-desktop-exclusive/standalone/conversation:solo",
+      title: "Standalone",
+      status: "idle",
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      messages: [],
+      toolResults: [
+        {
+          toolCallId: "tool-call-1",
+          server: "build123d",
+          tool: "t_one",
+          messageId: "message-1",
+          appUri: "ui://mcp-build123d/results-viewer",
+          failed: false,
+          input: {},
+          result: {},
+          capturedAt: now.toISOString(),
+          artifacts: [
+            {
+              uri: `casys://build123d/artifacts/${kept}.glb`,
+              fileName: "kept.glb",
+              mimeType: "model/gltf-binary",
+              bytes: 1,
+              sha256: kept,
+              state: "saved",
+            },
+          ],
+        },
+      ],
+    };
+    await store.save([entry]);
+    assertEquals(await store.loadArtifact(kept), new Uint8Array([1]));
+    assertEquals(await store.loadArtifact(dropped), undefined);
+    assertEquals(await store.loadArtifact("not-a-digest"), undefined);
+  } finally {
+    await Deno.remove(root, { recursive: true });
+  }
+});
+
 function conversation(
   id: string,
   updatedAt: string,

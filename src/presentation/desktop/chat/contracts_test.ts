@@ -1,10 +1,14 @@
 import { assertEquals, assertThrows } from "@std/assert";
 import {
   DESKTOP_CHAT_PROTOCOL,
+  extractViewerArtifactRecords,
   isChatOpaqueId,
   isChatViewerToolName,
   isChatViewerUiUri,
   parseChatCommandRequest,
+  parseChatCommandResponse,
+  parseChatSaveFileRequest,
+  parseChatSaveFileResponse,
   parseChatSnapshotDto,
   parseChatViewerAppFetchRequest,
   parseChatViewerAppFetchResponse,
@@ -282,6 +286,262 @@ Deno.test("viewer arguments require a bounded object record", () => {
     () => parseChatViewerArguments({ blob: "z".repeat(65_537) }),
     TypeError,
     "oversized string",
+  );
+});
+
+const ARCHIVE_SHA = "cd".repeat(32);
+
+function archivedViewer(overrides: Record<string, unknown> = {}) {
+  return {
+    toolCallId: "tool-call-1",
+    messageId: "message-1",
+    tool: "build123d_export",
+    appUri: "ui://mcp-build123d/results-viewer",
+    archive: {
+      revision: 2,
+      resultDigest: `sha256:${ARCHIVE_SHA}`,
+      server: "build123d",
+      capturedAt: "2026-09-27T00:00:00.000Z",
+      failed: false,
+      artifacts: [
+        {
+          uri: `casys://build123d/artifacts/${ARCHIVE_SHA}.glb`,
+          fileName: `${ARCHIVE_SHA}.glb`,
+          mimeType: "model/gltf-binary",
+          bytes: 3408,
+          sha256: ARCHIVE_SHA,
+          state: "saved",
+        },
+        {
+          uri: "casys://build123d/artifacts/huge.step",
+          fileName: "huge.step",
+          mimeType: "model/step",
+          bytes: 9_000_000,
+          sha256: "ef".repeat(32),
+          state: "missing",
+          reason: "The export exceeds the 512 KiB retained-bytes cap.",
+        },
+      ],
+      ...overrides,
+    },
+  };
+}
+
+Deno.test("snapshot carries retention and per-version saved-work archives", () => {
+  const parsed = parseChatSnapshotDto({
+    ...snapshotWith(conversation({ viewers: [archivedViewer()] })),
+    retention: { days: 30, maxConversations: 50 },
+  });
+  assertEquals(parsed.retention, { days: 30, maxConversations: 50 });
+  const archive = parsed.conversations[0]?.viewers[0]?.archive;
+  assertEquals(archive?.revision, 2);
+  assertEquals(archive?.artifacts.length, 2);
+  assertEquals(archive?.artifacts[1]?.state, "missing");
+});
+
+Deno.test("snapshot refuses malformed retention and archive shapes", () => {
+  assertThrows(
+    () =>
+      parseChatSnapshotDto({
+        ...snapshotWith(conversation()),
+        retention: { days: 0, maxConversations: 50 },
+      }),
+    TypeError,
+    "chat retention is invalid",
+  );
+  assertThrows(
+    () =>
+      parseChatSnapshotDto(
+        snapshotWith(
+          conversation({ viewers: [archivedViewer({ revision: 0 })] }),
+        ),
+      ),
+    TypeError,
+    "viewer archive revision is invalid",
+  );
+  assertThrows(
+    () =>
+      parseChatSnapshotDto(
+        snapshotWith(
+          conversation({
+            viewers: [{
+              ...archivedViewer(),
+              archive: {
+                ...(archivedViewer().archive as Record<string, unknown>),
+                artifacts: [{
+                  uri: "casys://build123d/artifacts/x.glb",
+                  fileName: "../escape.glb",
+                  mimeType: "model/gltf-binary",
+                  bytes: 8,
+                  sha256: ARCHIVE_SHA,
+                  state: "saved",
+                }],
+              },
+            }],
+          }),
+        ),
+      ),
+    TypeError,
+    "viewer artifact file name is invalid",
+  );
+});
+
+Deno.test("viewer resource requires an explicit saved-or-live source", () => {
+  const response = (source: unknown) => ({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "request-read-1",
+    ok: true,
+    viewerResource: {
+      uri: "casys://build123d/artifacts/x.glb",
+      mimeType: "model/gltf-binary",
+      bytes: 4,
+      encoding: "base64",
+      data: "Z2xiAA==",
+      source,
+    },
+  });
+  assertEquals(
+    parseChatCommandResponse(response("saved")).viewerResource?.source,
+    "saved",
+  );
+  assertEquals(
+    parseChatCommandResponse(response("live")).viewerResource?.source,
+    "live",
+  );
+  assertThrows(
+    () => parseChatCommandResponse(response("archived")),
+    TypeError,
+    "viewer resource source is invalid",
+  );
+  assertThrows(
+    () => parseChatCommandResponse(response(undefined)),
+    TypeError,
+    "viewer resource source is invalid",
+  );
+});
+
+Deno.test("save-file request pins names and bytes, response reports paths", () => {
+  const parsed = parseChatSaveFileRequest({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "save-1",
+    fileName: "box-v1.glb",
+    data: "Z2xiAA==",
+  });
+  assertEquals(parsed.fileName, "box-v1.glb");
+  assertThrows(
+    () =>
+      parseChatSaveFileRequest({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId: "save-2",
+        fileName: "../escape.glb",
+        data: "Z2xiAA==",
+      }),
+    TypeError,
+    "viewer artifact file name is invalid",
+  );
+  const ok = parseChatSaveFileResponse({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "save-1",
+    ok: true,
+    path: "/Users/test/Downloads/box-v1.glb",
+    bytes: 4,
+  });
+  assertEquals(ok.ok, true);
+  assertEquals(ok.path, "/Users/test/Downloads/box-v1.glb");
+  const failed = parseChatSaveFileResponse({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "save-2",
+    ok: false,
+    error: "No free export file name was found in Downloads.",
+  });
+  assertEquals(failed.ok, false);
+});
+
+Deno.test("artifact extraction admits only versioned digest-bound records", () => {
+  const valid = {
+    schemaVersion: "build123d-export-artifact/1.0",
+    uri: `casys://build123d/artifacts/${ARCHIVE_SHA}.glb`,
+    mimeType: "model/gltf-binary",
+    bytes: 3408,
+    sha256: ARCHIVE_SHA,
+  };
+  assertEquals(
+    extractViewerArtifactRecords({
+      structuredContent: {
+        files: [
+          { artifact: valid },
+          { artifact: { ...valid } },
+          { artifact: { ...valid, schemaVersion: "other/1.0" } },
+          { artifact: { ...valid, uri: "https://example.com/x.glb" } },
+          {
+            artifact: { ...valid, sha256: "ef".repeat(32), bytes: 40_000_000 },
+          },
+          { artifact: "no" },
+          "no",
+        ],
+      },
+    }),
+    [{
+      uri: valid.uri,
+      mimeType: valid.mimeType,
+      bytes: valid.bytes,
+      sha256: valid.sha256,
+    }],
+  );
+  assertEquals(extractViewerArtifactRecords({}), []);
+  assertEquals(extractViewerArtifactRecords(null), []);
+});
+
+Deno.test("artifact extraction keeps one record per URI for shared bytes", () => {
+  const first = `casys://build123d/artifacts/a.step`;
+  const second = `casys://build123d/artifacts/b.step`;
+  const records = extractViewerArtifactRecords({
+    structuredContent: {
+      files: [
+        {
+          artifact: {
+            schemaVersion: "build123d-export-artifact/1.0",
+            uri: first,
+            mimeType: "model/step",
+            bytes: 4,
+            sha256: ARCHIVE_SHA,
+          },
+        },
+        {
+          artifact: {
+            schemaVersion: "build123d-export-artifact/1.0",
+            uri: second,
+            mimeType: "model/step",
+            bytes: 4,
+            sha256: ARCHIVE_SHA,
+          },
+        },
+        {
+          artifact: {
+            schemaVersion: "build123d-export-artifact/1.0",
+            uri: first,
+            mimeType: "model/step",
+            bytes: 4,
+            sha256: ARCHIVE_SHA,
+          },
+        },
+      ],
+    },
+  });
+  assertEquals(records.map((record) => record.uri), [first, second]);
+});
+
+Deno.test("save-file data must be decodable base64", () => {
+  assertThrows(
+    () =>
+      parseChatSaveFileRequest({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId: "save-length",
+        fileName: "box-v1.glb",
+        data: "abcde",
+      }),
+    TypeError,
+    "save file data is invalid",
   );
 });
 

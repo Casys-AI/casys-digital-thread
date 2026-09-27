@@ -1,4 +1,4 @@
-import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
+import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import type { ChatMcpServerConfig } from "./runtime-port.ts";
 import {
   createRefusingViewerBackend,
@@ -37,7 +37,7 @@ function rpcFetch(
   result: unknown,
   calls: RpcCall[] = [],
 ): typeof fetch {
-  return (async (url: string | URL | Request, init?: RequestInit) => {
+  return ((url: string | URL | Request, init?: RequestInit) => {
     const body = JSON.parse(String(init?.body)) as {
       method: string;
       params: Record<string, unknown>;
@@ -49,9 +49,11 @@ function rpcFetch(
       nameHeader: headers.get("Mcp-Name"),
       params: body.params,
     });
-    return new Response(
-      JSON.stringify({ jsonrpc: "2.0", id: 1, result }),
-      { status: 200, headers: { "content-type": "application/json" } },
+    return Promise.resolve(
+      new Response(
+        JSON.stringify({ jsonrpc: "2.0", id: 1, result }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
     );
   }) as typeof fetch;
 }
@@ -243,8 +245,10 @@ Deno.test("callTool posts the exact name and arguments to the owning upstream", 
 Deno.test("oversize provider responses are refused", async () => {
   const backend = createRegistryViewerBackend({
     servers: [server()],
-    fetch: (async () =>
-      new Response("x".repeat(2_000_000), { status: 200 })) as typeof fetch,
+    fetch: (() =>
+      Promise.resolve(
+        new Response("x".repeat(2_000_000), { status: 200 }),
+      )) as typeof fetch,
   });
   await assertRejects(
     () => backend.callTool("build123d", "build123d_execute", {}),

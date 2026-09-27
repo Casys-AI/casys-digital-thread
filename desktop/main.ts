@@ -9,6 +9,7 @@ import {
 import { startDesktopApplication } from "./src/application/startup.ts";
 import { createWorkbenchProjectFocusAuthority } from "./src/application/workbench-project-focus.ts";
 import { registerDesktopChatBindings } from "./src/chat/bindings.ts";
+import { createDownloadsFileSaver } from "./src/chat/file-saver.ts";
 import { connectableMcpServers } from "./src/chat/mcp-servers.ts";
 import { createRegistryViewerBackend } from "./src/chat/viewer-backend.ts";
 import { registerDesktopCatalogueBindings } from "./src/catalogue/bindings.ts";
@@ -110,6 +111,7 @@ registerDesktopChatBindings(
     ? undefined
     : createWorkbenchProjectFocusAuthority(application.workbenchSession),
   createRegistryViewerBackend({ servers: connectableMcpServers() }),
+  createDownloadsFileSaver(readEnvironment("HOME")),
 );
 const catalogue = await startCatalogueService({ platform, env: readEnvironment });
 registerDesktopCatalogueBindings(browserWindow, catalogue);

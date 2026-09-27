@@ -11,6 +11,8 @@ import {
   type ChatConversationDto,
   type ChatFormFieldDto,
   type ChatPendingInteractionDto,
+  type ChatRetentionDto,
+  type ChatSaveFileResponse,
   type ChatSnapshotDto,
   type ChatViewerAppBytesDto,
   type ChatViewerAppFetchResponse,
@@ -20,11 +22,13 @@ import {
   DESKTOP_CHAT_PROTOCOL,
   type DesktopChatBindingCommandRequest,
   parseChatCommandResponse,
+  parseChatSaveFileResponse,
   parseChatSnapshotDto,
   parseChatViewerAppFetchResponse,
   parseChatViewerArguments,
 } from "../../../presentation/desktop/chat/contracts.ts";
 import { type ChatViewerDispatch, ChatViewerPanel } from "./chat-viewer-panel.tsx";
+import { ChatSessionWorkList } from "./chat-session-work.tsx";
 import {
   type CatalogueCommandResponse,
   type CatalogueEntryDto,
@@ -49,6 +53,12 @@ interface DesktopBindings {
     readonly uri: string;
     readonly fingerprint: string;
   }): Promise<ChatViewerAppFetchResponse>;
+  casysChatSaveFile(input: {
+    readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
+    readonly requestId: string;
+    readonly fileName: string;
+    readonly data: string;
+  }): Promise<ChatSaveFileResponse>;
   casysCatalogueSnapshot(input: {
     readonly protocol: typeof DESKTOP_CATALOGUE_PROTOCOL;
   }): Promise<CatalogueSnapshotDto>;
@@ -258,6 +268,26 @@ export function DesktopChat(
         }
         return response.app;
       },
+      saveFile: async (
+        fileName: string,
+        data: string,
+      ): Promise<{ readonly path: string; readonly bytes: number }> => {
+        const response = parseChatSaveFileResponse(
+          await bindings.casysChatSaveFile({
+            protocol: DESKTOP_CHAT_PROTOCOL,
+            requestId: requestId(),
+            fileName,
+            data,
+          }),
+        );
+        if (
+          !response.ok || response.path === undefined ||
+          response.bytes === undefined
+        ) {
+          throw new Error(response.error ?? "File export failed.");
+        }
+        return { path: response.path, bytes: response.bytes };
+      },
     };
 
   const standaloneConversations =
@@ -334,6 +364,7 @@ export function DesktopChat(
             busy={busy}
             command={command}
             viewerDispatch={viewerDispatch}
+            retention={snapshot?.retention}
           />
         )
         : (
@@ -623,10 +654,12 @@ function Conversation({
   busy,
   command,
   viewerDispatch,
+  retention,
 }: CommandProps & {
   readonly conversation: ChatConversationDto;
   readonly connectableMcps: readonly ChatConnectableMcpDto[];
   readonly viewerDispatch: ChatViewerDispatch | undefined;
+  readonly retention: ChatRetentionDto | undefined;
 }): JSX.Element {
   const [text, setText] = useState("");
   const standalone = conversation.kind === "standalone";
@@ -663,6 +696,20 @@ function Conversation({
           connectableMcps={connectableMcps}
           busy={busy}
           command={command}
+        />
+      )}
+      {standalone && (
+        <ChatSessionWorkList
+          conversation={conversation}
+          retention={retention}
+          sendMessage={(text) =>
+            void command({
+              protocol: DESKTOP_CHAT_PROTOCOL,
+              requestId: requestId(),
+              command: "message.send",
+              conversationId: conversation.id,
+              text,
+            })}
         />
       )}
       <ol className="desktop-chat-messages" aria-live="polite">

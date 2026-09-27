@@ -124,6 +124,7 @@ Deno.test("live host handshakes, delivers the exact result, and gates tools", as
           bytes: 3,
           encoding: "base64",
           data: "Z2xi",
+          source: "live",
         });
       },
     },

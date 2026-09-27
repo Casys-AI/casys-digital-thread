@@ -1577,31 +1577,31 @@ class FakeViewerBackend implements ChatViewerBackend {
   readonly toolCalls: Array<{ server: string; name: string }> = [];
   readonly resourceCalls: Array<{ server: string; uri: string }> = [];
 
-  async resolveApp(server: string, uri: string) {
+  resolveApp(server: string, uri: string) {
     this.appCalls.push({ server, uri });
     const bytes = new TextEncoder().encode(VIEWER_APP_HTML);
-    return {
+    return Promise.resolve({
       uri,
       mimeType: "text/html;profile=mcp-app",
       bytes,
       fingerprint: `sha256:${"01".repeat(32)}`,
-    };
+    });
   }
 
-  async callTool(server: string, name: string, _args: unknown): Promise<unknown> {
+  callTool(server: string, name: string, _args: unknown): Promise<unknown> {
     this.toolCalls.push({ server, name });
-    return { echoed: name };
+    return Promise.resolve({ echoed: name });
   }
 
-  async readResource(server: string, uri: string): Promise<unknown> {
+  readResource(server: string, uri: string): Promise<unknown> {
     this.resourceCalls.push({ server, uri });
-    return {
+    return Promise.resolve({
       contents: [{
         uri,
         mimeType: "model/step",
         blob: "c3RlcA==",
       }],
-    };
+    });
   }
 }
 
@@ -1890,7 +1890,11 @@ async function captureViewerResult(
   pool: ReturnType<typeof standalonePool>,
   coordinator: ChatCoordinator,
   conversationId: string,
-  calls: ReadonlyArray<{ toolCallId: string; tool: string }>,
+  calls: ReadonlyArray<{
+    toolCallId: string;
+    tool: string;
+    result?: Record<string, unknown>;
+  }>,
 ): Promise<void> {
   await coordinator.command(send("r1", conversationId, "Model a box"));
   await until(() => pool.mcp.turns.length === 1);
@@ -1900,7 +1904,7 @@ async function captureViewerResult(
       text: call.tool,
       toolCallId: call.toolCallId,
       rawInput: { server: "build123d", tool: call.tool, arguments: {} },
-      rawOutput: { result: viewerToolResult(11) },
+      rawOutput: { result: call.result ?? viewerToolResult(11) },
     });
   }
   pool.mcp.turns[0].finish({ status: "completed" });
@@ -2062,12 +2066,614 @@ Deno.test("viewer listing hides entries from a detached server", async () => {
 });
 
 class HugeMimeViewerBackend extends FakeViewerBackend {
-  override async readResource(server: string, uri: string): Promise<unknown> {
-    return {
+  override readResource(_server: string, uri: string): Promise<unknown> {
+    return Promise.resolve({
       contents: [{ uri, mimeType: "x".repeat(201), blob: "c3RlcA==" }],
-    };
+    });
   }
 }
+
+async function sha256OfText(text: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(text),
+  );
+  return [...new Uint8Array(digest)]
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function viewerExportResult(
+  records: ReadonlyArray<{
+    uri: string;
+    mimeType: string;
+    bytes: number;
+    sha256: string;
+  }>,
+): Record<string, unknown> {
+  return {
+    ...viewerToolResult(11),
+    structuredContent: {
+      files: records.map((record) => ({
+        artifact: {
+          schemaVersion: "build123d-export-artifact/1.0",
+          ...record,
+        },
+      })),
+    },
+  };
+}
+
+Deno.test("capture archives export bytes with revision and digest", async () => {
+  const backend = new FakeViewerBackend();
+  const store = new MemoryChatConversationStore();
+  const pool = standalonePool({
+    probeTools: ["t_one"],
+    viewerBackend: backend,
+    store,
+  });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  const sha256 = await sha256OfText("step");
+  const uri = `casys://build123d/artifacts/${sha256}.step`;
+  await captureViewerResult(pool, coordinator, conversationId, [
+    {
+      toolCallId: "tool-call-1",
+      tool: "t_one",
+      result: viewerExportResult([{ uri, mimeType: "model/step", bytes: 4, sha256 }]),
+    },
+  ]);
+  const snapshot = coordinator.snapshot(conversationId);
+  const archive = snapshot.conversations[0].viewers[0]?.archive;
+  assertEquals(archive?.revision, 1);
+  assertEquals(archive?.resultDigest?.startsWith("sha256:"), true);
+  assertEquals(archive?.artifacts.length, 1);
+  assertEquals(archive?.artifacts[0]?.state, "saved");
+  assertEquals(archive?.artifacts[0]?.fileName, `${sha256}.step`);
+  assertEquals(backend.resourceCalls.length, 1);
+  assertEquals(await store.loadArtifact(sha256), new TextEncoder().encode("step"));
+  assertEquals(snapshot.retention, undefined);
+  parseChatSnapshotDto(snapshot);
+  await coordinator.stop();
+});
+
+Deno.test("resource-read serves retained bytes without touching the provider", async () => {
+  const backend = new FakeViewerBackend();
+  const pool = standalonePool({ probeTools: ["t_one"], viewerBackend: backend });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  const sha256 = await sha256OfText("step");
+  const uri = `casys://build123d/artifacts/${sha256}.step`;
+  await captureViewerResult(pool, coordinator, conversationId, [
+    {
+      toolCallId: "tool-call-1",
+      tool: "t_one",
+      result: viewerExportResult([{ uri, mimeType: "model/step", bytes: 4, sha256 }]),
+    },
+  ]);
+  assertEquals(backend.resourceCalls.length, 1);
+  const read = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "read-saved",
+    command: "viewer.resource-read",
+    conversationId,
+    toolCallId: "tool-call-1",
+    uri,
+  });
+  assert(read.ok);
+  assertEquals(read.viewerResource?.source, "saved");
+  assertEquals(read.viewerResource?.data, "c3RlcA==");
+  assertEquals(backend.resourceCalls.length, 1);
+  parseChatCommandResponse(read);
+  await coordinator.stop();
+});
+
+class FailingResourceBackend extends FakeViewerBackend {
+  override readResource(server: string, uri: string): Promise<unknown> {
+    if (uri.includes("unreadable")) {
+      return Promise.reject(new Error("provider forgot the export"));
+    }
+    if (uri.includes("multiblock")) {
+      return Promise.resolve({
+        contents: [
+          { uri, mimeType: "model/step", blob: "c3RlcA==" },
+          { uri, mimeType: "model/step", blob: "c3RlcA==" },
+        ],
+      });
+    }
+    return super.readResource(server, uri);
+  }
+}
+
+Deno.test("capture records missing artifacts with explicit reasons", async () => {
+  const backend = new FailingResourceBackend();
+  const pool = standalonePool({ probeTools: ["t_one"], viewerBackend: backend });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  const sha256 = await sha256OfText("step");
+  await captureViewerResult(pool, coordinator, conversationId, [
+    {
+      toolCallId: "tool-call-1",
+      tool: "t_one",
+      result: viewerExportResult([
+        {
+          uri: "casys://build123d/artifacts/huge.step",
+          mimeType: "model/step",
+          bytes: 600_000,
+          sha256: "ee".repeat(32),
+        },
+        {
+          uri: "casys://build123d/artifacts/unreadable.step",
+          mimeType: "model/step",
+          bytes: 4,
+          sha256,
+        },
+        {
+          uri: "casys://build123d/artifacts/tampered.step",
+          mimeType: "model/step",
+          bytes: 4,
+          sha256: "ff".repeat(32),
+        },
+        {
+          uri: "casys://build123d/artifacts/resized.step",
+          mimeType: "model/step",
+          bytes: 5,
+          sha256,
+        },
+        {
+          uri: "casys://build123d/artifacts/multiblock.step",
+          mimeType: "model/step",
+          bytes: 4,
+          sha256,
+        },
+      ]),
+    },
+  ]);
+  const snapshot = coordinator.snapshot(conversationId);
+  assertEquals(snapshot.conversations[0].status, "idle");
+  const artifacts = snapshot.conversations[0].viewers[0]?.archive?.artifacts ?? [];
+  assertEquals(artifacts.map((artifact) => artifact.state), [
+    "missing",
+    "missing",
+    "missing",
+    "missing",
+    "missing",
+  ]);
+  assertEquals(
+    artifacts[0]?.reason,
+    "The export exceeds the 512 KiB retained-bytes cap.",
+  );
+  assertEquals(
+    artifacts[1]?.reason,
+    "The provider read failed before the bytes were retained.",
+  );
+  assertEquals(
+    artifacts[2]?.reason,
+    "The provider's export failed the digest check.",
+  );
+  assertEquals(
+    artifacts[3]?.reason,
+    "The provider's export changed size before it was retained.",
+  );
+  assertEquals(
+    artifacts[4]?.reason,
+    "Resource read returned multiple content blocks.",
+  );
+  parseChatSnapshotDto(snapshot);
+  await coordinator.stop();
+});
+
+Deno.test("same-id redelivery replaces the entry but keeps its revision", async () => {
+  const backend = new FakeViewerBackend();
+  const pool = standalonePool({ probeTools: ["t_one"], viewerBackend: backend });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await captureViewerResult(pool, coordinator, conversationId, [
+    { toolCallId: "tool-call-1", tool: "t_one" },
+    { toolCallId: "tool-call-1", tool: "t_one" },
+  ]);
+  const viewers = coordinator.snapshot(conversationId).conversations[0].viewers;
+  assertEquals(viewers.length, 1);
+  assertEquals(viewers[0]?.archive?.revision, 1);
+  await coordinator.stop();
+});
+
+class GatedMemoryStore extends MemoryChatConversationStore {
+  gated = false;
+  saveCalls = 0;
+  #release: (() => void) | undefined;
+  #held: Promise<void> | undefined;
+
+  override async save(
+    conversations: readonly StoredConversation[],
+  ): Promise<void> {
+    this.saveCalls += 1;
+    if (this.gated) {
+      this.#held ??= new Promise<void>((resolve) => {
+        this.#release = resolve;
+      });
+      await this.#held;
+    }
+    return super.save(conversations);
+  }
+
+  release(): void {
+    this.gated = false;
+    this.#release?.();
+  }
+}
+
+class CountingResourceBackend extends FakeViewerBackend {
+  completedReads = 0;
+
+  override readResource(server: string, uri: string): Promise<unknown> {
+    return super.readResource(server, uri).then((result) => {
+      this.completedReads += 1;
+      return result;
+    });
+  }
+}
+
+Deno.test("stale persist queued during archival cannot prune new bytes", async () => {
+  const backend = new CountingResourceBackend();
+  const store = new GatedMemoryStore();
+  const pool = standalonePool({
+    probeTools: ["t_one"],
+    viewerBackend: backend,
+    store,
+  });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  const sha256 = await sha256OfText("step");
+  const uri = `casys://build123d/artifacts/${sha256}.step`;
+  await coordinator.command(send("r1", conversationId, "Model a box"));
+  await until(() => pool.mcp.turns.length === 1);
+  // Queue a stale persist FIRST and hold its execution: the snapshot cannot
+  // reference the entry captured below. The archival commit must land behind
+  // it (bytes, then manifest), so the stale save runs while the bytes are
+  // still absent. Pre-fix code wrote bytes outside the tail: they landed
+  // during the hold and the stale save pruned them.
+  const permission = coordinator.requestPermission({
+    sessionId: "agent-session-mcp",
+    inferredKind: "read",
+    raw: {
+      toolCall: {
+        toolCallId: "tool-1",
+        title: "Read project status",
+        kind: "read",
+      },
+      options: [
+        { name: "Allow once", kind: "allow_once" },
+        { name: "Reject", kind: "reject_once" },
+      ],
+    },
+  }, new AbortController().signal);
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].pendingInteraction !==
+      undefined
+  );
+  const pending =
+    coordinator.snapshot(conversationId).conversations[0].pendingInteraction;
+  if (pending?.type !== "permission") throw new Error("missing permission");
+  store.gated = true;
+  const resolved = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "permission-during-capture",
+    command: "permission.resolve",
+    conversationId,
+    correlationId: pending.correlationId,
+    decision: "allow_once",
+  });
+  assert(resolved.ok);
+  assertEquals(await permission, { outcome: "allow_once" });
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "t_one",
+    toolCallId: "tool-call-1",
+    rawInput: { server: "build123d", tool: "t_one", arguments: {} },
+    rawOutput: {
+      result: viewerExportResult([{ uri, mimeType: "model/step", bytes: 4, sha256 }]),
+    },
+  });
+  pool.mcp.turns[0].finish({ status: "completed" });
+  // Wait for the archival fetch to complete: the until() poll gap drains
+  // every pending microtask, so pre-fix code has necessarily landed its
+  // bytes (outside the tail) while the stale save is still held. Releasing
+  // then forces the stale save to run over landed-but-unreferenced bytes:
+  // pre-fix code prunes them (test fails); the tail commit orders the stale
+  // save first, then bytes, then manifest (test passes).
+  await until(() => backend.completedReads > 0);
+  store.release();
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  assertEquals(
+    await store.loadArtifact(sha256),
+    new TextEncoder().encode("step"),
+  );
+  const snapshot = coordinator.snapshot(conversationId);
+  assertEquals(
+    snapshot.conversations[0].viewers[0]?.archive?.artifacts[0]?.state,
+    "saved",
+  );
+  parseChatSnapshotDto(snapshot);
+  await coordinator.stop();
+});
+
+class FailingOnceStore extends MemoryChatConversationStore {
+  failNextSave = false;
+
+  override save(
+    conversations: readonly StoredConversation[],
+  ): Promise<void> {
+    if (this.failNextSave) {
+      this.failNextSave = false;
+      return Promise.reject(new Error("disk is full"));
+    }
+    return super.save(conversations);
+  }
+}
+
+Deno.test("one failed persist never bricks later persistence", async () => {
+  const store = new FailingOnceStore();
+  const pool = standalonePool({ probeTools: ["t_one"], store });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  store.failNextSave = true;
+  const failed = await coordinator.command(send("r1", conversationId, "First"));
+  assertEquals(failed.ok, false);
+  const recovered = await coordinator.command(send("r2", conversationId, "Second"));
+  assert(recovered.ok);
+  await until(() => pool.standalone.turns.length === 1);
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const stored = await store.load();
+  assertEquals(
+    stored[0].messages.filter((message) => message.role === "user").map((message) =>
+      message.text
+    ),
+    ["First", "Second"],
+  );
+  await coordinator.stop();
+});
+
+Deno.test("reopened work serves saved bytes with zero solver calls", async () => {
+  const backend = new FakeViewerBackend();
+  const store = new MemoryChatConversationStore();
+  const sha256 = await sha256OfText("step");
+  const uri = `casys://build123d/artifacts/${sha256}.step`;
+  const coordinator = await standalonePool({ store }).coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  // Bytes first, then the referencing manifest: the store prunes anything
+  // unreferenced on save, so the order is the honest lifecycle.
+  await store.saveArtifact(sha256, new TextEncoder().encode("step"));
+  await store.save([{
+    id: conversationId,
+    kind: "standalone",
+    sessionKey: `casys-desktop-exclusive/standalone/${conversationId}/mcp/build123d`,
+    title: "Standalone",
+    status: "idle",
+    createdAt: "2026-09-27T00:00:00.000Z",
+    updatedAt: "2026-09-27T00:00:00.000Z",
+    messages: [],
+    mcpId: "build123d",
+    mcpStatus: "connected",
+    mcpTools: ["t_one"],
+    toolResults: [{
+      toolCallId: "tool-call-1",
+      server: "build123d",
+      tool: "t_one",
+      messageId: "message-1",
+      appUri: VIEWER_APP_URI,
+      failed: false,
+      input: {},
+      result: viewerToolResult(11),
+      capturedAt: "2026-09-27T00:00:00.000Z",
+      revision: 1,
+      resultDigest: `sha256:${"cd".repeat(32)}`,
+      artifacts: [{
+        uri,
+        fileName: `${sha256}.step`,
+        mimeType: "model/step",
+        bytes: 4,
+        sha256,
+        state: "saved",
+      }],
+    }],
+  } as unknown as StoredConversation]);
+  // A fresh coordinator over the same store is the restart: open the viewer
+  // and read the export without any solver (tool-call) invocation.
+  const revived = await standalonePool({
+    probeTools: ["t_one"],
+    viewerBackend: backend,
+    store,
+  })
+    .coordinator();
+  const opened = await revived.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "reopen-1",
+    command: "viewer.open",
+    conversationId,
+    toolCallId: "tool-call-1",
+  });
+  assert(opened.ok);
+  const read = await revived.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "reopen-read-1",
+    command: "viewer.resource-read",
+    conversationId,
+    toolCallId: "tool-call-1",
+    uri,
+  });
+  assert(read.ok);
+  assertEquals(read.viewerResource?.source, "saved");
+  assertEquals(backend.toolCalls.length, 0);
+  assertEquals(backend.resourceCalls.length, 0);
+  assertEquals(backend.appCalls.length, 1);
+  await coordinator.stop();
+  await revived.stop();
+});
+
+Deno.test("resource-read falls back live when retained bytes are gone", async () => {
+  const backend = new FakeViewerBackend();
+  const store = new MemoryChatConversationStore();
+  const pool = standalonePool({
+    probeTools: ["t_one"],
+    viewerBackend: backend,
+    store,
+  });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  const sha256 = await sha256OfText("step");
+  const uri = `casys://build123d/artifacts/${sha256}.step`;
+  await store.save([{
+    id: conversationId,
+    kind: "standalone",
+    sessionKey: `casys-desktop-exclusive/standalone/${conversationId}/mcp/build123d`,
+    title: "Standalone",
+    status: "idle",
+    createdAt: "2026-09-27T00:00:00.000Z",
+    updatedAt: "2026-09-27T00:00:00.000Z",
+    messages: [],
+    mcpId: "build123d",
+    mcpStatus: "connected",
+    mcpTools: ["t_one"],
+    toolResults: [{
+      toolCallId: "tool-call-1",
+      server: "build123d",
+      tool: "t_one",
+      messageId: "message-1",
+      appUri: VIEWER_APP_URI,
+      failed: false,
+      input: {},
+      result: viewerToolResult(11),
+      capturedAt: "2026-09-27T00:00:00.000Z",
+      revision: 1,
+      resultDigest: `sha256:${"cd".repeat(32)}`,
+      artifacts: [{
+        uri,
+        fileName: `${sha256}.step`,
+        mimeType: "model/step",
+        bytes: 4,
+        sha256,
+        state: "saved",
+      }],
+    }],
+  } as unknown as StoredConversation]);
+  const revived = await standalonePool({
+    probeTools: ["t_one"],
+    viewerBackend: backend,
+    store,
+  })
+    .coordinator();
+  const read = await revived.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "read-stale",
+    command: "viewer.resource-read",
+    conversationId,
+    toolCallId: "tool-call-1",
+    uri,
+  });
+  assert(read.ok);
+  assertEquals(read.viewerResource?.source, "live");
+  assertEquals(backend.resourceCalls.length, 1);
+  const snapshot = revived.snapshot(conversationId);
+  assertEquals(
+    snapshot.conversations[0].viewers[0]?.archive?.artifacts[0]?.state,
+    "missing",
+  );
+  await coordinator.stop();
+  await revived.stop();
+});
+
+Deno.test("revisions increment across captures and survive restore", async () => {
+  const backend = new FakeViewerBackend();
+  const store = new MemoryChatConversationStore();
+  const pool = standalonePool({
+    probeTools: ["t_one"],
+    viewerBackend: backend,
+    store,
+  });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await captureViewerResult(pool, coordinator, conversationId, [
+    { toolCallId: "tool-call-1", tool: "t_one" },
+    { toolCallId: "tool-call-2", tool: "t_one" },
+  ]);
+  assertEquals(
+    coordinator.snapshot(conversationId).conversations[0].viewers.map((viewer) =>
+      viewer.archive?.revision
+    ),
+    [1, 2],
+  );
+  const revived = await standalonePool({ store }).coordinator();
+  assertEquals(
+    revived.snapshot(conversationId).conversations[0].viewers.map((viewer) =>
+      viewer.archive?.revision
+    ),
+    [1, 2],
+  );
+  await coordinator.stop();
+  await revived.stop();
+});
+
+Deno.test("tampered archive manifest degrades to unsaved without dropping the viewer", async () => {
+  const store = new MemoryChatConversationStore();
+  const coordinator = await standalonePool({ store }).coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await store.save([{
+    id: conversationId,
+    kind: "standalone",
+    sessionKey: `casys-desktop-exclusive/standalone/${conversationId}/mcp/build123d`,
+    title: "Standalone",
+    status: "idle",
+    createdAt: "2026-09-27T00:00:00.000Z",
+    updatedAt: "2026-09-27T00:00:00.000Z",
+    messages: [],
+    mcpId: "build123d",
+    mcpStatus: "connected",
+    mcpTools: ["t_one"],
+    toolResults: [{
+      toolCallId: "tool-call-1",
+      server: "build123d",
+      tool: "t_one",
+      messageId: "message-1",
+      appUri: VIEWER_APP_URI,
+      failed: false,
+      input: {},
+      result: viewerToolResult(11),
+      capturedAt: "2026-09-27T00:00:00.000Z",
+      revision: 1,
+      resultDigest: `sha256:${"cd".repeat(32)}`,
+      artifacts: [{
+        uri: "casys://build123d/artifacts/x.step",
+        fileName: "../escape.step",
+        mimeType: "model/step",
+        bytes: 4,
+        sha256: "ab".repeat(32),
+        state: "saved",
+      }],
+    }],
+  } as unknown as StoredConversation]);
+  const revived = await standalonePool({ store }).coordinator();
+  const snapshot = revived.snapshot(conversationId);
+  assertEquals(snapshot.conversations[0].viewers.length, 1);
+  assertEquals(
+    snapshot.conversations[0].viewers[0]?.archive,
+    undefined,
+  );
+  parseChatSnapshotDto(snapshot);
+  await coordinator.stop();
+  await revived.stop();
+});
 
 Deno.test("viewer resource-read refuses oversized provider media types", async () => {
   const backend = new HugeMimeViewerBackend();
