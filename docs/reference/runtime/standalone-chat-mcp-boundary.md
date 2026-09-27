@@ -1,7 +1,7 @@
 # Standalone chat and MCP connection boundary (Desktop host, iteration 1)
 
-> Verified-Against: uncommitted #49 (2026-09-27). What standalone chat supports, and the
-> exact supported MCP connection boundary.
+> Verified-Against: uncommitted #49 context-continuity follow-up (2026-09-27). What
+> standalone chat supports, and the exact supported MCP connection boundary.
 
 Audience: both · Diátaxis: reference · Kind: contract note
 
@@ -51,6 +51,16 @@ list; viewers (#50) own MCP App rendering; #51 owns durable artifact reopening.
 - `mcp.enable` re-probes, so enable doubles as the reconnect path; `mcp.disable`
   detaches back to zero MCPs. Attachment changes are refused while a turn is queued or
   active, or an interaction is pending.
+- Context continuity across the restart: the coordinator tracks, per agent-session key,
+  which transcript message ids that ACP session already holds (`knownMessageIdsByKey`,
+  persisted). A persistent key resumes its own history server-side, so on ensure the
+  coordinator seeds only unseen ids as a bounded history block prepended to the first
+  turn text (30 messages / 12 000 chars total / 1 500 chars per message,
+  oldest-first with a truncation note, current turn excluded, history-only with no
+  re-execution). The seed rides the turn text
+  because the pinned codex adapter drops session `_meta.systemPrompt`. Enable, disable,
+  and re-probe each reseed exactly the delta. Restart restore prunes the map against
+  the live transcript.
 - Connection ownership, endpoints, and credentials stay host-side. The renderer sees
   identity and state only (`id`, `displayName`, `status`, tool names). Project
   conversations refuse `mcp.enable`/`mcp.disable`: standalone access cannot change the

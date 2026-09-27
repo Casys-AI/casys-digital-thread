@@ -370,6 +370,469 @@ Deno.test("mcp.enable probes, then restarts the session on the MCP runtime", asy
   await coordinator.stop();
 });
 
+Deno.test("mcp.enable seeds the new agent session with prior context", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(
+    send(
+      "r1",
+      conversationId,
+      "The part ZR-AXLE-BRACKET is 37.125 mm wide. Acknowledge.",
+    ),
+  );
+  await until(() => pool.standalone.turns.length === 1);
+  pool.standalone.turns[0].events.push({
+    type: "text_delta",
+    text: "Acknowledged ZR-AXLE-BRACKET at 37.125 mm.",
+  });
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  await coordinator.command(send("r2", conversationId, "Create the part now."));
+  await until(() => pool.mcp.turns.length === 1);
+  const seed = pool.mcp.turns[0].text;
+  assertMatch(seed, /Prior conversation context follows/);
+  assertMatch(seed, /do not re-execute/);
+  assert(seed.includes("ZR-AXLE-BRACKET"), "seed misses the part name");
+  assert(seed.includes("37.125"), "seed misses the width");
+  assert(seed.includes("Build123d connected"), "seed misses the attach notice");
+  assert(seed.endsWith("Create the part now."), "seed buries the current turn");
+  assert(
+    seed.indexOf("37.125") < seed.indexOf("Create the part now."),
+    "seed follows the current turn instead of preceding it",
+  );
+  pool.mcp.turns[0].events.push({
+    type: "text_delta",
+    text: "MCP-ERA volume 3712.5 mm3.",
+  });
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const disabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "disable-1",
+    command: "mcp.disable",
+    conversationId,
+  });
+  assert(disabled.ok);
+  await coordinator.command(send("r3", conversationId, "What was the width?"));
+  await until(() => pool.standalone.turns.length === 2);
+  const reseed = pool.standalone.turns[1].text;
+  assertMatch(reseed, /Prior conversation context follows/);
+  assert(reseed.includes("3712.5"), "reseed misses the MCP-era delta");
+  assert(reseed.includes("detached"), "reseed misses the detach notice");
+  assert(reseed.includes("connected"), "reseed misses the attach notice");
+  assert(reseed.endsWith("What was the width?"), "reseed buries the current turn");
+  assertEquals(
+    reseed.includes("Acknowledged ZR-AXLE-BRACKET"),
+    false,
+    "reseed duplicates what the base session already holds",
+  );
+  pool.standalone.turns[1].events.push({
+    type: "text_delta",
+    text: "BASE-ERA reply done.",
+  });
+  pool.standalone.turns[1].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const reenabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-2",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(reenabled.ok);
+  await coordinator.command(send("r4", conversationId, "Again."));
+  await until(() => pool.mcp.turns.length === 2);
+  const reseedMcp = pool.mcp.turns[1].text;
+  assertMatch(reseedMcp, /Prior conversation context follows/);
+  assert(reseedMcp.includes("BASE-ERA reply done."), "reseed misses base-era delta");
+  assert(
+    reseedMcp.includes("What was the width?"),
+    "reseed misses the base-era question",
+  );
+  assert(reseedMcp.endsWith("Again."), "reseed buries the current turn");
+  assertEquals(
+    reseedMcp.includes("3712.5"),
+    false,
+    "reseed duplicates what the MCP session already holds",
+  );
+  pool.mcp.turns[1].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await coordinator.stop();
+});
+
+Deno.test("restored watermarks prevent duplicate seeding after restart", async () => {
+  const store = new MemoryChatConversationStore();
+  const pool = standalonePool({ probeTools: ["t_one"], store });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(send("r1", conversationId, "Remember RED-SEED-MARKER."));
+  await until(() => pool.standalone.turns.length === 1);
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await coordinator.stop();
+  const second = standalonePool({ probeTools: ["t_one"], store });
+  const resumed = await second.coordinator();
+  await resumed.command(send("r2", conversationId, "Continue."));
+  await until(() => second.standalone.turns.length === 1);
+  assertEquals(
+    second.standalone.turns[0].text,
+    "Continue.",
+    "restart re-seeds what the resumed session already holds",
+  );
+  second.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    resumed.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await resumed.stop();
+});
+
+Deno.test("context seeding truncates old messages with a note", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  for (let i = 0; i < 35; i++) {
+    await coordinator.command(send(`bulk-${i}`, conversationId, `bulk message ${i}`));
+    await until(() => pool.standalone.turns.length === i + 1);
+    pool.standalone.turns[i].finish({ status: "completed" });
+    await until(() =>
+      coordinator.snapshot(conversationId).conversations[0].status === "idle"
+    );
+  }
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  await coordinator.command(send("r-final", conversationId, "Summarize."));
+  await until(() => pool.mcp.turns.length === 1);
+  const seed = pool.mcp.turns[0].text;
+  assertMatch(seed, /6 earlier message\(s\) truncated/);
+  assert(seed.includes("bulk message 34"), "seed misses the latest message");
+  assert(seed.endsWith("Summarize."), "seed buries the current turn");
+  assertEquals(seed.includes("bulk message 0"), false, "seed keeps truncated history");
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await coordinator.stop();
+});
+
+Deno.test("context seeding drops oldest messages past the char budget", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  for (let i = 0; i < 10; i++) {
+    await coordinator.command(
+      send(`char-${i}`, conversationId, `char-bulk ${i} ${"x".repeat(1400)}`),
+    );
+    await until(() => pool.standalone.turns.length === i + 1);
+    pool.standalone.turns[i].finish({ status: "completed" });
+    await until(() =>
+      coordinator.snapshot(conversationId).conversations[0].status === "idle"
+    );
+  }
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  await coordinator.command(send("r-final", conversationId, "Summarize."));
+  await until(() => pool.mcp.turns.length === 1);
+  const seed = pool.mcp.turns[0].text;
+  assertMatch(seed, /earlier message\(s\) truncated/);
+  assertEquals(
+    seed.includes("char-bulk 0"),
+    false,
+    "seed keeps char-truncated history",
+  );
+  assert(seed.includes("char-bulk 9"), "seed misses the latest message");
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await coordinator.stop();
+});
+
+Deno.test("context seeding slices single messages past the per-message cap", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(
+    send("r1", conversationId, `head ${"A".repeat(1000)} tail ${"B".repeat(1000)}`),
+  );
+  await until(() => pool.standalone.turns.length === 1);
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  await coordinator.command(send("r2", conversationId, "Next."));
+  await until(() => pool.mcp.turns.length === 1);
+  const seed = pool.mcp.turns[0].text;
+  assert(seed.includes("A".repeat(1000)), "seed misses the message head");
+  assertEquals(
+    seed.includes("B".repeat(600)),
+    false,
+    "seed keeps text past the per-message cap",
+  );
+  assert(seed.includes("…[truncated]"), "seed hides the per-message cut");
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await coordinator.stop();
+});
+
+Deno.test("cancelled turn output reseeds into the switched session", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(send("r1", conversationId, "Interrupted request."));
+  await until(() => pool.standalone.turns.length === 1);
+  pool.standalone.turns[0].events.push({
+    type: "text_delta",
+    text: "Partial before cancel.",
+  });
+  pool.standalone.turns[0].finish({ status: "cancelled" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  await coordinator.command(send("r2", conversationId, "Continue with the tool."));
+  await until(() => pool.mcp.turns.length === 1);
+  const seed = pool.mcp.turns[0].text;
+  assert(seed.includes("Interrupted request."), "seed misses the cancelled request");
+  assert(seed.includes("Partial before cancel."), "seed misses partial output");
+  assert(seed.includes("Turn cancelled."), "seed misses the cancel notice");
+  assert(seed.endsWith("Continue with the tool."), "seed buries the current turn");
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await coordinator.stop();
+});
+
+Deno.test("startTurn failure drops the pinned handle so the retry reseeds", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const innerStartTurn = pool.standalone.runtime.startTurn;
+  let failuresLeft = 1;
+  pool.standalone.runtime.startTurn = (input) => {
+    if (failuresLeft > 0) {
+      failuresLeft -= 1;
+      throw new Error("startTurn blew up");
+    }
+    return innerStartTurn(input);
+  };
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(send("r1", conversationId, "First context held."));
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "failed"
+  );
+  assertEquals(pool.standalone.ensureInputs.length, 1);
+  assertEquals(pool.standalone.turns.length, 0);
+  await coordinator.command(send("r2", conversationId, "Retry now."));
+  await until(() => pool.standalone.turns.length === 1);
+  assertEquals(
+    pool.standalone.ensureInputs.length,
+    2,
+    "retry reused the pinned handle instead of re-ensuring",
+  );
+  const retry = pool.standalone.turns[0].text;
+  assert(retry.includes("First context held."), "retry lost the unmarked seed");
+  assert(retry.endsWith("Retry now."), "retry buries the current turn");
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await coordinator.stop();
+});
+
+Deno.test("a later-queued message never leaks into the earlier turn seed", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  const first = coordinator.command(send("r1", conversationId, "First message."));
+  const second = coordinator.command(send("r2", conversationId, "Second message."));
+  await first;
+  await second;
+  await until(() => pool.standalone.turns.length === 1);
+  assertEquals(
+    pool.standalone.turns[0].text,
+    "First message.",
+    "later-queued message leaked into the earlier seed",
+  );
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() => pool.standalone.turns.length === 2);
+  assertEquals(pool.standalone.turns[1].text, "Second message.");
+  pool.standalone.turns[1].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await coordinator.stop();
+});
+
+Deno.test("known-id serialization respects the file-store retention cap", async () => {
+  const store = new MemoryChatConversationStore();
+  const pool = standalonePool({ probeTools: ["t_one"], store });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  for (let i = 0; i < 401; i++) {
+    await coordinator.command(send(`cap-${i}`, conversationId, `cap message ${i}`));
+    await until(() => pool.standalone.turns.length === i + 1);
+    pool.standalone.turns[i].finish({ status: "completed" });
+    await until(() =>
+      coordinator.snapshot(conversationId).conversations[0].status === "idle"
+    );
+  }
+  const saved = (await store.load()).find((entry) => entry.id === conversationId);
+  const ids = Object.values(saved?.knownMessageIdsByKey ?? {}).flat();
+  assert(ids.length > 0, "no known ids persisted");
+  assert(ids.length <= 400, `known ids exceed retention cap: ${ids.length}`);
+  await coordinator.stop();
+  const second = standalonePool({ probeTools: ["t_one"], store });
+  const resumed = await second.coordinator();
+  await resumed.command(send("r-resume", conversationId, "After restart."));
+  await until(() => second.standalone.turns.length === 1);
+  const reseed = second.standalone.turns[0].text;
+  assert(
+    reseed.includes("cap message 0"),
+    "pruned oldest id does not reseed after restart",
+  );
+  assertEquals(
+    reseed.includes("cap message 400"),
+    false,
+    "retained recent id reseeds after restart",
+  );
+  assertEquals(
+    reseed.includes("truncated"),
+    false,
+    "single-message reseed carries a truncation note",
+  );
+  second.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    resumed.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await resumed.stop();
+});
+
+Deno.test("failed turn output reseeds into the switched session", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(send("r1", conversationId, "Doomed request."));
+  await until(() => pool.standalone.turns.length === 1);
+  pool.standalone.turns[0].events.push({
+    type: "text_delta",
+    text: "Partial output here.",
+  });
+  pool.standalone.turns[0].finish({ status: "failed", error: { message: "boom" } });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "failed"
+  );
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  await coordinator.command(send("r2", conversationId, "Try with the tool."));
+  await until(() => pool.mcp.turns.length === 1);
+  const seed = pool.mcp.turns[0].text;
+  assert(seed.includes("Doomed request."), "seed misses the failed user message");
+  assert(seed.includes("Partial output here."), "seed misses partial output");
+  assert(seed.includes("boom"), "seed misses the failure notice");
+  assert(seed.endsWith("Try with the tool."), "seed buries the current turn");
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await coordinator.stop();
+});
+
+Deno.test("pre-seeding store entries reseed full history once (fail-safe)", async () => {
+  const store = new MemoryChatConversationStore();
+  await store.save([{
+    id: "conversation:legacy-seed",
+    kind: "standalone",
+    sessionKey: "casys-desktop-exclusive/standalone/conversation:legacy-seed",
+    title: "Legacy",
+    status: "idle",
+    createdAt: "2026-08-23T00:00:00.000Z",
+    updatedAt: "2026-08-23T00:00:00.000Z",
+    messages: [
+      {
+        id: "message:legacy-1",
+        role: "user",
+        kind: "text",
+        text: "LEGACY-MARKER question.",
+        createdAt: "2026-08-23T00:00:00.000Z",
+      },
+      {
+        id: "message:legacy-2",
+        role: "assistant",
+        kind: "text",
+        text: "LEGACY-MARKER answer.",
+        createdAt: "2026-08-23T00:00:00.000Z",
+      },
+    ],
+  }]);
+  const pool = standalonePool({ probeTools: ["t_one"], store });
+  const coordinator = await pool.coordinator();
+  await coordinator.command(send("r1", "conversation:legacy-seed", "Continue."));
+  await until(() => pool.standalone.turns.length === 1);
+  const seed = pool.standalone.turns[0].text;
+  assert(seed.includes("LEGACY-MARKER question."), "upgrade lost user history");
+  assert(seed.includes("LEGACY-MARKER answer."), "upgrade lost assistant history");
+  assert(seed.endsWith("Continue."), "seed buries the current turn");
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot("conversation:legacy-seed").conversations[0].status === "idle"
+  );
+  await coordinator.stop();
+});
+
 Deno.test("mcp.enable records connection failure without touching the agent session", async () => {
   const pool = standalonePool({ probeError: "connection refused" });
   const coordinator = await pool.coordinator();
@@ -661,6 +1124,11 @@ Deno.test("failed re-enable from connected detaches and routes back to zero MCP"
   await coordinator.command(send("r2", conversationId, "Resume"));
   await until(() => pool.standalone.turns.length === 1);
   assertEquals(pool.mcp.turns.length, 1);
+  const reseed = pool.standalone.turns[0].text;
+  assertMatch(reseed, /Prior conversation context follows/);
+  assert(reseed.includes("Use MCP"), "reseed misses the MCP-era request");
+  assert(reseed.includes("MCP connection failed"), "reseed misses the failure notice");
+  assert(reseed.endsWith("Resume"), "reseed buries the current turn");
   pool.standalone.turns[0].finish({ status: "completed" });
   await until(() =>
     coordinator.snapshot(conversationId).conversations[0].status === "idle"

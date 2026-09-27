@@ -15,6 +15,12 @@ export interface StoredConversation {
   readonly mcpId?: string;
   readonly mcpStatus?: "connected" | "failed";
   readonly mcpTools?: readonly string[];
+  /**
+   * Per agent-session-key transcript message ids that session already holds.
+   * Absent on entries written before context seeding existed; readers treat
+   * a missing map as "no session holds anything yet".
+   */
+  readonly knownMessageIdsByKey?: Record<string, readonly string[]>;
   readonly sessionKey: string;
   readonly title: string;
   readonly status: ChatConversationStatus;
@@ -213,6 +219,9 @@ function readMetadata(value: unknown): Omit<StoredConversation, "messages"> {
   const mcpTools = entry.mcpTools === undefined
     ? undefined
     : readStringList(entry.mcpTools, "conversation MCP tools", 64, 128);
+  const knownMessageIdsByKey = entry.knownMessageIdsByKey === undefined
+    ? undefined
+    : readKnownByKey(entry.knownMessageIdsByKey);
   return {
     id: requiredString(entry.id, "conversation id"),
     ...(kind === undefined ? {} : { kind }),
@@ -220,6 +229,7 @@ function readMetadata(value: unknown): Omit<StoredConversation, "messages"> {
     ...(mcpId === undefined ? {} : { mcpId }),
     ...(mcpStatus === undefined ? {} : { mcpStatus }),
     ...(mcpTools === undefined ? {} : { mcpTools }),
+    ...(knownMessageIdsByKey === undefined ? {} : { knownMessageIdsByKey }),
     sessionKey: requiredString(entry.sessionKey, "session key"),
     title: requiredString(entry.title, "conversation title"),
     status,
@@ -279,6 +289,20 @@ function readStringList(
     }
     return entry;
   }));
+}
+
+function readKnownByKey(value: unknown): Record<string, readonly string[]> {
+  const record = object(value, "known message ids by key");
+  const entries = Object.entries(record);
+  if (entries.length > 16) throw new TypeError("known message ids by key is invalid");
+  const parsed: Record<string, readonly string[]> = {};
+  for (const [key, ids] of entries) {
+    if (key === "" || key.length > 200) {
+      throw new TypeError("known message ids by key is invalid");
+    }
+    parsed[key] = readStringList(ids, "known message ids", 400, 128);
+  }
+  return Object.freeze(parsed);
 }
 
 function requiredDate(value: unknown, name: string): string {

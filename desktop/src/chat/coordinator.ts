@@ -45,6 +45,12 @@ interface ConversationState {
   mcpId?: string;
   mcpStatus?: "connected" | "failed";
   mcpTools: readonly string[];
+  /**
+   * Per agent-session-key transcript message ids that session already holds.
+   * A persistent ACP session resumes its own history by key, so the
+   * coordinator seeds only the ids a key has never seen.
+   */
+  knownByKey: Map<string, Set<string>>;
   readonly title: string;
   readonly createdAt: string;
   updatedAt: string;
@@ -253,6 +259,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         ? `${SESSION_PREFIX}/${projectId}/${id}`
         : `${SESSION_PREFIX}/standalone/${id}`,
       mcpTools: [],
+      knownByKey: new Map(),
       title: title ?? (kind === "project" ? `Project ${projectId}` : "Standalone chat"),
       status: "idle",
       createdAt: now,
@@ -272,12 +279,12 @@ export class ChatCoordinator implements RuntimeInteractionSink {
   ): Promise<void> {
     const conversation = this.#conversation(conversationId);
     if (conversation.status === "closed") throw new Error("conversation is closed");
-    this.#append(conversation, "user", "text", text);
+    const userMessageId = this.#append(conversation, "user", "text", text);
     conversation.status = "queued";
     const epoch = conversation.queueEpoch;
     await this.#persist();
     const queued = conversation.queueTail.then(() =>
-      this.#runTurn(conversation, text, requestId, epoch)
+      this.#runTurn(conversation, text, requestId, epoch, userMessageId)
     );
     conversation.queueTail = queued.catch(() => undefined);
   }
@@ -287,6 +294,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     text: string,
     requestId: string,
     epoch: number,
+    userMessageId: string | undefined,
   ): Promise<void> {
     if (conversation.status === "closed" || this.#host !== "ready") return;
     if (epoch !== conversation.queueEpoch) {
@@ -302,6 +310,9 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       conversation.status = "running";
       conversation.updatedAt = this.#now().toISOString();
       const runtime = this.#adapterFor(conversation).runtime;
+      const seed = conversation.handle === undefined
+        ? seedContextFor(conversation, conversation.sessionKey, userMessageId)
+        : undefined;
       const handle = conversation.handle ??
         await runtime.ensureSession({
           sessionKey: conversation.sessionKey,
@@ -314,9 +325,14 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       this.#claimSessionIds(conversation, handle);
       const abort = new AbortController();
       conversation.activeAbort = abort;
+      // The pinned codex adapter drops session _meta.systemPrompt, so restored
+      // context rides the first turn text: the only channel proven to reach it.
+      const turnText = seed === undefined
+        ? turnTextFor(conversation, text)
+        : `${seed.block}\n\n${turnTextFor(conversation, text)}`;
       const turn = runtime.startTurn({
         handle,
-        text: turnTextFor(conversation, text),
+        text: turnText,
         mode: "prompt",
         requestId,
         signal: abort.signal,
@@ -324,8 +340,15 @@ export class ChatCoordinator implements RuntimeInteractionSink {
           this.#requestElicitation(conversation, elicitation, context),
       });
       conversation.activeTurn = turn;
+      if (seed !== undefined) {
+        markKnown(conversation, conversation.sessionKey, seed.ids);
+      }
+      if (userMessageId !== undefined) {
+        markKnown(conversation, conversation.sessionKey, [userMessageId]);
+      }
       await this.#persist();
-      await this.#consumeEvents(conversation, turn.events);
+      const consumedIds = await this.#consumeEvents(conversation, turn.events);
+      markKnown(conversation, conversation.sessionKey, consumedIds);
       const result = await turn.result;
       if (result.status === "failed") {
         conversation.status = "failed";
@@ -339,6 +362,12 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     } catch (error) {
       conversation.status = "failed";
       this.#append(conversation, "system", "error", safeError(error));
+      if (conversation.activeTurn === undefined) {
+        // ensure/claim/startTurn never produced a turn: drop the pinned
+        // handle so the retry re-ensures and recomputes the unmarked seed.
+        this.#releaseSessionIds(conversation);
+        conversation.handle = undefined;
+      }
     } finally {
       this.#abortPending(conversation);
       conversation.activeTurn = undefined;
@@ -351,26 +380,36 @@ export class ChatCoordinator implements RuntimeInteractionSink {
   async #consumeEvents(
     conversation: ConversationState,
     events: AsyncIterable<RuntimeEvent>,
-  ): Promise<void> {
+  ): Promise<readonly string[]> {
+    const touched: string[] = [];
     for await (const event of events) {
       if (conversation.status === "closed" || this.#host !== "ready") break;
       if (event.type === "text_delta") {
-        this.#appendDelta(
+        const id = this.#appendDelta(
           conversation,
           event.stream === "thought" ? "thought" : "text",
           event.text,
         );
+        if (id !== undefined) touched.push(id);
       } else if (event.type === "tool_call") {
         const title = clean(event.title ?? event.text, 500);
         const suffix = event.status === undefined
           ? ""
           : ` — ${clean(event.status, 80)}`;
-        this.#append(conversation, "assistant", "tool", `${title}${suffix}`);
+        const id = this.#append(conversation, "assistant", "tool", `${title}${suffix}`);
+        if (id !== undefined) touched.push(id);
       } else {
-        this.#append(conversation, "assistant", "status", clean(event.text, 1_000));
+        const id = this.#append(
+          conversation,
+          "assistant",
+          "status",
+          clean(event.text, 1_000),
+        );
+        if (id !== undefined) touched.push(id);
       }
       await this.#persist();
     }
+    return touched;
   }
 
   async #requestElicitation(
@@ -724,26 +763,28 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     role: ChatMessageDto["role"],
     kind: ChatMessageDto["kind"],
     text: string,
-  ): void {
+  ): string | undefined {
     const sanitized = clean(text, 32_000);
-    if (sanitized === "") return;
+    if (sanitized === "") return undefined;
+    const id = `message:${this.#newId()}`;
     conversation.messages.push(Object.freeze({
-      id: `message:${this.#newId()}`,
+      id,
       role,
       kind,
       text: sanitized,
       createdAt: this.#now().toISOString(),
     }));
     conversation.updatedAt = this.#now().toISOString();
+    return id;
   }
 
   #appendDelta(
     conversation: ConversationState,
     kind: "text" | "thought",
     text: string,
-  ): void {
+  ): string | undefined {
     const delta = clean(text, 16_000);
-    if (delta === "") return;
+    if (delta === "") return undefined;
     const last = conversation.messages.at(-1);
     if (last?.role === "assistant" && last.kind === kind) {
       conversation.messages[conversation.messages.length - 1] = Object.freeze({
@@ -751,9 +792,9 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         text: clean(`${last.text}${delta}`, 32_000),
       });
       conversation.updatedAt = this.#now().toISOString();
-      return;
+      return last.id;
     }
-    this.#append(conversation, "assistant", kind, delta);
+    return this.#append(conversation, "assistant", kind, delta);
   }
 
   #toDto(
@@ -812,6 +853,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       ...(mcpAttached ? { mcpId } : {}),
       ...(mcpAttached ? { mcpStatus } : {}),
       mcpTools: mcpAttached ? [...(stored.mcpTools ?? [])] : [],
+      knownByKey: restoreKnownByKey(stored),
       title: stored.title,
       status: stored.status === "running" || stored.status === "queued"
         ? "idle"
@@ -833,6 +875,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         ...(entry.mcpId === undefined ? {} : { mcpId: entry.mcpId }),
         ...(entry.mcpStatus === undefined ? {} : { mcpStatus: entry.mcpStatus }),
         mcpTools: Object.freeze([...entry.mcpTools]),
+        knownMessageIdsByKey: serializeKnownByKey(entry),
         sessionKey: entry.sessionKey,
         title: entry.title,
         status: entry.status,
@@ -885,6 +928,106 @@ function systemPromptFor(conversation: ConversationState): string {
     throw new Error("project conversation is missing its projectId");
   }
   return projectSystemPrompt(conversation.projectId);
+}
+
+function markKnown(
+  conversation: ConversationState,
+  sessionKey: string,
+  ids: readonly string[],
+): void {
+  if (ids.length === 0) return;
+  let known = conversation.knownByKey.get(sessionKey);
+  if (known === undefined) {
+    known = new Set();
+    conversation.knownByKey.set(sessionKey, known);
+  }
+  for (const id of ids) known.add(id);
+}
+
+function restoreKnownByKey(stored: StoredConversation): Map<string, Set<string>> {
+  const known = new Map<string, Set<string>>();
+  // Absent map (pre-seeding entries): reseed everything once. Duplicating
+  // history into a resumed session is fail-safe; assuming knowledge could
+  // silently lose it if the agent-side store diverged.
+  const record = stored.knownMessageIdsByKey;
+  if (record === undefined || typeof record !== "object" || record === null) {
+    return known;
+  }
+  const live = new Set(stored.messages.map((message) => message.id));
+  for (const [key, ids] of Object.entries(record)) {
+    if (typeof key !== "string" || !Array.isArray(ids)) continue;
+    const pruned = ids.filter((id): id is string =>
+      typeof id === "string" && live.has(id)
+    );
+    if (pruned.length > 0) known.set(key, new Set(pruned));
+  }
+  return known;
+}
+
+function serializeKnownByKey(
+  conversation: ConversationState,
+): Record<string, readonly string[]> {
+  const order = new Map(
+    conversation.messages.map((message, index) => [message.id, index]),
+  );
+  const record: Record<string, readonly string[]> = {};
+  for (const key of [...conversation.knownByKey.keys()].sort()) {
+    // Mirror the file-store retention cap in transcript order: only the
+    // oldest ids drop, and dropped ids reseed later, which duplicates
+    // history instead of bricking the next load.
+    const ids = [...(conversation.knownByKey.get(key) ?? [])]
+      .filter((id) => order.has(id))
+      .sort((a, b) => order.get(a)! - order.get(b)!)
+      .slice(-400);
+    if (ids.length > 0) record[key] = Object.freeze(ids);
+  }
+  return Object.freeze(record);
+}
+
+const SEED_MAX_MESSAGES = 30;
+const SEED_MAX_CHARS = 12_000;
+const SEED_MESSAGE_CHARS = 1_500;
+
+function seedContextFor(
+  conversation: ConversationState,
+  sessionKey: string,
+  excludeId: string | undefined,
+): { readonly block: string; readonly ids: readonly string[] } | undefined {
+  const known = conversation.knownByKey.get(sessionKey);
+  // Only strictly-prior history seeds: a later-queued user message may
+  // already sit in the transcript when this turn ensures.
+  const boundary = excludeId === undefined
+    ? conversation.messages.length
+    : conversation.messages.findIndex((message) => message.id === excludeId);
+  const eligible = boundary < 0
+    ? conversation.messages
+    : conversation.messages.slice(0, boundary);
+  const fresh = eligible.filter((message) => !known?.has(message.id));
+  if (fresh.length === 0) return undefined;
+  const tail = fresh.slice(-SEED_MAX_MESSAGES);
+  const droppedByCount = fresh.length - tail.length;
+  let lines = tail.map((message) => {
+    const preview = message.text.slice(0, SEED_MESSAGE_CHARS);
+    const marker = message.text.length > SEED_MESSAGE_CHARS ? " …[truncated]" : "";
+    return `[${message.role}/${message.kind}] ${preview}${marker}`;
+  });
+  let text = lines.join("\n");
+  let droppedByChars = 0;
+  while (text.length > SEED_MAX_CHARS && lines.length > 1) {
+    lines = lines.slice(1);
+    droppedByChars += 1;
+    text = lines.join("\n");
+  }
+  const skipped = droppedByCount + droppedByChars;
+  const block = [
+    "Prior conversation context follows (restored after an agent-session switch; it is history only — do not re-execute anything described here):",
+    ...(skipped > 0 ? [`…${skipped} earlier message(s) truncated…`] : []),
+    text,
+  ].join("\n");
+  return {
+    block,
+    ids: tail.slice(droppedByChars).map((message) => message.id),
+  };
 }
 
 function turnTextFor(conversation: ConversationState, text: string): string {
