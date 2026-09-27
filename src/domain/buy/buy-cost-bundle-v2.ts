@@ -60,7 +60,7 @@ import {
   parseBuyDecimal,
   roundBuyDecimal,
 } from "./buy-decimal.ts";
-import { canonicalUtcTimestamp } from "./buy-documentary-estimate.ts";
+import { boundedText, canonicalUtcTimestamp } from "./buy-documentary-estimate.ts";
 import {
   BUY_ESTIMATE_GAP_CODES,
   type BuyAnnexLine,
@@ -118,6 +118,7 @@ export interface BuyV2EstimateProvenance {
   readonly inputAsOf: string;
   readonly configurationLineIds: readonly string[];
   readonly provisionalLineIds: readonly string[];
+  readonly assumptions: readonly string[];
 }
 
 export interface BuyCostBundleV2 {
@@ -394,6 +395,7 @@ export async function computeBuyCostCandidateV2(input: {
       provisionalLineIds: annex.lines
         .filter((line) => line.provisional)
         .map((line) => line.configurationLineId),
+      assumptions: [...annex.assumptions],
     })),
     pricingContext: base.pricingContext,
     lines,
@@ -490,7 +492,9 @@ export async function assertBuyCostBundleV2Lineage(
           annex.lines
             .filter((line) => line.provisional)
             .map((line) => line.configurationLineId),
-        )
+        ) ||
+      deterministicJson(entry.assumptions) !==
+        deterministicJson(annex.assumptions)
     ) {
       throw new TypeError(
         "Buy v2 estimate provenance entry does not match its retained annex.",
@@ -732,6 +736,7 @@ function parseProvenance(value: unknown, path: string): BuyV2EstimateProvenance 
     "inputAsOf",
     "configurationLineIds",
     "provisionalLineIds",
+    "assumptions",
   ], path);
   const configurationLineIds = arrayOf(
     input.configurationLineIds,
@@ -750,6 +755,9 @@ function parseProvenance(value: unknown, path: string): BuyV2EstimateProvenance 
       );
     }
   }
+  const assumptions = arrayOf(input.assumptions, `${path}.assumptions`).map(
+    (item, i) => boundedText(item, `${path}.assumptions[${i}]`),
+  );
   return {
     annexFingerprint: prefixedSha256(
       input.annexFingerprint,
@@ -763,6 +771,7 @@ function parseProvenance(value: unknown, path: string): BuyV2EstimateProvenance 
     inputAsOf: canonicalUtcTimestamp(input.inputAsOf, `${path}.inputAsOf`),
     configurationLineIds,
     provisionalLineIds,
+    assumptions,
   };
 }
 

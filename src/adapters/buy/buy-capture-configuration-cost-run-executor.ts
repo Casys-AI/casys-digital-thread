@@ -36,7 +36,9 @@ import { selectBuyCostLines } from "../../domain/buy/buy-cost-selection.ts";
 import {
   type BuyDocumentaryEstimateEnvelope,
   buyDocumentaryEstimateEnvelopeFromResource,
+  collectBuyDocumentaryEstimateEvidenceRefs,
 } from "../../domain/buy/buy-documentary-estimate.ts";
+import { ReopenAgentResource } from "../../application/use-cases/resource/reopen-agent-resource.ts";
 import { computeBuyProductionEstimateCandidate } from "../../domain/buy/buy-production-estimate.ts";
 import { decodeUtf8ResourceText } from "../../domain/resource/agent-resource-envelope.ts";
 import {
@@ -756,7 +758,44 @@ export class BuyCaptureConfigurationCostRunExecutor {
     if (recross.status !== "current") {
       throw new EngineeringProjectCommandError("invalid_input", recross.reason);
     }
+    await this.#attestEstimateEvidence(envelope);
     return envelope;
+  }
+
+  /**
+   * Reopen and attest every evidence source the valuation depends on before
+   * a single amount is computed. A named source whose bytes or fingerprint
+   * cannot be verified refuses the capture: an unverified operand must never
+   * be valued, sealed, or projected as a complete total.
+   */
+  async #attestEstimateEvidence(
+    envelope: BuyDocumentaryEstimateEnvelope,
+  ): Promise<void> {
+    const resources = this.deps.resources;
+    if (!resources) {
+      throw new EngineeringProjectCommandError(
+        "invalid_input",
+        "Estimate input is signed but no agent-resource store is composed.",
+      );
+    }
+    const reopen = new ReopenAgentResource(resources);
+    const seen = new Set<string>();
+    for (
+      const ref of collectBuyDocumentaryEstimateEvidenceRefs(envelope)
+    ) {
+      const key = deterministicJson(ref.reference);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      try {
+        await reopen.reopenExact(ref.reference);
+      } catch (error) {
+        throw new EngineeringProjectCommandError(
+          "invalid_input",
+          `The documentary estimate names an unverifiable evidence source ${ref.reference.uri} ` +
+            `(anchor "${ref.anchor}"): ${buyErrorMessage(error)}`,
+        );
+      }
+    }
   }
 
   async #requiredProject(

@@ -24,6 +24,8 @@ interface BuyRecordedCostLine {
   readonly amount?: string;
   readonly capturedAt?: string;
   readonly sourceValidity?: { readonly from?: string; readonly to?: string };
+  /** V2 annexed lines only; v1 ERP lines are observed prices, never provisional. */
+  readonly provisional?: boolean;
   readonly gaps: readonly {
     readonly code: string;
     readonly message: string;
@@ -34,6 +36,7 @@ import {
   BUY_CAPTURE_URI_PREFIX,
   sha256Digest,
 } from "../../domain/buy/buy-source-capture.ts";
+import { BUY_COST_BUNDLE_V2_SCHEMA } from "../../domain/buy/buy-cost-bundle-v2.ts";
 import { sha256Fingerprint } from "../../domain/kernel/deterministic-json.ts";
 
 export const BUY_RECORDED_RESULT_SCHEMA =
@@ -111,6 +114,17 @@ export async function buildBuyRecordedResult(
     },
     totals: recordedTotals(capture, status),
     gaps,
+    ...(capture.bundle.schemaVersion === BUY_COST_BUNDLE_V2_SCHEMA
+      ? {
+        estimates: capture.bundle.estimateProvenance.map((entry) => ({
+          captureUri: entry.inputCaptureUri,
+          digest: entry.inputFingerprint.replace(/^sha256:/, ""),
+          lineIds: [...entry.configurationLineIds],
+          provisionalLineIds: [...entry.provisionalLineIds],
+          assumptions: [...entry.assumptions],
+        })),
+      }
+      : {}),
     basis: {
       current: {
         configurationRevision: capture.configuration.configurationRevision,
@@ -256,6 +270,7 @@ function recordedLine(
   return {
     lineId: line.configurationLineId,
     sourceCategory,
+    provisional: line.provisional ?? false,
     qty: line.quantity,
     uom: line.uom,
     unitPrice: line.unitPrice,

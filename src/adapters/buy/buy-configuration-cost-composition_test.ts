@@ -455,9 +455,27 @@ Deno.test(
     try {
       const configuration = buyTwoLineConfigurationFixture();
       const configurationDigest = await buyConfigurationDigest(configuration);
+      const evidenceBytes = new TextEncoder().encode(
+        "synthetic bracket evidence sheet v1",
+      );
+      const evidenceDigest = await sha256Hex(evidenceBytes);
+      const evidenceUri = `casys://agent-resource-capture/sha256/${evidenceDigest}`;
+      const evidenceReference = {
+        schemaVersion: "agent-resource-capture/1.0" as const,
+        uri: evidenceUri,
+        name: "synthetic-evidence.txt",
+        mimeType: "text/plain",
+        representation: "text" as const,
+        byteCount: evidenceBytes.byteLength,
+        fingerprint: { algorithm: "sha256" as const, digest: evidenceDigest },
+      };
+      const evidenceSource = buyEstimateSourceRef({
+        reference: evidenceReference,
+        anchor: "synthetic bracket sheet",
+      });
       const estimate = buyDocumentaryEstimateFixture(configurationDigest, {
         estimateId: "estimate.synthetic.bracket",
-        lines: [bracketEstimateLine()],
+        lines: [bracketEstimateLine(evidenceSource)],
       });
       const text = deterministicJson(estimate);
       const bytes = new TextEncoder().encode(text);
@@ -475,6 +493,7 @@ Deno.test(
         },
         bytes,
       };
+      const resourceReads: string[] = [];
       const wrapper = await loadProducerWrapper();
       const captureFixture = await createCaptureFixture({
         mcp: {
@@ -490,8 +509,17 @@ Deno.test(
         estimate: { resourceUri, resourceDigest },
         runtimeOverrides: {
           resources: {
-            read: (uri: string) =>
-              Promise.resolve(uri === resourceUri ? stored : undefined),
+            read: (uri: string) => {
+              resourceReads.push(uri);
+              if (uri === resourceUri) return Promise.resolve(stored);
+              if (uri === evidenceUri) {
+                return Promise.resolve({
+                  reference: evidenceReference,
+                  bytes: evidenceBytes,
+                });
+              }
+              return Promise.resolve(undefined);
+            },
           },
         },
         candidateDirectory: `${root}/candidates`,
@@ -502,6 +530,9 @@ Deno.test(
         captureFixture.command,
       );
       assertEquals(captured.agentRuns[0]?.status, "completed");
+      // The estimate input is reopened first, then each unique named
+      // evidence source is attested before valuation.
+      assertEquals(resourceReads, [resourceUri, evidenceUri]);
       const candidateSnapshot = await captureFixture.snapshots.getFresh(
         captured.agentRuns[0]!.resultSnapshot!.snapshotId,
       );
@@ -578,6 +609,14 @@ Deno.test(
             readonly lines?: ReadonlyArray<{
               readonly lineId: string;
               readonly sourceCategory: string;
+              readonly provisional: boolean;
+            }>;
+            readonly estimates?: ReadonlyArray<{
+              readonly captureUri: string;
+              readonly digest: string;
+              readonly lineIds: readonly string[];
+              readonly provisionalLineIds: readonly string[];
+              readonly assumptions: readonly string[];
             }>;
           };
         };
@@ -590,6 +629,20 @@ Deno.test(
         "line.fastener:catalogue-price",
         "line.bracket:documentary-estimate",
       ]);
+      const flags = (payload.projection.result?.lines ?? []).map((line) =>
+        `${line.lineId}:${line.provisional}`
+      );
+      assertEquals(flags, [
+        "line.fastener:false",
+        "line.bracket:true",
+      ]);
+      assertEquals(payload.projection.result?.estimates, [{
+        captureUri: resourceUri,
+        digest: resourceDigest,
+        lineIds: ["line.bracket"],
+        provisionalLineIds: ["line.bracket"],
+        assumptions: [...estimate.assumptions],
+      }]);
     } finally {
       await Deno.remove(root, { recursive: true });
     }
@@ -651,10 +704,152 @@ Deno.test(
   },
 );
 
-function bracketEstimateLine(): ReturnType<
+Deno.test(
+  "capture refuses a documentary estimate whose operand source is absent",
+  async () => {
+    const calls: string[] = [];
+    const configuration = buyTwoLineConfigurationFixture();
+    const digest = await buyConfigurationDigest(configuration);
+    const estimate = buyDocumentaryEstimateFixture(digest, {
+      estimateId: "estimate.synthetic.bracket",
+      lines: [bracketEstimateLine()],
+    });
+    const text = deterministicJson(estimate);
+    const bytes = new TextEncoder().encode(text);
+    const resourceDigest = await sha256Hex(bytes);
+    const resourceUri = `casys://agent-resource-capture/sha256/${resourceDigest}`;
+    const stored = {
+      reference: {
+        schemaVersion: "agent-resource-capture/1.0" as const,
+        uri: resourceUri,
+        name: "estimate-input.json",
+        mimeType: "application/json",
+        representation: "text" as const,
+        byteCount: bytes.byteLength,
+        fingerprint: { algorithm: "sha256" as const, digest: resourceDigest },
+      },
+      bytes,
+    };
+    // Only the estimate input is readable; the operand evidence it names
+    // (the synthetic "ccc…" reference) is absent from the store.
+    const fixture = await createCaptureFixture({
+      mcp: {
+        callTool(call) {
+          calls.push(call.name);
+          return Promise.reject(new Error("must not call"));
+        },
+        callToolTextResult() {
+          return Promise.reject(new Error("must not call"));
+        },
+      },
+      configuration,
+      estimate: { resourceUri, resourceDigest },
+      runtimeOverrides: {
+        resources: {
+          read: (uri: string) =>
+            Promise.resolve(uri === resourceUri ? stored : undefined),
+        },
+      },
+    });
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "unverifiable evidence source",
+    );
+    assertEquals(calls, []);
+    assertEquals(fixture.project.agentRuns[0]?.status, "failed");
+  },
+);
+
+Deno.test(
+  "capture refuses a documentary estimate whose operand source bytes mismatch",
+  async () => {
+    const calls: string[] = [];
+    const configuration = buyTwoLineConfigurationFixture();
+    const configurationDigest = await buyConfigurationDigest(configuration);
+    const evidenceBytes = new TextEncoder().encode(
+      "synthetic bracket evidence sheet v1",
+    );
+    const evidenceDigest = await sha256Hex(evidenceBytes);
+    const evidenceUri = `casys://agent-resource-capture/sha256/${evidenceDigest}`;
+    const evidenceReference = {
+      schemaVersion: "agent-resource-capture/1.0" as const,
+      uri: evidenceUri,
+      name: "synthetic-evidence.txt",
+      mimeType: "text/plain",
+      representation: "text" as const,
+      byteCount: evidenceBytes.byteLength,
+      fingerprint: { algorithm: "sha256" as const, digest: evidenceDigest },
+    };
+    const estimate = buyDocumentaryEstimateFixture(configurationDigest, {
+      estimateId: "estimate.synthetic.bracket",
+      lines: [
+        bracketEstimateLine(
+          buyEstimateSourceRef({
+            reference: evidenceReference,
+            anchor: "synthetic bracket sheet",
+          }),
+        ),
+      ],
+    });
+    const text = deterministicJson(estimate);
+    const bytes = new TextEncoder().encode(text);
+    const resourceDigest = await sha256Hex(bytes);
+    const resourceUri = `casys://agent-resource-capture/sha256/${resourceDigest}`;
+    const stored = {
+      reference: {
+        schemaVersion: "agent-resource-capture/1.0" as const,
+        uri: resourceUri,
+        name: "estimate-input.json",
+        mimeType: "application/json",
+        representation: "text" as const,
+        byteCount: bytes.byteLength,
+        fingerprint: { algorithm: "sha256" as const, digest: resourceDigest },
+      },
+      bytes,
+    };
+    const fixture = await createCaptureFixture({
+      mcp: {
+        callTool(call) {
+          calls.push(call.name);
+          return Promise.reject(new Error("must not call"));
+        },
+        callToolTextResult() {
+          return Promise.reject(new Error("must not call"));
+        },
+      },
+      configuration,
+      estimate: { resourceUri, resourceDigest },
+      runtimeOverrides: {
+        resources: {
+          read: (uri: string) => {
+            if (uri === resourceUri) return Promise.resolve(stored);
+            if (uri === evidenceUri) {
+              return Promise.resolve({
+                reference: evidenceReference,
+                bytes: new TextEncoder().encode("tampered evidence bytes!!!!!"),
+              });
+            }
+            return Promise.resolve(undefined);
+          },
+        },
+      },
+    });
+    await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+      "unverifiable evidence source",
+    );
+    assertEquals(calls, []);
+    assertEquals(fixture.project.agentRuns[0]?.status, "failed");
+  },
+);
+
+function bracketEstimateLine(
+  source = buyEstimateSourceRef({ anchor: "synthetic bracket sheet" }),
+): ReturnType<
   typeof buyDocumentaryEstimateFixture
 >["lines"][number] {
-  const source = buyEstimateSourceRef({ anchor: "synthetic bracket sheet" });
   return {
     configurationLineId: "line.bracket",
     quantityBasis: "per-configuration-unit",

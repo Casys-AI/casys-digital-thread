@@ -151,6 +151,46 @@ export interface BuyDocumentaryEstimateEnvelope {
   readonly byteCount: number;
 }
 
+export interface BuyEstimateEvidenceRef {
+  readonly reference: AgentResourceReference;
+  readonly anchor: string;
+  readonly observedAt: string;
+}
+
+/**
+ * Every evidence source a valuation depends on: sourced operand sources and
+ * assumed-operand justification sources. Unknown operands name none.
+ * Valuation paths reopen each reference before computing a single amount;
+ * evidence bytes prove capture, never numeric extraction.
+ */
+export function collectBuyDocumentaryEstimateEvidenceRefs(
+  envelope: BuyDocumentaryEstimateEnvelope,
+): readonly BuyEstimateEvidenceRef[] {
+  const refs: BuyEstimateEvidenceRef[] = [];
+  const push = (operand: BuyEstimateQuantityOperand | BuyEstimateRateOperand) => {
+    if (operand.operand === "sourced") {
+      refs.push({
+        reference: operand.source.reference,
+        anchor: operand.source.anchor,
+        observedAt: operand.source.observedAt,
+      });
+    } else if (operand.operand === "assumed") {
+      refs.push({
+        reference: operand.justification.source.reference,
+        anchor: operand.justification.source.anchor,
+        observedAt: operand.justification.source.observedAt,
+      });
+    }
+  };
+  for (const line of envelope.estimate.lines) {
+    for (const term of line.terms) {
+      push(term.consumption);
+      push(term.rate);
+    }
+  }
+  return refs;
+}
+
 export function validateBuyDocumentaryEstimate(
   value: unknown,
 ): BuyDocumentaryEstimate {

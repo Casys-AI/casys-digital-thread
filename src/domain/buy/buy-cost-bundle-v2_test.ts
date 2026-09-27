@@ -149,6 +149,10 @@ Deno.test("mixed catalogue and estimate lines compose through the shared aggrega
   assertEquals(v2.coverage.status, "complete");
   assertEquals(v2.totals.some((total) => total.kind === "total-complete"), true);
   assertEquals(v2.estimateProvenance[0]?.provisionalLineIds, ["line.bracket"]);
+  assertEquals(
+    v2.estimateProvenance[0]?.assumptions,
+    [...annex.assumptions],
+  );
   validateBuyCostBundleV2(v2);
   await assertBuyCostBundleV2Lineage(v2, {
     baseBundle: base,

@@ -7,10 +7,10 @@ Audience: both · Diátaxis: reference · Kind: contract
 
 This note owns the versioned contracts that let a sourced documentary estimate join the
 existing Buy calculation without becoming an ERP price. The existing Buy capture/seal
-operations remain version 1: capture accepts one optional estimate input and seals a
-v1 or v2 bundle accordingly, and the recorded viewer projects estimate lines with
-their documentary origin. The read-only preview below recomputes costs only from
-reopened bytes and never seals.
+operations remain version 1: capture accepts one optional estimate input and seals a v1
+or v2 bundle accordingly, and the recorded viewer projects estimate lines with their
+documentary origin. The read-only preview below recomputes costs only from reopened
+bytes and never seals.
 
 Parent contract: [Buy configuration and dated cost evidence](README.md). Lookalikes:
 [lookalike traps § Buy](../../agent/lookalike-traps.md#buy).
@@ -112,21 +112,27 @@ base bundle and captures.
 ## Capture, seal, and recorded viewer with estimates
 
 `project_buy_configuration_cost_capture_review` accepts optional
-`estimateResourceUri`/`estimateResourceDigest` naming one exact agent-resource
-estimate. The review reopens the store-attested bytes, requires canonical
-`buy-documentary-estimate/1.0` bytes, and recrosses project, subject,
-configuration digest, Thread basis, and STEP geometry; a stale or mismatched
-estimate stays `unresolved` and names no MRTR. The signed capture MRTR carries
-the optional `buy.capture.estimate.*` trio; the executor reopens and recrosses
-before ERP dispatch, prices the v1 base bundle, then composes `buy-cost-bundle/2.0`
-over it. No estimate input means the v1 path exactly as before.
+`estimateResourceUri`/`estimateResourceDigest` naming one exact agent-resource estimate.
+The review reopens the store-attested bytes, requires canonical
+`buy-documentary-estimate/1.0` bytes, and recrosses project, subject, configuration
+digest, Thread basis, and STEP geometry; a stale or mismatched estimate stays
+`unresolved` and names no MRTR. The signed capture MRTR carries the optional
+`buy.capture.estimate.*` trio; the executor reopens, recrosses, and attests every named
+operand evidence source (exact bytes + fingerprint) before ERP dispatch and before
+valuing a single amount, then prices the v1 base bundle and composes
+`buy-cost-bundle/2.0` over it. An unverifiable named source refuses the capture. No
+estimate input means the v1 path exactly as before.
 
 Candidate and seal captures retain either bundle version (`BuyCostBundleVersioned`,
 validated by its own schema); v1 readers keep their schema check and refuse v2
-structurally. Seal signs the same digests and coverage, with no ERP refresh.
-The recorded projection keeps catalogue and estimate lines apart:
-`costClass: "estimate"` lines project as `sourceCategory: "documentary-estimate"`
-with their `external-documentary` citation, never as catalogue prices.
+structurally. Seal signs the same digests and coverage, with no ERP refresh. The
+recorded projection keeps catalogue and estimate lines apart: `costClass: "estimate"`
+lines project as `sourceCategory: "documentary-estimate"` with their
+`external-documentary` citation, never as catalogue prices. Every recorded line carries
+its `provisional` flag (v1 ERP lines are observed prices, never provisional), and V2
+seals add an `estimates` section with per-input capture URI, digest, line ids,
+provisional line ids, and assumptions, so a sourced estimate stays distinguishable from
+an assumption-based one.
 
 ## Capture provenance
 
@@ -205,9 +211,9 @@ the same consumption.
 
 ## Explicit limitations
 
-- The preview persists immutable draft evidence for detail retrieval but seals
-  nothing. Sealing an extended bundle happens only through the version-1
-  capture/seal operations above, never through the preview.
+- The preview persists immutable draft evidence for detail retrieval but seals nothing.
+  Sealing an extended bundle happens only through the version-1 capture/seal operations
+  above, never through the preview.
 - No FX, no UOM conversion, no division-derived unit prices, no complete total while
   anything required is unknown.
 - Fixture amounts in tests are synthetic labels, not actual spend.

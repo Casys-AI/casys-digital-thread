@@ -35,8 +35,7 @@ import {
 import {
   BUY_DOCUMENTARY_ESTIMATE_SCHEMA,
   type BuyDocumentaryEstimateEnvelope,
-  type BuyEstimateQuantityOperand,
-  type BuyEstimateRateOperand,
+  collectBuyDocumentaryEstimateEvidenceRefs,
   validateBuyDocumentaryEstimateEnvelope,
 } from "../../../domain/buy/buy-documentary-estimate.ts";
 import {
@@ -267,7 +266,9 @@ export class PrepareProjectBuyCostEstimatePreview
   }
 
   private async reopenEvidence(envelopes: readonly BuyDocumentaryEstimateEnvelope[]) {
-    const collected = envelopes.flatMap((envelope) => collectEvidenceRefs(envelope));
+    const collected = envelopes.flatMap((envelope) =>
+      collectBuyDocumentaryEstimateEvidenceRefs(envelope)
+    );
     const unique = new Map<string, typeof collected>();
     for (const ref of collected) {
       const key = deterministicJson(ref.reference);
@@ -325,42 +326,6 @@ export class PrepareProjectBuyCostEstimatePreview
     }
     return { status: "ready" as const, evidence };
   }
-}
-
-function collectEvidenceRefs(
-  envelope: BuyDocumentaryEstimateEnvelope,
-): Array<{
-  readonly reference: AgentResourceReference;
-  readonly anchor: string;
-  readonly observedAt: string;
-}> {
-  const refs: Array<{
-    readonly reference: AgentResourceReference;
-    readonly anchor: string;
-    readonly observedAt: string;
-  }> = [];
-  const push = (operand: BuyEstimateQuantityOperand | BuyEstimateRateOperand) => {
-    if (operand.operand === "sourced") {
-      refs.push({
-        reference: operand.source.reference,
-        anchor: operand.source.anchor,
-        observedAt: operand.source.observedAt,
-      });
-    } else if (operand.operand === "assumed") {
-      refs.push({
-        reference: operand.justification.source.reference,
-        anchor: operand.justification.source.anchor,
-        observedAt: operand.justification.source.observedAt,
-      });
-    }
-  };
-  for (const line of envelope.estimate.lines) {
-    for (const term of line.terms) {
-      push(term.consumption);
-      push(term.rate);
-    }
-  }
-  return refs;
 }
 
 function mapReopenRefusal(
