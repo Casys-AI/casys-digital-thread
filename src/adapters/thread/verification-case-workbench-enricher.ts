@@ -23,6 +23,9 @@ import type {
   EngineeringCaseCatalog,
   EngineeringCaseFamily,
   EngineeringCaseIssue,
+  EngineeringWorksheetQuantity,
+  EngineeringWorksheetRecording,
+  EngineeringWorksheetSource,
 } from "../../presentation/workbench/thread/evidence.ts";
 import {
   compareEngineeringCaseIssues,
@@ -69,6 +72,14 @@ import {
 import {
   INDUSTRIALIZE_SEAL_DFM_CASE_OPERATION,
 } from "../../domain/make/dfm/dfm-case.ts";
+import { deterministicJson } from "../../domain/kernel/deterministic-json.ts";
+import {
+  parsePreSizingWorksheetCapture,
+  PRE_SIZING_WORKSHEET_URI_PREFIX,
+  preSizingWorksheetArtifactId,
+  preSizingWorksheetUri,
+  RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION,
+} from "../../domain/record/pre-sizing-worksheet.ts";
 const CASE_LINEAGE_RELATIONS = new Set<ThreadGraphRelation>([
   "derived_from",
   "uses",
@@ -90,6 +101,7 @@ export interface EngineeringCaseWorkbenchEnricherDependencies {
   readonly printabilityCheck?: EngineeringCaseCaptureReader;
   readonly printEstimate?: EngineeringCaseCaptureReader;
   readonly dfmCheck?: EngineeringCaseCaptureReader;
+  readonly preSizingWorksheet?: EngineeringCaseCaptureReader;
 }
 
 interface ExtractedCaseBase {
@@ -132,6 +144,14 @@ type ExtractedCase =
       readonly family: "dfm-check";
       readonly caseSchemaVersion: "dfm-check-case/1.0";
     }
+    | {
+      readonly family: "pre-sizing-worksheet";
+      readonly caseSchemaVersion: "pre-sizing-worksheet/1.0";
+      readonly title: string;
+      readonly recording: EngineeringWorksheetRecording;
+      readonly quantities: readonly EngineeringWorksheetQuantity[];
+      readonly sources: readonly EngineeringWorksheetSource[];
+    }
   );
 
 interface CaseDriver {
@@ -139,6 +159,11 @@ interface CaseDriver {
   readonly producedBy: string;
   readonly artifactIdPrefix: string;
   readonly uriPrefix: string;
+  /**
+   * Exact capture URI template when the family does not address captures as
+   * `<uriPrefix>sha256/<digest>`. Binding stays an exact URI equality.
+   */
+  readonly captureUri?: (digest: string) => string;
   readonly reader?: EngineeringCaseCaptureReader;
   /** False for a detected historical schema that is visible only as an issue. */
   readonly advertiseCoverage?: boolean;
@@ -471,6 +496,79 @@ function caseDrivers(
         };
       },
     },
+    {
+      family: "pre-sizing-worksheet",
+      producedBy:
+        `${RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION.id}@${RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION.version}`,
+      artifactIdPrefix: "pre-sizing-worksheet-",
+      uriPrefix: PRE_SIZING_WORKSHEET_URI_PREFIX,
+      captureUri: (digest) => preSizingWorksheetUri(digest),
+      reader: dependencies.preSizingWorksheet,
+      extract: (text, fingerprint) => {
+        const capture = parsePreSizingWorksheetCapture(JSON.parse(text));
+        return Promise.resolve({
+          family: "pre-sizing-worksheet",
+          caseSchemaVersion: capture.schemaVersion,
+          id: capture.claim.worksheetId,
+          revision: capture.claim.revision,
+          scope: capture.title,
+          caseDigest: fingerprint.digest,
+          projectId: capture.projectId,
+          subjectId: capture.basis.subjectId,
+          expectedAuthorityArtifactId: preSizingWorksheetArtifactId(
+            fingerprint.digest,
+          ),
+          expectedAuthorityRunId: capture.trustedRunId,
+          title: capture.title,
+          recording: {
+            status: capture.recording.status,
+            authorKind: capture.recording.authorKind,
+          },
+          quantities: capture.quantities.map((quantity) => ({
+            id: quantity.id,
+            ...(quantity.label === undefined ? {} : { label: quantity.label }),
+            value: quantity.value,
+            unit: quantity.unit,
+            sourceIndex: quantity.sourceIndex,
+            ...(quantity.assumption === undefined
+              ? {}
+              : { assumption: quantity.assumption }),
+          })),
+          sources: capture.sources.map((source) =>
+            source.kind === "agent-resource"
+              ? {
+                kind: "agent-resource" as const,
+                uri: source.resourceRef.uri,
+                digest: source.resourceRef.fingerprint.digest,
+              }
+              : {
+                kind: "thread-artifact" as const,
+                artifactId: source.artifactId,
+                digest: source.fingerprint.digest,
+                producerRunId: source.producerRunId,
+              }
+          ),
+          inputArtifacts: [
+            ...capture.sources.flatMap((source) =>
+              source.kind === "thread-artifact"
+                ? [{
+                  id: source.artifactId,
+                  fingerprint: `sha256:${source.fingerprint.digest}`,
+                  producerRunId: source.producerRunId,
+                }]
+                : []
+            ),
+            ...(capture.claim.predecessor
+              ? [{
+                id: capture.claim.predecessor.artifactId,
+                fingerprint: `sha256:${capture.claim.predecessor.fingerprint.digest}`,
+                producerRunId: capture.claim.predecessor.producerRunId,
+              }]
+              : []),
+          ],
+        });
+      },
+    },
   ];
 }
 
@@ -494,7 +592,10 @@ function boundCaptureFingerprint(
   const match = /^sha256:([a-f0-9]{64})$/.exec(artifact.fingerprint);
   if (!match) return undefined;
   const digest = match[1]!;
-  if (artifact.uri !== `${driver.uriPrefix}sha256/${digest}`) return undefined;
+  const expectedUri = driver.captureUri
+    ? driver.captureUri(digest)
+    : `${driver.uriPrefix}sha256/${digest}`;
+  if (artifact.uri !== expectedUri) return undefined;
   return { algorithm: "sha256", digest };
 }
 
@@ -611,6 +712,15 @@ function sameDeclaration(
     return extracted.family === "mechanical-proof" &&
       existing.target?.modelElementId === extracted.targetModelElementId;
   }
+  if (existing.family === "pre-sizing-worksheet") {
+    return extracted.family === "pre-sizing-worksheet" &&
+      existing.title === extracted.title &&
+      deterministicJson(existing.recording) ===
+        deterministicJson(extracted.recording) &&
+      deterministicJson(existing.quantities) ===
+        deterministicJson(extracted.quantities) &&
+      deterministicJson(existing.sources) === deterministicJson(extracted.sources);
+  }
   return true;
 }
 
@@ -658,6 +768,16 @@ function projectCaseDeclaration(
         ...common,
         family: extracted.family,
         caseSchemaVersion: extracted.caseSchemaVersion,
+      };
+    case "pre-sizing-worksheet":
+      return {
+        ...common,
+        family: extracted.family,
+        caseSchemaVersion: extracted.caseSchemaVersion,
+        title: extracted.title,
+        recording: extracted.recording,
+        quantities: extracted.quantities,
+        sources: extracted.sources,
       };
   }
 }

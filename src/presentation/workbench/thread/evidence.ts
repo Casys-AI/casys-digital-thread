@@ -19,6 +19,7 @@ export const ENGINEERING_CASE_FAMILIES = [
   "printability-check",
   "print-estimate",
   "dfm-check",
+  "pre-sizing-worksheet",
 ] as const;
 
 export type EngineeringCaseFamily = typeof ENGINEERING_CASE_FAMILIES[number];
@@ -49,6 +50,7 @@ export const ENGINEERING_CASE_SCHEMA_BY_FAMILY = {
   "printability-check": "printability-check-case/1.0",
   "print-estimate": "print-estimate-case/1.0",
   "dfm-check": "dfm-check-case/1.0",
+  "pre-sizing-worksheet": "pre-sizing-worksheet/1.0",
 } as const;
 
 export type EngineeringCaseSchemaVersion =
@@ -85,7 +87,45 @@ export type EngineeringCase =
       caseSchemaVersion: "print-estimate-case/1.0";
     }
     | { family: "dfm-check"; caseSchemaVersion: "dfm-check-case/1.0" }
+    | {
+      family: "pre-sizing-worksheet";
+      caseSchemaVersion: "pre-sizing-worksheet/1.0";
+      title: string;
+      recording: EngineeringWorksheetRecording;
+      quantities: readonly EngineeringWorksheetQuantity[];
+      sources: readonly EngineeringWorksheetSource[];
+    }
   );
+
+/** Documentary recording status carried by a sealed pre-sizing worksheet. */
+export interface EngineeringWorksheetRecording {
+  readonly status: string;
+  readonly authorKind: string;
+}
+
+/** One inspectable documentary quantity: value, unit, source link, assumption. */
+export interface EngineeringWorksheetQuantity {
+  readonly id: string;
+  readonly label?: string;
+  readonly value: string;
+  readonly unit: string;
+  readonly sourceIndex: number;
+  readonly assumption?: string;
+}
+
+/** Exact source identity behind worksheet quantities. Digests stay sha256 hex. */
+export type EngineeringWorksheetSource =
+  | {
+    readonly kind: "agent-resource";
+    readonly uri: string;
+    readonly digest: string;
+  }
+  | {
+    readonly kind: "thread-artifact";
+    readonly artifactId: string;
+    readonly digest: string;
+    readonly producerRunId: string;
+  };
 
 export interface EngineeringCaseCoverage {
   family: EngineeringCaseFamily;

@@ -39,6 +39,10 @@ import { RECORD_REQUIREMENTS_BRIEF_TRACE_OPERATION } from "../../src/domain/reco
 import { RECORD_DOCUMENTARY_CLAUSE_RESPONSE_OPERATION } from "../../src/domain/record/documentary-clause-response.ts";
 import { RECORD_SEAL_PRE_SIZING_WORKSHEET_OPERATION } from "../../src/domain/record/pre-sizing-worksheet.ts";
 import {
+  createPreSizingWorksheetStore,
+  DEFAULT_PRE_SIZING_WORKSHEET_DIRECTORY,
+} from "../../src/adapters/record/pre-sizing-worksheet-store.ts";
+import {
   createDocumentaryClauseResponseStore,
   DEFAULT_DOCUMENTARY_CLAUSE_RESPONSE_DIRECTORY,
 } from "../../src/adapters/record/documentary-clause-response-store.ts";
@@ -1941,6 +1945,10 @@ if (import.meta.main) {
       PRINT_ESTIMATE_CASE_CAPTURE_DESCRIPTOR,
     ),
     dfmCheck: new FileCaptureStore(DFM_CASE_CAPTURE_DESCRIPTOR),
+    preSizingWorksheet: createPreSizingWorksheetStore(
+      cliArgs["pre-sizing-worksheet-dir"] ??
+        DEFAULT_PRE_SIZING_WORKSHEET_DIRECTORY,
+    ),
   };
   const historyEvidenceCaptures = composeHistoryCaptureReaders(
     new FileCaptureStore(SENSITIVITY_STUDY_CAPTURE_DESCRIPTOR),

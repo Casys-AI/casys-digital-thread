@@ -19,8 +19,20 @@ const A_UMLAUT_ID = "ä-bench";
 Deno.test(
   "engineering case current selects Camera r3 and a distinct RadialArm r2",
   () => {
-    const cameraR1 = mechanicalCase(CAMERA_ID, 1, "a", "camera-r1", CAMERA_TARGET);
-    const cameraR3 = mechanicalCase(CAMERA_ID, 3, "c", "camera-r3", CAMERA_TARGET);
+    const cameraR1 = mechanicalCase(
+      CAMERA_ID,
+      1,
+      "a",
+      "camera-r1",
+      CAMERA_TARGET,
+    );
+    const cameraR3 = mechanicalCase(
+      CAMERA_ID,
+      3,
+      "c",
+      "camera-r3",
+      CAMERA_TARGET,
+    );
     const radial = mechanicalCase(RADIAL_ID, 2, "d", "radial", RADIAL_TARGET);
     const projected = projectCurrentEngineeringCases([
       cameraR3,
@@ -50,7 +62,9 @@ Deno.test(
     const zed = mechanicalCase(Z_ID, 1, "b", "zed");
     assertEquals(Z_ID < A_UMLAUT_ID, true);
     assertEquals(
-      projectCurrentEngineeringCases([umlaut, zed]).current.map((item) => item.id),
+      projectCurrentEngineeringCases([umlaut, zed]).current.map((item) =>
+        item.id
+      ),
       [Z_ID, A_UMLAUT_ID],
     );
     assertEquals(
@@ -63,8 +77,20 @@ Deno.test(
 Deno.test(
   "engineering case current fail-closed omits a conflicting Camera group and keeps RadialArm",
   () => {
-    const cameraA = mechanicalCase(CAMERA_ID, 1, "a", "camera-a", CAMERA_TARGET);
-    const cameraB = mechanicalCase(CAMERA_ID, 1, "b", "camera-b", CAMERA_TARGET);
+    const cameraA = mechanicalCase(
+      CAMERA_ID,
+      1,
+      "a",
+      "camera-a",
+      CAMERA_TARGET,
+    );
+    const cameraB = mechanicalCase(
+      CAMERA_ID,
+      1,
+      "b",
+      "camera-b",
+      CAMERA_TARGET,
+    );
     const radial = mechanicalCase(RADIAL_ID, 2, "d", "radial", RADIAL_TARGET);
     const projected = projectCurrentEngineeringCases([
       cameraB,
@@ -105,7 +131,13 @@ Deno.test(
       "camera-r1b",
       CAMERA_TARGET,
     );
-    const cameraR3 = mechanicalCase(CAMERA_ID, 3, "c", "camera-r3", CAMERA_TARGET);
+    const cameraR3 = mechanicalCase(
+      CAMERA_ID,
+      3,
+      "c",
+      "camera-r3",
+      CAMERA_TARGET,
+    );
     const projected = projectCurrentEngineeringCases([
       cameraR3,
       cameraR1a,
@@ -147,7 +179,7 @@ Deno.test(
 );
 
 Deno.test(
-  "engineering case current supports all five families in code-unit order",
+  "engineering case current supports all six families in code-unit order",
   () => {
     const cases = [
       familyCase("sensitivity-study", "study-a", 1, "1"),
@@ -155,6 +187,7 @@ Deno.test(
       familyCase("printability-check", "print-a", 1, "3"),
       familyCase("dfm-check", "dfm-a", 4, "4"),
       familyCase("print-estimate", "estimate-a", 3, "5"),
+      familyCase("pre-sizing-worksheet", "sheet-a", 1, "6"),
     ];
     const projected = projectCurrentEngineeringCases(cases);
     assertEquals(
@@ -162,6 +195,7 @@ Deno.test(
       [
         "dfm-check",
         "mechanical-proof",
+        "pre-sizing-worksheet",
         "print-estimate",
         "printability-check",
         "sensitivity-study",
@@ -169,7 +203,7 @@ Deno.test(
     );
     assertEquals(
       projected.current.map((item) => item.revision),
-      [4, 2, 3, 1, 1],
+      [4, 2, 1, 3, 1, 1],
     );
     assertEquals(projected.issues, []);
   },
@@ -242,6 +276,16 @@ function familyCase(
         ...common,
         family,
         caseSchemaVersion: "dfm-check-case/1.0",
+      };
+    case "pre-sizing-worksheet":
+      return {
+        ...common,
+        family,
+        caseSchemaVersion: "pre-sizing-worksheet/1.0",
+        title: `${id} r${revision}`,
+        recording: { status: "recorded", authorKind: "agent" },
+        quantities: [],
+        sources: [],
       };
   }
 }

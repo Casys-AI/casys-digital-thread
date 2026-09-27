@@ -574,9 +574,7 @@ function isProjectPathProjection(
         engineeringActivityIdFromRootRevision(expected.rootRevisionId) ||
       activity.rootRevisionId !== expected.rootRevisionId ||
       activity.revisionIds.length !== expected.revisionIds.length ||
-      activity.revisionIds.some((id, index) =>
-        id !== expected.revisionIds[index]
-      )
+      activity.revisionIds.some((id, index) => id !== expected.revisionIds[index])
     ) {
       return false;
     }
@@ -1104,9 +1102,7 @@ export function isThreadWorkbenchSnapshot(
     Array.isArray(candidate.artifacts) &&
     candidate.artifacts.every(isThreadArtifact) &&
     (candidate.engineeringCases === undefined
-      ? candidate.graph.nodes.every((node) =>
-        node.engineeringCaseRefs === undefined
-      )
+      ? candidate.graph.nodes.every((node) => node.engineeringCaseRefs === undefined)
       : isEngineeringCaseCatalog(
         candidate.engineeringCases,
         candidate.artifacts,
@@ -1531,9 +1527,7 @@ function isThreadRequirementHistoricalObservationRef(
   ) {
     return false;
   }
-  const ids = value.sourceArtifacts.map((item) =>
-    isRecord(item) ? item.id : undefined
-  );
+  const ids = value.sourceArtifacts.map((item) => isRecord(item) ? item.id : undefined);
   return value.sourceArtifacts.every(isThreadRequirementHistoricalRef) &&
     ids.every((id) => typeof id === "string") &&
     new Set(ids).size === ids.length;
@@ -1987,9 +1981,7 @@ function matchesEngineeringCaseCatalog(
     `${item.family}:${item.caseDigest}`
   );
   if (!hasUniqueStrings(exactCaseIdentities)) return false;
-  const authorityIds = catalog.cases.flatMap((item) =>
-    item.authorityArtifactIds
-  );
+  const authorityIds = catalog.cases.flatMap((item) => item.authorityArtifactIds);
   if (!hasUniqueStrings(authorityIds)) return false;
   const coverageByFamily = new Map(
     catalog.coverage.map((item) => [item.family, item.status]),
@@ -2060,6 +2052,9 @@ function isEngineeringCase(
   const allowed = [
     ...required,
     ...(candidate.family === "mechanical-proof" ? ["target"] : []),
+    ...(candidate.family === "pre-sizing-worksheet"
+      ? ["title", "recording", "quantities", "sources"]
+      : []),
   ];
   return required.every((key) => Object.hasOwn(value, key)) &&
     hasAllowedKeys(value, allowed) &&
@@ -2085,7 +2080,67 @@ function isEngineeringCase(
     ) && hasUniqueStrings(candidate.authorityArtifactIds) &&
     (candidate.family !== "mechanical-proof" ||
       candidate.target === undefined ||
-      isMechanicalProofTarget(candidate.target));
+      isMechanicalProofTarget(candidate.target)) &&
+    (candidate.family !== "pre-sizing-worksheet" ||
+      (typeof candidate.title === "string" && candidate.title.length > 0 &&
+        isWorksheetRecording(candidate.recording) &&
+        Array.isArray(candidate.quantities) &&
+        candidate.quantities.every(isWorksheetQuantity) &&
+        Array.isArray(candidate.sources) &&
+        candidate.sources.every(isWorksheetSource)));
+}
+
+function isWorksheetRecording(
+  value: unknown,
+): value is { status: string; authorKind: string } {
+  return isRecord(value) &&
+    hasExactKeys(value, ["status", "authorKind"]) &&
+    typeof value.status === "string" && value.status.length > 0 &&
+    typeof value.authorKind === "string" && value.authorKind.length > 0;
+}
+
+function isWorksheetQuantity(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  return hasAllowedKeys(value, [
+    "id",
+    "label",
+    "value",
+    "unit",
+    "sourceIndex",
+    "assumption",
+  ]) &&
+    ["id", "value", "unit", "sourceIndex"].every((key) => Object.hasOwn(value, key)) &&
+    typeof candidate.id === "string" && candidate.id.length > 0 &&
+    (candidate.label === undefined ||
+      (typeof candidate.label === "string" && candidate.label.length > 0)) &&
+    typeof candidate.value === "string" && candidate.value.length > 0 &&
+    typeof candidate.unit === "string" && candidate.unit.length > 0 &&
+    typeof candidate.sourceIndex === "number" &&
+    Number.isSafeInteger(candidate.sourceIndex) &&
+    candidate.sourceIndex >= 0 &&
+    (candidate.assumption === undefined ||
+      (typeof candidate.assumption === "string" &&
+        candidate.assumption.length > 0));
+}
+
+function isWorksheetSource(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  const candidate = value as Record<string, unknown>;
+  if (candidate.kind === "agent-resource") {
+    return hasExactKeys(value, ["kind", "uri", "digest"]) &&
+      typeof candidate.uri === "string" && candidate.uri.length > 0 &&
+      typeof candidate.digest === "string" && isSha256Digest(candidate.digest);
+  }
+  if (candidate.kind === "thread-artifact") {
+    return hasExactKeys(value, ["kind", "artifactId", "digest", "producerRunId"]) &&
+      typeof candidate.artifactId === "string" &&
+      candidate.artifactId.length > 0 &&
+      typeof candidate.digest === "string" && isSha256Digest(candidate.digest) &&
+      typeof candidate.producerRunId === "string" &&
+      candidate.producerRunId.length > 0;
+  }
+  return false;
 }
 
 function isMechanicalProofTarget(
@@ -2223,26 +2278,28 @@ const ENGINEERING_CASE_AUTHORITY: Record<
   },
   "sensitivity-study": {
     producedBy: "analyze.seal-sensitivity-study@1",
-    artifactId: (_captureDigest, caseDigest) =>
-      `sensitivity-case-${caseDigest}`,
+    artifactId: (_captureDigest, caseDigest) => `sensitivity-case-${caseDigest}`,
     uriPrefix: "casys://sensitivity-study-case-capture/sha256/",
   },
   "printability-check": {
     producedBy: "industrialize.seal-printability-case@1",
-    artifactId: (_captureDigest, caseDigest) =>
-      `printability-case-${caseDigest}`,
+    artifactId: (_captureDigest, caseDigest) => `printability-case-${caseDigest}`,
     uriPrefix: "casys://printability-case-capture/sha256/",
   },
   "print-estimate": {
     producedBy: "industrialize.seal-print-estimate-case@1",
-    artifactId: (_captureDigest, caseDigest) =>
-      `print-estimate-case-${caseDigest}`,
+    artifactId: (_captureDigest, caseDigest) => `print-estimate-case-${caseDigest}`,
     uriPrefix: "casys://print-estimate-case-capture/sha256/",
   },
   "dfm-check": {
     producedBy: "industrialize.seal-dfm-case@1",
     artifactId: (_captureDigest, caseDigest) => `dfm-case-${caseDigest}`,
     uriPrefix: "casys://dfm-case-capture/sha256/",
+  },
+  "pre-sizing-worksheet": {
+    producedBy: "record.seal-pre-sizing-worksheet@1",
+    artifactId: (captureDigest) => `pre-sizing-worksheet-${captureDigest}`,
+    uriPrefix: "casys://pre-sizing-worksheet/pre-sizing-worksheet-",
   },
 };
 

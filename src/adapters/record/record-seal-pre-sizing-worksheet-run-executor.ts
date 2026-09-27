@@ -470,6 +470,9 @@ async function buildMaterialization(
     base,
     artifact,
     capturedAt: requiredStart(run),
+    ...(claim.predecessor
+      ? { predecessorArtifactId: claim.predecessor.artifactId }
+      : {}),
   });
   return {
     capture,
@@ -490,6 +493,13 @@ export function applyPreSizingWorksheetDocumentExtension(input: {
   readonly base: ThreadSnapshot;
   readonly artifact: ThreadArtifact;
   readonly capturedAt: string;
+  /**
+   * Exact predecessor artifact id when this record continues a worksheet.
+   * Callers must pass a validated worksheet predecessor (same worksheet,
+   * head revision, sealed identity): only membership in the record inputs
+   * is rechecked here.
+   */
+  readonly predecessorArtifactId?: string;
 }): ThreadSnapshot {
   const inputs = input.artifact.inputArtifactIds.map((id) => {
     const matches = input.base.artifacts.filter((artifact) => artifact.id === id);
@@ -500,6 +510,14 @@ export function applyPreSizingWorksheetDocumentExtension(input: {
     }
     return matches[0]!;
   });
+  if (
+    input.predecessorArtifactId !== undefined &&
+    !inputs.some((source) => source.id === input.predecessorArtifactId)
+  ) {
+    throw invalidTransition(
+      `Pre-sizing worksheet predecessor ${input.predecessorArtifactId} is not one of the record inputs.`,
+    );
+  }
   return applyThreadSnapshotExtension(input.base, {
     id: input.artifact.id,
     name: "Seal one pre-sizing worksheet record",
@@ -518,24 +536,36 @@ export function applyPreSizingWorksheetDocumentExtension(input: {
     requirements: [],
     evaluations: [],
     violations: [],
-    provenance: inputs.flatMap((source) => [{
-      id: `uses-${source.id}-by-${input.artifact.id}`,
-      relation: "uses" as const,
-      from: {
-        kind: "consumption" as const,
-        id: `consume-${source.id}-by-${input.artifact.id}`,
-      },
-      to: { kind: "artifact" as const, id: source.id },
-      rationale:
-        "The pre-sizing worksheet verified and consumed this exact immutable input artifact.",
-    }, {
-      id: `derived-from-${source.id}-by-${input.artifact.id}`,
-      relation: "derived_from" as const,
-      from: { kind: "artifact" as const, id: input.artifact.id },
-      to: { kind: "artifact" as const, id: source.id },
-      rationale:
-        "This worksheet record reopens the exact immutable input artifact; it asserts neither satisfaction nor physical proof.",
-    }]),
+    provenance: [
+      ...inputs.flatMap((source) => [{
+        id: `uses-${source.id}-by-${input.artifact.id}`,
+        relation: "uses" as const,
+        from: {
+          kind: "consumption" as const,
+          id: `consume-${source.id}-by-${input.artifact.id}`,
+        },
+        to: { kind: "artifact" as const, id: source.id },
+        rationale:
+          "The pre-sizing worksheet verified and consumed this exact immutable input artifact.",
+      }, {
+        id: `derived-from-${source.id}-by-${input.artifact.id}`,
+        relation: "derived_from" as const,
+        from: { kind: "artifact" as const, id: input.artifact.id },
+        to: { kind: "artifact" as const, id: source.id },
+        rationale:
+          "This worksheet record reopens the exact immutable input artifact; it asserts neither satisfaction nor physical proof.",
+      }]),
+      ...(input.predecessorArtifactId
+        ? [{
+          id: `supersedes-${input.predecessorArtifactId}-by-${input.artifact.id}`,
+          relation: "supersedes" as const,
+          from: { kind: "artifact" as const, id: input.artifact.id },
+          to: { kind: "artifact" as const, id: input.predecessorArtifactId },
+          rationale:
+            "This worksheet record is the exact next revision of its predecessor; ordinary Thread sources stay uses/derived_from dependencies.",
+        }]
+        : []),
+    ],
     proposedActions: [],
   }, { appliedAt: input.capturedAt });
 }

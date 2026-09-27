@@ -82,6 +82,7 @@ function caseReaders(
     printabilityCheck: absent,
     printEstimate: absent,
     dfmCheck: absent,
+    preSizingWorksheet: absent,
     ...overrides,
   };
 }
@@ -1145,6 +1146,7 @@ Deno.test(
         "printability-check",
         "print-estimate",
         "dfm-check",
+        "pre-sizing-worksheet",
       ],
     );
   },

@@ -33,6 +33,7 @@ Deno.test("ThreadSnapshot projects linked evidence into the native Workbench con
       { family: "printability-check", status: "unavailable" },
       { family: "print-estimate", status: "unavailable" },
       { family: "dfm-check", status: "unavailable" },
+      { family: "pre-sizing-worksheet", status: "unavailable" },
     ],
     cases: [],
     current: [],
