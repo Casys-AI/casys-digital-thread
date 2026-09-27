@@ -61,6 +61,8 @@ import { type ThreadGraphSelection } from "./graph.tsx";
 import {
   buildEvidenceCanvasProjection,
   buildExplorationKindProjection,
+  buildInitialEvidenceFrameProjection,
+  type InitialEvidenceFrameAnchors,
   linkedEvidenceDetail,
   paintedDossierMetric,
 } from "./evidence-canvas-model.ts";
@@ -182,6 +184,11 @@ export interface ThreadWorkbenchProps {
  * on every click — the "everything refreshes" defect. localDepth is NOT a
  * dependency: the local neighbourhood is computed at max depth and the
  * visible depth filters display only.
+ *
+ * The no-focus map paints the bounded initial frame by default; showFullMap
+ * (one explicit gesture) restores the unbounded kind projection. The frame
+ * is always computed so the banner overflow count stays exact in both
+ * modes; it is a filter pass, negligible next to dagre/sigma.
  */
 function useEvidenceCanvasProjections(
   workbench: EngineeringWorkbenchSnapshot | undefined,
@@ -190,6 +197,8 @@ function useEvidenceCanvasProjections(
   explorationMapKinds: Record<DisplayKind, boolean>,
   lineageFocus: ThreadGraphRef | undefined,
   presentedMemberRef: ThreadGraphRef | undefined,
+  initialFrameAnchors: InitialEvidenceFrameAnchors,
+  showFullMap: boolean,
 ) {
   const fullMap = useMemo(() => {
     if (!workbench || workbench.surface !== "evidence") return undefined;
@@ -239,7 +248,19 @@ function useEvidenceCanvasProjections(
     );
   }, [workbench, evidenceModel, explorationMapKinds, versionedProvenance]);
 
-  return { fullMap, canvas, kindProjection };
+  const initialFrame = useMemo(() => {
+    if (!workbench || workbench.surface !== "evidence") return undefined;
+    if (!evidenceModel) return undefined;
+    return buildInitialEvidenceFrameProjection(
+      evidenceModel,
+      explorationMapKinds,
+      initialFrameAnchors,
+    );
+  }, [workbench, evidenceModel, explorationMapKinds, initialFrameAnchors]);
+
+  const mapProjection = showFullMap ? kindProjection : initialFrame;
+
+  return { fullMap, canvas, kindProjection, initialFrame, mapProjection };
 }
 
 export function ThreadWorkbench({
@@ -296,6 +317,13 @@ export function ThreadWorkbench({
   const [explorationMapKinds, setExplorationMapKinds] = useState<
     Record<DisplayKind, boolean>
   >({ ...CURRENT_EVIDENCE_KIND_PRESET });
+  // Unbounded no-focus map. Default false: the map paints the bounded
+  // initial frame; one explicit gesture lifts the bound for this project.
+  const [showFullMap, setShowFullMap] = useState(false);
+  const showFullMapProjectId = workbench?.project.project.id;
+  useEffect(() => {
+    setShowFullMap(false);
+  }, [showFullMapProjectId]);
   // Type visibility for the local Exploration view (in-place sigma reducer,
   // no re-layout). Defaults: all kinds visible.
   const [explorationLocalKinds, setExplorationLocalKinds] = useState<
@@ -614,10 +642,37 @@ export function ThreadWorkbench({
     verificationVersionedProvenanceMemo,
   ]);
 
+  // Initial-frame anchors: BFF family-graph current refs (version heads)
+  // plus authority artifacts of the catalog's closed current-case
+  // selection. Exact recorded membership only; the frame ignores anchors
+  // absent from the kind-visible set (e.g. verification-filtered models).
+  const initialFrameAnchors = useMemo((): InitialEvidenceFrameAnchors => {
+    const empty: InitialEvidenceFrameAnchors = {
+      familyCurrentRefs: [],
+      caseAuthorityArtifactIds: [],
+    };
+    if (!workbench || workbench.surface !== "evidence") return empty;
+    const familyCurrentRefs = workbench.thread.evidenceFamilyGraph.families
+      .flatMap((family) => family.currentRefs);
+    const catalog = workbench.thread.engineeringCases;
+    if (!catalog) return { familyCurrentRefs, caseAuthorityArtifactIds: [] };
+    const currentKeys = new Set(
+      catalog.current.map((entry) => entry.currentCaseKey),
+    );
+    return {
+      familyCurrentRefs,
+      caseAuthorityArtifactIds: catalog.cases
+        .filter((item) => currentKeys.has(item.key))
+        .flatMap((item) => item.authorityArtifactIds),
+    };
+  }, [workbench]);
+
   const {
     fullMap: fullMapCanvasMemo,
     canvas: evidenceCanvasMemo,
     kindProjection: explorationKindProjectionMemo,
+    initialFrame: explorationInitialFrameMemo,
+    mapProjection: explorationMapProjectionMemo,
   } = useEvidenceCanvasProjections(
     workbench,
     evidenceModel,
@@ -625,12 +680,16 @@ export function ThreadWorkbench({
     explorationMapKinds,
     lineageFocus,
     presentedMemberRef,
+    initialFrameAnchors,
+    showFullMap,
   );
 
   const {
     fullMap: verificationFullMapCanvasMemo,
     canvas: verificationEvidenceCanvasMemo,
     kindProjection: verificationKindProjectionMemo,
+    initialFrame: verificationInitialFrameMemo,
+    mapProjection: verificationMapProjectionMemo,
   } = useEvidenceCanvasProjections(
     workbench,
     verificationEvidenceModelMemo,
@@ -638,6 +697,8 @@ export function ThreadWorkbench({
     explorationMapKinds,
     lineageFocus,
     presentedMemberRef,
+    initialFrameAnchors,
+    showFullMap,
   );
 
   // Keep one current occurrence index so a controlled keyed selection can
@@ -887,9 +948,21 @@ export function ThreadWorkbench({
   const displayedEvidenceModel = activeView === "verification"
     ? verificationEvidenceModelMemo
     : evidenceModel;
-  const displayedKindProjection = activeView === "verification"
+  const displayedMapProjection = activeView === "verification"
+    ? verificationMapProjectionMemo
+    : explorationMapProjectionMemo;
+  // Minimap context stays the unbounded kind projection: the bounded frame
+  // may exclude the focused node, which would drop the viewport highlight.
+  const displayedMinimapContext = activeView === "verification"
     ? verificationKindProjectionMemo
     : explorationKindProjectionMemo;
+  const displayedInitialFrame = activeView === "verification"
+    ? verificationInitialFrameMemo
+    : explorationInitialFrameMemo;
+  const initialFrameOverflow =
+    displayedInitialFrame?.initialFrameOverflowCount ?? 0;
+  const initialFrameKindVisible = (displayedInitialFrame?.displayedCount ?? 0) +
+    initialFrameOverflow;
 
   // Visible-depth display filter (local view only). The neighbourhood is
   // computed at max depth; here we derive what the chosen depth actually
@@ -1391,6 +1464,8 @@ export function ThreadWorkbench({
                               ? `Depth ${localDepth}; the alternate version stays hidden.`
                               : evidenceCanvas.isFiltered
                               ? "Local view. Select the background to return to the map."
+                              : !showFullMap && initialFrameOverflow > 0
+                              ? `Bounded initial frame, ${initialFrameOverflow} more outside it. Show all for the complete map.`
                               : mapShowsFullScope
                               ? "Select a record to inspect. Double-click a node to focus its neighbourhood."
                               : mapShowsCurrentPreset
@@ -1410,15 +1485,36 @@ export function ThreadWorkbench({
                               {mapShowsFullScope ? "Current" : "Full history"}
                             </Button>
                           )}
+                          {!presentedMemberRef &&
+                            !evidenceCanvas.isFiltered &&
+                            initialFrameOverflow > 0 && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => setShowFullMap((value) => !value)}
+                              aria-pressed={showFullMap}
+                            >
+                              {showFullMap
+                                ? "Bounded view"
+                                : `Show all ${initialFrameKindVisible}`}
+                            </Button>
+                          )}
                           <p className="font-mono text-xs text-muted-foreground">
                             {evidenceCanvas.isFiltered
                               ? `${explorationLocalVisibleCount} items shown · local view · depth ${localDepth}`
                               : (() => {
-                                const kp = displayedKindProjection ??
+                                const kp = displayedMapProjection ??
                                   evidenceCanvas;
                                 const parts: string[] = [
                                   `${kp.displayedCount} items shown`,
                                 ];
+                                if (
+                                  !showFullMap && initialFrameOverflow > 0
+                                ) {
+                                  parts.push(
+                                    `${initialFrameOverflow} outside initial frame`,
+                                  );
+                                }
                                 const totalFolded =
                                   versionedProvenance.collapsedVersionCount;
                                 if (totalFolded > 0) {
@@ -1495,7 +1591,7 @@ export function ThreadWorkbench({
                         projection={presentedMemberRef ||
                             evidenceCanvas.isFiltered
                           ? evidenceCanvas
-                          : (displayedKindProjection ?? evidenceCanvas)}
+                          : (displayedMapProjection ?? evidenceCanvas)}
                         displayDepth={presentedMemberRef ||
                             evidenceCanvas.isFiltered
                           ? localDepth
@@ -1521,7 +1617,7 @@ export function ThreadWorkbench({
                         verificationCaseNodes={evidenceRawGraphMemo!.nodes}
                         verificationCaseFilter={verificationCaseFilter}
                         onVerificationCaseFilterChange={changeVerificationCaseFilter}
-                        fullMapProjection={displayedKindProjection ??
+                        fullMapProjection={displayedMinimapContext ??
                           fullMapCanvas}
                         onEnterLocalView={(ref) => {
                           const node = graphNodeByRef(snapshot, ref);

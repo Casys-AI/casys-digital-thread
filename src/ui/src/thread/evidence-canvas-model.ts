@@ -99,6 +99,13 @@ export interface EvidenceCanvasProjection {
    * projections retain every recorded node.
    */
   readonly hiddenByKindCount: number;
+  /**
+   * Initial-frame projections only: kind-visible nodes beyond the bounded
+   * initial frame. Undefined (treated as zero) on every other projection.
+   * `displayedCount + hiddenByKindCount + (initialFrameOverflowCount ?? 0)`
+   * always equals the model node count.
+   */
+  readonly initialFrameOverflowCount?: number;
 }
 
 /**
@@ -328,4 +335,128 @@ export function buildExplorationKindProjection(
 
 function graphRefKey(ref: ThreadGraphRef): string {
   return `${ref.kind}:${ref.id}`;
+}
+
+// ---------------------------------------------------------------------------
+// Bounded initial frame for the default full-map view
+// ---------------------------------------------------------------------------
+
+/**
+ * Hard bound on the default Evidence map. Calibrated on the largest demo
+ * (inspection-drone-id01 r119: 874 projected graph nodes, 782 model nodes
+ * after analysis-overlay removal and version folding): the default
+ * current-evidence preset paints 103 nodes there (111 counted overflow),
+ * and the full kind scope truncates exactly at this bound (632 counted
+ * overflow). So 150 keeps dagre/sigma interactive with headroom while
+ * guaranteeing legibility on larger threads. Overflow is counted, not
+ * hidden: the banner reports it and one gesture reaches the full graph.
+ */
+export const INITIAL_EVIDENCE_FRAME_MAX_NODES = 150 as const;
+
+/**
+ * Recorded current selections that anchor the initial frame. All membership
+ * is exact: family heads from the BFF family graph, case authority artifacts
+ * resolved from the engineering-cases catalog, literal requirement/verdict
+ * kinds. Nothing here interprets a provider, prefix, or artifact kind.
+ */
+export interface InitialEvidenceFrameAnchors {
+  /** BFF family-graph current refs (version heads). */
+  readonly familyCurrentRefs: readonly ThreadGraphRef[];
+  /** Authority artifact ids of the catalog's current cases. */
+  readonly caseAuthorityArtifactIds: readonly string[];
+}
+
+/**
+ * Builds the bounded initial frame for the default full-map view.
+ *
+ * Retained, in order: (1) kind-visible current anchors — family heads,
+ * current-case authorities, requirements and their verdicts (literal
+ * `requirement`/`evaluation`/`violation` kinds); (2) their depth-1 recorded
+ * neighbours over kind-visible edges, both directions. Candidates are
+ * ordered deterministically (anchors by ref key, then neighbours by ref
+ * key) and truncated to `maxNodes`. Edges are the recorded edges with both
+ * ends shown; no connector is invented.
+ *
+ * Threads at or under the bound paint exactly the kind projection (no
+ * behaviour change). When no anchor is visible, the frame degrades to the
+ * deterministic first-`maxNodes` kind-visible nodes rather than an empty
+ * map. The overflow count keeps the banner truthful.
+ */
+export function buildInitialEvidenceFrameProjection(
+  model: EvidenceGraphModel,
+  visibleKinds: Record<DisplayKind, boolean>,
+  anchors: InitialEvidenceFrameAnchors,
+  maxNodes: number = INITIAL_EVIDENCE_FRAME_MAX_NODES,
+): EvidenceCanvasProjection {
+  const kindVisible = model.nodes.filter((node) =>
+    isDisplayKindVisible(visibleKinds, node)
+  );
+  const hiddenByKindCount = model.nodes.length - kindVisible.length;
+  if (kindVisible.length <= maxNodes) {
+    const visibleKeys = new Set(
+      kindVisible.map((node) => graphRefKey(node.ref)),
+    );
+    return {
+      nodes: kindVisible,
+      edges: model.edges.filter((edge) =>
+        visibleKeys.has(graphRefKey(edge.from)) &&
+        visibleKeys.has(graphRefKey(edge.to))
+      ),
+      displayedCount: kindVisible.length,
+      isFiltered: false,
+      hiddenByKindCount,
+      initialFrameOverflowCount: 0,
+    };
+  }
+
+  const byKey = new Map(
+    kindVisible.map((node) => [graphRefKey(node.ref), node]),
+  );
+  const anchorKeys = new Set<string>();
+  for (const ref of anchors.familyCurrentRefs) {
+    const key = graphRefKey(ref);
+    if (byKey.has(key)) anchorKeys.add(key);
+  }
+  for (const id of anchors.caseAuthorityArtifactIds) {
+    const key = `artifact:${id}`;
+    if (byKey.has(key)) anchorKeys.add(key);
+  }
+  for (const node of kindVisible) {
+    if (
+      node.entityKind === "requirement" || node.entityKind === "evaluation" ||
+      node.entityKind === "violation"
+    ) {
+      anchorKeys.add(graphRefKey(node.ref));
+    }
+  }
+
+  let candidates: string[];
+  if (anchorKeys.size === 0) {
+    candidates = [...byKey.keys()].sort();
+  } else {
+    const neighbours = new Set<string>();
+    for (const edge of model.edges) {
+      const from = graphRefKey(edge.from);
+      const to = graphRefKey(edge.to);
+      if (!byKey.has(from) || !byKey.has(to)) continue;
+      if (anchorKeys.has(from) && !anchorKeys.has(to)) neighbours.add(to);
+      if (anchorKeys.has(to) && !anchorKeys.has(from)) neighbours.add(from);
+    }
+    candidates = [
+      ...[...anchorKeys].sort(),
+      ...[...neighbours].sort(),
+    ];
+  }
+  const shown = new Set(candidates.slice(0, maxNodes));
+  const nodes = [...shown].map((key) => byKey.get(key)!);
+  return {
+    nodes,
+    edges: model.edges.filter((edge) =>
+      shown.has(graphRefKey(edge.from)) && shown.has(graphRefKey(edge.to))
+    ),
+    displayedCount: nodes.length,
+    isFiltered: false,
+    hiddenByKindCount,
+    initialFrameOverflowCount: kindVisible.length - shown.size,
+  };
 }

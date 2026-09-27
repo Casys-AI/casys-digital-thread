@@ -2,6 +2,8 @@ import { assertEquals } from "@std/assert";
 import {
   buildEvidenceCanvasProjection,
   buildExplorationKindProjection,
+  buildInitialEvidenceFrameProjection,
+  INITIAL_EVIDENCE_FRAME_MAX_NODES,
   linkedEvidenceDetail,
   makeEvidenceComponentLabeler,
   paintedDossierMetric,
@@ -163,6 +165,180 @@ Deno.test("current evidence preset paints entities and their recorded edges only
   assertEquals(projection.edges, []);
   assertEquals(projection.displayedCount, 1);
   assertEquals(projection.hiddenByKindCount, 1);
+});
+
+Deno.test("initial frame keeps current anchors and bounds a bulky thread", () => {
+  const chain = Array.from(
+    { length: 300 },
+    (_, i) =>
+      node(`a${String(i).padStart(3, "0")}`, "artifact", "recorded-system"),
+  );
+  const stale = node("a-old", "artifact", "recorded-system");
+  const req1 = node("req-1", "requirement", "recorded-system");
+  const req2 = node("req-2", "requirement", "recorded-system");
+  const verdict = node("eval-1", "evaluation", "recorded-system");
+  const edges: ThreadGraphEdge[] = [];
+  for (let i = 0; i < chain.length - 1; i++) {
+    edges.push(edge(`chain-${i}`, chain[i]!.ref, chain[i + 1]!.ref));
+  }
+  edges.push(edge("req-link", req1.ref, chain[0]!.ref));
+  edges.push(edge("verdict-link", verdict.ref, req1.ref));
+  const model = buildEvidenceGraphModel({
+    nodes: [...chain, stale, req1, req2, verdict],
+    edges,
+  }, {
+    ...EMPTY_FAMILY_GRAPH,
+    families: [{
+      id: "family:head",
+      entityKind: "artifact",
+      historicalRefs: [stale.ref],
+      currentRefs: [chain[299]!.ref],
+      revisionCount: 1,
+      status: "current",
+      relationship: {
+        relation: "supersedes",
+        classification: "not-recorded",
+        equivalence: "not-recorded",
+      },
+      transitions: [{
+        edgeRef: {
+          id: "supersede-stale",
+          relation: "supersedes",
+          origin: "provenance",
+        },
+        historical: stale.ref,
+        successor: chain[299]!.ref,
+      }],
+    }],
+  });
+  const anchors = {
+    familyCurrentRefs: [chain[299]!.ref],
+    caseAuthorityArtifactIds: ["a150"],
+  };
+  const first = buildInitialEvidenceFrameProjection(
+    model,
+    { ...CURRENT_EVIDENCE_KIND_PRESET },
+    anchors,
+    10,
+  );
+  const second = buildInitialEvidenceFrameProjection(
+    model,
+    { ...CURRENT_EVIDENCE_KIND_PRESET },
+    anchors,
+    10,
+  );
+  const ids = first.nodes.map((item) => item.ref.id);
+  assertEquals(ids.length, 9);
+  // Deterministic: anchors by ref key, then neighbours by ref key.
+  assertEquals(ids, second.nodes.map((item) => item.ref.id));
+  for (const id of ["a299", "a150", "req-1", "req-2", "eval-1"]) {
+    assertEquals(ids.includes(id), true);
+  }
+  // Depth-1 recorded neighbours of the anchors stay in the frame.
+  for (const id of ["a298", "a149", "a151", "a000"]) {
+    assertEquals(ids.includes(id), true);
+  }
+  assertEquals(
+    first.displayedCount + first.hiddenByKindCount +
+      (first.initialFrameOverflowCount ?? 0),
+    model.nodes.length,
+  );
+  assertEquals((first.initialFrameOverflowCount ?? 0) > 0, true);
+  // Every painted edge is recorded with both ends shown.
+  for (const item of first.edges) {
+    assertEquals(ids.includes(item.from.id), true);
+    assertEquals(ids.includes(item.to.id), true);
+  }
+});
+
+Deno.test("initial frame paints the whole kind projection under the bound", () => {
+  const artifact = node("part", "artifact", "digital-thread");
+  const change = node("rev", "change", "digital-thread");
+  const model = buildEvidenceGraphModel({
+    nodes: [artifact, change],
+    edges: [edge("changes", change.ref, artifact.ref)],
+  }, EMPTY_FAMILY_GRAPH);
+  const framed = buildInitialEvidenceFrameProjection(
+    model,
+    { ...CURRENT_EVIDENCE_KIND_PRESET },
+    { familyCurrentRefs: [], caseAuthorityArtifactIds: [] },
+  );
+  const kindOnly = buildExplorationKindProjection(
+    model,
+    { ...CURRENT_EVIDENCE_KIND_PRESET },
+  );
+  assertEquals(framed.nodes, kindOnly.nodes);
+  assertEquals(framed.edges, kindOnly.edges);
+  assertEquals(framed.displayedCount, 1);
+  assertEquals(framed.hiddenByKindCount, 1);
+  assertEquals(framed.initialFrameOverflowCount, 0);
+});
+
+Deno.test("initial frame without anchors degrades to deterministic truncation", () => {
+  const chain = Array.from(
+    { length: 200 },
+    (_, i) =>
+      node(`a${String(i).padStart(3, "0")}`, "artifact", "recorded-system"),
+  );
+  const edges: ThreadGraphEdge[] = [];
+  for (let i = 0; i < chain.length - 1; i++) {
+    edges.push(edge(`chain-${i}`, chain[i]!.ref, chain[i + 1]!.ref));
+  }
+  const model = buildEvidenceGraphModel(
+    { nodes: chain, edges },
+    EMPTY_FAMILY_GRAPH,
+  );
+  const framed = buildInitialEvidenceFrameProjection(
+    model,
+    { ...CURRENT_EVIDENCE_KIND_PRESET },
+    { familyCurrentRefs: [], caseAuthorityArtifactIds: [] },
+  );
+  assertEquals(framed.nodes.length, INITIAL_EVIDENCE_FRAME_MAX_NODES);
+  assertEquals(
+    framed.nodes.map((item) => item.ref.id),
+    Array.from(
+      { length: INITIAL_EVIDENCE_FRAME_MAX_NODES },
+      (_, i) => `a${String(i).padStart(3, "0")}`,
+    ),
+  );
+  assertEquals(
+    framed.initialFrameOverflowCount,
+    200 - INITIAL_EVIDENCE_FRAME_MAX_NODES,
+  );
+});
+
+Deno.test("initial frame honours hidden kinds and keeps counts exact", () => {
+  const chain = Array.from(
+    { length: 160 },
+    (_, i) =>
+      node(`a${String(i).padStart(3, "0")}`, "artifact", "recorded-system"),
+  );
+  const probe = node("probe", "observation", "recorded-system");
+  const edges: ThreadGraphEdge[] = [];
+  for (let i = 0; i < chain.length - 1; i++) {
+    edges.push(edge(`chain-${i}`, chain[i]!.ref, chain[i + 1]!.ref));
+  }
+  edges.push(edge("probe-link", probe.ref, chain[0]!.ref));
+  const model = buildEvidenceGraphModel(
+    { nodes: [...chain, probe], edges },
+    EMPTY_FAMILY_GRAPH,
+  );
+  const kinds = { ...CURRENT_EVIDENCE_KIND_PRESET, observation: false };
+  const framed = buildInitialEvidenceFrameProjection(
+    model,
+    kinds,
+    { familyCurrentRefs: [], caseAuthorityArtifactIds: [] },
+  );
+  assertEquals(
+    framed.nodes.some((item) => item.ref.id === "probe"),
+    false,
+  );
+  assertEquals(framed.hiddenByKindCount, 1);
+  assertEquals(
+    framed.displayedCount + framed.hiddenByKindCount +
+      (framed.initialFrameOverflowCount ?? 0),
+    model.nodes.length,
+  );
 });
 
 function allKinds(value: boolean): Record<DisplayKind, boolean> {
