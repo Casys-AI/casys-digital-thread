@@ -126,8 +126,9 @@ export function projectToolRuntimeStatus(
  * Last line of the renderer contract: journaled and CLI-derived strings can
  * echo a pinned digest, which must never cross to the renderer. Ports and
  * paths are removed at the source because they cannot be scrubbed safely.
+ * Shared with the catalogue boundary, the second renderer surface.
  */
-function scrubRendererText(text: string): string {
+export function scrubRendererText(text: string): string {
   return text.replace(/sha256:[a-f0-9]{64}/gi, "sha256:<digest>");
 }
 

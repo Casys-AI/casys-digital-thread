@@ -17,6 +17,14 @@ import {
   parseChatCommandResponse,
   parseChatSnapshotDto,
 } from "../../../presentation/desktop/chat/contracts.ts";
+import {
+  type CatalogueCommandResponse,
+  type CatalogueEntryDto,
+  type CatalogueSnapshotDto,
+  DESKTOP_CATALOGUE_PROTOCOL,
+  parseCatalogueCommandResponse,
+  parseCatalogueSnapshotDto,
+} from "../../../presentation/desktop/catalogue/contracts.ts";
 
 interface DesktopBindings {
   casysChatSnapshot(input: {
@@ -26,6 +34,16 @@ interface DesktopBindings {
   casysChatCommand(
     input: DesktopChatBindingCommandRequest,
   ): Promise<ChatCommandResponse>;
+  casysCatalogueSnapshot(input: {
+    readonly protocol: typeof DESKTOP_CATALOGUE_PROTOCOL;
+  }): Promise<CatalogueSnapshotDto>;
+  casysCatalogueCommand(input: {
+    readonly protocol: typeof DESKTOP_CATALOGUE_PROTOCOL;
+    readonly requestId: string;
+    readonly command: string;
+    readonly entryId?: string;
+    readonly ids?: readonly string[];
+  }): Promise<CatalogueCommandResponse>;
 }
 
 declare global {
@@ -49,7 +67,9 @@ export function DesktopChat(
   const fixedPanelAvailable = typeof projectId === "string" &&
     projectId.length > 0;
   const fixedProjectPanel = fixedPanelAvailable && wideDesktop;
-  const compactModal = fixedPanelAvailable ? smallProjectModal : fallbackCompactModal;
+  const compactModal = fixedPanelAvailable
+    ? smallProjectModal
+    : fallbackCompactModal;
   const projectSheet = fixedPanelAvailable && !wideDesktop && !compactModal;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const previousPresentationRef = useRef({ open, compactModal });
@@ -57,6 +77,10 @@ export function DesktopChat(
   const [selectedId, setSelectedId] = useState<string | null>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
+  const [showCatalogue, setShowCatalogue] = useState(false);
+  const nativeCatalogueAvailable = bindings !== undefined &&
+    typeof bindings.casysCatalogueSnapshot === "function" &&
+    typeof bindings.casysCatalogueCommand === "function";
 
   const refresh = useCallback(async () => {
     if (!bindings) return;
@@ -64,7 +88,9 @@ export function DesktopChat(
       const next = parseChatSnapshotDto(
         await bindings.casysChatSnapshot({
           protocol: DESKTOP_CHAT_PROTOCOL,
-          ...(typeof selectedId === "string" ? { conversationId: selectedId } : {}),
+          ...(typeof selectedId === "string"
+            ? { conversationId: selectedId }
+            : {}),
         }),
       );
       setSnapshot(next);
@@ -160,16 +186,28 @@ export function DesktopChat(
             Standalone and project conversations.
           </ArkDialog.Description>
         </div>
-        <ArkDialog.CloseTrigger asChild>
+        <div className="desktop-chat-head-actions">
           <Button
-            variant="ghost"
+            type="button"
+            variant={showCatalogue ? "secondary" : "ghost"}
             size="sm"
-            className="desktop-chat-close h-8 px-2"
-            aria-label="Close chat"
+            className="h-8 px-2"
+            aria-pressed={showCatalogue}
+            onClick={() => setShowCatalogue((open) => !open)}
           >
-            Close
+            Tools
           </Button>
-        </ArkDialog.CloseTrigger>
+          <ArkDialog.CloseTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="desktop-chat-close h-8 px-2"
+              aria-label="Close chat"
+            >
+              Close
+            </Button>
+          </ArkDialog.CloseTrigger>
+        </div>
       </header>
       <ConversationRail
         standalone={standaloneConversations}
@@ -181,6 +219,17 @@ export function DesktopChat(
       />
       {!nativeChatAvailable
         ? <BrowserPreviewUnavailable projectId={projectId} />
+        : showCatalogue && bindings !== undefined
+        ? (
+          <CatalogueView
+            bindings={bindings}
+            catalogueAvailable={nativeCatalogueAvailable}
+            conversation={selected}
+            busy={busy}
+            command={command}
+            onClose={() => setShowCatalogue(false)}
+          />
+        )
         : selected
         ? (
           <Conversation
@@ -427,8 +476,8 @@ function CreateConversationForm({
           <>
             <p className="desktop-chat-interaction-kind">No project attached</p>
             <p>
-              A normal conversation with the configured agent. No brief, model, or
-              project is required; connect a tool when the task needs one.
+              A normal conversation with the configured agent. No brief, model,
+              or project is required; connect a tool when the task needs one.
             </p>
             <Button
               type="submit"
@@ -633,7 +682,9 @@ function Interaction({
           {interaction.options.map((option) => (
             <Button
               type="button"
-              variant={option.decision.startsWith("allow") ? "default" : "outline"}
+              variant={option.decision.startsWith("allow")
+                ? "default"
+                : "outline"}
               size="sm"
               key={option.decision}
               disabled={busy}
@@ -920,7 +971,9 @@ function ChatField({
         id={id}
         type={inputType}
         required={field.required}
-        value={typeof value === "string" || typeof value === "number" ? value : ""}
+        value={typeof value === "string" || typeof value === "number"
+          ? value
+          : ""}
         min={field.type === "number" || field.type === "integer"
           ? field.minimum
           : undefined}
@@ -979,6 +1032,403 @@ function ResolveButton({
     >
       {label}
     </Button>
+  );
+}
+
+function CatalogueView({
+  bindings,
+  catalogueAvailable,
+  conversation,
+  busy,
+  command,
+  onClose,
+}: CommandProps & {
+  readonly bindings: DesktopBindings;
+  readonly catalogueAvailable: boolean;
+  readonly conversation: ChatConversationDto | undefined;
+  readonly onClose: () => void;
+}): JSX.Element {
+  const [snapshot, setSnapshot] = useState<CatalogueSnapshotDto>();
+  const [error, setError] = useState<string>();
+  const [acting, setActing] = useState<string | null>(null);
+  const [outcomes, setOutcomes] = useState<Readonly<Record<string, string>>>(
+    {},
+  );
+
+  const refresh = useCallback(async () => {
+    if (!catalogueAvailable) return;
+    try {
+      setSnapshot(
+        parseCatalogueSnapshotDto(
+          await bindings.casysCatalogueSnapshot({
+            protocol: DESKTOP_CATALOGUE_PROTOCOL,
+          }),
+        ),
+      );
+      setError(undefined);
+    } catch (cause) {
+      setError(readError(cause));
+    }
+  }, [bindings, catalogueAvailable]);
+
+  useEffect(() => {
+    void refresh();
+    const timer = globalThis.setInterval(() => void refresh(), 5_000);
+    return () => globalThis.clearInterval(timer);
+  }, [refresh]);
+
+  const runCommand = async (
+    entryId: string,
+    label: string,
+    payload:
+      | { readonly command: "catalogue.prepare"; readonly entryId: string }
+      | { readonly command: "catalogue.probe"; readonly entryId: string }
+      | {
+        readonly command: "catalogue.defaults.set";
+        readonly ids: readonly string[];
+      },
+  ) => {
+    setActing(`${label}:${entryId}`);
+    try {
+      const response = parseCatalogueCommandResponse(
+        await bindings.casysCatalogueCommand({
+          protocol: DESKTOP_CATALOGUE_PROTOCOL,
+          requestId: requestId(),
+          ...payload,
+        }),
+      );
+      if (!response.ok) {
+        setOutcomes((current) => ({
+          ...current,
+          [entryId]: response.error ?? `${label} failed.`,
+        }));
+      } else {
+        const text = [response.detail, response.recovery]
+          .filter((part) => part !== undefined && part !== "")
+          .join(" ");
+        setOutcomes((current) => ({
+          ...current,
+          [entryId]: label === "Default"
+            ? "Default updated."
+            : text === ""
+            ? `${label} done.`
+            : text,
+        }));
+      }
+    } catch (cause) {
+      setOutcomes((current) => ({ ...current, [entryId]: readError(cause) }));
+    } finally {
+      setActing(null);
+      await refresh();
+    }
+  };
+
+  if (!catalogueAvailable) {
+    return (
+      <div className="desktop-chat-catalogue">
+        <Notice tone="warning">
+          The curated tool catalogue is unavailable in this preview.
+        </Notice>
+        <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+          Back to chat
+        </Button>
+      </div>
+    );
+  }
+  const defaults =
+    snapshot?.entries.filter((entry) => entry.isDefault).map((entry) =>
+      entry.id
+    ) ??
+      [];
+  return (
+    <div className="desktop-chat-catalogue">
+      <div className="desktop-chat-project-line">
+        <span>Curated engineering tools</span>
+        <Button type="button" variant="ghost" size="sm" onClick={onClose}>
+          Back to chat
+        </Button>
+      </div>
+      {error && <p className="desktop-chat-error" role="alert">{error}</p>}
+      {snapshot?.error && (
+        <p className="desktop-chat-error" role="alert">{snapshot.error}</p>
+      )}
+      {(snapshot?.entries ?? []).map((entry) => (
+        <CatalogueEntryCard
+          key={entry.id}
+          entry={entry}
+          conversation={conversation}
+          busy={busy}
+          acting={acting}
+          outcome={outcomes[entry.id]}
+          command={command}
+          onPrepare={() =>
+            void runCommand(entry.id, "Prepare", {
+              command: "catalogue.prepare",
+              entryId: entry.id,
+            })}
+          onProbe={() =>
+            void runCommand(entry.id, "Check", {
+              command: "catalogue.probe",
+              entryId: entry.id,
+            })}
+          onToggleDefault={() => {
+            const next = entry.isDefault
+              ? defaults.filter((id) => id !== entry.id)
+              : [...defaults, entry.id];
+            void runCommand(entry.id, "Default", {
+              command: "catalogue.defaults.set",
+              ids: next,
+            });
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+function CatalogueEntryCard({
+  entry,
+  conversation,
+  busy,
+  acting,
+  outcome,
+  command,
+  onPrepare,
+  onProbe,
+  onToggleDefault,
+}: CommandProps & {
+  readonly entry: CatalogueEntryDto;
+  readonly conversation: ChatConversationDto | undefined;
+  readonly acting: string | null;
+  readonly outcome?: string;
+  readonly onPrepare: () => void;
+  readonly onProbe: () => void;
+  readonly onToggleDefault: () => void;
+}): JSX.Element {
+  const attached = conversation?.kind === "standalone"
+    ? conversation.mcp
+    : undefined;
+  const attachedMine = attached?.id === entry.id;
+  const busyTurn = conversation?.status === "running" ||
+    conversation?.status === "queued";
+  const enable = () =>
+    conversation !== undefined &&
+    void command({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: requestId(),
+      command: "mcp.enable",
+      conversationId: conversation.id,
+      mcpId: entry.id,
+    });
+  const disable = () =>
+    conversation !== undefined &&
+    void command({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: requestId(),
+      command: "mcp.disable",
+      conversationId: conversation.id,
+    });
+  return (
+    <section className="rounded-lg border border-border bg-card p-4 shadow-sm">
+      <div className="desktop-chat-project-line">
+        <strong>{entry.displayName}</strong>
+        <span>{entry.tagline}</span>
+      </div>
+      <div className="desktop-chat-project-line">
+        <StateBadge label="Prepared" on={entry.availability.prepared} />
+        <StateBadge label="Running" on={entry.availability.running} />
+        <StateBadge label="Capable" on={entry.availability.capable} />
+        <Badge
+          variant={entry.availability.engine === "ready"
+            ? "success"
+            : "warning"}
+          className="desktop-chat-state font-mono text-[9px] uppercase tracking-[0.08em]"
+        >
+          engine {entry.availability.engine}
+        </Badge>
+        {entry.isDefault && (
+          <Badge
+            variant="secondary"
+            className="desktop-chat-state font-mono text-[9px] uppercase tracking-[0.08em]"
+          >
+            default
+          </Badge>
+        )}
+      </div>
+      <p>{entry.description}</p>
+      <p className="desktop-chat-interaction-kind">Tools</p>
+      <ul>
+        {entry.tools.map((tool) => (
+          <li key={tool.name}>
+            <code>{tool.name}</code> — {tool.summary} In: {tool.inputs} Out:
+            {" "}
+            {tool.results}
+          </li>
+        ))}
+      </ul>
+      <p className="desktop-chat-interaction-kind">Examples</p>
+      <ul>
+        {entry.examples.map((example) => (
+          <li key={example.title}>
+            <strong>{example.title}.</strong> {example.summary}
+          </li>
+        ))}
+      </ul>
+      <p className="desktop-chat-interaction-kind">Viewers</p>
+      <ul>
+        {entry.viewers.map((viewer) => (
+          <li key={viewer.uri}>
+            {viewer.label} (<code>{viewer.uri}</code>) —{" "}
+            {viewer.hostSupport === "available"
+              ? "available in Casys"
+              : "planned"}
+            {viewer.note ? `: ${viewer.note}` : ""}
+          </li>
+        ))}
+      </ul>
+      <p className="desktop-chat-interaction-kind">Tested distribution</p>
+      <p>
+        {entry.distribution.version} ({entry.distribution.release}), revision
+        {" "}
+        <code>{entry.distribution.revision}</code>
+      </p>
+      <p className="desktop-chat-interaction-kind">Platforms</p>
+      <ul>
+        {entry.platforms.map((platform) => (
+          <li key={platform.id}>
+            {platform.id} — {platform.status}: {platform.note}
+          </li>
+        ))}
+      </ul>
+      <p>{entry.guidance}</p>
+      <p>
+        <small>{entry.availability.detail}</small>
+      </p>
+      <div className="desktop-chat-project-line">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy || acting !== null}
+          onClick={onPrepare}
+        >
+          {acting === `Prepare:${entry.id}` ? "Preparing…" : "Prepare"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={busy || acting !== null}
+          onClick={onProbe}
+        >
+          Check
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={busy || acting !== null}
+          aria-pressed={entry.isDefault}
+          onClick={onToggleDefault}
+        >
+          {entry.isDefault ? "Default ✓" : "Set default"}
+        </Button>
+      </div>
+      <div className="desktop-chat-project-line">
+        <span>This chat</span>
+        {conversation === undefined && (
+          <span>Select or start a standalone chat to enable.</span>
+        )}
+        {conversation?.kind === "project" && (
+          <span>Project chats keep their fixed tool.</span>
+        )}
+        {conversation?.kind === "standalone" &&
+          (attached === undefined || !attachedMine) && (
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy || busyTurn}
+            onClick={enable}
+          >
+            {attached === undefined
+              ? "Enable in this chat"
+              : "Switch to this tool"}
+          </Button>
+        )}
+        {conversation?.kind === "standalone" &&
+          attached !== undefined &&
+          !attachedMine &&
+          attached.status === "connected" && (
+          <span>Attached: {attached.displayName}.</span>
+        )}
+        {conversation?.kind === "standalone" &&
+          attachedMine &&
+          attached?.status === "connected" && (
+          <>
+            <Badge
+              variant="success"
+              className="desktop-chat-state font-mono text-[9px] uppercase tracking-[0.08em]"
+            >
+              enabled · {attached.displayName} · {attached.tools.length} tools
+            </Badge>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy || busyTurn}
+              onClick={disable}
+            >
+              Disconnect
+            </Button>
+          </>
+        )}
+        {conversation?.kind === "standalone" &&
+          attachedMine &&
+          attached?.status === "failed" && (
+          <>
+            <Badge
+              variant="destructive"
+              className="desktop-chat-state font-mono text-[9px] uppercase tracking-[0.08em]"
+            >
+              connection failed
+            </Badge>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy || busyTurn}
+              onClick={enable}
+            >
+              Retry
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              disabled={busy || busyTurn}
+              onClick={disable}
+            >
+              Disconnect
+            </Button>
+          </>
+        )}
+      </div>
+      {outcome && <p role="status">{outcome}</p>}
+    </section>
+  );
+}
+
+function StateBadge(
+  { label, on }: { readonly label: string; readonly on: boolean },
+): JSX.Element {
+  return (
+    <Badge
+      variant={on ? "success" : "secondary"}
+      className="desktop-chat-state font-mono text-[9px] uppercase tracking-[0.08em]"
+    >
+      {label} {on ? "yes" : "no"}
+    </Badge>
   );
 }
 
@@ -1145,5 +1595,7 @@ function requestId(): string {
 }
 
 function readError(cause: unknown): string {
-  return cause instanceof Error ? cause.message : "Desktop Chat is unavailable.";
+  return cause instanceof Error
+    ? cause.message
+    : "Desktop Chat is unavailable.";
 }

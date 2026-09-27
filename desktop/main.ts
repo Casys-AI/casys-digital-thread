@@ -9,6 +9,8 @@ import {
 import { startDesktopApplication } from "./src/application/startup.ts";
 import { createWorkbenchProjectFocusAuthority } from "./src/application/workbench-project-focus.ts";
 import { registerDesktopChatBindings } from "./src/chat/bindings.ts";
+import { registerDesktopCatalogueBindings } from "./src/catalogue/bindings.ts";
+import { startCatalogueService } from "./src/catalogue/startup.ts";
 import { createExternalUrlOpener } from "./src/chat/external-url.ts";
 import { startPackagedChatHost } from "./src/chat-host/startup.ts";
 import {
@@ -106,6 +108,8 @@ registerDesktopChatBindings(
     ? undefined
     : createWorkbenchProjectFocusAuthority(application.workbenchSession),
 );
+const catalogue = await startCatalogueService({ platform, env: readEnvironment });
+registerDesktopCatalogueBindings(browserWindow, catalogue);
 
 let server: Deno.HttpServer;
 try {

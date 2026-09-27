@@ -1,0 +1,95 @@
+{
+  "schemaVersion": "casys-mcp-catalogue/1.0",
+  "entries": [
+    {
+      "id": "build123d",
+      "displayName": "Build123d",
+      "tagline": "Parametric CAD execution, exact geometry metrics and export",
+      "description": "Run parametric CAD scripts and get exact measurements: volume, surface area, center of mass, bounding box, and solid, face, and edge counts, computed analytically. Export STEP, STL, and GLB files as digest-bound resources, check assembly integrity, and project fixed 2D inspection views.",
+      "tools": [
+        {
+          "name": "build123d_execute",
+          "summary": "Execute a build123d Python script and return exact geometry metrics.",
+          "inputs": "A script assigning its final shape to `result`; optional material density for mass; optional timeout up to 60 s.",
+          "results": "Volume, area, center of mass, bounding box, and counts; optional mass. Mass is never guessed. No files."
+        },
+        {
+          "name": "build123d_export",
+          "summary": "Execute a script and export the resulting shape.",
+          "inputs": "Script plus one or more formats (step, stl, gltf) and a base file name; optional density and timeout.",
+          "results": "The same metrics plus digest-bound artifact resources, read with resources/read rather than a host path."
+        },
+        {
+          "name": "build123d_observe_assembly_integrity",
+          "summary": "Observe one STEP artifact with the fixed assembly integrity method.",
+          "inputs": "Digest-bound STEP bytes or a server-issued stepResource, exclusively. No code, path, tolerance, or transform.",
+          "results": "Factual import, unit, topology, and occurrence observations. Unknown facts stay unresolved or unavailable."
+        },
+        {
+          "name": "build123d_project_2d",
+          "summary": "Project one STEP artifact into fixed SVG inspection views.",
+          "inputs": "Digest-bound STEP bytes or an owned STEP resource, exclusively. Optional mid-envelope section.",
+          "results": "Top, front, right, and isometric orthographic views. Visual inspection only; no dimensions."
+        }
+      ],
+      "examples": [
+        {
+          "title": "Measure a box",
+          "summary": "Run `result = Box(10, 10, 10)` and read volume 1,000 mm³ with 1 solid, 6 faces, and 12 edges."
+        },
+        {
+          "title": "Export printable files",
+          "summary": "Run a script with formats step, stl, and gltf, then read the returned artifact URIs with resources/read."
+        }
+      ],
+      "viewers": [
+        {
+          "uri": "ui://mcp-build123d/results-viewer",
+          "label": "Geometry results",
+          "hostSupport": "planned",
+          "note": "Provider viewer. Host rendering lands in #50."
+        },
+        {
+          "uri": "ui://mcp-build123d/assembly-viewer",
+          "label": "Assembly observations",
+          "hostSupport": "planned",
+          "note": "Provider viewer. Host rendering lands in #50."
+        },
+        {
+          "uri": "ui://mcp-build123d/drawing-viewer",
+          "label": "2D inspection",
+          "hostSupport": "planned",
+          "note": "Provider viewer. Host rendering lands in #50."
+        }
+      ],
+      "distribution": {
+        "version": "0.7.0",
+        "release": "v0.7.0",
+        "revision": "b831c16019e4e09e66c4e5567f9ee70310fb8785"
+      },
+      "platforms": [
+        {
+          "id": "macOS/arm64",
+          "status": "measured",
+          "note": "Reuse path measured end to end; fresh path measured to the install boundary (#56 matrix)."
+        },
+        {
+          "id": "macOS/amd64",
+          "status": "unclaimed",
+          "note": "Untested and unsupported; the backend refuses with explicit recovery codes."
+        },
+        {
+          "id": "Windows",
+          "status": "unclaimed",
+          "note": "Untested and unsupported; the backend refuses with explicit recovery codes."
+        },
+        {
+          "id": "Linux",
+          "status": "unclaimed",
+          "note": "Untested and unsupported; the backend refuses with explicit recovery codes."
+        }
+      ],
+      "guidance": "Use for parametric parts, exact measurements, and CAD exports. Scripts run as Python by design, and the script must assign its final shape to `result`. Use Prepare for Docker-backed execution, then enable the tool in the chat."
+    }
+  ]
+}
