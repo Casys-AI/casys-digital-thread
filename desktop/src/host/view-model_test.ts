@@ -406,3 +406,64 @@ Deno.test("deriveDesktopShellViewModel rejects inconsistent provider counts", ()
   assertEquals(model.status, "recovery-required");
   assertEquals(states(model)["engineering-providers"], "error");
 });
+
+Deno.test("deriveDesktopShellViewModel projects ready tool runtime", () => {
+  const model = deriveDesktopShellViewModel({
+    ...lot1Observations(),
+    toolRuntime: {
+      engine: "ready",
+      engineDetail: "Engine ready: server 29.7.2 (linux/arm64), compose v2.39.2.",
+      tools: [{
+        toolId: "build123d",
+        displayName: "Build123d",
+        state: "ready",
+        detail: "Prepared and running.",
+        version: "0.7.0",
+        imageBytes: 1500 * 1024 * 1024,
+        ownedContainers: 1,
+        ownedVolumes: ["casys-host-build123d-exports"],
+      }],
+    },
+  });
+  assertEquals(states(model)["tool-runtime-engine"], "ready");
+  assertEquals(states(model)["tool-runtime-build123d"], "ready");
+  const tool = model.components.find((component) =>
+    component.id === "tool-runtime-build123d"
+  )!;
+  assertEquals(tool.version, "0.7.0");
+  if (!tool.evidence.includes("1.5 GB")) {
+    throw new Error(`storage evidence must show image bytes: ${tool.evidence}`);
+  }
+  assertNoAbsolutePath(model);
+});
+
+Deno.test("deriveDesktopShellViewModel degrades on down runtime, never recovery-required", () => {
+  for (
+    const engine of ["absent", "stopped", "incompatible"] as const
+  ) {
+    const model = deriveDesktopShellViewModel({
+      ...lot1Observations(),
+      toolRuntime: {
+        engine,
+        engineDetail: `Engine is ${engine}.`,
+        engineRecovery: "Do the explicit thing.",
+        tools: [{
+          toolId: "build123d",
+          displayName: "Build123d",
+          state: "needs-action",
+          detail: "A preparation step needs attention.",
+          ownedContainers: 0,
+          ownedVolumes: [],
+          recovery: "Inspect explicitly.",
+        }],
+      },
+    });
+    assertEquals(states(model)["tool-runtime-engine"], "unavailable");
+    assertEquals(states(model)["tool-runtime-build123d"], "unresolved");
+    if (model.status === "recovery-required") {
+      throw new Error(
+        `down runtime must degrade, not block the shell (engine ${engine})`,
+      );
+    }
+  }
+});

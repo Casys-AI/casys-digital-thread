@@ -78,3 +78,39 @@ export interface DesktopWorkbenchProjection {
     | "startup-failed"
     | "termination-unresolved";
 }
+
+/**
+ * Renderer-safe tool-runtime projection. States, counts, bytes, and recovery
+ * sentences only: no paths, ports, container ids, endpoints, or digests.
+ */
+export type DesktopToolRuntimeEngineState =
+  | "absent"
+  | "stopped"
+  | "incompatible"
+  | "ready";
+
+export type DesktopToolRuntimeToolState =
+  | "ready"
+  | "stopped"
+  | "needs-action"
+  | "interrupted"
+  | "never-prepared";
+
+export interface DesktopToolRuntimeTool {
+  readonly toolId: string;
+  readonly displayName: string;
+  readonly state: DesktopToolRuntimeToolState;
+  readonly detail: string;
+  readonly version?: string;
+  readonly imageBytes?: number;
+  readonly ownedContainers: number;
+  readonly ownedVolumes: readonly string[];
+  readonly recovery?: string;
+}
+
+export interface DesktopToolRuntimeProjection {
+  readonly engine: DesktopToolRuntimeEngineState;
+  readonly engineDetail: string;
+  readonly engineRecovery?: string;
+  readonly tools: readonly DesktopToolRuntimeTool[];
+}

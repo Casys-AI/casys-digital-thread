@@ -3,6 +3,7 @@ import type {
   ComponentState,
   DesktopControlPlaneProjection,
   DesktopShellViewModel,
+  DesktopToolRuntimeProjection,
   DesktopWorkbenchProjection,
 } from "../contracts/diagnostics.ts";
 import { classifyShellStatus } from "./classify.ts";
@@ -19,6 +20,7 @@ export interface DesktopShellObservations {
   readonly layout: HostResult<ApplicationSupportLayout>;
   readonly controlPlane?: DesktopControlPlaneProjection;
   readonly workbench?: DesktopWorkbenchProjection;
+  readonly toolRuntime?: DesktopToolRuntimeProjection;
 }
 
 const FALLBACK_PRODUCT_NAME = "Casys Digital Thread";
@@ -92,10 +94,14 @@ export function deriveDesktopShellViewModel(
   const workbenchDiagnostics = observations.workbench === undefined
     ? []
     : [diagnoseWorkbench(observations.manifest, observations.workbench)];
+  const toolRuntimeDiagnostics = observations.toolRuntime === undefined
+    ? []
+    : diagnoseToolRuntime(observations.toolRuntime);
   const projectedIds = new Set(
-    [...controlPlaneDiagnostics, ...workbenchDiagnostics].map((component) =>
-      component.id
-    ),
+    [...controlPlaneDiagnostics, ...workbenchDiagnostics, ...toolRuntimeDiagnostics]
+      .map((
+        component,
+      ) => component.id),
   );
   const components = [
     manifestDiagnostic,
@@ -104,6 +110,7 @@ export function deriveDesktopShellViewModel(
     shellDiagnostic,
     ...controlPlaneDiagnostics,
     ...workbenchDiagnostics,
+    ...toolRuntimeDiagnostics,
     ...deferredComponents(observations.manifest, projectedIds),
   ];
 
@@ -192,6 +199,112 @@ function diagnoseWorkbench(
     recovery:
       "Resolve the exact helper conflict. Desktop will not adopt or stop an unowned process.",
   };
+}
+
+/**
+ * Tool-runtime diagnostics. States stay at unavailable/unresolved at worst:
+ * a down runtime degrades the shell but never blocks chat or saved-work
+ * inspection, so these components never report error.
+ */
+function diagnoseToolRuntime(
+  projection: DesktopToolRuntimeProjection,
+): ComponentDiagnostic[] {
+  const engine: ComponentDiagnostic = projection.engine === "ready"
+    ? {
+      id: "tool-runtime-engine",
+      label: "Tool runtime engine",
+      state: "ready",
+      summary: "The container engine is ready.",
+      evidence: projection.engineDetail,
+    }
+    : {
+      id: "tool-runtime-engine",
+      label: "Tool runtime engine",
+      state: "unavailable",
+      summary: `The container engine is ${projection.engine}.`,
+      evidence: projection.engineDetail,
+      ...(projection.engineRecovery === undefined
+        ? {}
+        : { recovery: projection.engineRecovery }),
+    };
+  return [
+    engine,
+    ...projection.tools.map((tool) => diagnoseToolRuntimeTool(tool)),
+  ];
+}
+
+function diagnoseToolRuntimeTool(
+  tool: DesktopToolRuntimeProjection["tools"][number],
+): ComponentDiagnostic {
+  const id = `tool-runtime-${tool.toolId}`;
+  const storage = toolStorageEvidence(tool);
+  switch (tool.state) {
+    case "ready":
+      return {
+        id,
+        label: `Tool runtime ${tool.displayName}`,
+        state: "ready",
+        summary: `${tool.displayName} is prepared and running.`,
+        evidence: storage,
+        ...(tool.version === undefined ? {} : { version: tool.version }),
+      };
+    case "stopped":
+    case "never-prepared":
+      return {
+        id,
+        label: `Tool runtime ${tool.displayName}`,
+        state: "unavailable",
+        summary: tool.state === "stopped"
+          ? `${tool.displayName} is prepared but stopped.`
+          : `${tool.displayName} was never prepared on this machine.`,
+        evidence: tool.detail,
+      };
+    case "interrupted":
+      return {
+        id,
+        label: `Tool runtime ${tool.displayName}`,
+        state: "unresolved",
+        summary: `${tool.displayName} preparation was interrupted.`,
+        evidence: tool.detail,
+        recovery: "Re-run preparation; interrupted steps resume.",
+      };
+    case "needs-action":
+      return {
+        id,
+        label: `Tool runtime ${tool.displayName}`,
+        state: "unresolved",
+        summary: `${tool.displayName} needs an explicit operator decision.`,
+        evidence: tool.detail,
+        ...(tool.recovery === undefined ? {} : { recovery: tool.recovery }),
+      };
+  }
+}
+
+function toolStorageEvidence(
+  tool: DesktopToolRuntimeProjection["tools"][number],
+): string {
+  const bytes = tool.imageBytes === undefined
+    ? "image size unknown"
+    : `${formatBytes(tool.imageBytes)} owned image`;
+  const containers = tool.ownedContainers === 1
+    ? "1 owned container"
+    : `${tool.ownedContainers} owned containers`;
+  const volumes = tool.ownedVolumes.length === 1
+    ? "1 retained volume"
+    : `${tool.ownedVolumes.length} retained volumes`;
+  return `${bytes}; ${containers}; ${volumes}.`;
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isSafeInteger(bytes) || bytes < 0) return "unknown size";
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unit = 0;
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  return `${value.toFixed(value >= 100 || unit === 0 ? 0 : 1)} ${units[unit]}`;
 }
 
 function workbenchRecoveryEvidence(

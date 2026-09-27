@@ -1,6 +1,7 @@
 import type {
   DesktopControlPlaneProjection,
   DesktopShellViewModel,
+  DesktopToolRuntimeProjection,
   DesktopWorkbenchProjection,
 } from "../contracts/diagnostics.ts";
 import {
@@ -36,6 +37,7 @@ export interface DesktopBootstrapInput {
   readonly env: EnvironmentReader;
   readonly controlPlane?: DesktopControlPlaneProjection;
   readonly workbench?: DesktopWorkbenchProjection;
+  readonly toolRuntime?: DesktopToolRuntimeProjection;
 }
 
 export interface DesktopBootstrapFacts {
@@ -142,6 +144,7 @@ export function bootstrapDesktopShellFromFacts(
   facts: DesktopBootstrapFacts,
   controlPlane?: DesktopControlPlaneProjection,
   workbench?: DesktopWorkbenchProjection,
+  toolRuntime?: DesktopToolRuntimeProjection,
 ): DesktopShellViewModel {
   return deriveDesktopShellViewModel({
     manifest: facts.manifest,
@@ -152,6 +155,7 @@ export function bootstrapDesktopShellFromFacts(
     layout: facts.layout,
     controlPlane,
     workbench,
+    toolRuntime,
   });
 }
 
@@ -164,5 +168,6 @@ export function bootstrapDesktopShell(
     facts,
     input.controlPlane,
     input.workbench,
+    input.toolRuntime,
   );
 }
