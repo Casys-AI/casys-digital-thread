@@ -2138,6 +2138,28 @@ Deno.test("capture archives export bytes with revision and digest", async () => 
   await coordinator.stop();
 });
 
+Deno.test("capture names extension-less stl artifacts with the stl suffix", async () => {
+  const backend = new FakeViewerBackend();
+  const pool = standalonePool({ probeTools: ["t_one"], viewerBackend: backend });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  const sha256 = await sha256OfText("stl");
+  const uri = `casys://build123d/artifacts/${sha256}`;
+  await captureViewerResult(pool, coordinator, conversationId, [
+    {
+      toolCallId: "tool-call-1",
+      tool: "t_one",
+      result: viewerExportResult([{ uri, mimeType: "model/stl", bytes: 3, sha256 }]),
+    },
+  ]);
+  const snapshot = coordinator.snapshot(conversationId);
+  const archive = snapshot.conversations[0].viewers[0]?.archive;
+  assertEquals(archive?.artifacts[0]?.fileName, "t_one-v1.stl");
+  parseChatSnapshotDto(snapshot);
+  await coordinator.stop();
+});
+
 Deno.test("resource-read serves retained bytes without touching the provider", async () => {
   const backend = new FakeViewerBackend();
   const pool = standalonePool({ probeTools: ["t_one"], viewerBackend: backend });

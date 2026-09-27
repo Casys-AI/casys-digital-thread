@@ -1746,6 +1746,8 @@ function archiveExtension(mimeType: string): string {
       return "glb";
     case "model/step":
       return "step";
+    case "model/stl":
+      return "stl";
     case "application/pdf":
       return "pdf";
     case "text/plain":

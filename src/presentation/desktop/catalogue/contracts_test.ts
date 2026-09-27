@@ -184,6 +184,22 @@ Deno.test("catalogue commands parse the four supported shapes", () => {
   );
 });
 
+Deno.test("catalogue rejects update commands: no update check for chat tools (#52)", () => {
+  for (const command of ["catalogue.update", "catalogue.update-check"]) {
+    assertThrows(
+      () =>
+        parseCatalogueCommandRequest({
+          protocol: DESKTOP_CATALOGUE_PROTOCOL,
+          requestId: "no-update",
+          command,
+          entryId: "build123d",
+        }),
+      TypeError,
+      "catalogue command is not supported",
+    );
+  }
+});
+
 Deno.test("catalogue responses carry outcomes, details, and default ids", () => {
   const prepared = parseCatalogueCommandResponse({
     protocol: DESKTOP_CATALOGUE_PROTOCOL,
