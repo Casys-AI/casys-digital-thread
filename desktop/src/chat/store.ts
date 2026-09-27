@@ -5,7 +5,16 @@ import type {
 
 export interface StoredConversation {
   readonly id: string;
-  readonly projectId: string;
+  /**
+   * Absent on entries written before standalone chat existed; readers
+   * treat a missing kind with a projectId as a project conversation.
+   */
+  readonly kind?: "project" | "standalone";
+  readonly projectId?: string;
+  /** Active standalone MCP attachment, if any. */
+  readonly mcpId?: string;
+  readonly mcpStatus?: "connected" | "failed";
+  readonly mcpTools?: readonly string[];
   readonly sessionKey: string;
   readonly title: string;
   readonly status: ChatConversationStatus;
@@ -187,9 +196,30 @@ function readMetadata(value: unknown): Omit<StoredConversation, "messages"> {
     status !== "idle" && status !== "queued" && status !== "running" &&
     status !== "failed" && status !== "closed"
   ) throw new TypeError("conversation status is invalid");
+  const kind = entry.kind;
+  if (kind !== undefined && kind !== "project" && kind !== "standalone") {
+    throw new TypeError("conversation kind is invalid");
+  }
+  const projectId = entry.projectId === undefined
+    ? undefined
+    : requiredString(entry.projectId, "project id");
+  const mcpId = entry.mcpId === undefined
+    ? undefined
+    : requiredString(entry.mcpId, "conversation MCP id");
+  const mcpStatus = entry.mcpStatus;
+  if (mcpStatus !== undefined && mcpStatus !== "connected" && mcpStatus !== "failed") {
+    throw new TypeError("conversation MCP status is invalid");
+  }
+  const mcpTools = entry.mcpTools === undefined
+    ? undefined
+    : readStringList(entry.mcpTools, "conversation MCP tools", 64, 128);
   return {
     id: requiredString(entry.id, "conversation id"),
-    projectId: requiredString(entry.projectId, "project id"),
+    ...(kind === undefined ? {} : { kind }),
+    ...(projectId === undefined ? {} : { projectId }),
+    ...(mcpId === undefined ? {} : { mcpId }),
+    ...(mcpStatus === undefined ? {} : { mcpStatus }),
+    ...(mcpTools === undefined ? {} : { mcpTools }),
     sessionKey: requiredString(entry.sessionKey, "session key"),
     title: requiredString(entry.title, "conversation title"),
     status,
@@ -232,6 +262,23 @@ function requiredString(value: unknown, name: string): string {
     throw new TypeError(`${name} is invalid`);
   }
   return value;
+}
+
+function readStringList(
+  value: unknown,
+  name: string,
+  maxItems: number,
+  maxLength: number,
+): readonly string[] {
+  if (!Array.isArray(value) || value.length > maxItems) {
+    throw new TypeError(`${name} is invalid`);
+  }
+  return Object.freeze(value.map((entry) => {
+    if (typeof entry !== "string" || entry === "" || entry.length > maxLength) {
+      throw new TypeError(`${name} is invalid`);
+    }
+    return entry;
+  }));
 }
 
 function requiredDate(value: unknown, name: string): string {

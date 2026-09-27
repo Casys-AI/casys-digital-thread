@@ -7,6 +7,7 @@ import { cn } from "../lib/utils.ts";
 import { Notice } from "../ui/notice.tsx";
 import {
   type ChatCommandResponse,
+  type ChatConnectableMcpDto,
   type ChatConversationDto,
   type ChatFormFieldDto,
   type ChatPendingInteractionDto,
@@ -48,9 +49,7 @@ export function DesktopChat(
   const fixedPanelAvailable = typeof projectId === "string" &&
     projectId.length > 0;
   const fixedProjectPanel = fixedPanelAvailable && wideDesktop;
-  const compactModal = fixedPanelAvailable
-    ? smallProjectModal
-    : fallbackCompactModal;
+  const compactModal = fixedPanelAvailable ? smallProjectModal : fallbackCompactModal;
   const projectSheet = fixedPanelAvailable && !wideDesktop && !compactModal;
   const triggerRef = useRef<HTMLButtonElement>(null);
   const previousPresentationRef = useRef({ open, compactModal });
@@ -65,9 +64,7 @@ export function DesktopChat(
       const next = parseChatSnapshotDto(
         await bindings.casysChatSnapshot({
           protocol: DESKTOP_CHAT_PROTOCOL,
-          ...(typeof selectedId === "string"
-            ? { conversationId: selectedId }
-            : {}),
+          ...(typeof selectedId === "string" ? { conversationId: selectedId } : {}),
         }),
       );
       setSnapshot(next);
@@ -142,9 +139,13 @@ export function DesktopChat(
     [bindings, refresh],
   );
 
-  const conversations =
+  const standaloneConversations =
     snapshot?.conversations.filter((conversation) =>
-      conversation.projectId === projectId
+      conversation.kind === "standalone"
+    ) ?? [];
+  const projectConversations =
+    snapshot?.conversations.filter((conversation) =>
+      conversation.kind === "project" && conversation.projectId === projectId
     ) ?? [];
   const selected = selectedConversation(snapshot, selectedId, projectId);
   const panel = (
@@ -153,10 +154,10 @@ export function DesktopChat(
         <div className="min-w-0">
           <p className="desktop-chat-eyebrow">Agent workspace</p>
           <ArkDialog.Title className="desktop-chat-title">
-            Project chat
+            Chat
           </ArkDialog.Title>
           <ArkDialog.Description className="desktop-chat-description">
-            One project. One conversation.
+            Standalone and project conversations.
           </ArkDialog.Description>
         </div>
         <ArkDialog.CloseTrigger asChild>
@@ -164,14 +165,16 @@ export function DesktopChat(
             variant="ghost"
             size="sm"
             className="desktop-chat-close h-8 px-2"
-            aria-label="Close project chat"
+            aria-label="Close chat"
           >
             Close
           </Button>
         </ArkDialog.CloseTrigger>
       </header>
       <ConversationRail
-        conversations={conversations}
+        standalone={standaloneConversations}
+        project={projectConversations}
+        projectId={projectId}
         selectedId={selected?.id}
         onSelect={setSelectedId}
         interactive={nativeChatAvailable}
@@ -183,6 +186,7 @@ export function DesktopChat(
           <Conversation
             key={selected.id}
             conversation={selected}
+            connectableMcps={snapshot?.connectableMcps ?? []}
             busy={busy}
             command={command}
           />
@@ -222,7 +226,7 @@ export function DesktopChat(
         className={`desktop-chat${open ? " is-open" : ""}${
           nativeChatAvailable ? "" : " is-unavailable"
         }`}
-        aria-label="Project agent chat"
+        aria-label="Agent chat"
         data-chat-runtime={nativeChatAvailable ? "native" : "browser-preview"}
         data-chat-presentation={fixedProjectPanel
           ? "project-panel"
@@ -241,7 +245,7 @@ export function DesktopChat(
           aria-expanded={open}
           aria-controls="desktop-chat-panel"
         >
-          <span>Project chat</span>
+          <span>Chat</span>
           {!nativeChatAvailable && (
             <Badge
               variant="warning"
@@ -269,12 +273,16 @@ export function DesktopChat(
 }
 
 function ConversationRail({
-  conversations,
+  standalone,
+  project,
+  projectId,
   selectedId,
   onSelect,
   interactive,
 }: {
-  readonly conversations: readonly ChatConversationDto[];
+  readonly standalone: readonly ChatConversationDto[];
+  readonly project: readonly ChatConversationDto[];
+  readonly projectId?: string;
   readonly selectedId?: string;
   readonly onSelect: (id: string | null) => void;
   readonly interactive: boolean;
@@ -291,21 +299,60 @@ function ConversationRail({
       >
         + New
       </Button>
-      {conversations.map((conversation) => (
-        <Button
-          variant={conversation.id === selectedId ? "secondary" : "ghost"}
-          size="sm"
+      <p className="desktop-chat-interaction-kind">Standalone</p>
+      {standalone.map((conversation) => (
+        <RailButton
           key={conversation.id}
-          className="desktop-chat-rail-button"
-          disabled={!interactive}
-          aria-pressed={conversation.id === selectedId}
-          onClick={() => onSelect(conversation.id)}
-          title={`${conversation.projectId} · ${conversation.status}`}
-        >
-          {conversation.projectId}
-        </Button>
+          conversation={conversation}
+          selectedId={selectedId}
+          onSelect={onSelect}
+          interactive={interactive}
+        />
       ))}
+      {projectId !== undefined && (
+        <>
+          <p className="desktop-chat-interaction-kind">Project</p>
+          {project.map((conversation) => (
+            <RailButton
+              key={conversation.id}
+              conversation={conversation}
+              selectedId={selectedId}
+              onSelect={onSelect}
+              interactive={interactive}
+            />
+          ))}
+        </>
+      )}
     </nav>
+  );
+}
+
+function RailButton({
+  conversation,
+  selectedId,
+  onSelect,
+  interactive,
+}: {
+  readonly conversation: ChatConversationDto;
+  readonly selectedId?: string;
+  readonly onSelect: (id: string | null) => void;
+  readonly interactive: boolean;
+}): JSX.Element {
+  const label = conversation.kind === "standalone"
+    ? conversation.title
+    : conversation.projectId ?? conversation.title;
+  return (
+    <Button
+      variant={conversation.id === selectedId ? "secondary" : "ghost"}
+      size="sm"
+      className="desktop-chat-rail-button"
+      disabled={!interactive}
+      aria-pressed={conversation.id === selectedId}
+      onClick={() => onSelect(conversation.id)}
+      title={`${label} · ${conversation.status}`}
+    >
+      {label}
+    </Button>
   );
 }
 
@@ -340,14 +387,34 @@ function NewConversation({
   busy,
   command,
 }: CommandProps & { readonly projectId?: string }): JSX.Element {
+  if (projectId === undefined) {
+    return <CreateConversationForm busy={busy} command={command} />;
+  }
+  return (
+    <>
+      <CreateConversationForm
+        projectId={projectId}
+        busy={busy}
+        command={command}
+      />
+      <CreateConversationForm busy={busy} command={command} />
+    </>
+  );
+}
+
+function CreateConversationForm({
+  projectId,
+  busy,
+  command,
+}: CommandProps & { readonly projectId?: string }): JSX.Element {
+  const standalone = projectId === undefined;
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    if (!projectId) return;
     void command({
       protocol: DESKTOP_CHAT_PROTOCOL,
       requestId: requestId(),
       command: "conversation.create",
-      projectId,
+      ...(projectId === undefined ? {} : { projectId }),
     });
   };
   return (
@@ -355,10 +422,30 @@ function NewConversation({
       className="desktop-chat-new rounded-lg border border-dashed border-border bg-card p-4 shadow-sm"
       onSubmit={submit}
     >
-      <p className="desktop-chat-interaction-kind">Current projected project</p>
-      {projectId
+      {standalone
         ? (
           <>
+            <p className="desktop-chat-interaction-kind">No project attached</p>
+            <p>
+              A normal conversation with the configured agent. No brief, model, or
+              project is required; connect a tool when the task needs one.
+            </p>
+            <Button
+              type="submit"
+              size="sm"
+              className="bg-brand text-white hover:bg-brand-strong"
+              disabled={busy}
+              data-autofocus
+            >
+              Start standalone conversation
+            </Button>
+          </>
+        )
+        : (
+          <>
+            <p className="desktop-chat-interaction-kind">
+              Current projected project
+            </p>
             <strong>{projectId}</strong>
             <p>
               This server-projected project is fixed for the new conversation.
@@ -373,12 +460,6 @@ function NewConversation({
               Start project conversation
             </Button>
           </>
-        )
-        : (
-          <p role="status">
-            Chat is unavailable until the Workbench has a validated project
-            focus.
-          </p>
         )}
     </form>
   );
@@ -393,10 +474,15 @@ interface CommandProps {
 
 function Conversation({
   conversation,
+  connectableMcps,
   busy,
   command,
-}: CommandProps & { readonly conversation: ChatConversationDto }): JSX.Element {
+}: CommandProps & {
+  readonly conversation: ChatConversationDto;
+  readonly connectableMcps: readonly ChatConnectableMcpDto[];
+}): JSX.Element {
   const [text, setText] = useState("");
+  const standalone = conversation.kind === "standalone";
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const message = text.trim();
@@ -413,8 +499,10 @@ function Conversation({
   return (
     <div className="desktop-chat-conversation">
       <div className="desktop-chat-project-line">
-        <span>Project</span>
-        <strong>{conversation.projectId}</strong>
+        <span>{standalone ? "Standalone" : "Project"}</span>
+        <strong>
+          {standalone ? conversation.title : conversation.projectId}
+        </strong>
         <Badge
           variant={conversationStatusVariant(conversation.status)}
           className="desktop-chat-state font-mono text-[9px] uppercase tracking-[0.08em]"
@@ -422,10 +510,20 @@ function Conversation({
           {conversation.status}
         </Badge>
       </div>
+      {standalone && (
+        <McpAttachment
+          conversation={conversation}
+          connectableMcps={connectableMcps}
+          busy={busy}
+          command={command}
+        />
+      )}
       <ol className="desktop-chat-messages" aria-live="polite">
         {conversation.messages.length === 0 && (
           <li className="desktop-chat-empty">
-            Ask about project intent, evidence, or a registered operation.
+            {standalone
+              ? "Ask anything. Connect a tool below when the task needs one."
+              : "Ask about project intent, evidence, or a registered operation."}
           </li>
         )}
         {conversation.messages.map((message) => (
@@ -460,7 +558,9 @@ function Conversation({
           maxLength={32_000}
           disabled={conversation.status === "closed"}
           onChange={(event) => setText(event.currentTarget.value)}
-          placeholder="Ask the agent to review the current project…"
+          placeholder={standalone
+            ? "Ask the agent anything…"
+            : "Ask the agent to review the current project…"}
           rows={3}
           data-autofocus
         />
@@ -533,9 +633,7 @@ function Interaction({
           {interaction.options.map((option) => (
             <Button
               type="button"
-              variant={option.decision.startsWith("allow")
-                ? "default"
-                : "outline"}
+              variant={option.decision.startsWith("allow") ? "default" : "outline"}
               size="sm"
               key={option.decision}
               disabled={busy}
@@ -822,9 +920,7 @@ function ChatField({
         id={id}
         type={inputType}
         required={field.required}
-        value={typeof value === "string" || typeof value === "number"
-          ? value
-          : ""}
+        value={typeof value === "string" || typeof value === "number" ? value : ""}
         min={field.type === "number" || field.type === "integer"
           ? field.minimum
           : undefined}
@@ -891,9 +987,109 @@ function selectedConversation(
   selectedId: string | null | undefined,
   projectId: string | undefined,
 ): ChatConversationDto | undefined {
-  if (selectedId === null || projectId === undefined) return undefined;
+  if (selectedId === null || selectedId === undefined) return undefined;
   return snapshot?.conversations.find((conversation) =>
-    conversation.projectId === projectId && conversation.id === selectedId
+    conversation.id === selectedId &&
+    (conversation.kind === "standalone" || conversation.projectId === projectId)
+  );
+}
+
+function McpAttachment({
+  conversation,
+  connectableMcps,
+  busy,
+  command,
+}: CommandProps & {
+  readonly conversation: ChatConversationDto;
+  readonly connectableMcps: readonly ChatConnectableMcpDto[];
+}): JSX.Element {
+  const attached = conversation.mcp;
+  const busyTurn = conversation.status === "running" ||
+    conversation.status === "queued";
+  const enable = (mcpId: string) =>
+    void command({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: requestId(),
+      command: "mcp.enable",
+      conversationId: conversation.id,
+      mcpId,
+    });
+  const disable = () =>
+    void command({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: requestId(),
+      command: "mcp.disable",
+      conversationId: conversation.id,
+    });
+  return (
+    <div className="desktop-chat-project-line">
+      <span>Tool</span>
+      {attached === undefined && (
+        <>
+          <span>None connected</span>
+          {connectableMcps.map((server) => (
+            <Button
+              key={server.id}
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={busy || busyTurn}
+              title={server.description}
+              onClick={() => enable(server.id)}
+            >
+              Connect {server.displayName}
+            </Button>
+          ))}
+        </>
+      )}
+      {attached !== undefined && attached.status === "connected" && (
+        <>
+          <Badge
+            variant="success"
+            className="desktop-chat-state font-mono text-[9px] uppercase tracking-[0.08em]"
+          >
+            {attached.displayName} · {attached.tools.length} tools
+          </Badge>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={busy || busyTurn}
+            onClick={disable}
+          >
+            Disconnect
+          </Button>
+        </>
+      )}
+      {attached !== undefined && attached.status === "failed" && (
+        <>
+          <Badge
+            variant="destructive"
+            className="desktop-chat-state font-mono text-[9px] uppercase tracking-[0.08em]"
+          >
+            {attached.displayName} · connection failed
+          </Badge>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            disabled={busy || busyTurn}
+            onClick={() => enable(attached.id)}
+          >
+            Retry
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            disabled={busy || busyTurn}
+            onClick={disable}
+          >
+            Disconnect
+          </Button>
+        </>
+      )}
+    </div>
   );
 }
 
@@ -949,7 +1145,5 @@ function requestId(): string {
 }
 
 function readError(cause: unknown): string {
-  return cause instanceof Error
-    ? cause.message
-    : "Desktop Chat is unavailable.";
+  return cause instanceof Error ? cause.message : "Desktop Chat is unavailable.";
 }

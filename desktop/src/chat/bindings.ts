@@ -35,7 +35,8 @@ export function registerDesktopChatBindings(
   externalUrl?: ExternalUrlOpener,
   projectFocus?: DesktopChatProjectFocusAuthority,
 ): void {
-  const conversationProjects = new Map<string, string>();
+  // Project owner per conversation id; undefined marks a standalone chat.
+  const conversationProjects = new Map<string, string | undefined>();
   window.bind(CHAT_SNAPSHOT_BINDING, async (value: unknown) => {
     const input = parseChatSnapshotRequest(value);
     if (host === undefined) {
@@ -43,6 +44,7 @@ export function registerDesktopChatBindings(
         protocol: DESKTOP_CHAT_PROTOCOL,
         host: "unavailable",
         conversations: Object.freeze([]),
+        connectableMcps: Object.freeze([]),
         error: "The packaged Chat Host is unavailable.",
       }) satisfies ChatSnapshotDto;
     }
@@ -107,18 +109,17 @@ async function focusedSnapshot(
   input: ReturnType<typeof parseChatSnapshotRequest>,
   host: DesktopChatBindingHost,
   projectFocus: DesktopChatProjectFocusAuthority | undefined,
-  conversationProjects: Map<string, string>,
+  conversationProjects: Map<string, string | undefined>,
 ): Promise<ChatSnapshotDto> {
   const focusedProjectId = await readCurrentProjectFocus(projectFocus);
-  if (focusedProjectId === undefined) {
-    return emptyFocusedSnapshot(
-      "ready",
-      "Chat transcripts require an available Workbench project focus.",
-    );
-  }
   if (
     input.conversationId !== undefined &&
-    conversationProjects.get(input.conversationId) !== focusedProjectId
+    !(await conversationVisibleFromBinding(
+      input.conversationId,
+      focusedProjectId,
+      host,
+      conversationProjects,
+    ))
   ) {
     return emptyFocusedSnapshot(
       "ready",
@@ -148,9 +149,12 @@ async function focusedSnapshot(
       conversationProjects.set(conversation.id, conversation.projectId);
     }
   }
+  // Standalone chats are not project-scoped: they pass regardless of focus.
+  // Project conversations stay confined to the focused project.
   const conversations = Object.freeze(
     snapshot.conversations.filter((conversation) =>
-      conversation.projectId === focusedProjectId &&
+      (conversation.kind === "standalone" ||
+        conversation.projectId === focusedProjectId) &&
       (input.conversationId === undefined || conversation.id === input.conversationId)
     ),
   );
@@ -164,9 +168,44 @@ async function focusedSnapshot(
     protocol: DESKTOP_CHAT_PROTOCOL,
     host: snapshot.host,
     conversations,
+    connectableMcps: snapshot.connectableMcps,
     ...(selectedConversationId === undefined ? {} : { selectedConversationId }),
     ...(snapshot.error === undefined ? {} : { error: snapshot.error }),
   });
+}
+
+/**
+ * Decides whether one conversation id may be selected through the binding.
+ * Standalone chats always pass; project conversations must match the focus.
+ * Unknown ids are verified against the host so a first call cannot peek
+ * across the project focus.
+ */
+async function conversationVisibleFromBinding(
+  conversationId: string,
+  focusedProjectId: string | undefined,
+  host: DesktopChatBindingHost,
+  conversationProjects: Map<string, string | undefined>,
+): Promise<boolean> {
+  if (conversationProjects.has(conversationId)) {
+    const owner = conversationProjects.get(conversationId);
+    return owner === undefined || owner === focusedProjectId;
+  }
+  let snapshot: ChatSnapshotDto;
+  try {
+    snapshot = await host.snapshot({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      conversationId,
+    });
+  } catch {
+    return false;
+  }
+  const conversation = snapshot.conversations.find((candidate) =>
+    candidate.id === conversationId
+  );
+  if (conversation === undefined) return false;
+  conversationProjects.set(conversationId, conversation.projectId);
+  return conversation.kind === "standalone" ||
+    conversation.projectId === focusedProjectId;
 }
 
 async function readCurrentProjectFocus(
@@ -188,6 +227,7 @@ function emptyFocusedSnapshot(
     protocol: DESKTOP_CHAT_PROTOCOL,
     host,
     conversations: Object.freeze([]),
+    connectableMcps: Object.freeze([]),
     error,
   });
 }
@@ -197,19 +237,13 @@ async function authorizeProjectCommand(
   host: DesktopChatBindingHost,
   projectFocus?: DesktopChatProjectFocusAuthority,
 ): Promise<string | undefined> {
-  if (projectFocus === undefined) return unavailableFocus();
-  let focusedProjectId: string | undefined;
-  try {
-    focusedProjectId = await projectFocus.currentProjectId();
-  } catch {
-    return unavailableFocus();
+  // Standalone creation carries no project and needs no focus.
+  if (input.command === "conversation.create" && input.projectId === undefined) {
+    return undefined;
   }
-  if (focusedProjectId === undefined) return unavailableFocus();
-
-  let commandProjectId: string;
-  if (input.command === "conversation.create") {
-    commandProjectId = input.projectId;
-  } else {
+  if (input.command !== "conversation.create") {
+    // Look the conversation up before requiring a focus: standalone
+    // conversations accept every command without one.
     let snapshot: ChatSnapshotDto;
     try {
       snapshot = await host.snapshot({
@@ -223,9 +257,24 @@ async function authorizeProjectCommand(
       candidate.id === input.conversationId
     );
     if (conversation === undefined) return focusMismatch();
-    commandProjectId = conversation.projectId;
+    if (conversation.kind === "standalone") return undefined;
+    return await authorizeProjectConversation(
+      conversation.projectId,
+      projectFocus,
+    );
   }
+  const focusedProjectId = await readCurrentProjectFocus(projectFocus);
+  if (focusedProjectId === undefined) return unavailableFocus();
+  return input.projectId !== focusedProjectId ? focusMismatch() : undefined;
+}
 
+async function authorizeProjectConversation(
+  commandProjectId: string | undefined,
+  projectFocus?: DesktopChatProjectFocusAuthority,
+): Promise<string | undefined> {
+  if (projectFocus === undefined) return unavailableFocus();
+  const focusedProjectId = await readCurrentProjectFocus(projectFocus);
+  if (focusedProjectId === undefined) return unavailableFocus();
   if (commandProjectId !== focusedProjectId) return focusMismatch();
   try {
     if (await projectFocus.currentProjectId() !== commandProjectId) {

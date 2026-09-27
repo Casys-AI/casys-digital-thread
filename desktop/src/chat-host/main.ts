@@ -6,11 +6,14 @@ import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 import pins from "../../chat-runtime/pins.json" with { type: "json" };
 import { ChatCoordinator } from "../chat/coordinator.ts";
+import { connectableMcpServers, probeChatMcpServer } from "../chat/mcp-servers.ts";
+import { chatRuntimeKey } from "../chat/runtime-port.ts";
 import {
   CHAT_HOST_COMPONENT_VERSION,
   parseChatCommandRequest,
   parseChatSnapshotRequest,
 } from "../../../src/presentation/desktop/chat/contracts.ts";
+import { type McpRelay, startMcpRelay } from "./mcp-relay.ts";
 import { NodeChatConversationStore } from "./node-store.ts";
 import { CHAT_HOST_IPC_PROTOCOL } from "./protocol.ts";
 import { createPinnedRuntimeAdapter } from "./runtime-adapter.ts";
@@ -45,15 +48,63 @@ const acpxPackage = realpathSync(join(runtimeRoot, "acpx"));
 assertRuntimePins(acpxPackage, adapterEntry);
 await mkdir(join(dataRoot, "workspace"), { recursive: true, mode: 0o700 });
 
-const runtimeAdapter = await createPinnedRuntimeAdapter({
+const mcpServers = connectableMcpServers();
+// Agent-facing MCP servers go through the loopback relay: the pinned
+// stock MCP client does not speak the strict Casys convention, so direct
+// wiring fails the provider handshake. Relay URLs stay host-side.
+const relays: McpRelay[] = [];
+const projectRelay = await startMcpRelay({
+  upstreamMcpUrl: "http://127.0.0.1:3020/mcp",
+});
+relays.push(projectRelay);
+const standaloneRelays = new Map<string, McpRelay>();
+for (const server of mcpServers) {
+  const relay = await startMcpRelay({ upstreamMcpUrl: server.mcpUrl });
+  relays.push(relay);
+  standaloneRelays.set(server.id, relay);
+}
+const sharedRuntimeOptions = {
   dataRoot,
   workspaceRoot: join(dataRoot, "workspace"),
   acpxRuntimeUrl: new URL("./acpx/dist/runtime.js", import.meta.url).href,
   adapterEntry,
   nodeExecutable: process.execPath,
-});
+};
+// One runtime per MCP set: the project runtime keeps the fixed Digital
+// Thread server (and its existing session store), standalone starts with
+// zero MCPs, and each connectable MCP owns a runtime + store.
+const runtimes = new Map([
+  [
+    chatRuntimeKey("project"),
+    await createPinnedRuntimeAdapter({
+      ...sharedRuntimeOptions,
+      mcpServers: [{ name: "casys-digital-thread", url: projectRelay.url }],
+      sessionStoreDir: "acpx-sessions",
+    }),
+  ],
+  [
+    chatRuntimeKey("standalone"),
+    await createPinnedRuntimeAdapter({
+      ...sharedRuntimeOptions,
+      mcpServers: [],
+      sessionStoreDir: "acpx-sessions-standalone",
+    }),
+  ],
+  ...await Promise.all(mcpServers.map(async (server) => {
+    const relay = standaloneRelays.get(server.id);
+    if (relay === undefined) throw new Error("MCP relay is missing");
+    const adapter = await createPinnedRuntimeAdapter({
+      ...sharedRuntimeOptions,
+      mcpServers: [{ name: server.id, url: relay.url }],
+      sessionStoreDir: `acpx-sessions-standalone-${server.id}`,
+    });
+    return [chatRuntimeKey("standalone", server.id), adapter] as const;
+  })),
+]);
 const coordinator = await ChatCoordinator.create({
-  runtimeAdapter,
+  runtimes,
+  mcpServers,
+  probeMcp: (server) => probeChatMcpServer(server),
   store: new NodeChatConversationStore(join(dataRoot, "chat")),
   workspaceRoot: join(dataRoot, "workspace"),
 });
@@ -107,6 +158,7 @@ async function stop(): Promise<void> {
   if (stopping) return;
   stopping = true;
   await coordinator.stop();
+  await Promise.allSettled(relays.map((relay) => relay.close()));
 }
 
 function parseIpcRequest(value: unknown): IpcRequest {

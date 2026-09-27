@@ -129,3 +129,36 @@ export interface ChatRuntimeAdapter {
   setInteractionSink(sink: RuntimeInteractionSink): void;
   close(): Promise<void>;
 }
+
+/**
+ * Host-side MCP server a standalone conversation can attach. Connection
+ * ownership, endpoints, and credentials never leave the host: the renderer
+ * only sees the advertised identity subset.
+ */
+export interface ChatMcpServerConfig {
+  readonly id: string;
+  readonly displayName: string;
+  readonly description: string;
+  readonly transport: "streamable-http";
+  readonly mcpUrl: string;
+  readonly healthUrl: string;
+  readonly expectedTools: readonly string[];
+}
+
+export type ChatMcpProbeOutcome =
+  | { readonly ok: true; readonly tools: readonly string[] }
+  | { readonly ok: false; readonly error: string };
+
+/**
+ * Runtime pool key. MCP servers are fixed when an ACP runtime is created,
+ * so each MCP set owns its runtime: project conversations keep the fixed
+ * Digital Thread server, standalone conversations start with zero MCPs and
+ * switch runtime when an MCP is enabled or disabled.
+ */
+export function chatRuntimeKey(
+  kind: "project" | "standalone",
+  mcpId?: string,
+): string {
+  if (kind === "project") return "project";
+  return mcpId === undefined ? "standalone" : `standalone+mcp:${mcpId}`;
+}

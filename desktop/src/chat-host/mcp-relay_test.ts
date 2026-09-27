@@ -1,0 +1,315 @@
+import { assert, assertEquals } from "jsr:@std/assert@1.0.14";
+import { createServer, type Server } from "node:http";
+import { CHAT_HOST_COMPONENT_VERSION } from "../../../src/presentation/desktop/chat/contracts.ts";
+import { startMcpRelay } from "./mcp-relay.ts";
+
+interface CapturedUpstream {
+  method?: string;
+  headers: Record<string, string>;
+  body: unknown;
+}
+
+async function withUpstream(
+  handler: (captured: CapturedUpstream) => { status: number; body: unknown },
+  run: (url: string, captured: CapturedUpstream) => Promise<void>,
+): Promise<void> {
+  const captured: CapturedUpstream = { headers: {}, body: undefined };
+  const server: Server = createServer((request, response) => {
+    const chunks: Uint8Array[] = [];
+    request.on("data", (chunk: Uint8Array) => chunks.push(chunk));
+    request.on("end", () => {
+      captured.method = request.method;
+      captured.headers = {};
+      for (const [key, value] of Object.entries(request.headers)) {
+        if (typeof value === "string") captured.headers[key] = value;
+      }
+      const raw = Buffer.concat(chunks).toString("utf8");
+      captured.body = raw === "" ? undefined : JSON.parse(raw);
+      const { status, body } = handler(captured);
+      response.writeHead(status, { "content-type": "application/json" });
+      response.end(JSON.stringify(body));
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", () => resolve()));
+  const address = server.address();
+  assert(typeof address === "object" && address !== null);
+  try {
+    await run(`http://127.0.0.1:${address.port}/mcp`, captured);
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      server.close((error) => error ? reject(error) : resolve());
+    });
+  }
+}
+
+Deno.test("relay injects the Casys convention and pipes the JSON response", async () => {
+  await withUpstream(
+    () => ({ status: 200, body: { jsonrpc: "2.0", id: 7, result: { ok: true } } }),
+    async (upstreamUrl, captured) => {
+      const relay = await startMcpRelay({ upstreamMcpUrl: upstreamUrl });
+      try {
+        assert(relay.url.startsWith("http://127.0.0.1:"));
+        assert(relay.url.endsWith("/mcp"));
+        const response = await fetch(relay.url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 7,
+            method: "tools/list",
+            params: {},
+          }),
+        });
+        assertEquals(response.status, 200);
+        assertEquals(await response.json(), {
+          jsonrpc: "2.0",
+          id: 7,
+          result: { ok: true },
+        });
+        assertEquals(captured.method, "POST");
+        assertEquals(captured.headers["mcp-protocol-version"], "2026-07-28");
+        assertEquals(captured.headers["mcp-method"], "tools/list");
+        assertEquals(captured.headers["accept"], "application/json");
+        const forwarded = captured.body as Record<string, unknown>;
+        assertEquals(forwarded.method, "tools/list");
+        assertEquals(
+          (forwarded.params as Record<string, unknown>)._meta,
+          {
+            "io.modelcontextprotocol/protocolVersion": "2026-07-28",
+            "io.modelcontextprotocol/clientCapabilities": {},
+            "io.modelcontextprotocol/clientInfo": {
+              name: "casys-desktop-chat-relay",
+              version: CHAT_HOST_COMPONENT_VERSION,
+            },
+          },
+        );
+      } finally {
+        await relay.close();
+      }
+    },
+  );
+});
+
+Deno.test("relay preserves incoming meta fields while Casys keys win", async () => {
+  await withUpstream(
+    () => ({ status: 200, body: { jsonrpc: "2.0", id: 1, result: {} } }),
+    async (upstreamUrl, captured) => {
+      const relay = await startMcpRelay({ upstreamMcpUrl: upstreamUrl });
+      try {
+        await fetch(relay.url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "initialize",
+            params: {
+              protocolVersion: "2025-06-18",
+              _meta: {
+                "client/custom": "kept",
+                "io.modelcontextprotocol/protocolVersion": "stale",
+              },
+            },
+          }),
+        });
+        const meta =
+          ((captured.body as Record<string, unknown>).params as Record<string, unknown>)
+            ._meta as Record<string, unknown>;
+        assertEquals(meta["client/custom"], "kept");
+        assertEquals(meta["io.modelcontextprotocol/protocolVersion"], "2026-07-28");
+      } finally {
+        await relay.close();
+      }
+    },
+  );
+});
+
+Deno.test("relay mirrors params.name into Mcp-Name for tools/call", async () => {
+  await withUpstream(
+    () => ({ status: 200, body: { jsonrpc: "2.0", id: 5, result: {} } }),
+    async (upstreamUrl, captured) => {
+      const relay = await startMcpRelay({ upstreamMcpUrl: upstreamUrl });
+      try {
+        await fetch(relay.url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 5,
+            method: "tools/call",
+            params: { name: "build123d_execute", arguments: {} },
+          }),
+        });
+        assertEquals(captured.headers["mcp-name"], "build123d_execute");
+        assertEquals(captured.headers["mcp-method"], "tools/call");
+        await fetch(relay.url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 6,
+            method: "tools/list",
+            params: {},
+          }),
+        });
+        assertEquals(captured.headers["mcp-name"], undefined);
+      } finally {
+        await relay.close();
+      }
+    },
+  );
+});
+
+Deno.test("relay mirrors params.uri into Mcp-Name for resources/read", async () => {
+  await withUpstream(
+    () => ({ status: 200, body: { jsonrpc: "2.0", id: 8, result: {} } }),
+    async (upstreamUrl, captured) => {
+      const relay = await startMcpRelay({ upstreamMcpUrl: upstreamUrl });
+      try {
+        const response = await fetch(relay.url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 8,
+            method: "resources/read",
+            params: { uri: "build123d://exports/part.stl" },
+          }),
+        });
+        assertEquals(response.status, 200);
+        assertEquals(captured.headers["mcp-name"], "build123d://exports/part.stl");
+        assertEquals(captured.headers["mcp-method"], "resources/read");
+      } finally {
+        await relay.close();
+      }
+    },
+  );
+});
+
+Deno.test("relay rejects batch payloads without contacting upstream", async () => {
+  await withUpstream(
+    () => ({ status: 200, body: {} }),
+    async (upstreamUrl, captured) => {
+      const relay = await startMcpRelay({ upstreamMcpUrl: upstreamUrl });
+      try {
+        const response = await fetch(relay.url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify([
+            { jsonrpc: "2.0", id: 1, method: "tools/list", params: {} },
+            { jsonrpc: "2.0", id: 2, method: "tools/list", params: {} },
+          ]),
+        });
+        assertEquals(response.status, 400);
+        const body = await response.json() as Record<string, unknown>;
+        assertEquals(body.id, null);
+        assertEquals(
+          (body.error as Record<string, unknown>).message,
+          "MCP relay accepts a single JSON-RPC object",
+        );
+        assertEquals(captured.method, undefined);
+      } finally {
+        await relay.close();
+      }
+    },
+  );
+});
+
+Deno.test("relay forwards notifications and pipes upstream errors", async () => {
+  await withUpstream(
+    () => ({
+      status: 200,
+      body: {
+        jsonrpc: "2.0",
+        id: 9,
+        error: { code: -32601, message: "unknown method" },
+      },
+    }),
+    async (upstreamUrl) => {
+      const relay = await startMcpRelay({ upstreamMcpUrl: upstreamUrl });
+      try {
+        const response = await fetch(relay.url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            method: "notifications/initialized",
+            params: {},
+          }),
+        });
+        assertEquals(response.status, 200);
+        const body = await response.json() as Record<string, unknown>;
+        assertEquals((body.error as Record<string, unknown>).code, -32601);
+      } finally {
+        await relay.close();
+      }
+    },
+  );
+});
+
+Deno.test("relay refuses non-POST, foreign paths, and invalid bodies", async () => {
+  await withUpstream(
+    () => ({ status: 200, body: {} }),
+    async (upstreamUrl) => {
+      const relay = await startMcpRelay({ upstreamMcpUrl: upstreamUrl });
+      try {
+        const base = relay.url.replace(/\/mcp$/, "");
+        assertEquals((await fetch(`${base}/other`, { method: "POST" })).status, 404);
+        assertEquals((await fetch(relay.url, { method: "GET" })).status, 405);
+        const invalid = await fetch(relay.url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ jsonrpc: "2.0", id: 3 }),
+        });
+        assertEquals(invalid.status, 400);
+        assertEquals(
+          ((await invalid.json()) as Record<string, unknown>).id,
+          3,
+        );
+        const garbage = await fetch(relay.url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: "not json",
+        });
+        assertEquals(garbage.status, 400);
+      } finally {
+        await relay.close();
+      }
+    },
+  );
+});
+
+Deno.test("relay reports an unreachable upstream as 502 JSON-RPC", async () => {
+  const relay = await startMcpRelay({
+    upstreamMcpUrl: "http://127.0.0.1:1/mcp",
+    timeoutMs: 5_000,
+  });
+  try {
+    const response = await fetch(relay.url, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 11,
+        method: "tools/list",
+        params: {},
+      }),
+    });
+    assertEquals(response.status, 502);
+    const body = await response.json() as Record<string, unknown>;
+    assertEquals(body.id, 11);
+    assertEquals((body.error as Record<string, unknown>).code, -32000);
+  } finally {
+    await relay.close();
+  }
+});
+
+Deno.test("relay refuses a non-loopback upstream", async () => {
+  let thrown = "";
+  try {
+    await startMcpRelay({ upstreamMcpUrl: "http://10.0.0.9:3014/mcp" });
+  } catch (error) {
+    thrown = error instanceof Error ? error.message : String(error);
+  }
+  assert(thrown.includes("loopback"));
+});

@@ -1,24 +1,30 @@
 import {
   type ChatCommandRequest,
   type ChatCommandResponse,
+  type ChatConnectableMcpDto,
   type ChatConversationDto,
+  type ChatConversationKind,
+  type ChatConversationMcpDto,
   type ChatConversationStatus,
   type ChatMessageDto,
   type ChatPendingInteractionDto,
   type ChatSnapshotDto,
   DESKTOP_CHAT_PROTOCOL,
 } from "../../../src/presentation/desktop/chat/contracts.ts";
-import type {
-  ChatRuntimeAdapter,
-  RuntimeElicitationContext,
-  RuntimeElicitationRequest,
-  RuntimeElicitationResponse,
-  RuntimeEvent,
-  RuntimeHandle,
-  RuntimeInteractionSink,
-  RuntimePermissionDecision,
-  RuntimePermissionRequest,
-  RuntimeTurn,
+import {
+  type ChatMcpProbeOutcome,
+  type ChatMcpServerConfig,
+  type ChatRuntimeAdapter,
+  chatRuntimeKey,
+  type RuntimeElicitationContext,
+  type RuntimeElicitationRequest,
+  type RuntimeElicitationResponse,
+  type RuntimeEvent,
+  type RuntimeHandle,
+  type RuntimeInteractionSink,
+  type RuntimePermissionDecision,
+  type RuntimePermissionRequest,
+  type RuntimeTurn,
 } from "./runtime-port.ts";
 import {
   sanitizeElicitationRequest,
@@ -32,8 +38,13 @@ const SESSION_PREFIX = "casys-desktop-exclusive";
 
 interface ConversationState {
   readonly id: string;
-  readonly projectId: string;
-  readonly sessionKey: string;
+  readonly kind: ChatConversationKind;
+  readonly projectId?: string;
+  sessionKey: string;
+  /** Standalone MCP attachment; status failed keeps the zero-MCP runtime. */
+  mcpId?: string;
+  mcpStatus?: "connected" | "failed";
+  mcpTools: readonly string[];
   readonly title: string;
   readonly createdAt: string;
   updatedAt: string;
@@ -44,6 +55,11 @@ interface ConversationState {
   activeAbort?: AbortController;
   pending?: PendingInteraction;
   queueTail: Promise<void>;
+  /**
+   * Bumped by turn.cancel; a chained turn whose captured epoch no longer
+   * matches was cancelled while queued and must not execute.
+   */
+  queueEpoch: number;
 }
 
 interface PendingInteraction {
@@ -54,7 +70,12 @@ interface PendingInteraction {
 }
 
 export interface ChatCoordinatorOptions {
-  readonly runtimeAdapter: ChatRuntimeAdapter;
+  /** One adapter per MCP set, keyed by chatRuntimeKey. */
+  readonly runtimes: ReadonlyMap<string, ChatRuntimeAdapter>;
+  /** Host-side connectable MCP registry (standalone only). */
+  readonly mcpServers: readonly ChatMcpServerConfig[];
+  /** Direct endpoint probe; distinguishes connection from execution failure. */
+  readonly probeMcp: (server: ChatMcpServerConfig) => Promise<ChatMcpProbeOutcome>;
   readonly store: ChatConversationStore;
   /** Private host path. It is never copied into a renderer DTO. */
   readonly workspaceRoot: string;
@@ -63,7 +84,11 @@ export interface ChatCoordinatorOptions {
 }
 
 export class ChatCoordinator implements RuntimeInteractionSink {
-  readonly #runtimeAdapter: ChatRuntimeAdapter;
+  readonly #runtimes: ReadonlyMap<string, ChatRuntimeAdapter>;
+  readonly #mcpServers: readonly ChatMcpServerConfig[];
+  readonly #probeMcp: (
+    server: ChatMcpServerConfig,
+  ) => Promise<ChatMcpProbeOutcome>;
   readonly #store: ChatConversationStore;
   readonly #workspaceRoot: string;
   readonly #now: () => Date;
@@ -75,12 +100,16 @@ export class ChatCoordinator implements RuntimeInteractionSink {
   #stopPromise?: Promise<void>;
 
   private constructor(options: ChatCoordinatorOptions) {
-    this.#runtimeAdapter = options.runtimeAdapter;
+    this.#runtimes = options.runtimes;
+    this.#mcpServers = options.mcpServers;
+    this.#probeMcp = options.probeMcp;
     this.#store = options.store;
     this.#workspaceRoot = options.workspaceRoot;
     this.#now = options.now ?? (() => new Date());
     this.#newId = options.newId ?? (() => crypto.randomUUID());
-    this.#runtimeAdapter.setInteractionSink(this);
+    for (const adapter of options.runtimes.values()) {
+      adapter.setInteractionSink(this);
+    }
   }
 
   static async create(options: ChatCoordinatorOptions): Promise<ChatCoordinator> {
@@ -104,6 +133,16 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       protocol: DESKTOP_CHAT_PROTOCOL,
       host: this.#host,
       conversations: Object.freeze(conversations),
+      connectableMcps: Object.freeze(
+        this.#mcpServers.map((server): ChatConnectableMcpDto =>
+          Object.freeze({
+            id: server.id,
+            displayName: server.displayName,
+            description: server.description,
+            transport: server.transport,
+          })
+        ),
+      ),
       ...(selected === undefined ? {} : { selectedConversationId: selected }),
     });
   }
@@ -147,6 +186,14 @@ export class ChatCoordinator implements RuntimeInteractionSink {
             request.action,
             request.content,
           );
+          break;
+        case "mcp.enable":
+          conversationId = request.conversationId;
+          await this.#enableMcp(conversationId, request.mcpId);
+          break;
+        case "mcp.disable":
+          conversationId = request.conversationId;
+          await this.#disableMcp(conversationId);
           break;
       }
       return Object.freeze({
@@ -192,19 +239,27 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     return this.#stopPromise;
   }
 
-  async #createConversation(projectId: string, title?: string): Promise<string> {
+  async #createConversation(projectId?: string, title?: string): Promise<string> {
     const id = `conversation:${this.#newId()}`;
     const now = this.#now().toISOString();
+    const kind: ChatConversationKind = projectId === undefined
+      ? "standalone"
+      : "project";
     this.#conversations.set(id, {
       id,
-      projectId,
-      sessionKey: `${SESSION_PREFIX}/${projectId}/${id}`,
-      title: title ?? `Project ${projectId}`,
+      kind,
+      ...(projectId === undefined ? {} : { projectId }),
+      sessionKey: kind === "project"
+        ? `${SESSION_PREFIX}/${projectId}/${id}`
+        : `${SESSION_PREFIX}/standalone/${id}`,
+      mcpTools: [],
+      title: title ?? (kind === "project" ? `Project ${projectId}` : "Standalone chat"),
       status: "idle",
       createdAt: now,
       updatedAt: now,
       messages: [],
       queueTail: Promise.resolve(),
+      queueEpoch: 0,
     });
     await this.#persist();
     return id;
@@ -219,9 +274,10 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     if (conversation.status === "closed") throw new Error("conversation is closed");
     this.#append(conversation, "user", "text", text);
     conversation.status = "queued";
+    const epoch = conversation.queueEpoch;
     await this.#persist();
     const queued = conversation.queueTail.then(() =>
-      this.#runTurn(conversation, text, requestId)
+      this.#runTurn(conversation, text, requestId, epoch)
     );
     conversation.queueTail = queued.catch(() => undefined);
   }
@@ -230,26 +286,37 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     conversation: ConversationState,
     text: string,
     requestId: string,
+    epoch: number,
   ): Promise<void> {
     if (conversation.status === "closed" || this.#host !== "ready") return;
+    if (epoch !== conversation.queueEpoch) {
+      if (conversation.status === "queued") {
+        conversation.status = "idle";
+        conversation.updatedAt = this.#now().toISOString();
+        this.#append(conversation, "system", "status", "Turn cancelled.");
+        await this.#persist();
+      }
+      return;
+    }
     try {
       conversation.status = "running";
       conversation.updatedAt = this.#now().toISOString();
+      const runtime = this.#adapterFor(conversation).runtime;
       const handle = conversation.handle ??
-        await this.#runtimeAdapter.runtime.ensureSession({
+        await runtime.ensureSession({
           sessionKey: conversation.sessionKey,
           agent: AGENT_NAME,
           mode: "persistent",
           cwd: this.#workspaceRoot,
-          sessionOptions: { systemPrompt: projectSystemPrompt(conversation.projectId) },
+          sessionOptions: { systemPrompt: systemPromptFor(conversation) },
         });
       conversation.handle = handle;
       this.#claimSessionIds(conversation, handle);
       const abort = new AbortController();
       conversation.activeAbort = abort;
-      const turn = this.#runtimeAdapter.runtime.startTurn({
+      const turn = runtime.startTurn({
         handle,
-        text: boundPrompt(conversation.projectId, text),
+        text: turnTextFor(conversation, text),
         mode: "prompt",
         requestId,
         signal: abort.signal,
@@ -443,11 +510,12 @@ export class ChatCoordinator implements RuntimeInteractionSink {
   async #cancelTurn(conversationId: string, reason: string): Promise<void> {
     const conversation = this.#conversation(conversationId);
     this.#abortPending(conversation);
+    conversation.queueEpoch += 1;
     conversation.activeAbort?.abort(reason);
     if (conversation.activeTurn !== undefined) {
       await conversation.activeTurn.cancel({ reason });
     } else if (conversation.handle !== undefined) {
-      await this.#runtimeAdapter.runtime.cancel({
+      await this.#adapterFor(conversation).runtime.cancel({
         handle: conversation.handle,
         reason,
       });
@@ -459,7 +527,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     await this.#cancelTurn(conversationId, "conversation closed");
     conversation.status = "closed";
     if (conversation.handle !== undefined) {
-      await this.#runtimeAdapter.runtime.close({
+      await this.#adapterFor(conversation).runtime.close({
         handle: conversation.handle,
         reason: "conversation closed",
         discardPersistentState: false,
@@ -468,6 +536,117 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       conversation.handle = undefined;
     }
     await this.#persist();
+  }
+
+  /**
+   * Attaches an MCP to a standalone conversation. The endpoint is probed
+   * directly first: a connection failure is reported as such and never as
+   * a tool execution failure. On success the ACP session restarts on the
+   * MCP runtime; the transcript is preserved. Re-enabling re-probes, so
+   * enable doubles as the reconnect path.
+   */
+  async #enableMcp(conversationId: string, mcpId: string): Promise<void> {
+    const conversation = this.#conversation(conversationId);
+    if (conversation.kind !== "standalone") {
+      throw new Error("project conversations keep their fixed MCP");
+    }
+    if (conversation.status === "closed") throw new Error("conversation is closed");
+    this.#requireSettledForMcpSwitch(conversation);
+    const server = this.#mcpServers.find((entry) => entry.id === mcpId);
+    if (server === undefined) throw new Error("MCP is not connectable");
+    let probe: ChatMcpProbeOutcome;
+    try {
+      probe = await this.#probeMcp(server);
+    } catch (error) {
+      probe = { ok: false, error: safeError(error) };
+    }
+    if (!probe.ok) {
+      if (conversation.mcpStatus === "connected") {
+        await this.#detachHandle(conversation, "MCP connection failed");
+        conversation.sessionKey = standaloneSessionKey(conversation.id);
+      }
+      conversation.mcpId = server.id;
+      conversation.mcpStatus = "failed";
+      conversation.mcpTools = [];
+      this.#append(
+        conversation,
+        "system",
+        "error",
+        `MCP connection failed (${server.displayName}): ${probe.error} The agent keeps running without it.`,
+      );
+      await this.#persist();
+      throw new Error(`MCP connection failed (${server.displayName}): ${probe.error}`);
+    }
+    await this.#detachHandle(conversation, "MCP attachment changed");
+    conversation.mcpId = server.id;
+    conversation.mcpStatus = "connected";
+    conversation.mcpTools = [...probe.tools];
+    conversation.sessionKey = standaloneSessionKey(conversation.id, server.id);
+    this.#append(
+      conversation,
+      "system",
+      "status",
+      `${server.displayName} connected (${probe.tools.length} tools). The agent session restarts with it.`,
+    );
+    await this.#persist();
+  }
+
+  async #disableMcp(conversationId: string): Promise<void> {
+    const conversation = this.#conversation(conversationId);
+    if (conversation.kind !== "standalone") {
+      throw new Error("project conversations keep their fixed MCP");
+    }
+    if (conversation.status === "closed") throw new Error("conversation is closed");
+    this.#requireSettledForMcpSwitch(conversation);
+    if (conversation.mcpId === undefined) return;
+    const displayName = this.#mcpDisplayName(conversation.mcpId);
+    await this.#detachHandle(conversation, "MCP detached");
+    conversation.mcpId = undefined;
+    conversation.mcpStatus = undefined;
+    conversation.mcpTools = [];
+    conversation.sessionKey = standaloneSessionKey(conversation.id);
+    this.#append(
+      conversation,
+      "system",
+      "status",
+      `${displayName} detached. The agent session restarts without it.`,
+    );
+    await this.#persist();
+  }
+
+  #requireSettledForMcpSwitch(conversation: ConversationState): void {
+    if (
+      conversation.activeTurn !== undefined || conversation.status === "running" ||
+      conversation.status === "queued" || conversation.pending !== undefined
+    ) {
+      throw new Error("stop the active turn before changing the MCP attachment");
+    }
+  }
+
+  async #detachHandle(conversation: ConversationState, reason: string): Promise<void> {
+    if (conversation.handle === undefined) return;
+    await this.#adapterFor(conversation).runtime.close({
+      handle: conversation.handle,
+      reason,
+      discardPersistentState: false,
+    });
+    this.#releaseSessionIds(conversation);
+    conversation.handle = undefined;
+  }
+
+  #adapterFor(conversation: ConversationState): ChatRuntimeAdapter {
+    const adapter = this.#runtimes.get(
+      chatRuntimeKey(
+        conversation.kind,
+        conversation.mcpStatus === "connected" ? conversation.mcpId : undefined,
+      ),
+    );
+    if (adapter === undefined) throw new Error("chat runtime is not configured");
+    return adapter;
+  }
+
+  #mcpDisplayName(mcpId: string): string {
+    return this.#mcpServers.find((entry) => entry.id === mcpId)?.displayName ?? mcpId;
   }
 
   async #stop(): Promise<void> {
@@ -487,15 +666,21 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     );
     for (const conversation of this.#conversations.values()) {
       if (conversation.handle === undefined) continue;
-      await this.#runtimeAdapter.runtime.close({
-        handle: conversation.handle,
-        reason: "Chat Host shutting down",
-        discardPersistentState: false,
-      }).catch(() => undefined);
+      try {
+        await this.#adapterFor(conversation).runtime.close({
+          handle: conversation.handle,
+          reason: "Chat Host shutting down",
+          discardPersistentState: false,
+        });
+      } catch {
+        // Shutdown closes every runtime below regardless.
+      }
       this.#releaseSessionIds(conversation);
       conversation.handle = undefined;
     }
-    await this.#runtimeAdapter.close();
+    await Promise.allSettled(
+      [...this.#runtimes.values()].map((adapter) => adapter.close()),
+    );
     await this.#persistTail;
   }
 
@@ -575,14 +760,27 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     conversation: ConversationState,
     includeMessages: boolean,
   ): ChatConversationDto {
+    let mcp: ChatConversationMcpDto | undefined;
+    if (conversation.mcpId !== undefined && conversation.mcpStatus !== undefined) {
+      mcp = Object.freeze({
+        id: conversation.mcpId,
+        displayName: this.#mcpDisplayName(conversation.mcpId),
+        status: conversation.mcpStatus,
+        tools: Object.freeze([...conversation.mcpTools]),
+      });
+    }
     return Object.freeze({
       id: conversation.id,
-      projectId: conversation.projectId,
+      kind: conversation.kind,
+      ...(conversation.projectId === undefined
+        ? {}
+        : { projectId: conversation.projectId }),
       title: conversation.title,
       status: conversation.status,
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt,
       messages: Object.freeze(includeMessages ? [...conversation.messages] : []),
+      ...(mcp === undefined ? {} : { mcp }),
       ...(conversation.pending === undefined
         ? {}
         : { pendingInteraction: conversation.pending.dto }),
@@ -590,14 +788,39 @@ export class ChatCoordinator implements RuntimeInteractionSink {
   }
 
   #restore(stored: StoredConversation): void {
-    if (!stored.sessionKey.startsWith(`${SESSION_PREFIX}/${stored.projectId}/`)) return;
+    const kind: ChatConversationKind = stored.kind ??
+      (stored.projectId !== undefined ? "project" : "standalone");
+    if (kind === "project") {
+      if (
+        stored.projectId === undefined ||
+        !stored.sessionKey.startsWith(`${SESSION_PREFIX}/${stored.projectId}/`)
+      ) return;
+    } else {
+      if (
+        stored.projectId !== undefined ||
+        !stored.sessionKey.startsWith(`${SESSION_PREFIX}/standalone/`)
+      ) return;
+    }
+    const mcpId = kind === "standalone" ? stored.mcpId : undefined;
+    const mcpStatus = kind === "standalone" ? stored.mcpStatus : undefined;
+    const mcpAttached = mcpId !== undefined && mcpStatus !== undefined;
     this.#conversations.set(stored.id, {
-      ...stored,
+      id: stored.id,
+      kind,
+      ...(stored.projectId === undefined ? {} : { projectId: stored.projectId }),
+      sessionKey: stored.sessionKey,
+      ...(mcpAttached ? { mcpId } : {}),
+      ...(mcpAttached ? { mcpStatus } : {}),
+      mcpTools: mcpAttached ? [...(stored.mcpTools ?? [])] : [],
+      title: stored.title,
       status: stored.status === "running" || stored.status === "queued"
         ? "idle"
         : stored.status,
+      createdAt: stored.createdAt,
+      updatedAt: stored.updatedAt,
       messages: [...stored.messages],
       queueTail: Promise.resolve(),
+      queueEpoch: 0,
     });
   }
 
@@ -605,7 +828,11 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     const snapshot = [...this.#conversations.values()].map((entry) =>
       Object.freeze({
         id: entry.id,
-        projectId: entry.projectId,
+        kind: entry.kind,
+        ...(entry.projectId === undefined ? {} : { projectId: entry.projectId }),
+        ...(entry.mcpId === undefined ? {} : { mcpId: entry.mcpId }),
+        ...(entry.mcpStatus === undefined ? {} : { mcpStatus: entry.mcpStatus }),
+        mcpTools: Object.freeze([...entry.mcpTools]),
         sessionKey: entry.sessionKey,
         title: entry.title,
         status: entry.status,
@@ -629,6 +856,48 @@ function projectSystemPrompt(projectId: string): string {
     "Agent permission prompts are operational permissions and never substitute for MRTR.",
     "Thread/CAS is authoritative; this chat transcript is presentation history only.",
   ].join("\n");
+}
+
+function standaloneSystemPrompt(conversation: ConversationState): string {
+  const lines = [
+    "You are embedded in Casys Digital Thread Desktop.",
+    "This is a standalone conversation: no Casys project, brief, SysML model, Thread baseline, or Canvas is attached.",
+  ];
+  if (conversation.mcpStatus === "connected" && conversation.mcpId !== undefined) {
+    lines.push(
+      `An MCP server is connected. Its own tool contracts determine supported inputs and results; no Casys admitted-language subset applies to ordinary calls.`,
+    );
+  } else {
+    lines.push(
+      "No engineering MCP is connected. Answer directly, and offer to connect a tool when the task needs one.",
+    );
+  }
+  lines.push(
+    "Never choose providers, operation arguments, or runtime versions.",
+    "This chat transcript is presentation history only.",
+  );
+  return lines.join("\n");
+}
+
+function systemPromptFor(conversation: ConversationState): string {
+  if (conversation.kind === "standalone") return standaloneSystemPrompt(conversation);
+  if (conversation.projectId === undefined) {
+    throw new Error("project conversation is missing its projectId");
+  }
+  return projectSystemPrompt(conversation.projectId);
+}
+
+function turnTextFor(conversation: ConversationState, text: string): string {
+  if (conversation.kind === "standalone") return text;
+  if (conversation.projectId === undefined) {
+    throw new Error("project conversation is missing its projectId");
+  }
+  return boundPrompt(conversation.projectId, text);
+}
+
+function standaloneSessionKey(conversationId: string, mcpId?: string): string {
+  const base = `${SESSION_PREFIX}/standalone/${conversationId}`;
+  return mcpId === undefined ? base : `${base}/mcp/${mcpId}`;
 }
 
 function boundPrompt(projectId: string, text: string): string {

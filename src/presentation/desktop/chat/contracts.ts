@@ -7,7 +7,7 @@
 
 export const DESKTOP_CHAT_PROTOCOL = "casys-desktop-chat/1.0" as const;
 export const CHAT_HOST_COMPONENT_ID = "chat-host" as const;
-export const CHAT_HOST_COMPONENT_VERSION = "0.4.0" as const;
+export const CHAT_HOST_COMPONENT_VERSION = "0.5.0" as const;
 
 export type ChatConversationStatus =
   | "idle"
@@ -109,14 +109,42 @@ export type ChatPendingInteractionDto =
     readonly url: string;
   };
 
+export type ChatConversationKind = "project" | "standalone";
+
+export type ChatConversationMcpStatus = "connected" | "failed";
+
+/**
+ * Active MCP attachment of a standalone conversation. Identity and state
+ * only: connection ownership, endpoints, and credentials stay host-side.
+ */
+export interface ChatConversationMcpDto {
+  readonly id: string;
+  readonly displayName: string;
+  readonly status: ChatConversationMcpStatus;
+  readonly tools: readonly string[];
+}
+
+/**
+ * MCP the host can attach to a standalone conversation. Advertised for
+ * explicit enablement; the catalogue (#54) owns discovery beyond this list.
+ */
+export interface ChatConnectableMcpDto {
+  readonly id: string;
+  readonly displayName: string;
+  readonly description: string;
+  readonly transport: "streamable-http";
+}
+
 export interface ChatConversationDto {
   readonly id: string;
-  readonly projectId: string;
+  readonly kind: ChatConversationKind;
+  readonly projectId?: string;
   readonly title: string;
   readonly status: ChatConversationStatus;
   readonly createdAt: string;
   readonly updatedAt: string;
   readonly messages: readonly ChatMessageDto[];
+  readonly mcp?: ChatConversationMcpDto;
   readonly pendingInteraction?: ChatPendingInteractionDto;
 }
 
@@ -129,6 +157,7 @@ export interface ChatSnapshotDto {
   readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
   readonly host: "ready" | "unavailable" | "shutting-down";
   readonly conversations: readonly ChatConversationDto[];
+  readonly connectableMcps: readonly ChatConnectableMcpDto[];
   readonly selectedConversationId?: string;
   readonly error?: string;
 }
@@ -138,8 +167,22 @@ export type ChatCommandRequest =
     readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
     readonly requestId: string;
     readonly command: "conversation.create";
-    readonly projectId: string;
+    /** Present for a project conversation, absent for a standalone chat. */
+    readonly projectId?: string;
     readonly title?: string;
+  }
+  | {
+    readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
+    readonly requestId: string;
+    readonly command: "mcp.enable";
+    readonly conversationId: string;
+    readonly mcpId: string;
+  }
+  | {
+    readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
+    readonly requestId: string;
+    readonly command: "mcp.disable";
+    readonly conversationId: string;
   }
   | {
     readonly protocol: typeof DESKTOP_CHAT_PROTOCOL;
@@ -212,18 +255,37 @@ export function parseChatCommandRequest(value: unknown): ChatCommandRequest {
   const command = text(input.command, "command", 64);
 
   if (command === "conversation.create") {
-    const projectId = parseCasysProjectId(input.projectId);
+    const projectId = input.projectId === undefined
+      ? undefined
+      : parseCasysProjectId(input.projectId);
     const title = optionalText(input.title, "title", 120);
     return Object.freeze({
       protocol: DESKTOP_CHAT_PROTOCOL,
       requestId,
       command,
-      projectId,
+      ...(projectId === undefined ? {} : { projectId }),
       ...(title === undefined ? {} : { title }),
     });
   }
 
   const conversationId = opaqueId(input.conversationId, "conversationId");
+  if (command === "mcp.enable") {
+    return Object.freeze({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId,
+      command,
+      conversationId,
+      mcpId: opaqueId(input.mcpId, "mcpId"),
+    });
+  }
+  if (command === "mcp.disable") {
+    return Object.freeze({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId,
+      command,
+      conversationId,
+    });
+  }
   if (command === "message.send") {
     return Object.freeze({
       protocol: DESKTOP_CHAT_PROTOCOL,
@@ -345,6 +407,12 @@ export function parseChatSnapshotDto(value: unknown): ChatSnapshotDto {
     throw new TypeError("chat conversation list is invalid");
   }
   const conversations = Object.freeze(input.conversations.map(parseConversationDto));
+  if (!Array.isArray(input.connectableMcps) || input.connectableMcps.length > 32) {
+    throw new TypeError("chat connectable MCP list is invalid");
+  }
+  const connectableMcps = Object.freeze(
+    input.connectableMcps.map(parseConnectableMcpDto),
+  );
   const selectedConversationId = optionalOpaqueId(
     input.selectedConversationId,
     "selectedConversationId",
@@ -354,6 +422,7 @@ export function parseChatSnapshotDto(value: unknown): ChatSnapshotDto {
     protocol: DESKTOP_CHAT_PROTOCOL,
     host,
     conversations,
+    connectableMcps,
     ...(selectedConversationId === undefined ? {} : { selectedConversationId }),
     ...(error === undefined ? {} : { error }),
   });
@@ -386,21 +455,72 @@ function parseConversationDto(value: unknown): ChatConversationDto {
   ) {
     throw new TypeError("conversation status is invalid");
   }
+  const kind = input.kind;
+  if (kind !== "project" && kind !== "standalone") {
+    throw new TypeError("conversation kind is invalid");
+  }
+  const projectId = input.projectId === undefined
+    ? undefined
+    : parseCasysProjectId(input.projectId);
+  if (kind === "project" && projectId === undefined) {
+    throw new TypeError("project conversation requires a projectId");
+  }
+  if (kind === "standalone" && projectId !== undefined) {
+    throw new TypeError("standalone conversation must not have a projectId");
+  }
   if (!Array.isArray(input.messages) || input.messages.length > 400) {
     throw new TypeError("conversation messages are invalid");
+  }
+  const mcp = input.mcp === undefined ? undefined : parseConversationMcpDto(input.mcp);
+  if (mcp !== undefined && kind !== "standalone") {
+    throw new TypeError("MCP attachment requires a standalone conversation");
   }
   const pendingInteraction = input.pendingInteraction === undefined
     ? undefined
     : parsePendingInteractionDto(input.pendingInteraction);
   return Object.freeze({
     id: opaqueId(input.id, "conversation id"),
-    projectId: text(input.projectId, "projectId", 128),
+    kind,
+    ...(projectId === undefined ? {} : { projectId }),
     title: text(input.title, "conversation title", 120),
     status,
     createdAt: isoDate(input.createdAt, "createdAt"),
     updatedAt: isoDate(input.updatedAt, "updatedAt"),
     messages: Object.freeze(input.messages.map(parseMessageDto)),
+    ...(mcp === undefined ? {} : { mcp }),
     ...(pendingInteraction === undefined ? {} : { pendingInteraction }),
+  });
+}
+
+function parseConversationMcpDto(value: unknown): ChatConversationMcpDto {
+  const input = record(value, "conversation MCP");
+  const status = input.status;
+  if (status !== "connected" && status !== "failed") {
+    throw new TypeError("conversation MCP status is invalid");
+  }
+  if (!Array.isArray(input.tools) || input.tools.length > 64) {
+    throw new TypeError("conversation MCP tools are invalid");
+  }
+  return Object.freeze({
+    id: opaqueId(input.id, "conversation MCP id"),
+    displayName: text(input.displayName, "conversation MCP displayName", 120),
+    status,
+    tools: Object.freeze(
+      input.tools.map((entry) => text(entry, "conversation MCP tool", 128)),
+    ),
+  });
+}
+
+function parseConnectableMcpDto(value: unknown): ChatConnectableMcpDto {
+  const input = record(value, "connectable MCP");
+  if (input.transport !== "streamable-http") {
+    throw new TypeError("connectable MCP transport is invalid");
+  }
+  return Object.freeze({
+    id: opaqueId(input.id, "connectable MCP id"),
+    displayName: text(input.displayName, "connectable MCP displayName", 120),
+    description: text(input.description, "connectable MCP description", 500),
+    transport: "streamable-http",
   });
 }
 

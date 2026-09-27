@@ -13,12 +13,25 @@ interface AcpxRuntimeModule {
   }): unknown;
 }
 
+export interface PinnedMcpServer {
+  readonly name: string;
+  readonly url: string;
+}
+
 export interface PinnedRuntimeOptions {
   readonly dataRoot: string;
   readonly workspaceRoot: string;
   readonly acpxRuntimeUrl: string;
   readonly adapterEntry: string;
   readonly nodeExecutable: string;
+  /**
+   * MCP servers fixed for this runtime instance. Empty for a standalone
+   * runtime with zero engineering MCPs; acpx offers no per-session MCP
+   * override, so each MCP set owns its runtime and session store.
+   */
+  readonly mcpServers: readonly PinnedMcpServer[];
+  /** Session store directory name below dataRoot; one per runtime. */
+  readonly sessionStoreDir: string;
 }
 
 /** Loads only the packaged acpx/runtime export. The module is externalized by the Node bundle. */
@@ -30,19 +43,19 @@ export async function createPinnedRuntimeAdapter(
   const runtime = acpx.createAcpRuntime({
     cwd: options.workspaceRoot,
     sessionStore: acpx.createFileSessionStore({
-      stateDir: join(options.dataRoot, "acpx-sessions"),
+      stateDir: join(options.dataRoot, options.sessionStoreDir),
     }),
     agentRegistry: acpx.createAgentRegistry({
       overrides: {
         "casys-codex": [options.nodeExecutable, options.adapterEntry],
       },
     }),
-    mcpServers: [{
+    mcpServers: options.mcpServers.map((server) => ({
       type: "http",
-      name: "casys-digital-thread",
-      url: "http://127.0.0.1:3020/mcp",
+      name: server.name,
+      url: server.url,
       headers: [],
-    }],
+    })),
     permissionMode: "deny-all",
     nonInteractivePermissions: "deny",
     elicitationModes: ["form", "url"],

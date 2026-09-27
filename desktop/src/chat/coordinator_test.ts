@@ -4,17 +4,21 @@ import {
   type ChatCommandRequest,
   DESKTOP_CHAT_PROTOCOL,
 } from "../../../src/presentation/desktop/chat/contracts.ts";
-import type {
-  ChatRuntimeAdapter,
-  ChatRuntimePort,
-  RuntimeElicitationResponse,
-  RuntimeEvent,
-  RuntimeHandle,
-  RuntimeInteractionSink,
-  RuntimeTurn,
-  RuntimeTurnResult,
+import {
+  type ChatMcpProbeOutcome,
+  type ChatMcpServerConfig,
+  type ChatRuntimeAdapter,
+  chatRuntimeKey,
+  type ChatRuntimePort,
+  type RuntimeElicitationResponse,
+  type RuntimeEvent,
+  type RuntimeHandle,
+  type RuntimeInteractionSink,
+  type RuntimeTurn,
+  type RuntimeTurnResult,
 } from "./runtime-port.ts";
-import { MemoryChatConversationStore } from "./store.ts";
+import { MemoryChatConversationStore, type StoredConversation } from "./store.ts";
+import { parseChatSnapshotDto } from "../../../src/presentation/desktop/chat/contracts.ts";
 
 Deno.test("ChatCoordinator binds one project, streams sanitized events, and preserves FIFO", async () => {
   const adapter = new FakeRuntimeAdapter();
@@ -289,6 +293,493 @@ Deno.test("invalid elicitation content cancels the ACP request instead of orphan
   await coordinator.stop();
 });
 
+Deno.test("standalone chat runs on the zero-MCP runtime without project binding", async () => {
+  const pool = standalonePool();
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(send("r1", conversationId, "Hello agent"));
+  await until(() => pool.standalone.turns.length === 1);
+  assertEquals(pool.project.turns.length, 0);
+  assertEquals(pool.standalone.turns[0].text, "Hello agent");
+  const ensured = pool.standalone.ensureInputs[0];
+  assertEquals(
+    ensured.sessionKey.startsWith("casys-desktop-exclusive/standalone/conversation:"),
+    true,
+  );
+  assertMatch(ensured.sessionOptions.systemPrompt, /standalone conversation/);
+  assertEquals(ensured.sessionOptions.systemPrompt.includes("projectId"), false);
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const conversation = coordinator.snapshot(conversationId).conversations[0];
+  assertEquals(conversation.kind, "standalone");
+  assertEquals(conversation.projectId, undefined);
+  assertEquals(conversation.mcp, undefined);
+  const advertised = coordinator.snapshot(conversationId).connectableMcps;
+  assertEquals(advertised.map((entry) => entry.id), ["build123d"]);
+  assertEquals(JSON.stringify(advertised).includes("127.0.0.1"), false);
+  await coordinator.stop();
+});
+
+Deno.test("mcp.enable probes, then restarts the session on the MCP runtime", async () => {
+  const pool = standalonePool({ probeTools: ["t_one", "t_two"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(send("r1", conversationId, "First"));
+  await until(() => pool.standalone.turns.length === 1);
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  assertEquals(pool.probeCalls, 1);
+  assertEquals(pool.standalone.closedHandles, ["casys-codex"]);
+  const attached = coordinator.snapshot(conversationId).conversations[0].mcp;
+  assertEquals(attached?.status, "connected");
+  assertEquals(attached?.displayName, "Build123d");
+  assertEquals([...(attached?.tools ?? [])], ["t_one", "t_two"]);
+
+  await coordinator.command(send("r2", conversationId, "Second"));
+  await until(() => pool.mcp.turns.length === 1);
+  assertEquals(pool.standalone.turns.length, 1);
+  assertEquals(
+    pool.mcp.ensureInputs[0].sessionKey.includes("/mcp/build123d"),
+    true,
+  );
+  assertMatch(
+    pool.mcp.ensureInputs[0].sessionOptions.systemPrompt,
+    /MCP server is connected/,
+  );
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const messages = coordinator.snapshot(conversationId).conversations[0].messages;
+  assert(
+    messages.some((message) => message.text.includes("Build123d connected (2 tools)")),
+  );
+  await coordinator.stop();
+});
+
+Deno.test("mcp.enable records connection failure without touching the agent session", async () => {
+  const pool = standalonePool({ probeError: "connection refused" });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(send("r1", conversationId, "First"));
+  await until(() => pool.standalone.turns.length === 1);
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assertEquals(enabled.ok, false);
+  assertMatch(enabled.error ?? "", /MCP connection failed/);
+  assertEquals(pool.standalone.closedHandles, []);
+  const attached = coordinator.snapshot(conversationId).conversations[0].mcp;
+  assertEquals(attached?.status, "failed");
+
+  await coordinator.command(send("r2", conversationId, "Second"));
+  await until(() => pool.standalone.turns.length === 2);
+  assertEquals(pool.mcp.turns.length, 0);
+  pool.standalone.turns[1].finish({ status: "completed" });
+  await coordinator.stop();
+});
+
+Deno.test("mcp.enable re-probes as the reconnect path", async () => {
+  const pool = standalonePool({ probeError: "connection refused" });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  const first = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assertEquals(first.ok, false);
+
+  pool.probeError = undefined;
+  pool.probeTools = ["t_one"];
+  const second = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-2",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(second.ok);
+  assertEquals(pool.probeCalls, 2);
+  assertEquals(
+    coordinator.snapshot(conversationId).conversations[0].mcp?.status,
+    "connected",
+  );
+  await coordinator.stop();
+});
+
+Deno.test("mcp.disable detaches and restarts without the MCP", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  await coordinator.command(send("r1", conversationId, "First"));
+  await until(() => pool.mcp.turns.length === 1);
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+
+  const disabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "disable-1",
+    command: "mcp.disable",
+    conversationId,
+  });
+  assert(disabled.ok);
+  assertEquals(pool.mcp.closedHandles, ["casys-codex"]);
+  assertEquals(
+    coordinator.snapshot(conversationId).conversations[0].mcp,
+    undefined,
+  );
+  await coordinator.command(send("r2", conversationId, "Second"));
+  await until(() => pool.standalone.turns.length === 1);
+  assertEquals(
+    pool.standalone.ensureInputs[0].sessionKey.includes("/mcp/"),
+    false,
+  );
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await coordinator.stop();
+});
+
+Deno.test("project conversations refuse MCP attachment changes", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createConversation(coordinator, "coffee-machine");
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assertEquals(enabled.ok, false);
+  const disabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "disable-1",
+    command: "mcp.disable",
+    conversationId,
+  });
+  assertEquals(disabled.ok, false);
+  assertEquals(pool.probeCalls, 0);
+  await coordinator.stop();
+});
+
+Deno.test("unknown MCP ids are refused before probing", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "no-such-mcp",
+  });
+  assertEquals(enabled.ok, false);
+  assertEquals(pool.probeCalls, 0);
+  await coordinator.stop();
+});
+
+Deno.test("MCP switch refuses while a turn is active", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(send("r1", conversationId, "Keep running"));
+  await until(() => pool.standalone.turns.length === 1);
+  const refused = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assertEquals(refused.ok, false);
+  assertEquals(pool.probeCalls, 0);
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-2",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  await coordinator.stop();
+});
+
+Deno.test("MCP switch refuses while a turn is queued", async () => {
+  const store = new GatedSaveStore();
+  const pool = standalonePool({ probeTools: ["t_one"], store });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  const release = store.hold();
+  const sending = coordinator.command(send("r1", conversationId, "Queue me"));
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "queued"
+  );
+  assertEquals(pool.standalone.turns.length, 0);
+  const enableRefused = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assertEquals(enableRefused.ok, false);
+  const disableRefused = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "disable-1",
+    command: "mcp.disable",
+    conversationId,
+  });
+  assertEquals(disableRefused.ok, false);
+  assertEquals(pool.probeCalls, 0);
+  release();
+  await sending;
+  await until(() => pool.standalone.turns.length === 1);
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await coordinator.stop();
+});
+
+Deno.test("turn.cancel drops a turn queued behind a running turn", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(send("r1", conversationId, "First"));
+  await until(() => pool.standalone.turns.length === 1);
+  await coordinator.command(send("r2", conversationId, "Second"));
+  const cancelled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "cancel-1",
+    command: "turn.cancel",
+    conversationId,
+  });
+  assert(cancelled.ok);
+  pool.standalone.turns[0].finish({ status: "cancelled" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  assertEquals(pool.standalone.turns.length, 1);
+  await coordinator.stop();
+});
+
+Deno.test("turn.cancel before the queued turn chains never executes it", async () => {
+  const store = new GatedSaveStore();
+  const pool = standalonePool({ probeTools: ["t_one"], store });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  const release = store.hold();
+  const sending = coordinator.command(send("r1", conversationId, "Queue me"));
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "queued"
+  );
+  const cancelled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "cancel-1",
+    command: "turn.cancel",
+    conversationId,
+  });
+  assert(cancelled.ok);
+  release();
+  await sending;
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  assertEquals(pool.standalone.turns.length, 0);
+  await coordinator.stop();
+});
+
+Deno.test("failed re-enable from connected detaches and routes back to zero MCP", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  await coordinator.command(send("r1", conversationId, "Use MCP"));
+  await until(() => pool.mcp.turns.length === 1);
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  pool.probeError = "connection refused";
+  const reenabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-2",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assertEquals(reenabled.ok, false);
+  const failed = coordinator.snapshot(conversationId).conversations[0];
+  assertEquals(failed.mcp?.status, "failed");
+  assertEquals(pool.mcp.closedHandles, ["casys-codex"]);
+  assertEquals(pool.standalone.closedHandles, []);
+  await coordinator.command(send("r2", conversationId, "Resume"));
+  await until(() => pool.standalone.turns.length === 1);
+  assertEquals(pool.mcp.turns.length, 1);
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const disabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "disable-1",
+    command: "mcp.disable",
+    conversationId,
+  });
+  assert(disabled.ok);
+  assertEquals(pool.mcp.closedHandles, ["casys-codex"]);
+  await coordinator.stop();
+});
+
+Deno.test("legacy project entries restore as project conversations", async () => {
+  const store = new MemoryChatConversationStore();
+  await store.save([{
+    id: "conversation:legacy",
+    projectId: "coffee-machine",
+    sessionKey: "casys-desktop-exclusive/coffee-machine/conversation:legacy",
+    title: "Project coffee-machine",
+    status: "idle",
+    createdAt: "2026-08-23T00:00:00.000Z",
+    updatedAt: "2026-08-23T00:00:00.000Z",
+    messages: [],
+  }]);
+  const adapter = new FakeRuntimeAdapter();
+  const coordinator = await coordinatorWith(adapter, { store });
+  const conversation = coordinator.snapshot("conversation:legacy").conversations[0];
+  assertEquals(conversation.kind, "project");
+  assertEquals(conversation.projectId, "coffee-machine");
+  await coordinator.command(send("r1", "conversation:legacy", "Resume"));
+  await until(() => adapter.turns.length === 1);
+  assertEquals(
+    adapter.turns[0].text,
+    "Bound Casys projectId: coffee-machine\n\nHuman message:\nResume",
+  );
+  adapter.turns[0].finish({ status: "completed" });
+  await coordinator.stop();
+});
+
+Deno.test("standalone attachment restores across coordinator restarts", async () => {
+  const store = new MemoryChatConversationStore();
+  const first = standalonePool({ probeTools: ["t_one"], store });
+  const coordinator = await first.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  await coordinator.stop();
+
+  const second = standalonePool({ probeTools: ["t_one"], store });
+  const resumed = await second.coordinator();
+  const restored = resumed.snapshot(conversationId).conversations[0];
+  assertEquals(restored.kind, "standalone");
+  assertEquals(restored.mcp?.status, "connected");
+  await resumed.command(send("r1", conversationId, "Resume"));
+  await until(() => second.mcp.turns.length === 1);
+  assertEquals(second.standalone.turns.length, 0);
+  second.mcp.turns[0].finish({ status: "completed" });
+  await resumed.stop();
+});
+
+Deno.test("restore strips MCP fields from project entries", async () => {
+  const store = new MemoryChatConversationStore();
+  await store.save([{
+    id: "conversation:poisoned",
+    kind: "project",
+    projectId: "coffee-machine",
+    mcpId: "build123d",
+    mcpStatus: "connected",
+    mcpTools: ["t_one"],
+    sessionKey: "casys-desktop-exclusive/coffee-machine/conversation:poisoned",
+    title: "Project coffee-machine",
+    status: "idle",
+    createdAt: "2026-08-23T00:00:00.000Z",
+    updatedAt: "2026-08-23T00:00:00.000Z",
+    messages: [],
+  }]);
+  const adapter = new FakeRuntimeAdapter();
+  const coordinator = await coordinatorWith(adapter, { store });
+  const restored = coordinator.snapshot("conversation:poisoned").conversations[0];
+  assertEquals(restored.kind, "project");
+  assertEquals(restored.mcp, undefined);
+  parseChatSnapshotDto(JSON.parse(JSON.stringify(coordinator.snapshot())));
+  await coordinator.stop();
+});
+
+Deno.test("restore keeps the conversation but drops unpaired standalone MCP fields", async () => {
+  const store = new MemoryChatConversationStore();
+  await store.save([{
+    id: "conversation:half",
+    kind: "standalone",
+    mcpId: "build123d",
+    sessionKey: "casys-desktop-exclusive/standalone/conversation:half",
+    title: "Half attached",
+    status: "idle",
+    createdAt: "2026-08-23T00:00:00.000Z",
+    updatedAt: "2026-08-23T00:00:00.000Z",
+    messages: [],
+  }]);
+  const pool = standalonePool({ probeTools: ["t_one"], store });
+  const coordinator = await pool.coordinator();
+  const restored = coordinator.snapshot("conversation:half").conversations[0];
+  assertEquals(restored.kind, "standalone");
+  assertEquals(restored.mcp, undefined);
+  parseChatSnapshotDto(JSON.parse(JSON.stringify(coordinator.snapshot())));
+  await coordinator.command(send("r1", "conversation:half", "Resume"));
+  await until(() => pool.standalone.turns.length === 1);
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await coordinator.stop();
+});
+
 Deno.test("shutdown cancels the active turn and closes every retained session", async () => {
   const adapter = new FakeRuntimeAdapter();
   const coordinator = await coordinatorWith(adapter);
@@ -335,11 +826,105 @@ async function createConversation(
   return result.conversationId;
 }
 
-function coordinatorWith(adapter: FakeRuntimeAdapter): Promise<ChatCoordinator> {
+async function createStandaloneConversation(
+  coordinator: ChatCoordinator,
+): Promise<string> {
+  const result = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "create",
+    command: "conversation.create",
+  });
+  if (!result.ok || result.conversationId === undefined) {
+    throw new Error("create failed");
+  }
+  return result.conversationId;
+}
+
+const TEST_MCP_SERVER: ChatMcpServerConfig = {
+  id: "build123d",
+  displayName: "Build123d",
+  description: "Parametric CAD execution",
+  transport: "streamable-http",
+  mcpUrl: "http://127.0.0.1:3014/mcp",
+  healthUrl: "http://127.0.0.1:3014/health",
+  expectedTools: ["t_one"],
+};
+
+function standalonePool(options: {
+  probeTools?: readonly string[];
+  probeError?: string;
+  store?: MemoryChatConversationStore;
+} = {}): {
+  readonly project: FakeRuntimeAdapter;
+  readonly standalone: FakeRuntimeAdapter;
+  readonly mcp: FakeRuntimeAdapter;
+  probeTools: readonly string[] | undefined;
+  probeError: string | undefined;
+  probeCalls: number;
+  coordinator(): Promise<ChatCoordinator>;
+} {
+  const project = new FakeRuntimeAdapter("project");
+  const standalone = new FakeRuntimeAdapter("standalone");
+  const mcp = new FakeRuntimeAdapter("mcp");
+  const state = {
+    project,
+    standalone,
+    mcp,
+    probeTools: options.probeTools,
+    probeError: options.probeError,
+    probeCalls: 0,
+    coordinator(): Promise<ChatCoordinator> {
+      return coordinatorWith(project, {
+        runtimes: new Map([
+          [chatRuntimeKey("project"), project],
+          [chatRuntimeKey("standalone"), standalone],
+          [chatRuntimeKey("standalone", "build123d"), mcp],
+        ]),
+        mcpServers: [TEST_MCP_SERVER],
+        probeMcp: () => {
+          state.probeCalls += 1;
+          if (state.probeError !== undefined) {
+            return Promise.resolve<ChatMcpProbeOutcome>({
+              ok: false,
+              error: state.probeError,
+            });
+          }
+          return Promise.resolve<ChatMcpProbeOutcome>({
+            ok: true,
+            tools: [...(state.probeTools ?? [])],
+          });
+        },
+        ...(options.store === undefined ? {} : { store: options.store }),
+      });
+    },
+  };
+  return state;
+}
+
+function coordinatorWith(
+  adapter: FakeRuntimeAdapter,
+  options: {
+    runtimes?: ReadonlyMap<string, FakeRuntimeAdapter>;
+    mcpServers?: readonly ChatMcpServerConfig[];
+    probeMcp?: (server: ChatMcpServerConfig) => Promise<ChatMcpProbeOutcome>;
+    store?: MemoryChatConversationStore;
+  } = {},
+): Promise<ChatCoordinator> {
   let sequence = 0;
   return ChatCoordinator.create({
-    runtimeAdapter: adapter,
-    store: new MemoryChatConversationStore(),
+    runtimes: options.runtimes ??
+      new Map([
+        [chatRuntimeKey("project"), adapter],
+        [chatRuntimeKey("standalone"), adapter],
+      ]),
+    mcpServers: options.mcpServers ?? [],
+    probeMcp: options.probeMcp ??
+      (() =>
+        Promise.resolve<ChatMcpProbeOutcome>({
+          ok: false,
+          error: "no MCP configured",
+        })),
+    store: options.store ?? new MemoryChatConversationStore(),
     workspaceRoot: "/private/chat-workspace",
     now: () => new Date(1_700_000_000_000 + sequence++),
     newId: () => String(sequence++),
@@ -352,6 +937,25 @@ async function until(predicate: () => boolean): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 1));
   }
   throw new Error("condition was not reached");
+}
+
+class GatedSaveStore extends MemoryChatConversationStore {
+  #gate: Promise<void> = Promise.resolve();
+
+  hold(): () => void {
+    let release!: () => void;
+    this.#gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return release;
+  }
+
+  override async save(
+    conversations: readonly StoredConversation[],
+  ): Promise<void> {
+    await this.#gate;
+    await super.save(conversations);
+  }
 }
 
 class AsyncEventQueue implements AsyncIterable<RuntimeEvent> {
@@ -449,7 +1053,7 @@ class FakeRuntimeAdapter implements ChatRuntimeAdapter {
   maxConcurrent = 0;
   closed = false;
 
-  constructor() {
+  constructor(tag = "1") {
     this.runtime = {
       ensureSession: (input) => {
         this.ensureInputs.push(input);
@@ -457,8 +1061,8 @@ class FakeRuntimeAdapter implements ChatRuntimeAdapter {
           sessionKey: input.sessionKey,
           backend: "casys-codex",
           runtimeSessionName: input.sessionKey,
-          backendSessionId: "backend-session-1",
-          agentSessionId: "agent-session-1",
+          backendSessionId: `backend-session-${tag}`,
+          agentSessionId: `agent-session-${tag}`,
         });
       },
       startTurn: (input) => {
