@@ -660,10 +660,15 @@ function assertAdmittedParameterMatchesCase(
 
 /**
  * Duplicate-revision guard: the basis must not already carry the same study
- * (id, revision) sealed with different bytes. Same digest is left to the
- * extension applier (exact reseal idempotency); a prior whose capture cannot
- * be reopened or parsed proves no conflict and never blocks, so legitimate
- * siblings keep sealing.
+ * (id, revision) sealed with different bytes.
+ *
+ * Only artifacts produced by this exact operation are authoritative: a foreign
+ * artifact that happens to share the id prefix is never our capture and never
+ * blocks. Same digest is left to the extension applier (a same-run replay
+ * completes without a second write; a cross-run same-bytes seal fails there as
+ * an artifact conflict). An authoritative prior whose capture is absent,
+ * unreadable, or unparsable fails closed: an unverifiable capture cannot prove
+ * the absence of a conflict.
  */
 async function assertNoConflictingSensitivitySeal(
   captures: FileCaptureStore<"sensitivity-study-case">,
@@ -671,12 +676,14 @@ async function assertNoConflictingSensitivitySeal(
   studyCase: SensitivityStudyCaseV3,
   caseDigest: string,
 ): Promise<void> {
+  const authorityTool =
+    `${ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION.id}@${ANALYZE_SEAL_SENSITIVITY_STUDY_OPERATION.version}`;
   for (const artifact of basisSnapshot.artifacts) {
     if (!artifact.id.startsWith("sensitivity-case-")) continue;
     if (artifact.kind !== "document") continue;
+    if (artifact.producer.tool !== authorityTool) continue;
     if (artifact.version === caseDigest) continue;
-    const prior = await readSealedStudyIdentity(captures, artifact);
-    if (!prior) continue;
+    const prior = await readAuthoritativeStudyIdentity(captures, artifact);
     if (prior.id === studyCase.id && prior.revision === studyCase.revision) {
       throw invalidTransition(
         `sensitivity_study_seal_revision_conflict: the thread already carries ` +
@@ -690,30 +697,65 @@ async function assertNoConflictingSensitivitySeal(
   }
 }
 
-async function readSealedStudyIdentity(
+async function readAuthoritativeStudyIdentity(
   captures: FileCaptureStore<"sensitivity-study-case">,
   artifact: ThreadArtifact,
-): Promise<{ id: string; revision: number } | undefined> {
+): Promise<{ id: string; revision: number }> {
   let text: string | undefined;
   try {
     text = await captures.read(artifact.fingerprint);
-  } catch {
-    return undefined;
+  } catch (error) {
+    throw unverifiablePriorCapture(
+      artifact,
+      `cannot be reopened (${errorMessage(error)})`,
+    );
   }
-  if (text === undefined) return undefined;
+  if (text === undefined) {
+    throw unverifiablePriorCapture(
+      artifact,
+      `has no readable capture ` +
+        `(${artifact.fingerprint.algorithm}:${artifact.fingerprint.digest})`,
+    );
+  }
+  let parsed: unknown;
   try {
-    const parsed: unknown = JSON.parse(text);
-    if (typeof parsed !== "object" || parsed === null) return undefined;
-    const sealed = (parsed as { studyCase?: unknown }).studyCase;
-    if (typeof sealed !== "object" || sealed === null) return undefined;
-    const { id, revision } = sealed as { id?: unknown; revision?: unknown };
-    if (typeof id !== "string" || typeof revision !== "number") {
-      return undefined;
-    }
-    return { id, revision };
+    parsed = JSON.parse(text);
   } catch {
-    return undefined;
+    throw unverifiablePriorCapture(artifact, "capture is not valid JSON");
   }
+  if (typeof parsed !== "object" || parsed === null) {
+    throw unverifiablePriorCapture(
+      artifact,
+      "capture carries no (studyCase.id, studyCase.revision) identity",
+    );
+  }
+  const sealed = (parsed as { studyCase?: unknown }).studyCase;
+  if (typeof sealed !== "object" || sealed === null) {
+    throw unverifiablePriorCapture(
+      artifact,
+      "capture carries no (studyCase.id, studyCase.revision) identity",
+    );
+  }
+  const { id, revision } = sealed as { id?: unknown; revision?: unknown };
+  if (typeof id !== "string" || typeof revision !== "number") {
+    throw unverifiablePriorCapture(
+      artifact,
+      "capture carries no (studyCase.id, studyCase.revision) identity",
+    );
+  }
+  return { id, revision };
+}
+
+function unverifiablePriorCapture(
+  artifact: ThreadArtifact,
+  reason: string,
+): EngineeringProjectCommandError {
+  return invalidTransition(
+    `sensitivity_study_seal_prior_capture_unverifiable: sensitivity study ` +
+      `artifact "${artifact.id}" ${reason}. An unverifiable authoritative ` +
+      `capture cannot prove the absence of a revision conflict, so the seal ` +
+      `is refused.`,
+  );
 }
 
 function buildSensitivityCaseSuccessor(input: {

@@ -251,8 +251,168 @@ Deno.test(
 );
 
 Deno.test(
-  "an exact same-bytes reseal is not a revision conflict",
+  "an authoritative prior whose capture is absent refuses the seal as unverifiable",
   async () => {
+    const fixture = await createOfferFixture();
+    const basis = await fixture.snapshots.get(
+      fixture.project.threadSnapshots[0]!.snapshotId,
+    );
+    await fixture.snapshots.save(
+      snapshotWithPriorCase(basis!, {
+        caseDigest: "c".repeat(64),
+        captureFingerprint: { algorithm: "sha256", digest: "d".repeat(64) },
+      }),
+    );
+    // No capture bytes saved: the prior identity cannot be verified, so the
+    // absence of a conflict cannot be proven.
+    const error = await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+    );
+    assertStringIncludes(
+      error.message,
+      "sensitivity_study_seal_prior_capture_unverifiable",
+    );
+    assertEquals(fixture.project.agentRuns[0]?.status, "failed");
+    assertEquals(fixture.project.agentRuns[0]?.resultSnapshot, undefined);
+    assertEquals([...fixture.captures.values()].length, 0);
+  },
+);
+
+Deno.test(
+  "an authoritative prior whose capture read fails refuses the seal as unverifiable",
+  async () => {
+    const fixture = await createOfferFixture();
+    const priorFingerprint: ContentFingerprint = {
+      algorithm: "sha256",
+      digest: "d".repeat(64),
+    };
+    const basis = await fixture.snapshots.get(
+      fixture.project.threadSnapshots[0]!.snapshotId,
+    );
+    await fixture.snapshots.save(
+      snapshotWithPriorCase(basis!, {
+        caseDigest: "c".repeat(64),
+        captureFingerprint: priorFingerprint,
+      }),
+    );
+    const innerRead = fixture.captures.read.bind(fixture.captures);
+    fixture.captures.read = (fingerprint: ContentFingerprint) =>
+      fingerprint.digest === priorFingerprint.digest
+        ? Promise.reject(
+          new Error(
+            `Sensitivity study case capture ${priorFingerprint.digest} does not match its filename digest.`,
+          ),
+        )
+        : innerRead(fingerprint);
+    const error = await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+    );
+    assertStringIncludes(
+      error.message,
+      "sensitivity_study_seal_prior_capture_unverifiable",
+    );
+    assertEquals(fixture.project.agentRuns[0]?.status, "failed");
+    assertEquals(fixture.project.agentRuns[0]?.resultSnapshot, undefined);
+    assertEquals([...fixture.captures.values()].length, 0);
+  },
+);
+
+Deno.test(
+  "an authoritative prior whose capture is not JSON refuses the seal as unverifiable",
+  async () => {
+    const fixture = await createOfferFixture();
+    const priorFingerprint: ContentFingerprint = {
+      algorithm: "sha256",
+      digest: "d".repeat(64),
+    };
+    const basis = await fixture.snapshots.get(
+      fixture.project.threadSnapshots[0]!.snapshotId,
+    );
+    await fixture.snapshots.save(
+      snapshotWithPriorCase(basis!, {
+        caseDigest: "c".repeat(64),
+        captureFingerprint: priorFingerprint,
+      }),
+    );
+    await fixture.captures.save(priorFingerprint, "{not-json");
+    const error = await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+    );
+    assertStringIncludes(
+      error.message,
+      "sensitivity_study_seal_prior_capture_unverifiable",
+    );
+    assertEquals(fixture.project.agentRuns[0]?.status, "failed");
+    assertEquals(fixture.project.agentRuns[0]?.resultSnapshot, undefined);
+    assertEquals([...fixture.captures.values()].length, 1);
+  },
+);
+
+Deno.test(
+  "an authoritative prior whose capture carries no study identity refuses the seal",
+  async () => {
+    const fixture = await createOfferFixture();
+    const priorFingerprint: ContentFingerprint = {
+      algorithm: "sha256",
+      digest: "d".repeat(64),
+    };
+    const basis = await fixture.snapshots.get(
+      fixture.project.threadSnapshots[0]!.snapshotId,
+    );
+    await fixture.snapshots.save(
+      snapshotWithPriorCase(basis!, {
+        caseDigest: "c".repeat(64),
+        captureFingerprint: priorFingerprint,
+      }),
+    );
+    await fixture.captures.save(
+      priorFingerprint,
+      JSON.stringify({ studyCase: { id: 42 } }),
+    );
+    const error = await assertRejects(
+      () => fixture.executor.execute(AGENT, fixture.command),
+      EngineeringProjectCommandError,
+    );
+    assertStringIncludes(
+      error.message,
+      "sensitivity_study_seal_prior_capture_unverifiable",
+    );
+    assertEquals(fixture.project.agentRuns[0]?.status, "failed");
+    assertEquals(fixture.project.agentRuns[0]?.resultSnapshot, undefined);
+    assertEquals([...fixture.captures.values()].length, 1);
+  },
+);
+
+Deno.test(
+  "a foreign artifact sharing the id prefix never blocks the seal",
+  async () => {
+    const fixture = await createOfferFixture();
+    const basis = await fixture.snapshots.get(
+      fixture.project.threadSnapshots[0]!.snapshotId,
+    );
+    await fixture.snapshots.save(
+      snapshotWithForeignCase(basis!, {
+        caseDigest: "f".repeat(64),
+        captureFingerprint: { algorithm: "sha256", digest: "0".repeat(64) },
+      }),
+    );
+    // No bytes saved for the foreign fingerprint: it is not our capture and
+    // its absence proves nothing about our (id, revision).
+    const project = await fixture.executor.execute(AGENT, fixture.command);
+    assertEquals(project.agentRuns[0]?.status, "completed");
+  },
+);
+
+Deno.test(
+  "an exact same-bytes reseal from another run is an artifact conflict",
+  async () => {
+    // Idempotence scope: only a same-run replay completes without a second
+    // write (see "a completed run replays without writing a second capture").
+    // A cross-run seal of identical bytes is not a revision conflict: the
+    // extension applier owns the artifact identity and refuses the duplicate.
     const fixture = await createOfferFixture();
     const basis = await fixture.snapshots.get(
       fixture.project.threadSnapshots[0]!.snapshotId,
@@ -266,6 +426,7 @@ Deno.test(
     const error = await assertRejects(
       () => fixture.executor.execute(AGENT, fixture.command),
       Error,
+      "conflicts with an already attached artifact",
     );
     assertEquals(
       error.message.includes("sensitivity_study_seal_revision_conflict"),
@@ -492,6 +653,16 @@ async function createOfferFixture(
   } as unknown as MutableProject;
   const snapshots = new MemorySnapshots(snapshot);
   const captures = new MemoryCaptures();
+  if (options.siblingCaseDigest) {
+    // A legitimate sibling proves its non-conflict with readable bytes: a
+    // different study id under a different digest.
+    await captures.save(
+      { algorithm: "sha256", digest: options.siblingCaseDigest },
+      JSON.stringify({
+        studyCase: { id: "desk-lamp-dl06-arm-cantilever-arm_width", revision: 1 },
+      }),
+    );
+  }
   const admissions = new RecordingAdmissions(live.admissions);
   const commands = new MemoryCommands(project);
   const projects: EngineeringProjectRevisionStore = {
@@ -670,6 +841,57 @@ function snapshotWithPriorCase(
       from: { kind: "change" as const, id: `change.${planted.id}` },
       to: { kind: "artifact" as const, id: planted.id },
       rationale: "The applied change introduced the prior sensitivity case.",
+    }],
+  });
+}
+
+function snapshotWithForeignCase(
+  snapshot: ThreadSnapshot,
+  foreign: {
+    readonly caseDigest: string;
+    readonly captureFingerprint: ContentFingerprint;
+  },
+): ThreadSnapshot {
+  const planted = {
+    id: `sensitivity-case-${foreign.caseDigest}`,
+    name: "Foreign lookalike sharing the sensitivity case id prefix",
+    kind: "document" as const,
+    version: foreign.caseDigest,
+    fingerprint: foreign.captureFingerprint,
+    uri:
+      `${SENSITIVITY_STUDY_CASE_CAPTURE_URI_PREFIX}${foreign.captureFingerprint.digest}`,
+    mediaType: "application/json",
+    producer: {
+      serverId: "digital-thread",
+      tool: "design.write-geometry@1",
+      runId: "run.foreign-seal",
+    },
+    inputArtifactIds: [] as string[],
+    freshness: {
+      status: "fresh" as const,
+      changedAt: AT,
+      invalidatedByChangeIds: [],
+    },
+  };
+  return validateThreadSnapshot({
+    ...snapshot,
+    artifacts: [...snapshot.artifacts, planted],
+    changeSet: {
+      ...snapshot.changeSet,
+      changes: [...snapshot.changeSet.changes, {
+        id: `change.${planted.id}`,
+        kind: "created" as const,
+        target: { kind: "artifact" as const, id: planted.id },
+        summary: "Foreign producer: lookalike sensitivity case id.",
+        afterFingerprint: foreign.captureFingerprint,
+      }],
+    },
+    provenance: [...snapshot.provenance, {
+      id: `provenance.${planted.id}`,
+      relation: "changes" as const,
+      from: { kind: "change" as const, id: `change.${planted.id}` },
+      to: { kind: "artifact" as const, id: planted.id },
+      rationale: "The applied change introduced the foreign lookalike case.",
     }],
   });
 }
