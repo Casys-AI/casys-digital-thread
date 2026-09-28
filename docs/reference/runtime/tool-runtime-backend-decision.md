@@ -1,7 +1,7 @@
 # Tool runtime backend decision (Desktop host, iteration 1)
 
-> Verified-Against: aec70cd7 (2026-09-27). Backend selection for MCP host
-> runtime lifecycle (#56) before any packaging change.
+> Verified-Against: 0311367d + uncommitted #54 (2026-09-28). Backend selection
+> for MCP host runtime lifecycle (#56) before any packaging change.
 
 Audience: both · Diátaxis: reference · Kind: decision
 
@@ -60,3 +60,25 @@ The reuse path is proven end to end on the maintainer machine (see the
 through engine-absent detection, install-plan computation, and
 download+verify mechanics; a full DMG install on a clean machine is NOT
 claimed until #53 measures it there.
+
+## Distribution confinement (#54)
+
+The `desktop` permission profile is the native boundary for the packaged
+shell. The catalogue backend runs in-process, so the profile grants what it
+actually needs: `run` for the three helpers, `open`, bare `docker`, and the
+absolute Docker CLI installs (Homebrew arm64/intel, `/usr/bin`, Windows
+Docker Desktop); `net` for 3020/5176 plus the Build123d provider 3014;
+full `read`/`write`.
+
+Full fs (not a scoped dir) because a static profile cannot name the
+per-user support dir — no expansion, startup-relative resolution, no
+launcher cwd anchor (all probed, #54 record). Boundedness holds where
+expressible (run/net/env lists, no sys/ffi/import); fs use stays
+construction-bounded (support `tool-runtime/**`, Downloads exports) and
+the profile contents are pinned by `deno-tasks_test.ts`.
+
+The launcher controls PATH (Helpers + system dirs), so ambient `docker`
+resolution is dead in production: `DockerResolvingRunner` probes the
+absolute installs first and falls back to the bare name. Startup, probe,
+and preparation are verified under profile-mirroring confinement by
+`catalogue:profile-test` (redirected HOME, real engine + provider).

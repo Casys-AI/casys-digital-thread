@@ -186,6 +186,48 @@ export function DesktopChat(
     [bindings, refresh],
   );
 
+  // Header attach path: same prepare-then-enable contract as the catalogue
+  // card. This surface carries no availability snapshot, so prepare always
+  // runs (idempotent reuse when ready) and enable follows only on prepared.
+  const connectWithPrepare = useCallback(
+    async (conversationId: string, mcpId: string) => {
+      if (bindings === undefined) return;
+      setBusy(true);
+      setError(undefined);
+      try {
+        const prepared = parseCatalogueCommandResponse(
+          await bindings.casysCatalogueCommand({
+            protocol: DESKTOP_CATALOGUE_PROTOCOL,
+            requestId: requestId(),
+            command: "catalogue.prepare",
+            entryId: mcpId,
+          }),
+        );
+        if (!prepared.ok) throw new Error(prepared.error ?? "Prepare failed.");
+        if (prepared.outcome !== "prepared") {
+          const text = [prepared.detail, prepared.recovery]
+            .filter((part) => part !== undefined && part !== "")
+            .join(" ");
+          throw new Error(
+            text === "" ? "Tool needs action before use." : text,
+          );
+        }
+        await command({
+          protocol: DESKTOP_CHAT_PROTOCOL,
+          requestId: requestId(),
+          command: "mcp.enable",
+          conversationId,
+          mcpId,
+        });
+      } catch (cause) {
+        setError(readError(cause));
+      } finally {
+        setBusy(false);
+      }
+    },
+    [bindings, command],
+  );
+
   const viewerDispatch: ChatViewerDispatch | undefined = bindings === undefined
     ? undefined
     : {
@@ -363,6 +405,7 @@ export function DesktopChat(
             connectableMcps={snapshot?.connectableMcps ?? []}
             busy={busy}
             command={command}
+            onConnect={connectWithPrepare}
             viewerDispatch={viewerDispatch}
             retention={snapshot?.retention}
           />
@@ -653,11 +696,13 @@ function Conversation({
   connectableMcps,
   busy,
   command,
+  onConnect,
   viewerDispatch,
   retention,
 }: CommandProps & {
   readonly conversation: ChatConversationDto;
   readonly connectableMcps: readonly ChatConnectableMcpDto[];
+  readonly onConnect: (conversationId: string, mcpId: string) => void;
   readonly viewerDispatch: ChatViewerDispatch | undefined;
   readonly retention: ChatRetentionDto | undefined;
 }): JSX.Element {
@@ -696,6 +741,7 @@ function Conversation({
           connectableMcps={connectableMcps}
           busy={busy}
           command={command}
+          onConnect={onConnect}
         />
       )}
       {standalone && (
@@ -1236,7 +1282,7 @@ function CatalogueView({
         readonly command: "catalogue.defaults.set";
         readonly ids: readonly string[];
       },
-  ) => {
+  ): Promise<CatalogueCommandResponse | null> => {
     setActing(`${label}:${entryId}`);
     try {
       const response = parseCatalogueCommandResponse(
@@ -1264,8 +1310,52 @@ function CatalogueView({
             : text,
         }));
       }
+      return response;
     } catch (cause) {
       setOutcomes((current) => ({ ...current, [entryId]: readError(cause) }));
+      return null;
+    } finally {
+      setActing(null);
+      await refresh();
+    }
+  };
+
+  // Primary attach path: prepare the chosen tool first unless it is
+  // already prepared, running, and capable, then enable it in the
+  // conversation that was current when the action started. Never
+  // enables on needs-action or failure; progress and recovery stay on
+  // the card outcome line.
+  const enableWithPrepare = async (entry: CatalogueEntryDto): Promise<void> => {
+    const target = conversation === undefined
+      ? undefined
+      : { id: conversation.id, kind: conversation.kind };
+    if (target?.kind !== "standalone") return;
+    const ready = entry.availability.prepared && entry.availability.running &&
+      entry.availability.capable;
+    if (!ready) {
+      const prepared = await runCommand(entry.id, "Prepare", {
+        command: "catalogue.prepare",
+        entryId: entry.id,
+      });
+      if (prepared?.ok !== true || prepared.outcome !== "prepared") return;
+    }
+    setActing(`Enable:${entry.id}`);
+    try {
+      const attached = await command({
+        protocol: DESKTOP_CHAT_PROTOCOL,
+        requestId: requestId(),
+        command: "mcp.enable",
+        conversationId: target.id,
+        mcpId: entry.id,
+      });
+      if (attached === undefined) {
+        setOutcomes((current) => ({
+          ...current,
+          [entry.id]: "Enable failed.",
+        }));
+      }
+    } catch (cause) {
+      setOutcomes((current) => ({ ...current, [entry.id]: readError(cause) }));
     } finally {
       setActing(null);
       await refresh();
@@ -1327,6 +1417,7 @@ function CatalogueView({
               ids: next,
             });
           }}
+          onEnable={() => void enableWithPrepare(entry)}
         />
       ))}
     </div>
@@ -1343,6 +1434,7 @@ function CatalogueEntryCard({
   onPrepare,
   onProbe,
   onToggleDefault,
+  onEnable,
 }: CommandProps & {
   readonly entry: CatalogueEntryDto;
   readonly conversation: ChatConversationDto | undefined;
@@ -1351,20 +1443,18 @@ function CatalogueEntryCard({
   readonly onPrepare: () => void;
   readonly onProbe: () => void;
   readonly onToggleDefault: () => void;
+  readonly onEnable: () => void;
 }): JSX.Element {
   const attached = conversation?.kind === "standalone" ? conversation.mcp : undefined;
   const attachedMine = attached?.id === entry.id;
   const busyTurn = conversation?.status === "running" ||
     conversation?.status === "queued";
-  const enable = () =>
-    conversation !== undefined &&
-    void command({
-      protocol: DESKTOP_CHAT_PROTOCOL,
-      requestId: requestId(),
-      command: "mcp.enable",
-      conversationId: conversation.id,
-      mcpId: entry.id,
-    });
+  const busyActing = busy || busyTurn || acting !== null;
+  const enableLabel = (base: string): string => {
+    if (acting === `Prepare:${entry.id}`) return "Preparing…";
+    if (acting === `Enable:${entry.id}`) return "Enabling…";
+    return base;
+  };
   const disable = () =>
     conversation !== undefined &&
     void command({
@@ -1487,10 +1577,14 @@ function CatalogueEntryCard({
             type="button"
             variant="outline"
             size="sm"
-            disabled={busy || busyTurn}
-            onClick={enable}
+            disabled={busyActing}
+            onClick={onEnable}
           >
-            {attached === undefined ? "Enable in this chat" : "Switch to this tool"}
+            {enableLabel(
+              attached === undefined
+                ? "Enable in this chat"
+                : "Switch to this tool",
+            )}
           </Button>
         )}
         {conversation?.kind === "standalone" &&
@@ -1513,7 +1607,7 @@ function CatalogueEntryCard({
               type="button"
               variant="ghost"
               size="sm"
-              disabled={busy || busyTurn}
+              disabled={busyActing}
               onClick={disable}
             >
               Disconnect
@@ -1534,16 +1628,16 @@ function CatalogueEntryCard({
               type="button"
               variant="outline"
               size="sm"
-              disabled={busy || busyTurn}
-              onClick={enable}
+              disabled={busyActing}
+              onClick={onEnable}
             >
-              Retry
+              {enableLabel("Retry")}
             </Button>
             <Button
               type="button"
               variant="ghost"
               size="sm"
-              disabled={busy || busyTurn}
+              disabled={busyActing}
               onClick={disable}
             >
               Disconnect
@@ -1586,21 +1680,16 @@ function McpAttachment({
   connectableMcps,
   busy,
   command,
+  onConnect,
 }: CommandProps & {
   readonly conversation: ChatConversationDto;
   readonly connectableMcps: readonly ChatConnectableMcpDto[];
+  readonly onConnect: (conversationId: string, mcpId: string) => void;
 }): JSX.Element {
   const attached = conversation.mcp;
   const busyTurn = conversation.status === "running" ||
     conversation.status === "queued";
-  const enable = (mcpId: string) =>
-    void command({
-      protocol: DESKTOP_CHAT_PROTOCOL,
-      requestId: requestId(),
-      command: "mcp.enable",
-      conversationId: conversation.id,
-      mcpId,
-    });
+  const enable = (mcpId: string) => onConnect(conversation.id, mcpId);
   const disable = () =>
     void command({
       protocol: DESKTOP_CHAT_PROTOCOL,

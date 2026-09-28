@@ -87,12 +87,59 @@ Deno.test("Lot 3 tasks compile both dedicated helpers and keep the host free of 
     "casys-chat-host",
     "casys-workbench",
     "open",
+    "docker",
+    "/opt/homebrew/bin/docker",
+    "/usr/local/bin/docker",
+    "/usr/bin/docker",
+    "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe",
   ]);
   assertEquals(denoConfig.permissions.desktop.net, [
     "127.0.0.1:3020",
     "127.0.0.1:5176",
+    "127.0.0.1:3014",
   ]);
   assertEquals("dev" in denoConfig.tasks, false);
-  assertEquals("read" in denoConfig.permissions.desktop, false);
-  assertEquals("write" in denoConfig.permissions.desktop, false);
+  // The desktop shell holds user-fs access: the catalogue persists intents
+  // under the per-user support dir (statically inexpressible) and chat
+  // exports to Downloads. run/net/env/import stay allowlisted.
+  assertEquals(denoConfig.permissions.desktop.read, true);
+  assertEquals(denoConfig.permissions.desktop.write, true);
+  const profileTest = denoConfig.tasks["catalogue:profile-test"];
+  assertEquals(typeof profileTest, "string");
+  assertEquals(
+    profileTest.includes("src/catalogue/distribution-profile_test.ts"),
+    true,
+  );
+  assertEquals(
+    profileTest.includes(
+      "--allow-run=casys-control-plane,casys-chat-host,casys-workbench,open,docker,/opt/homebrew/bin/docker,/usr/local/bin/docker,/usr/bin/docker",
+    ),
+    true,
+  );
+  assertEquals(
+    profileTest.includes("--allow-net=127.0.0.1:3020,127.0.0.1:5176,127.0.0.1:3014"),
+    true,
+  );
+  assertEquals(
+    profileTest.includes(
+      "--allow-env=HOME,XDG_DATA_HOME,APPDATA,LOCALAPPDATA,CODEX_HOME,OPENAI_API_KEY",
+    ),
+    true,
+  );
+  assertEquals(
+    generalTest.includes("--ignore=src/catalogue/distribution-profile_test.ts"),
+    true,
+  );
+  // The profile-test mirrors the profile run list 1:1 except the Windows
+  // Docker path, which is inert (and shell-hostile) on unix runners but
+  // stays granted for Windows production.
+  const windowsDocker = "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe";
+  for (const entry of denoConfig.permissions.desktop.run) {
+    if (entry === windowsDocker) continue;
+    assertEquals(
+      profileTest.includes(entry),
+      true,
+      `profile run entry missing from catalogue:profile-test: ${entry}`,
+    );
+  }
 });

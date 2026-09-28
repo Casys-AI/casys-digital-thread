@@ -12,6 +12,7 @@ import {
   DenoCommandRunner,
 } from "../../../src/adapters/shared/docker-observer.ts";
 import type { DesktopToolRuntimeProjection } from "../contracts/diagnostics.ts";
+import { DockerResolvingRunner } from "./docker.ts";
 import {
   detectToolRuntimeEngine,
   type ToolRuntimeEngineObservation,
@@ -155,8 +156,13 @@ export class ToolRuntimeHost {
 
   constructor(options: ToolRuntimeHostOptions) {
     this.#options = options;
-    this.#probeRunner = options.probeRunner ?? new DenoCommandRunner(10_000);
-    this.#execRunner = options.execRunner ?? new DenoCommandRunner(300_000);
+    // Default runners resolve bare `docker` to its absolute install: the
+    // packaged launcher controls PATH, so ambient resolution is dead in
+    // production. Injected test runners pass through untouched.
+    this.#probeRunner = options.probeRunner ??
+      new DockerResolvingRunner(new DenoCommandRunner(10_000));
+    this.#execRunner = options.execRunner ??
+      new DockerResolvingRunner(new DenoCommandRunner(300_000));
   }
 
   /** Read-only status: engine, intents, owned containers, images, volumes. Never mutates. */
