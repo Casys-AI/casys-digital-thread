@@ -219,9 +219,12 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         ),
       ),
       ...(selected === undefined ? {} : { selectedConversationId: selected }),
-      ...(retention === undefined
-        ? {}
-        : { retention: Object.freeze({ ...retention }) }),
+      ...(retention === undefined ? {} : {
+        retention: Object.freeze({
+          ...retention,
+          maxVersions: TOOL_RESULTS_MAX,
+        }),
+      }),
     });
   }
 
@@ -623,7 +626,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     // the byte writes before the manifest persist below. A stale snapshot
     // queued earlier runs before the bytes exist, so prune can never eat
     // bytes ahead of their manifest.
-    conversation.toolResults = [
+    const appended = [
       ...conversation.toolResults.filter((entry) =>
         entry.toolCallId !== event.toolCallId
       ),
@@ -641,7 +644,25 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         resultDigest,
         artifacts: Object.freeze(artifacts),
       },
-    ].slice(-TOOL_RESULTS_MAX);
+    ];
+    const retired = appended.slice(
+      0,
+      Math.max(0, appended.length - TOOL_RESULTS_MAX),
+    );
+    conversation.toolResults = appended.slice(-TOOL_RESULTS_MAX);
+    if (retired.length > 0) {
+      // Version retirement is user-visible: the evicted revisions are
+      // named in the transcript before their bytes prune on persist.
+      const names = retired.map((entry) =>
+        entry.revision === undefined ? entry.toolCallId : `v${entry.revision}`
+      ).join(", ");
+      this.#append(
+        conversation,
+        "system",
+        "status",
+        `Retired ${names}: this conversation keeps the last ${TOOL_RESULTS_MAX} tool versions.`,
+      );
+    }
     const writes = payloads.flatMap((payload) =>
       payload.bytes === undefined ? [] : [payload]
     ).map((payload) =>
@@ -831,9 +852,10 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     // exact saved result, while provider-side exports may have moved on or
     // vanished with a provider restart. View-scope resources always read
     // live; they are never archived.
-    const archived = entry.artifacts?.find((artifact) =>
-      artifact.uri === uri && artifact.state === "saved"
-    );
+    const manifest = entry.artifacts?.find((artifact) => artifact.uri === uri);
+    const archived = manifest !== undefined && manifest.state === "saved"
+      ? manifest
+      : undefined;
     if (archived !== undefined) {
       const bytes = await this.#store.loadArtifact(archived.sha256);
       if (
@@ -870,7 +892,24 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       void this.#persist();
     }
     const result = await this.#viewerBackend.readResource(entry.server, uri);
-    return parseViewerResourcePayload(uri, result, "live");
+    const payload = parseViewerResourcePayload(uri, result, "live");
+    if (manifest !== undefined) {
+      // A versioned artifact read must serve the version's bytes: live
+      // bytes that diverge from the manifest are refused before any
+      // display or export, mirroring the capture-time digest check.
+      const raw = base64ToBytes(payload.data);
+      if (raw.byteLength !== manifest.bytes) {
+        throw new ArchiveMismatchError(
+          "The live resource changed size against the saved version.",
+        );
+      }
+      if ((await sha256Hex(raw)) !== manifest.sha256) {
+        throw new ArchiveMismatchError(
+          "The live resource failed the saved version digest check.",
+        );
+      }
+    }
+    return payload;
   }
 
   async #requestElicitation(

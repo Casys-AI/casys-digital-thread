@@ -2787,6 +2787,154 @@ Deno.test("resource-read falls back live when retained bytes are gone", async ()
   await revived.stop();
 });
 
+Deno.test("resource-read refuses live bytes that fail the version digest", async () => {
+  const backend = new FakeViewerBackend();
+  const store = new MemoryChatConversationStore();
+  const pool = standalonePool({
+    probeTools: ["t_one"],
+    viewerBackend: backend,
+    store,
+  });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  const sha256 = await sha256OfText("step");
+  const uri = `casys://build123d/artifacts/${sha256}.step`;
+  await store.save([{
+    id: conversationId,
+    kind: "standalone",
+    sessionKey: `casys-desktop-exclusive/standalone/${conversationId}/mcp/build123d`,
+    title: "Standalone",
+    status: "idle",
+    createdAt: "2026-09-27T00:00:00.000Z",
+    updatedAt: "2026-09-27T00:00:00.000Z",
+    messages: [],
+    mcpId: "build123d",
+    mcpStatus: "connected",
+    mcpTools: ["t_one"],
+    toolResults: [{
+      toolCallId: "tool-call-1",
+      server: "build123d",
+      tool: "t_one",
+      messageId: "message-1",
+      appUri: VIEWER_APP_URI,
+      failed: false,
+      input: {},
+      result: viewerToolResult(11),
+      capturedAt: "2026-09-27T00:00:00.000Z",
+      revision: 1,
+      resultDigest: `sha256:${"cd".repeat(32)}`,
+      artifacts: [{
+        uri,
+        fileName: `${sha256}.step`,
+        mimeType: "model/step",
+        bytes: 4,
+        sha256,
+        state: "saved",
+      }],
+    }],
+  } as unknown as StoredConversation]);
+  // The sidecar is gone and the provider now serves different bytes under
+  // the original URI: the version identity must refuse them.
+  backend.readResource = (server: string, resourceUri: string) => {
+    backend.resourceCalls.push({ server, uri: resourceUri });
+    return Promise.resolve({
+      contents: [{ uri: resourceUri, mimeType: "model/step", blob: "ZXZpbA==" }],
+    });
+  };
+  const revived = await standalonePool({
+    probeTools: ["t_one"],
+    viewerBackend: backend,
+    store,
+  }).coordinator();
+  const read = await revived.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "read-diverged",
+    command: "viewer.resource-read",
+    conversationId,
+    toolCallId: "tool-call-1",
+    uri,
+  });
+  assertEquals(read.ok, false, "diverged live bytes were served as the version");
+  assertMatch(read.error ?? "", /digest check/);
+  await coordinator.stop();
+  await revived.stop();
+});
+
+Deno.test("resource-read refuses live bytes that changed size on the version", async () => {
+  const backend = new FakeViewerBackend();
+  const store = new MemoryChatConversationStore();
+  const pool = standalonePool({
+    probeTools: ["t_one"],
+    viewerBackend: backend,
+    store,
+  });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  const sha256 = await sha256OfText("step");
+  const uri = `casys://build123d/artifacts/${sha256}.step`;
+  await store.save([{
+    id: conversationId,
+    kind: "standalone",
+    sessionKey: `casys-desktop-exclusive/standalone/${conversationId}/mcp/build123d`,
+    title: "Standalone",
+    status: "idle",
+    createdAt: "2026-09-27T00:00:00.000Z",
+    updatedAt: "2026-09-27T00:00:00.000Z",
+    messages: [],
+    mcpId: "build123d",
+    mcpStatus: "connected",
+    mcpTools: ["t_one"],
+    toolResults: [{
+      toolCallId: "tool-call-1",
+      server: "build123d",
+      tool: "t_one",
+      messageId: "message-1",
+      appUri: VIEWER_APP_URI,
+      failed: false,
+      input: {},
+      result: viewerToolResult(11),
+      capturedAt: "2026-09-27T00:00:00.000Z",
+      revision: 1,
+      resultDigest: `sha256:${"cd".repeat(32)}`,
+      artifacts: [{
+        uri,
+        fileName: `${sha256}.step`,
+        mimeType: "model/step",
+        bytes: 4,
+        sha256,
+        state: "saved",
+      }],
+    }],
+  } as unknown as StoredConversation]);
+  backend.readResource = (server: string, resourceUri: string) => {
+    backend.resourceCalls.push({ server, uri: resourceUri });
+    return Promise.resolve({
+      contents: [{
+        uri: resourceUri,
+        mimeType: "model/step",
+        blob: "ZXZpbC1sb25nZXI=",
+      }],
+    });
+  };
+  const revived = await standalonePool({
+    probeTools: ["t_one"],
+    viewerBackend: backend,
+    store,
+  }).coordinator();
+  const read = await revived.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "read-resized",
+    command: "viewer.resource-read",
+    conversationId,
+    toolCallId: "tool-call-1",
+    uri,
+  });
+  assertEquals(read.ok, false, "resized live bytes were served as the version");
+  assertMatch(read.error ?? "", /changed size/);
+  await coordinator.stop();
+  await revived.stop();
+});
+
 Deno.test("revisions increment across captures and survive restore", async () => {
   const backend = new FakeViewerBackend();
   const store = new MemoryChatConversationStore();
@@ -2817,6 +2965,75 @@ Deno.test("revisions increment across captures and survive restore", async () =>
   );
   await coordinator.stop();
   await revived.stop();
+});
+
+class BoundedMemoryStore extends MemoryChatConversationStore {
+  override retention(): { days: number; maxConversations: number } {
+    return { days: 30, maxConversations: 50 };
+  }
+}
+
+Deno.test("the 21st capture retires v1 with a transcript notice", async () => {
+  const backend = new FakeViewerBackend();
+  const store = new BoundedMemoryStore();
+  const pool = standalonePool({
+    probeTools: ["t_one"],
+    viewerBackend: backend,
+    store,
+  });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  backend.readResource = (server: string, uri: string) => {
+    backend.resourceCalls.push({ server, uri });
+    const text = (uri.split("/").pop() ?? "").replace(/\.step$/, "");
+    return Promise.resolve({
+      contents: [{ uri, mimeType: "model/step", blob: btoa(text) }],
+    });
+  };
+  const calls = [];
+  const shas: string[] = [];
+  for (let index = 0; index < 21; index += 1) {
+    const text = `payload-${index}`;
+    const sha = await sha256OfText(text);
+    shas.push(sha);
+    calls.push({
+      toolCallId: `tool-call-${index + 1}`,
+      tool: "t_one",
+      result: viewerExportResult([{
+        uri: `casys://build123d/artifacts/${text}.step`,
+        mimeType: "model/step",
+        bytes: text.length,
+        sha256: sha,
+      }]),
+    });
+  }
+  await captureViewerResult(pool, coordinator, conversationId, calls);
+  const snapshot = coordinator.snapshot(conversationId);
+  const viewers = snapshot.conversations[0].viewers;
+  assertEquals(viewers.length, 20);
+  assertEquals(viewers[0]?.archive?.revision, 2);
+  assertEquals(viewers[19]?.archive?.revision, 21);
+  assertEquals(
+    snapshot.conversations[0].messages.some((message) =>
+      message.role === "system" && message.kind === "status" &&
+      message.text.includes("Retired v1:") &&
+      message.text.includes("keeps the last 20 tool versions")
+    ),
+    true,
+    "evicted v1 was retired without a transcript notice",
+  );
+  assertEquals(
+    snapshot.retention,
+    { days: 30, maxConversations: 50, maxVersions: 20 },
+  );
+  assertEquals(await store.loadArtifact(shas[0]), undefined);
+  assertEquals(
+    await store.loadArtifact(shas[20]),
+    new TextEncoder().encode("payload-20"),
+  );
+  parseChatSnapshotDto(snapshot);
+  await coordinator.stop();
 });
 
 Deno.test("tampered archive manifest degrades to unsaved without dropping the viewer", async () => {

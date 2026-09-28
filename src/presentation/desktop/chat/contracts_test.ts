@@ -333,6 +333,15 @@ Deno.test("snapshot carries retention and per-version saved-work archives", () =
     retention: { days: 30, maxConversations: 50 },
   });
   assertEquals(parsed.retention, { days: 30, maxConversations: 50 });
+  const versioned = parseChatSnapshotDto({
+    ...snapshotWith(conversation({ viewers: [archivedViewer()] })),
+    retention: { days: 30, maxConversations: 50, maxVersions: 20 },
+  });
+  assertEquals(versioned.retention, {
+    days: 30,
+    maxConversations: 50,
+    maxVersions: 20,
+  });
   const archive = parsed.conversations[0]?.viewers[0]?.archive;
   assertEquals(archive?.revision, 2);
   assertEquals(archive?.artifacts.length, 2);
@@ -345,6 +354,15 @@ Deno.test("snapshot refuses malformed retention and archive shapes", () => {
       parseChatSnapshotDto({
         ...snapshotWith(conversation()),
         retention: { days: 0, maxConversations: 50 },
+      }),
+    TypeError,
+    "chat retention is invalid",
+  );
+  assertThrows(
+    () =>
+      parseChatSnapshotDto({
+        ...snapshotWith(conversation()),
+        retention: { days: 30, maxConversations: 50, maxVersions: 0 },
       }),
     TypeError,
     "chat retention is invalid",

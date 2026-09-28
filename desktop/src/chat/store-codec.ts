@@ -234,6 +234,15 @@ function readToolResults(value: unknown): readonly StoredToolResult[] {
     if (typeof candidate.failed !== "boolean") {
       throw new TypeError("tool result is invalid");
     }
+    let archive: ReturnType<typeof readWorkArchive>;
+    try {
+      archive = readWorkArchive(candidate);
+    } catch {
+      // An invalid archive degrades to unsaved: the viewer survives on
+      // its core fields while the bad manifest — never its paths — is
+      // dropped, so one tampered entry cannot brick the durable store.
+      archive = {};
+    }
     return Object.freeze({
       toolCallId,
       server,
@@ -244,7 +253,7 @@ function readToolResults(value: unknown): readonly StoredToolResult[] {
       input: parseChatViewerArguments(candidate.input ?? {}),
       result: parseChatViewerJson(candidate.result),
       capturedAt: requiredDate(candidate.capturedAt, "tool result capturedAt"),
-      ...readWorkArchive(candidate),
+      ...archive,
     });
   }));
 }

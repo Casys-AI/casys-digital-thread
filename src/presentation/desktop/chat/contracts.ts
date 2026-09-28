@@ -191,6 +191,8 @@ export interface ChatViewerArchiveDto {
 export interface ChatRetentionDto {
   readonly days: number;
   readonly maxConversations: number;
+  /** Tool versions kept per conversation; absent on hosts predating it. */
+  readonly maxVersions?: number;
 }
 
 /** Bounded JSON carried between the viewer backend and the renderer. */
@@ -820,17 +822,22 @@ function parseRetentionDto(value: unknown): ChatRetentionDto {
   const input = record(value, "chat retention");
   const days = input.days;
   const maxConversations = input.maxConversations;
+  const maxVersions = input.maxVersions;
   if (
     !Number.isSafeInteger(days) || (days as number) < 1 ||
     (days as number) > 3_650 ||
     !Number.isSafeInteger(maxConversations) || (maxConversations as number) < 1 ||
-    (maxConversations as number) > 10_000
+    (maxConversations as number) > 10_000 ||
+    (maxVersions !== undefined &&
+      (!Number.isSafeInteger(maxVersions) || (maxVersions as number) < 1 ||
+        (maxVersions as number) > 10_000))
   ) {
     throw new TypeError("chat retention is invalid");
   }
   return Object.freeze({
     days: days as number,
     maxConversations: maxConversations as number,
+    ...(maxVersions === undefined ? {} : { maxVersions: maxVersions as number }),
   });
 }
 

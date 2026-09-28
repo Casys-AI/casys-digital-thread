@@ -48,6 +48,8 @@ export function ChatSessionWorkList({
         {retention === undefined
           ? "Kept for this session."
           : `Kept about ${retention.days} days · at most ${retention.maxConversations} conversations.`}
+        {retention?.maxVersions !== undefined &&
+          ` At most ${retention.maxVersions} tool versions per conversation; older versions retire with a transcript notice.`}
         {" "}
         Trimming messages never deletes saved bytes; dropping a whole
         conversation deletes its bytes with it.
