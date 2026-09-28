@@ -3,14 +3,16 @@
  *
  * The coordinator authorizes every interaction against the conversation's
  * attached MCP session (attached server id + probed tool list); this backend
- * only executes conformant loopback JSON-RPC against the fixed registry
- * upstream of that server. It never invents endpoints, credentials, tool
+ * only executes conformant loopback JSON-RPC against the registry upstream
+ * of that server, or the host-assigned runtime endpoint when a resolver is
+ * configured. It never invents endpoints, credentials, tool
  * names, or view URIs: unknown servers are refused, App documents must
  * exactly match the fleet manifest `expectedViews`, and other resources
  * must stay inside the shared view namespace.
  */
 import { MCP_PROTOCOL_VERSION } from "../control-plane/contracts.ts";
 import { CHAT_HOST_COMPONENT_VERSION } from "../../../src/presentation/desktop/chat/contracts.ts";
+import { scrubRuntimeIdentity } from "../tool-runtime/scrub.ts";
 import type { ChatMcpServerConfig } from "./runtime-port.ts";
 
 export interface ChatViewerAppBytes {
@@ -61,6 +63,15 @@ export interface RegistryViewerBackendOptions {
   readonly servers: readonly ChatMcpServerConfig[];
   readonly fetch?: typeof fetch;
   readonly timeoutMs?: number;
+  /**
+   * Current runtime endpoint per server (#57). Consulted on every call so
+   * binding changes apply without rebuilding the backend. When present but
+   * silent for a server, that server is refused: reads never fall back to
+   * a stale historical address.
+   */
+  readonly resolveEndpoint?: (
+    server: string,
+  ) => { readonly mcpUrl: string } | undefined;
 }
 
 const APP_MAX_BYTES = 8_388_608;
@@ -98,8 +109,15 @@ export function createRegistryViewerBackend(
     nameHeader: string,
     maxBytes: number,
   ): Promise<Record<string, unknown>> {
-    const upstream = upstreams.get(server);
+    let upstream = upstreams.get(server);
     if (upstream === undefined) throw new Error(`Unknown MCP server "${server}".`);
+    if (options.resolveEndpoint !== undefined) {
+      const resolved = options.resolveEndpoint(server);
+      if (resolved === undefined) {
+        throw new Error(`MCP server "${server}" has no assigned endpoint.`);
+      }
+      upstream = resolved.mcpUrl;
+    }
     const url = new URL(upstream);
     if (
       (url.protocol !== "http:" && url.protocol !== "https:") ||
@@ -152,6 +170,12 @@ export function createRegistryViewerBackend(
         throw new Error(`MCP ${method} returned an invalid response.`);
       }
       return envelope.result as Record<string, unknown>;
+    } catch (error) {
+      // Raw fetch failures reach the renderer through coordinator errors:
+      // scrub runtime identity (ports, ids) while keeping the shape.
+      throw new Error(
+        scrubRuntimeIdentity(error instanceof Error ? error.message : String(error)),
+      );
     } finally {
       clearTimeout(timer);
     }

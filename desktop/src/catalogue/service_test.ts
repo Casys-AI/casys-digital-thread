@@ -10,7 +10,14 @@ import {
 } from "../../../src/presentation/desktop/catalogue/contracts.ts";
 import type { ChatMcpServerConfig } from "../chat/runtime-port.ts";
 import type { ToolRuntimeEngineObservation } from "../tool-runtime/engine.ts";
-import type { ToolRuntimeToolStatus } from "../tool-runtime/backend.ts";
+import type {
+  ToolRuntimeMutationOutcome,
+  ToolRuntimeToolStatus,
+} from "../tool-runtime/backend.ts";
+import type {
+  LifecycleEnsureOutcome,
+  LifecycleToolState,
+} from "../tool-runtime/lifecycle.ts";
 import type { PreparationOutcome } from "../tool-runtime/preparation.ts";
 import {
   type CatalogueBackend,
@@ -63,6 +70,10 @@ function backend(options: {
   prepare?: PreparationOutcome;
   prepareThrows?: unknown;
   statusThrows?: boolean;
+  stop?: ToolRuntimeMutationOutcome;
+  restart?: LifecycleEnsureOutcome;
+  endpoint?: { readonly mcpUrl: string; readonly healthUrl: string };
+  lifecycleState?: LifecycleToolState;
 }): CatalogueBackend {
   return {
     status: () => {
@@ -87,6 +98,27 @@ function backend(options: {
         options.prepare ?? { status: "ready", detail: "Prepared and running." },
       );
     },
+    stop: () => Promise.resolve(options.stop ?? { status: "done", detail: "Stopped." }),
+    restart: () =>
+      Promise.resolve(
+        options.restart ?? {
+          status: "ready",
+          binding: {
+            schema: "desktop-tool-runtime-binding/1.0",
+            toolId: "build123d",
+            hostPort: 45678,
+            mcpUrl: "http://127.0.0.1:45678/mcp",
+            healthUrl: "http://127.0.0.1:45678/health",
+            updatedAt: "2026-09-28T00:00:00.000Z",
+          },
+        },
+      ),
+    ...(options.endpoint === undefined
+      ? {}
+      : { resolveEndpoint: () => options.endpoint }),
+    ...(options.lifecycleState === undefined
+      ? {}
+      : { lifecycleState: () => options.lifecycleState as LifecycleToolState }),
   };
 }
 
@@ -207,6 +239,118 @@ Deno.test("catalogue snapshot keeps listed/prepared/running/capable distinct", a
     (await stopped.service.snapshot()).entries[0].availability.detail,
     "Prepared but no owned container is running. An external endpoint answers.",
   );
+});
+
+Deno.test("catalogue availability reports the demand-aware runtime state", async () => {
+  const idle = await service({
+    backend: backend({ toolState: "ready", lifecycleState: "idle" }),
+  });
+  assertEquals((await idle.service.snapshot()).entries[0].availability.runtime, "idle");
+  const busy = await service({
+    backend: backend({ toolState: "ready", lifecycleState: "running" }),
+  });
+  assertEquals(
+    (await busy.service.snapshot()).entries[0].availability.runtime,
+    "running",
+  );
+  const failed = await service({
+    backend: backend({ toolState: "needs-action", lifecycleState: "stopped" }),
+  });
+  assertEquals(
+    (await failed.service.snapshot()).entries[0].availability.runtime,
+    "error",
+  );
+  const plain = await service({ backend: backend({ toolState: "ready" }) });
+  assertEquals(
+    (await plain.service.snapshot()).entries[0].availability.runtime,
+    "running",
+  );
+  const missing = await service({ backend: backend({ tools: [] }) });
+  assertEquals(
+    (await missing.service.snapshot()).entries[0].availability.runtime,
+    "unknown",
+  );
+});
+
+Deno.test("catalogue probe follows the assigned runtime endpoint", async () => {
+  const directory = await Deno.makeTempDir({ prefix: "catalogue-test-" });
+  const probed: ChatMcpServerConfig[] = [];
+  const catalogue = new CatalogueService({
+    manifest: manifestWith(manifestEntry()),
+    backend: backend({
+      toolState: "ready",
+      endpoint: {
+        mcpUrl: "http://127.0.0.1:45678/mcp",
+        healthUrl: "http://127.0.0.1:45678/health",
+      },
+    }),
+    fleetServers: [FLEET_SERVER],
+    probe: (server) => {
+      probed.push(server);
+      return Promise.resolve({ ok: true as const, tools: ["build123d_execute"] });
+    },
+    defaultsPath: `${directory}/catalogue-defaults.json`,
+  });
+  await catalogue.snapshot();
+  assertEquals(probed.length, 1);
+  assertEquals(probed[0].mcpUrl, "http://127.0.0.1:45678/mcp");
+  assertEquals(probed[0].healthUrl, "http://127.0.0.1:45678/health");
+});
+
+Deno.test("catalogue availability detail scrubs runtime identity", async () => {
+  const { service: catalogue } = await service({
+    backend: backend({
+      toolState: "needs-action",
+      toolDetail:
+        "Could not stop owned container 0272a50fad75: dial 127.0.0.1:45678 refused.",
+    }),
+  });
+  const detail = (await catalogue.snapshot()).entries[0].availability.detail;
+  assert(!detail.includes("0272a50fad75"), `id leaked: ${detail}`);
+  assert(!detail.includes("45678"), `port leaked: ${detail}`);
+});
+
+Deno.test("catalogue runtime stop and restart surface explicit outcomes", async () => {
+  const { service: catalogue } = await service({
+    backend: backend({
+      stop: { status: "done", detail: "Stopped 1 owned container(s)." },
+    }),
+  });
+  const stopped = await catalogue.command({
+    protocol: DESKTOP_CATALOGUE_PROTOCOL,
+    requestId: "stop-1",
+    command: "catalogue.runtime.stop",
+    entryId: "build123d",
+  });
+  assertEquals(stopped.ok, true);
+  assertEquals(stopped.detail, "Stopped 1 owned container(s).");
+  const restarted = await catalogue.command({
+    protocol: DESKTOP_CATALOGUE_PROTOCOL,
+    requestId: "restart-1",
+    command: "catalogue.runtime.restart",
+    entryId: "build123d",
+  });
+  assertEquals(restarted.ok, true);
+  assertEquals(restarted.detail, "Provider restarted and ready.");
+  const { service: busy } = await service({
+    backend: backend({
+      stop: {
+        status: "needs-action",
+        code: "in-use",
+        detail: "2 chat session(s) are using this provider.",
+        recovery: "Detach it from every chat first, then stop it.",
+      },
+    }),
+  });
+  const refused = await busy.command({
+    protocol: DESKTOP_CATALOGUE_PROTOCOL,
+    requestId: "stop-2",
+    command: "catalogue.runtime.stop",
+    entryId: "build123d",
+  });
+  assertEquals(refused.ok, true);
+  assertEquals(refused.detail, "2 chat session(s) are using this provider.");
+  assertEquals(refused.recovery, "Detach it from every chat first, then stop it.");
 });
 
 Deno.test("catalogue snapshot degrades instead of throwing", async () => {

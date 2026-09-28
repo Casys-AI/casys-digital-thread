@@ -28,15 +28,30 @@ import { connectableMcpServers, probeChatMcpServer } from "../chat/mcp-servers.t
 import type { ChatMcpProbeOutcome, ChatMcpServerConfig } from "../chat/runtime-port.ts";
 import {
   projectToolRuntimeStatus,
-  scrubRendererText,
+  scrubRuntimeIdentity,
   type ToolRuntimeHost,
+  type ToolRuntimeMutationOutcome,
   type ToolRuntimeStatus,
 } from "../tool-runtime/backend.ts";
+import type {
+  LifecycleEnsureOutcome,
+  LifecycleToolState,
+} from "../tool-runtime/lifecycle.ts";
 import type { PreparationOutcome } from "../tool-runtime/preparation.ts";
 
 export interface CatalogueBackend {
   status(): Promise<ToolRuntimeStatus>;
   prepare(toolId: string): Promise<PreparationOutcome>;
+  /** Explicit stop; refuses in-use providers without touching the engine. */
+  stop(toolId: string): Promise<ToolRuntimeMutationOutcome>;
+  /** Explicit restart: gated stop followed by ensure. */
+  restart(toolId: string): Promise<LifecycleEnsureOutcome>;
+  /** Current runtime endpoint, when the backend manages one. */
+  resolveEndpoint?(toolId: string):
+    | { readonly mcpUrl: string; readonly healthUrl: string }
+    | undefined;
+  /** Demand-aware lifecycle state, when the backend manages one. */
+  lifecycleState?(toolId: string): LifecycleToolState;
 }
 
 export interface CatalogueServiceOptions {
@@ -201,6 +216,26 @@ export class CatalogueService {
         detail: probed.detail,
       });
     }
+    if (input.command === "catalogue.runtime.stop") {
+      const stopped = await this.stopRuntime(input.entryId);
+      return Object.freeze({
+        protocol: DESKTOP_CATALOGUE_PROTOCOL,
+        requestId: input.requestId,
+        ok: true,
+        detail: stopped.detail,
+        ...(stopped.recovery === undefined ? {} : { recovery: stopped.recovery }),
+      });
+    }
+    if (input.command === "catalogue.runtime.restart") {
+      const restarted = await this.restartRuntime(input.entryId);
+      return Object.freeze({
+        protocol: DESKTOP_CATALOGUE_PROTOCOL,
+        requestId: input.requestId,
+        ok: true,
+        detail: restarted.detail,
+        ...(restarted.recovery === undefined ? {} : { recovery: restarted.recovery }),
+      });
+    }
     if (input.command === "catalogue.defaults.get") {
       return Object.freeze({
         protocol: DESKTOP_CATALOGUE_PROTOCOL,
@@ -236,13 +271,13 @@ export class CatalogueService {
     if (outcome.status === "ready") {
       return {
         outcome: "prepared",
-        detail: bound(scrubRendererText(outcome.detail), 500),
+        detail: bound(scrubRuntimeIdentity(outcome.detail), 500),
       };
     }
     return {
       outcome: "needs-action",
-      detail: bound(scrubRendererText(outcome.detail), 500),
-      recovery: bound(scrubRendererText(outcome.recovery), 500),
+      detail: bound(scrubRuntimeIdentity(outcome.detail), 500),
+      recovery: bound(scrubRuntimeIdentity(outcome.recovery), 500),
     };
   }
 
@@ -251,6 +286,52 @@ export class CatalogueService {
   ): Promise<{ readonly capable: boolean; readonly detail: string }> {
     const availability = await this.#availabilityFor(entryId);
     return { capable: availability.capable, detail: availability.detail };
+  }
+
+  async stopRuntime(
+    entryId: string,
+  ): Promise<{ readonly detail: string; readonly recovery?: string }> {
+    const entry = this.#entries.find((candidate) => candidate.id === entryId);
+    if (entry === undefined) throw new Error("Unknown catalogue entry.");
+    let outcome: ToolRuntimeMutationOutcome;
+    try {
+      outcome = await this.#backend.stop(entry.id);
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error("Host runtime control is not implemented for this tool.");
+      }
+      throw new Error("Host runtime stop failed before reporting an outcome.");
+    }
+    if (outcome.status === "done") {
+      return { detail: bound(scrubRuntimeIdentity(outcome.detail), 500) };
+    }
+    return {
+      detail: bound(scrubRuntimeIdentity(outcome.detail), 500),
+      recovery: bound(scrubRuntimeIdentity(outcome.recovery), 500),
+    };
+  }
+
+  async restartRuntime(
+    entryId: string,
+  ): Promise<{ readonly detail: string; readonly recovery?: string }> {
+    const entry = this.#entries.find((candidate) => candidate.id === entryId);
+    if (entry === undefined) throw new Error("Unknown catalogue entry.");
+    let outcome: LifecycleEnsureOutcome;
+    try {
+      outcome = await this.#backend.restart(entry.id);
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw new Error("Host runtime control is not implemented for this tool.");
+      }
+      throw new Error("Host runtime restart failed before reporting an outcome.");
+    }
+    if (outcome.status === "ready") {
+      return { detail: "Provider restarted and ready." };
+    }
+    return {
+      detail: bound(scrubRuntimeIdentity(outcome.detail), 500),
+      recovery: bound(scrubRuntimeIdentity(outcome.recovery), 500),
+    };
   }
 
   async getDefaults(): Promise<string[]> {
@@ -330,6 +411,7 @@ export class CatalogueService {
           ? "Host runtime status is unavailable; flags stay conservative."
           : "Host preparation is not implemented for this tool.",
         engine,
+        runtime: "unknown",
       };
     }
     const prepared = tool.state === "ready" || tool.state === "stopped";
@@ -340,9 +422,26 @@ export class CatalogueService {
       running,
       capable,
       lastProbeAt: this.#now(),
-      detail: bound(this.#availabilityDetail(tool.state, tool.detail, capable), 500),
+      detail: bound(
+        scrubRuntimeIdentity(
+          this.#availabilityDetail(tool.state, tool.detail, capable),
+        ),
+        500,
+      ),
       engine,
+      runtime: this.#runtimeState(entry.id, tool.state),
     };
+  }
+
+  #runtimeState(
+    toolId: string,
+    state: string,
+  ): CatalogueAvailabilityDto["runtime"] {
+    if (state === "needs-action" || state === "interrupted") return "error";
+    const lifecycle = this.#backend.lifecycleState?.(toolId);
+    if (lifecycle !== undefined) return lifecycle;
+    if (state === "ready") return "running";
+    return "stopped";
   }
 
   #availabilityDetail(state: string, toolDetail: string, capable: boolean): string {
@@ -356,8 +455,14 @@ export class CatalogueService {
   }
 
   async #probeCapable(entry: CuratedEntry): Promise<boolean> {
-    const server = this.#fleet.get(entry.id);
-    if (server === undefined) return false;
+    const registered = this.#fleet.get(entry.id);
+    if (registered === undefined) return false;
+    const endpoint = this.#backend.resolveEndpoint?.(entry.id);
+    const server = endpoint === undefined ? registered : {
+      ...registered,
+      mcpUrl: endpoint.mcpUrl,
+      healthUrl: endpoint.healthUrl,
+    };
     try {
       return (await this.#probe(server)).ok;
     } catch {

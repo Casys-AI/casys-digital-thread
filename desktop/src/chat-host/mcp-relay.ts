@@ -34,6 +34,11 @@ export interface McpRelayOptions {
 export interface McpRelay {
   /** Local relay endpoint handed to the agent runtime, never the renderer. */
   readonly url: string;
+  /**
+   * Retargets the fixed upstream without rebinding: the relay URL stays
+   * stable while the provider binding changes underneath (#57).
+   */
+  setUpstream(upstreamMcpUrl: string): void;
   close(): Promise<void>;
 }
 
@@ -51,23 +56,14 @@ function relayMeta(): Record<string, unknown> {
 }
 
 export async function startMcpRelay(options: McpRelayOptions): Promise<McpRelay> {
-  if (options.upstreamMcpUrl.trim() === "") {
-    throw new TypeError("upstreamMcpUrl must be a non-empty URL");
-  }
   const timeoutMs = options.timeoutMs ?? 120_000;
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1) {
     throw new TypeError("timeoutMs must be a positive integer");
   }
-  const upstream = new URL(options.upstreamMcpUrl);
-  if (
-    (upstream.protocol !== "http:" && upstream.protocol !== "https:") ||
-    (upstream.hostname !== "127.0.0.1" && upstream.hostname !== "localhost")
-  ) {
-    throw new TypeError("upstreamMcpUrl must be loopback HTTP(S)");
-  }
+  let currentUpstream = checkedUpstream(options.upstreamMcpUrl);
 
   const server: Server = createServer((request, response) => {
-    void handleRelayRequest(request, response, options.upstreamMcpUrl, timeoutMs)
+    void handleRelayRequest(request, response, currentUpstream, timeoutMs)
       .catch((error: unknown) => {
         if (response.headersSent) {
           response.destroy();
@@ -92,8 +88,25 @@ export async function startMcpRelay(options: McpRelayOptions): Promise<McpRelay>
   }
   return {
     url: `http://127.0.0.1:${address.port}/mcp`,
+    setUpstream: (upstreamMcpUrl: string) => {
+      currentUpstream = checkedUpstream(upstreamMcpUrl);
+    },
     close: () => closeServer(server),
   };
+}
+
+function checkedUpstream(upstreamMcpUrl: string): string {
+  if (upstreamMcpUrl.trim() === "") {
+    throw new TypeError("upstreamMcpUrl must be a non-empty URL");
+  }
+  const upstream = new URL(upstreamMcpUrl);
+  if (
+    (upstream.protocol !== "http:" && upstream.protocol !== "https:") ||
+    (upstream.hostname !== "127.0.0.1" && upstream.hostname !== "localhost")
+  ) {
+    throw new TypeError("upstreamMcpUrl must be loopback HTTP(S)");
+  }
+  return upstreamMcpUrl;
 }
 
 async function handleRelayRequest(

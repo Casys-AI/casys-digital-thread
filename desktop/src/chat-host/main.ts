@@ -14,7 +14,12 @@ import {
   parseChatCommandRequest,
   parseChatSnapshotRequest,
 } from "../../../src/presentation/desktop/chat/contracts.ts";
-import { type McpRelay, startMcpRelay } from "./mcp-relay.ts";
+import {
+  McpAttachmentManager,
+  parseMcpEnsurePayload,
+  parseMcpReleasePayload,
+} from "./mcp-attachments.ts";
+import { startMcpRelay } from "./mcp-relay.ts";
 import { NodeChatConversationStore } from "./node-store.ts";
 import { CHAT_HOST_IPC_PROTOCOL } from "./protocol.ts";
 import { createPinnedRuntimeAdapter } from "./runtime-adapter.ts";
@@ -23,7 +28,7 @@ import { parseImplementedTarget, resolveTargetArtifacts } from "./target.ts";
 interface IpcRequest {
   readonly protocol: typeof CHAT_HOST_IPC_PROTOCOL;
   readonly requestId: string;
-  readonly method: "snapshot" | "command" | "shutdown";
+  readonly method: "snapshot" | "command" | "shutdown" | "mcp.ensure" | "mcp.release";
   readonly payload?: unknown;
 }
 
@@ -53,17 +58,12 @@ const mcpServers = connectableMcpServers();
 // Agent-facing MCP servers go through the loopback relay: the pinned
 // stock MCP client does not speak the strict Casys convention, so direct
 // wiring fails the provider handshake. Relay URLs stay host-side.
-const relays: McpRelay[] = [];
+// The project relay keeps its fixed control-plane upstream; standalone
+// relays and MCP runtimes start lazily when Desktop assigns a provider
+// endpoint (#57), never for unused catalogue entries.
 const projectRelay = await startMcpRelay({
   upstreamMcpUrl: "http://127.0.0.1:3020/mcp",
 });
-relays.push(projectRelay);
-const standaloneRelays = new Map<string, McpRelay>();
-for (const server of mcpServers) {
-  const relay = await startMcpRelay({ upstreamMcpUrl: server.mcpUrl });
-  relays.push(relay);
-  standaloneRelays.set(server.id, relay);
-}
 const sharedRuntimeOptions = {
   dataRoot,
   workspaceRoot: join(dataRoot, "workspace"),
@@ -73,7 +73,7 @@ const sharedRuntimeOptions = {
 };
 // One runtime per MCP set: the project runtime keeps the fixed Digital
 // Thread server (and its existing session store), standalone starts with
-// zero MCPs, and each connectable MCP owns a runtime + store.
+// zero MCPs, and each attached MCP owns a lazily created runtime + store.
 const runtimes = new Map([
   [
     chatRuntimeKey("project"),
@@ -91,24 +91,30 @@ const runtimes = new Map([
       sessionStoreDir: "acpx-sessions-standalone",
     }),
   ],
-  ...await Promise.all(mcpServers.map(async (server) => {
-    const relay = standaloneRelays.get(server.id);
-    if (relay === undefined) throw new Error("MCP relay is missing");
-    const adapter = await createPinnedRuntimeAdapter({
-      ...sharedRuntimeOptions,
-      mcpServers: [{ name: server.id, url: relay.url }],
-      sessionStoreDir: `acpx-sessions-standalone-${server.id}`,
-    });
-    return [chatRuntimeKey("standalone", server.id), adapter] as const;
-  })),
 ]);
 const coordinator = await ChatCoordinator.create({
   runtimes,
   mcpServers,
   probeMcp: (server) => probeChatMcpServer(server),
-  viewerBackend: createRegistryViewerBackend({ servers: mcpServers }),
+  resolveMcpEndpoint: (mcpId) => attachments.resolve(mcpId),
+  viewerBackend: createRegistryViewerBackend({
+    servers: mcpServers,
+    resolveEndpoint: (server) => attachments.resolve(server),
+  }),
   store: new NodeChatConversationStore(join(dataRoot, "chat")),
   workspaceRoot: join(dataRoot, "workspace"),
+});
+const attachments = new McpAttachmentManager({
+  connectableIds: mcpServers.map((server) => server.id),
+  startRelay: (upstreamMcpUrl) => startMcpRelay({ upstreamMcpUrl }),
+  createRuntime: (mcpId, relayUrl) =>
+    createPinnedRuntimeAdapter({
+      ...sharedRuntimeOptions,
+      mcpServers: [{ name: mcpId, url: relayUrl }],
+      sessionStoreDir: `acpx-sessions-standalone-${mcpId}`,
+    }),
+  registerRuntime: (key, adapter) => coordinator.registerRuntime(key, adapter),
+  unregisterRuntime: (key) => coordinator.unregisterRuntime(key),
 });
 
 write({
@@ -145,6 +151,17 @@ for await (const line of lines) {
     } else if (request.method === "command") {
       const input = parseChatCommandRequest(request.payload);
       writeResponse(request.requestId, await coordinator.command(input));
+    } else if (request.method === "mcp.ensure") {
+      const input = parseMcpEnsurePayload(request.payload);
+      await attachments.ensure(input.mcpId, {
+        mcpUrl: input.mcpUrl,
+        healthUrl: input.healthUrl,
+      });
+      writeResponse(request.requestId, { attached: true });
+    } else if (request.method === "mcp.release") {
+      const input = parseMcpReleasePayload(request.payload);
+      const outcome = await attachments.release(input.mcpId);
+      writeResponse(request.requestId, { released: outcome === "released" });
     } else {
       writeResponse(request.requestId, { stopped: true });
       await stop();
@@ -160,7 +177,8 @@ async function stop(): Promise<void> {
   if (stopping) return;
   stopping = true;
   await coordinator.stop();
-  await Promise.allSettled(relays.map((relay) => relay.close()));
+  await attachments.closeAll();
+  await projectRelay.close().catch(() => undefined);
 }
 
 function parseIpcRequest(value: unknown): IpcRequest {
@@ -179,7 +197,8 @@ function parseIpcRequest(value: unknown): IpcRequest {
   }
   if (
     record.method !== "snapshot" && record.method !== "command" &&
-    record.method !== "shutdown"
+    record.method !== "shutdown" && record.method !== "mcp.ensure" &&
+    record.method !== "mcp.release"
   ) {
     throw new TypeError("IPC method is invalid");
   }

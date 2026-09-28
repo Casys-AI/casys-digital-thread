@@ -31,6 +31,18 @@ export interface ChatHostStopResult {
   readonly reason?: string;
 }
 
+export type ChatHostIpcMethod =
+  | "snapshot"
+  | "command"
+  | "mcp.ensure"
+  | "mcp.release";
+
+export interface ChatHostMcpEnsureInput {
+  readonly mcpId: string;
+  readonly mcpUrl: string;
+  readonly healthUrl: string;
+}
+
 export interface ChatHostClientTimeouts {
   readonly readyMs: number;
   readonly requestMs: number;
@@ -135,6 +147,27 @@ export class ChatHostClient {
     return parseChatCommandResponse(await this.#call("command", request));
   }
 
+  /**
+   * Assigns a provider endpoint: the host ensures the lazy relay and MCP
+   * runtime for one connectable id (#57).
+   */
+  async mcpEnsure(input: ChatHostMcpEnsureInput): Promise<{ attached: boolean }> {
+    const payload = object(await this.#call("mcp.ensure", { ...input }), "mcp.ensure");
+    if (typeof payload.attached !== "boolean") {
+      throw new TypeError("mcp.ensure response is invalid");
+    }
+    return { attached: payload.attached };
+  }
+
+  /** Releases one MCP attachment: relay closed, runtime dropped. */
+  async mcpRelease(mcpId: string): Promise<{ released: boolean }> {
+    const payload = object(await this.#call("mcp.release", { mcpId }), "mcp.release");
+    if (typeof payload.released !== "boolean") {
+      throw new TypeError("mcp.release response is invalid");
+    }
+    return { released: payload.released };
+  }
+
   stop(): Promise<ChatHostStopResult> {
     if (this.#stopping !== undefined) return this.#stopping;
     const attempt = this.#stop();
@@ -149,7 +182,7 @@ export class ChatHostClient {
     return attempt;
   }
 
-  async #call(method: "snapshot" | "command", payload: unknown): Promise<unknown> {
+  async #call(method: ChatHostIpcMethod, payload: unknown): Promise<unknown> {
     const requestId = `host:${crypto.randomUUID()}`;
     const deferred = Promise.withResolvers<unknown>();
     this.#pending.set(requestId, deferred);

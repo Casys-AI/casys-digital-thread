@@ -13,6 +13,7 @@ import {
 } from "../../../src/adapters/shared/docker-observer.ts";
 import type { DesktopToolRuntimeProjection } from "../contracts/diagnostics.ts";
 import { DockerResolvingRunner } from "./docker.ts";
+import { scrubRendererText } from "./scrub.ts";
 import {
   detectToolRuntimeEngine,
   type ToolRuntimeEngineObservation,
@@ -38,6 +39,11 @@ export type ToolRuntimeToolState =
   | "needs-action"
   | "interrupted"
   | "never-prepared";
+
+export interface OwnedContainerSummary {
+  readonly id: string;
+  readonly state: string;
+}
 
 export interface ToolRuntimeToolStatus {
   readonly toolId: string;
@@ -76,7 +82,11 @@ export type ToolRuntimeMutationOutcome =
   | { readonly status: "done"; readonly detail: string }
   | {
     readonly status: "needs-action";
-    readonly code: ToolRuntimeRecoveryCode | "engine-unavailable" | "foreign-use";
+    readonly code:
+      | ToolRuntimeRecoveryCode
+      | "engine-unavailable"
+      | "foreign-use"
+      | "in-use";
     readonly detail: string;
     readonly recovery: string;
   };
@@ -129,9 +139,7 @@ export function projectToolRuntimeStatus(
  * paths are removed at the source because they cannot be scrubbed safely.
  * Shared with the catalogue boundary, the second renderer surface.
  */
-export function scrubRendererText(text: string): string {
-  return text.replace(/sha256:[a-f0-9]{64}/gi, "sha256:<digest>");
-}
+export { scrubRendererText, scrubRuntimeIdentity } from "./scrub.ts";
 
 function engineRecovery(
   status: ToolRuntimeEngineObservation["status"],
@@ -178,8 +186,15 @@ export class ToolRuntimeHost {
     return { engine, tools };
   }
 
-  /** Runs preparation for a tool through the per-tool exclusive gate. */
-  async prepare(toolId: string): Promise<PreparationOutcome> {
+  /**
+   * Runs preparation for a tool through the per-tool exclusive gate. The
+   * host-allocated loopback port overrides the fleet historical default;
+   * runtime endpoints derive from it (#57).
+   */
+  async prepare(
+    toolId: string,
+    options: { readonly hostPort?: number } = {},
+  ): Promise<PreparationOutcome> {
     return await this.exclusive(toolId, () =>
       prepareToolRuntime(
         {
@@ -196,7 +211,7 @@ export class ToolRuntimeHost {
             : { confirmInstall: this.#options.confirmInstall }),
           onEvent: (event) => this.#options.onEvent?.(toolId, event),
         },
-        this.planFor(toolId),
+        this.planFor(toolId, options.hostPort),
       ));
   }
 
@@ -429,11 +444,116 @@ export class ToolRuntimeHost {
     });
   }
 
-  private planFor(toolId: string): ToolRuntimePlan {
+  private planFor(toolId: string, hostPort?: number): ToolRuntimePlan {
     if (toolId !== "build123d") {
       throw new TypeError(`Unknown host tool "${toolId}".`);
     }
-    return build123dHostPlan({ workdir: `${this.#options.dataDirectory}/build123d` });
+    return build123dHostPlan({
+      workdir: `${this.#options.dataDirectory}/build123d`,
+      ...(hostPort === undefined ? {} : { hostPort }),
+    });
+  }
+
+  /** Lists label-owned containers for a tool. Read-only; undefined when blind. */
+  async listOwned(
+    toolId: string,
+  ): Promise<readonly OwnedContainerSummary[] | undefined> {
+    return await this.ownedContainers(this.planFor(toolId));
+  }
+
+  /**
+   * Inspects the loopback host port an owned container publishes. Returns
+   * undefined for foreign ids, missing mappings, and non-loopback binds:
+   * adoption never follows an address Casys did not allocate.
+   */
+  async ownedPort(toolId: string, containerId: string): Promise<number | undefined> {
+    const plan = this.planFor(toolId);
+    const owned = await this.ownedContainers(plan);
+    if (owned === undefined || !owned.some((entry) => entry.id === containerId)) {
+      return undefined;
+    }
+    const inspected = await this.#probeRunner.run(
+      "docker",
+      ["inspect", containerId, "--format", "{{json .HostConfig.PortBindings}}"],
+      this.#options.dataDirectory,
+    );
+    if (!inspected.success) return undefined;
+    try {
+      const bindings = JSON.parse(inspected.stdout) as Record<string, unknown>;
+      const candidates = bindings[`${plan.containerPort}/tcp`];
+      if (!Array.isArray(candidates)) return undefined;
+      for (const candidate of candidates) {
+        const binding = candidate as { HostIp?: unknown; HostPort?: unknown };
+        if (binding.HostIp !== "127.0.0.1") continue;
+        const port = Number(binding.HostPort);
+        if (Number.isSafeInteger(port) && port >= 1 && port <= 65535) return port;
+      }
+      return undefined;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Inspects the image reference an owned container was created from. */
+  async ownedImageRef(
+    toolId: string,
+    containerId: string,
+  ): Promise<string | undefined> {
+    const plan = this.planFor(toolId);
+    const owned = await this.ownedContainers(plan);
+    if (owned === undefined || !owned.some((entry) => entry.id === containerId)) {
+      return undefined;
+    }
+    const inspected = await this.#probeRunner.run(
+      "docker",
+      ["inspect", containerId, "--format", "{{.Config.Image}}"],
+      this.#options.dataDirectory,
+    );
+    if (!inspected.success) return undefined;
+    const ref = inspected.stdout.trim();
+    return ref === "" ? undefined : ref;
+  }
+
+  /**
+   * Removes one owned container after verifying ownership. Named volumes
+   * and images are always retained. Refuses foreign ids without touching
+   * the engine.
+   */
+  async removeOwnedContainer(
+    toolId: string,
+    containerId: string,
+  ): Promise<ToolRuntimeMutationOutcome> {
+    return await this.exclusive(toolId, async () => {
+      const plan = this.planFor(toolId);
+      const owned = await this.ownedContainers(plan);
+      if (
+        owned === undefined || !owned.some((entry) => entry.id === containerId)
+      ) {
+        return {
+          status: "needs-action",
+          code: "foreign-use",
+          detail: "Refusing to remove a container this tool does not own.",
+          recovery: "Inspect the container explicitly; only owned ids are removable.",
+        } as const;
+      }
+      const removed = await this.#execRunner.run(
+        "docker",
+        ["rm", containerId],
+        this.#options.dataDirectory,
+      );
+      if (!removed.success) {
+        return {
+          status: "needs-action",
+          code: "engine-unavailable",
+          detail: `Could not remove owned container ${containerId}: ${removed.stderr}`,
+          recovery: "Inspect the container explicitly, then retry.",
+        } as const;
+      }
+      return {
+        status: "done",
+        detail: `Removed owned container ${containerId}; volumes and images retained.`,
+      } as const;
+    });
   }
 
   private async toolStatus(toolId: string): Promise<ToolRuntimeToolStatus> {
@@ -514,7 +634,7 @@ export class ToolRuntimeHost {
 
   private async ownedContainers(
     plan: ToolRuntimePlan,
-  ): Promise<{ id: string; state: string }[] | undefined> {
+  ): Promise<OwnedContainerSummary[] | undefined> {
     const listed = await this.#probeRunner.run(
       "docker",
       [
@@ -530,7 +650,7 @@ export class ToolRuntimeHost {
       this.#options.dataDirectory,
     );
     if (!listed.success) return undefined;
-    const entries: { id: string; state: string }[] = [];
+    const entries: OwnedContainerSummary[] = [];
     for (const line of listed.stdout.split("\n")) {
       if (line.trim() === "") continue;
       try {

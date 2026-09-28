@@ -81,6 +81,12 @@ export function build123dHostPlan(input: Build123dHostPlanInput): ToolRuntimePla
   if (!Number.isSafeInteger(hostPort) || hostPort < 1 || hostPort > 65535) {
     throw new TypeError("Host plan hostPort override must be a valid port.");
   }
+  // #57: the fleet URL is identity, not an address. Runtime endpoints
+  // derive from the host-allocated port; fleet paths are preserved.
+  const runtimeMcpUrl = new URL(mcpUrl.href);
+  runtimeMcpUrl.port = String(hostPort);
+  const runtimeHealthUrl = new URL(healthUrl.href);
+  runtimeHealthUrl.port = String(hostPort);
   const version = (identity as { version?: unknown }).version;
   if (typeof version !== "string" || version.length === 0) {
     throw new TypeError("Fleet build123d must declare providerIdentity.version.");
@@ -96,8 +102,8 @@ export function build123dHostPlan(input: Build123dHostPlanInput): ToolRuntimePla
     hostPort,
     containerPort: BUILD123D_CONTAINER_PORT,
     volumeName: "casys-host-build123d-exports",
-    mcpUrl: mcpUrl.href,
-    healthUrl: healthUrl.href,
+    mcpUrl: runtimeMcpUrl.href,
+    healthUrl: runtimeHealthUrl.href,
     expectedTools,
     smoke: {
       tool: "build123d_execute",

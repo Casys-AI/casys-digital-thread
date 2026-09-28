@@ -569,3 +569,165 @@ Deno.test("projection scrubs digests from renderer strings", () => {
   assert(projection.tools[0]?.detail.includes("sha256:<digest>"));
   assert(projection.tools[0]?.recovery?.includes("sha256:<digest>"));
 });
+
+function freshPrepareHandler(): TestHandler {
+  const arch = Deno.build.arch === "aarch64" ? "arm64" : "amd64";
+  return (command, args) => {
+    if (command === "docker" && args[0] === "ps") {
+      return { success: true, code: 0, stdout: "", stderr: "" };
+    }
+    if (command === "docker" && args[0] === "pull") {
+      return { success: true, code: 0, stdout: "Status: Downloaded", stderr: "" };
+    }
+    if (command === "docker" && args[0] === "image") {
+      return {
+        success: true,
+        code: 0,
+        stdout: JSON.stringify({ RepoDigests: [args[2]], Architecture: arch }),
+        stderr: "",
+      };
+    }
+    if (command === "docker" && args[0] === "compose" && args[1] !== "version") {
+      return { success: true, code: 0, stdout: "started", stderr: "" };
+    }
+    return versionHandler(command, args);
+  };
+}
+
+Deno.test("prepare with a host port composes the allocated binding", async () => {
+  const { host, recorded, directory } = await hostWith(freshPrepareHandler(), {
+    fetch: build123dFetch(),
+  });
+  try {
+    const prepared = await host.prepare("build123d", { hostPort: 45678 });
+    assertEquals(prepared.status, "ready");
+    const compose = await Deno.readTextFile(`${directory}/build123d/compose.yml`);
+    assert(
+      compose.includes('"127.0.0.1:45678:3014"'),
+      "compose document kept the historical port",
+    );
+    assert(
+      recorded.some((call) => call.command === "docker" && call.args[0] === "compose"),
+      "compose was never invoked",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("listOwned reports label-owned containers", async () => {
+  const { host, directory } = await hostWith((command, args) => {
+    if (command === "docker" && args[0] === "ps") {
+      return {
+        success: true,
+        code: 0,
+        stdout: [
+          JSON.stringify({ ID: "aaa", State: "running" }),
+          JSON.stringify({ ID: "bbb", State: "exited" }),
+        ].join("\n"),
+        stderr: "",
+      };
+    }
+    return versionHandler(command, args);
+  });
+  try {
+    assertEquals(await host.listOwned("build123d"), [
+      { id: "aaa", state: "running" },
+      { id: "bbb", state: "exited" },
+    ]);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+function inspectHandler(portBindings: unknown, image: string): TestHandler {
+  return (command, args) => {
+    if (command === "docker" && args[0] === "ps") {
+      return {
+        success: true,
+        code: 0,
+        stdout: `${JSON.stringify({ ID: "aaa", State: "running" })}\n`,
+        stderr: "",
+      };
+    }
+    if (command === "docker" && args[0] === "inspect") {
+      if (args[1] !== "aaa") {
+        return { success: false, code: 1, stdout: "", stderr: "no such object" };
+      }
+      const format = args[3] ?? "";
+      if (format.includes("PortBindings")) {
+        return {
+          success: true,
+          code: 0,
+          stdout: JSON.stringify(portBindings),
+          stderr: "",
+        };
+      }
+      return { success: true, code: 0, stdout: `${image}\n`, stderr: "" };
+    }
+    return versionHandler(command, args);
+  };
+}
+
+Deno.test("ownedPort follows only loopback bindings of owned ids", async () => {
+  const loopback = { "3014/tcp": [{ HostIp: "127.0.0.1", HostPort: "45678" }] };
+  const first = await hostWith(inspectHandler(loopback, "img"));
+  try {
+    assertEquals(await first.host.ownedPort("build123d", "aaa"), 45678);
+    assertEquals(await first.host.ownedPort("build123d", "foreign"), undefined);
+  } finally {
+    await Deno.remove(first.directory, { recursive: true });
+  }
+  const wild = { "3014/tcp": [{ HostIp: "0.0.0.0", HostPort: "45678" }] };
+  const second = await hostWith(inspectHandler(wild, "img"));
+  try {
+    assertEquals(
+      await second.host.ownedPort("build123d", "aaa"),
+      undefined,
+      "non-loopback bind was adopted",
+    );
+  } finally {
+    await Deno.remove(second.directory, { recursive: true });
+  }
+});
+
+Deno.test("ownedImageRef reports the creation image of owned ids", async () => {
+  const ref = "ghcr.io/casys-ai/mcp-build123d@sha256:" + "a".repeat(64);
+  const { host, directory } = await hostWith(inspectHandler({}, ref));
+  try {
+    assertEquals(await host.ownedImageRef("build123d", "aaa"), ref);
+    assertEquals(await host.ownedImageRef("build123d", "foreign"), undefined);
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});
+
+Deno.test("removeOwnedContainer removes owned ids and refuses foreign ones", async () => {
+  const { host, recorded, directory } = await hostWith((command, args) => {
+    if (command === "docker" && args[0] === "ps") {
+      return {
+        success: true,
+        code: 0,
+        stdout: `${JSON.stringify({ ID: "aaa", State: "exited" })}\n`,
+        stderr: "",
+      };
+    }
+    if (command === "docker" && args[0] === "rm") {
+      return { success: true, code: 0, stdout: `${args[1]}\n`, stderr: "" };
+    }
+    return versionHandler(command, args);
+  });
+  try {
+    const removed = await host.removeOwnedContainer("build123d", "aaa");
+    assertEquals(removed.status, "done");
+    const refused = await host.removeOwnedContainer("build123d", "foreign");
+    assertEquals(refused.status, "needs-action");
+    assertEquals(
+      recorded.filter((call) => call.args[0] === "rm").length,
+      1,
+      "foreign id reached the engine",
+    );
+  } finally {
+    await Deno.remove(directory, { recursive: true });
+  }
+});

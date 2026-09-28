@@ -17,6 +17,14 @@ import { startCatalogueService } from "./src/catalogue/startup.ts";
 import { createExternalUrlOpener } from "./src/chat/external-url.ts";
 import { startPackagedChatHost } from "./src/chat-host/startup.ts";
 import {
+  synchronizeStartupDemand,
+  withToolRuntimeDemand,
+} from "./src/tool-runtime/chat-demand.ts";
+import {
+  type LifecycleReconcileReport,
+  MANAGED_TOOL_IDS,
+} from "./src/tool-runtime/lifecycle.ts";
+import {
   CONTROL_PLANE_PRODUCT_IDENTIFIER,
   CONTROL_PLANE_SERVER_NAME,
   ControlPlaneHost,
@@ -103,17 +111,39 @@ const chatHost = await startPackagedChatHost({
   env: readEnvironment,
   childEnv: chatHostEnvironment,
 });
+const startedCatalogue = await startCatalogueService({
+  platform,
+  env: readEnvironment,
+  onProviderStopped: (toolId) => {
+    void chatHost?.mcpRelease(toolId).catch(() => undefined);
+  },
+});
+const catalogue = startedCatalogue?.service;
+const lifecycle = startedCatalogue?.lifecycle;
+if (lifecycle !== undefined) {
+  for (const toolId of MANAGED_TOOL_IDS) {
+    const report = await lifecycle.reconcile(toolId);
+    reportLifecycleReconcile(report);
+  }
+  await synchronizeStartupDemand(chatHost, lifecycle, MANAGED_TOOL_IDS);
+}
 registerDesktopChatBindings(
   browserWindow,
-  chatHost,
+  chatHost === undefined || lifecycle === undefined
+    ? chatHost
+    : withToolRuntimeDemand(chatHost, lifecycle),
   createExternalUrlOpener(platform),
   application.workbenchSession === undefined
     ? undefined
     : createWorkbenchProjectFocusAuthority(application.workbenchSession),
-  createRegistryViewerBackend({ servers: connectableMcpServers() }),
+  createRegistryViewerBackend({
+    servers: connectableMcpServers(),
+    // Always present: without a lifecycle every server resolves unassigned
+    // and reads fail closed instead of hitting a stale fleet address.
+    resolveEndpoint: (server) => lifecycle?.resolveEndpoint(server),
+  }),
   createDownloadsFileSaver(readEnvironment("HOME")),
 );
-const catalogue = await startCatalogueService({ platform, env: readEnvironment });
 registerDesktopCatalogueBindings(browserWindow, catalogue);
 
 let server: Deno.HttpServer;
@@ -179,6 +209,12 @@ try {
   if (!resourcesDrained) await stopDesktopResources();
 }
 
+/**
+ * Shutdown drain policy (#57): the Chat Host stops first (bounded graceful
+ * shutdown settles or cancels active turns and closes relays), then owned
+ * provider containers stop. Volumes and images are always retained; every
+ * unresolved stop is reported, never swallowed.
+ */
 async function stopDesktopResources(): Promise<void> {
   const stopped = await Promise.allSettled([
     (async () => {
@@ -192,9 +228,31 @@ async function stopDesktopResources(): Promise<void> {
   const errors = stopped.flatMap((result) =>
     result.status === "rejected" ? [result.reason] : []
   );
+  if (lifecycle !== undefined) {
+    const drained = await lifecycle.drain();
+    for (const entry of drained.unresolved) {
+      errors.push(new Error(`provider drain ${entry.toolId}: ${entry.detail}`));
+    }
+  }
   if (errors.length > 0) {
     throw new AggregateError(errors, "Desktop owned-resource shutdown failed");
   }
+}
+
+function reportLifecycleReconcile(report: LifecycleReconcileReport): void {
+  if (
+    !report.adopted && report.stoppedDuplicates === 0 && report.removedStale === 0 &&
+    report.priorUnresolved.length === 0
+  ) {
+    return;
+  }
+  console.error(
+    `tool-runtime reconcile ${report.toolId}: adopted=${report.adopted} ` +
+      `stoppedDuplicates=${report.stoppedDuplicates} removedStale=${report.removedStale} ` +
+      `priorUnresolved=${report.priorUnresolved.length} notes=${
+        report.notes.join("; ")
+      }`,
+  );
 }
 
 function chatHostEnvironment(): Record<string, string> {

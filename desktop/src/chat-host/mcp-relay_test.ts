@@ -304,6 +304,55 @@ Deno.test("relay reports an unreachable upstream as 502 JSON-RPC", async () => {
   }
 });
 
+Deno.test("relay retargets its upstream without rebinding", async () => {
+  const ok = () => ({
+    status: 200,
+    body: { jsonrpc: "2.0", id: 1, result: { ok: true } },
+  });
+  await withUpstream(ok, async (firstUrl, firstCaptured) => {
+    await withUpstream(ok, async (secondUrl, secondCaptured) => {
+      const relay = await startMcpRelay({ upstreamMcpUrl: firstUrl });
+      try {
+        const stableUrl = relay.url;
+        await fetch(relay.url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 1,
+            method: "tools/list",
+            params: {},
+          }),
+        });
+        assertEquals(firstCaptured.method, "POST");
+        assertEquals(secondCaptured.method, undefined);
+        relay.setUpstream(secondUrl);
+        assertEquals(relay.url, stableUrl);
+        await fetch(relay.url, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            jsonrpc: "2.0",
+            id: 2,
+            method: "tools/list",
+            params: {},
+          }),
+        });
+        assertEquals(secondCaptured.method, "POST");
+        let thrown = "";
+        try {
+          relay.setUpstream("http://10.0.0.9:3014/mcp");
+        } catch (error) {
+          thrown = error instanceof Error ? error.message : String(error);
+        }
+        assert(thrown.includes("loopback"));
+      } finally {
+        await relay.close();
+      }
+    });
+  });
+});
+
 Deno.test("relay refuses a non-loopback upstream", async () => {
   let thrown = "";
   try {

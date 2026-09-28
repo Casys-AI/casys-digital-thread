@@ -55,6 +55,14 @@ export interface CataloguePlatformDto {
   readonly note: string;
 }
 
+/** App-managed provider lifecycle state (#57). Ports and ids stay in diagnostics. */
+export type CatalogueRuntimeState =
+  | "running"
+  | "idle"
+  | "stopped"
+  | "error"
+  | "unknown";
+
 export interface CatalogueAvailabilityDto {
   readonly prepared: boolean;
   readonly running: boolean;
@@ -63,6 +71,7 @@ export interface CatalogueAvailabilityDto {
   readonly lastProbeAt: string | null;
   readonly detail: string;
   readonly engine: CatalogueEngineStatus;
+  readonly runtime: CatalogueRuntimeState;
 }
 
 export interface CatalogueEntryDto {
@@ -97,6 +106,18 @@ export type CatalogueCommandRequest =
     readonly protocol: typeof DESKTOP_CATALOGUE_PROTOCOL;
     readonly requestId: string;
     readonly command: "catalogue.probe";
+    readonly entryId: string;
+  }
+  | {
+    readonly protocol: typeof DESKTOP_CATALOGUE_PROTOCOL;
+    readonly requestId: string;
+    readonly command: "catalogue.runtime.stop";
+    readonly entryId: string;
+  }
+  | {
+    readonly protocol: typeof DESKTOP_CATALOGUE_PROTOCOL;
+    readonly requestId: string;
+    readonly command: "catalogue.runtime.restart";
     readonly entryId: string;
   }
   | {
@@ -183,7 +204,10 @@ export function parseCatalogueCommandRequest(value: unknown): CatalogueCommandRe
   protocol(input.protocol);
   const requestId = opaqueId(input.requestId, "requestId");
   const command = input.command;
-  if (command === "catalogue.prepare" || command === "catalogue.probe") {
+  if (
+    command === "catalogue.prepare" || command === "catalogue.probe" ||
+    command === "catalogue.runtime.stop" || command === "catalogue.runtime.restart"
+  ) {
     return Object.freeze({
       protocol: DESKTOP_CATALOGUE_PROTOCOL,
       requestId,
@@ -322,6 +346,13 @@ function parseCatalogueAvailabilityDto(value: unknown): CatalogueAvailabilityDto
   ) {
     throw new TypeError("catalogue engine status is invalid");
   }
+  const runtime = input.runtime;
+  if (
+    runtime !== "running" && runtime !== "idle" && runtime !== "stopped" &&
+    runtime !== "error" && runtime !== "unknown"
+  ) {
+    throw new TypeError("catalogue runtime state is invalid");
+  }
   return Object.freeze({
     prepared: input.prepared,
     running: input.running,
@@ -329,6 +360,7 @@ function parseCatalogueAvailabilityDto(value: unknown): CatalogueAvailabilityDto
     lastProbeAt,
     detail: text(input.detail, "catalogue availability detail", 500),
     engine,
+    runtime,
   });
 }
 

@@ -1,4 +1,4 @@
-import { assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
+import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1.0.14";
 import type { ChatMcpServerConfig } from "./runtime-port.ts";
 import {
   createRefusingViewerBackend,
@@ -240,6 +240,49 @@ Deno.test("callTool posts the exact name and arguments to the owning upstream", 
     (calls[0]?.params.arguments as Record<string, unknown>).script,
     "result = 1",
   );
+});
+
+Deno.test("viewer reads follow the assigned runtime endpoint", async () => {
+  const calls: RpcCall[] = [];
+  let endpoint: { readonly mcpUrl: string } | undefined = {
+    mcpUrl: "http://127.0.0.1:45678/mcp",
+  };
+  const backend = createRegistryViewerBackend({
+    servers: [server()],
+    fetch: rpcFetch({ content: [{ type: "text", text: "ok" }] }, calls),
+    resolveEndpoint: () => endpoint,
+  });
+  await backend.callTool("build123d", "build123d_execute", {});
+  assertEquals(calls[0]?.url, "http://127.0.0.1:45678/mcp");
+  endpoint = { mcpUrl: "http://127.0.0.1:49999/mcp" };
+  await backend.callTool("build123d", "build123d_execute", {});
+  assertEquals(calls[1]?.url, "http://127.0.0.1:49999/mcp");
+  endpoint = undefined;
+  await assertRejects(
+    () => backend.callTool("build123d", "build123d_execute", {}),
+    Error,
+    "no assigned endpoint",
+  );
+  assertEquals(calls.length, 2);
+});
+
+Deno.test("viewer fetch failures surface scrubbed of runtime identity", async () => {
+  const backend = createRegistryViewerBackend({
+    servers: [server()],
+    fetch: () =>
+      Promise.reject(
+        new Error(
+          "fetch failed for http://127.0.0.1:45678/mcp (container 0272a50fad75)",
+        ),
+      ),
+  });
+  const error = await backend.callTool("build123d", "build123d_execute", {}).catch((
+    e: Error,
+  ) => e);
+  assert(error instanceof Error);
+  assert(!error.message.includes("45678"), `port leaked: ${error.message}`);
+  assert(!error.message.includes("0272a50fad75"), `id leaked: ${error.message}`);
+  assert(error.message.includes("127.0.0.1:<port>"), error.message);
 });
 
 Deno.test("oversize provider responses are refused", async () => {

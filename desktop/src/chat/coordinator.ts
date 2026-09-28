@@ -145,6 +145,14 @@ export interface ChatCoordinatorOptions {
   readonly mcpServers: readonly ChatMcpServerConfig[];
   /** Direct endpoint probe; distinguishes connection from execution failure. */
   readonly probeMcp: (server: ChatMcpServerConfig) => Promise<ChatMcpProbeOutcome>;
+  /**
+   * Current runtime endpoint per MCP id (#57). When present, attach
+   * requires an assigned endpoint: probes never fall back to a stale
+   * historical address.
+   */
+  readonly resolveMcpEndpoint?: (
+    mcpId: string,
+  ) => { readonly mcpUrl: string; readonly healthUrl: string } | undefined;
   readonly store: ChatConversationStore;
   /** Private host path. It is never copied into a renderer DTO. */
   readonly workspaceRoot: string;
@@ -155,11 +163,14 @@ export interface ChatCoordinatorOptions {
 }
 
 export class ChatCoordinator implements RuntimeInteractionSink {
-  readonly #runtimes: ReadonlyMap<string, ChatRuntimeAdapter>;
+  readonly #runtimes: Map<string, ChatRuntimeAdapter>;
   readonly #mcpServers: readonly ChatMcpServerConfig[];
   readonly #probeMcp: (
     server: ChatMcpServerConfig,
   ) => Promise<ChatMcpProbeOutcome>;
+  readonly #resolveMcpEndpoint?: (
+    mcpId: string,
+  ) => { readonly mcpUrl: string; readonly healthUrl: string } | undefined;
   readonly #store: ChatConversationStore;
   readonly #workspaceRoot: string;
   readonly #viewerBackend: ChatViewerBackend;
@@ -172,9 +183,10 @@ export class ChatCoordinator implements RuntimeInteractionSink {
   #stopPromise?: Promise<void>;
 
   private constructor(options: ChatCoordinatorOptions) {
-    this.#runtimes = options.runtimes;
+    this.#runtimes = new Map(options.runtimes);
     this.#mcpServers = options.mcpServers;
     this.#probeMcp = options.probeMcp;
+    this.#resolveMcpEndpoint = options.resolveMcpEndpoint;
     this.#store = options.store;
     this.#workspaceRoot = options.workspaceRoot;
     this.#viewerBackend = options.viewerBackend ??
@@ -190,6 +202,24 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     const coordinator = new ChatCoordinator(options);
     for (const stored of await options.store.load()) coordinator.#restore(stored);
     return coordinator;
+  }
+
+  /**
+   * Adds a lazily created runtime (#57). The coordinator owns the sink
+   * wiring, so late runtimes behave exactly like startup ones.
+   */
+  registerRuntime(key: string, adapter: ChatRuntimeAdapter): void {
+    adapter.setInteractionSink(this);
+    this.#runtimes.set(key, adapter);
+  }
+
+  /**
+   * Drops a runtime whose provider was released. Call only when no
+   * conversation holds a handle on it (zero demand): live handles are not
+   * migrated.
+   */
+  unregisterRuntime(key: string): void {
+    this.#runtimes.delete(key);
   }
 
   snapshot(conversationId?: string): ChatSnapshotDto {
@@ -1095,8 +1125,20 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     }
     if (conversation.status === "closed") throw new Error("conversation is closed");
     this.#requireSettledForMcpSwitch(conversation);
-    const server = this.#mcpServers.find((entry) => entry.id === mcpId);
-    if (server === undefined) throw new Error("MCP is not connectable");
+    const registered = this.#mcpServers.find((entry) => entry.id === mcpId);
+    if (registered === undefined) throw new Error("MCP is not connectable");
+    let server = registered;
+    if (this.#resolveMcpEndpoint !== undefined) {
+      const endpoint = this.#resolveMcpEndpoint(mcpId);
+      if (endpoint === undefined) {
+        throw new Error("MCP has no assigned provider endpoint");
+      }
+      server = {
+        ...registered,
+        mcpUrl: endpoint.mcpUrl,
+        healthUrl: endpoint.healthUrl,
+      };
+    }
     let probe: ChatMcpProbeOutcome;
     try {
       probe = await this.#probeMcp(server);

@@ -1278,6 +1278,8 @@ function CatalogueView({
     payload:
       | { readonly command: "catalogue.prepare"; readonly entryId: string }
       | { readonly command: "catalogue.probe"; readonly entryId: string }
+      | { readonly command: "catalogue.runtime.stop"; readonly entryId: string }
+      | { readonly command: "catalogue.runtime.restart"; readonly entryId: string }
       | {
         readonly command: "catalogue.defaults.set";
         readonly ids: readonly string[];
@@ -1408,6 +1410,16 @@ function CatalogueView({
               command: "catalogue.probe",
               entryId: entry.id,
             })}
+          onStop={() =>
+            void runCommand(entry.id, "Stop", {
+              command: "catalogue.runtime.stop",
+              entryId: entry.id,
+            })}
+          onRestart={() =>
+            void runCommand(entry.id, "Restart", {
+              command: "catalogue.runtime.restart",
+              entryId: entry.id,
+            })}
           onToggleDefault={() => {
             const next = entry.isDefault
               ? defaults.filter((id) => id !== entry.id)
@@ -1433,6 +1445,8 @@ function CatalogueEntryCard({
   command,
   onPrepare,
   onProbe,
+  onStop,
+  onRestart,
   onToggleDefault,
   onEnable,
 }: CommandProps & {
@@ -1442,6 +1456,8 @@ function CatalogueEntryCard({
   readonly outcome?: string;
   readonly onPrepare: () => void;
   readonly onProbe: () => void;
+  readonly onStop: () => void;
+  readonly onRestart: () => void;
   readonly onToggleDefault: () => void;
   readonly onEnable: () => void;
 }): JSX.Element {
@@ -1473,6 +1489,12 @@ function CatalogueEntryCard({
         <StateBadge label="Prepared" on={entry.availability.prepared} />
         <StateBadge label="Running" on={entry.availability.running} />
         <StateBadge label="Capable" on={entry.availability.capable} />
+        <Badge
+          variant={entry.availability.runtime === "error" ? "destructive" : "secondary"}
+          className="desktop-chat-state font-mono text-[9px] uppercase tracking-[0.08em]"
+        >
+          {entry.availability.runtime}
+        </Badge>
         <Badge
           variant={entry.availability.engine === "ready" ? "success" : "warning"}
           className="desktop-chat-state font-mono text-[9px] uppercase tracking-[0.08em]"
@@ -1556,6 +1578,24 @@ function CatalogueEntryCard({
           type="button"
           variant="ghost"
           size="sm"
+          disabled={busy || acting !== null || entry.availability.runtime === "stopped"}
+          onClick={onStop}
+        >
+          {acting === `Stop:${entry.id}` ? "Stopping…" : "Stop"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={busy || acting !== null}
+          onClick={onRestart}
+        >
+          {acting === `Restart:${entry.id}` ? "Restarting…" : "Restart"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
           disabled={busy || acting !== null}
           aria-pressed={entry.isDefault}
           onClick={onToggleDefault}
@@ -1581,9 +1621,7 @@ function CatalogueEntryCard({
             onClick={onEnable}
           >
             {enableLabel(
-              attached === undefined
-                ? "Enable in this chat"
-                : "Switch to this tool",
+              attached === undefined ? "Enable in this chat" : "Switch to this tool",
             )}
           </Button>
         )}

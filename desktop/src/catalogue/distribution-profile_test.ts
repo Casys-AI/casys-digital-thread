@@ -33,7 +33,7 @@ Deno.test("distribution profile grants cover catalogue startup, probe, prepare",
       `run grant missing: ${command}`,
     );
   }
-  for (const host of ["127.0.0.1:3020", "127.0.0.1:5176", "127.0.0.1:3014"]) {
+  for (const host of ["127.0.0.1", "127.0.0.1:3020", "127.0.0.1:45678"]) {
     assertEquals(
       (await Deno.permissions.query({ name: "net", host })).state,
       "granted",
@@ -55,11 +55,12 @@ Deno.test("distribution profile grants cover catalogue startup, probe, prepare",
     Deno.env.set(name, home);
   }
   try {
-    const service = await startCatalogueService({
+    const started = await startCatalogueService({
       platform: platformFor(Deno.build.os),
       env: (name) => Deno.env.get(name),
     });
-    assert(service !== undefined, "catalogue startup failed under the profile");
+    assert(started !== undefined, "catalogue startup failed under the profile");
+    const service = started.service;
     const snapshot = await service.snapshot();
     assert(
       snapshot.entries.some((entry) => entry.id === "build123d"),

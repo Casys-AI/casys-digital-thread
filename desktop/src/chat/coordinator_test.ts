@@ -953,6 +953,107 @@ Deno.test("pre-submit cancel against a per-read promptStarted getter leaves no o
   await coordinator.stop();
 });
 
+Deno.test("mcp.enable probes the assigned runtime endpoint", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const probed: ChatMcpServerConfig[] = [];
+  const coordinator = await coordinatorWith(pool.standalone, {
+    runtimes: new Map([
+      [chatRuntimeKey("project"), pool.project],
+      [chatRuntimeKey("standalone"), pool.standalone],
+      [chatRuntimeKey("standalone", "build123d"), pool.mcp],
+    ]),
+    mcpServers: [TEST_MCP_SERVER],
+    probeMcp: (server) => {
+      probed.push(server);
+      return Promise.resolve<ChatMcpProbeOutcome>({ ok: true, tools: ["t_one"] });
+    },
+    resolveMcpEndpoint: () => ({
+      mcpUrl: "http://127.0.0.1:45678/mcp",
+      healthUrl: "http://127.0.0.1:45678/health",
+    }),
+  });
+  const conversationId = await createStandaloneConversation(coordinator);
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  assertEquals(probed.length, 1);
+  assertEquals(probed[0].mcpUrl, "http://127.0.0.1:45678/mcp");
+  assertEquals(probed[0].healthUrl, "http://127.0.0.1:45678/health");
+  assertEquals(probed[0].expectedTools, ["t_one"]);
+  await coordinator.stop();
+});
+
+Deno.test("mcp.enable fails closed without an assigned endpoint", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  let probeCalls = 0;
+  const coordinator = await coordinatorWith(pool.standalone, {
+    runtimes: new Map([
+      [chatRuntimeKey("project"), pool.project],
+      [chatRuntimeKey("standalone"), pool.standalone],
+      [chatRuntimeKey("standalone", "build123d"), pool.mcp],
+    ]),
+    mcpServers: [TEST_MCP_SERVER],
+    probeMcp: () => {
+      probeCalls++;
+      return Promise.resolve<ChatMcpProbeOutcome>({ ok: true, tools: ["t_one"] });
+    },
+    resolveMcpEndpoint: () => undefined,
+  });
+  const conversationId = await createStandaloneConversation(coordinator);
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assertEquals(enabled.ok, false);
+  assert((enabled.error ?? "").includes("no assigned provider endpoint"));
+  assertEquals(probeCalls, 0);
+  await coordinator.stop();
+});
+
+Deno.test("late-registered runtimes serve turns; unregistered ones refuse", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await coordinatorWith(pool.standalone, {
+    runtimes: new Map([
+      [chatRuntimeKey("project"), pool.project],
+      [chatRuntimeKey("standalone"), pool.standalone],
+    ]),
+    mcpServers: [TEST_MCP_SERVER],
+    probeMcp: () =>
+      Promise.resolve<ChatMcpProbeOutcome>({ ok: true, tools: ["t_one"] }),
+  });
+  const conversationId = await createStandaloneConversation(coordinator);
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  coordinator.registerRuntime(chatRuntimeKey("standalone", "build123d"), pool.mcp);
+  assert(pool.mcp.sink !== undefined, "late runtime missed its sink");
+  await coordinator.command(send("r2", conversationId, "Run with the late runtime."));
+  await until(() => pool.mcp.turns.length === 1);
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  coordinator.unregisterRuntime(chatRuntimeKey("standalone", "build123d"));
+  await coordinator.command(send("r3", conversationId, "Run after release."));
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "failed"
+  );
+  await coordinator.stop();
+});
+
 Deno.test("a later-queued message never leaks into the earlier turn seed", async () => {
   const pool = standalonePool({ probeTools: ["t_one"] });
   const coordinator = await pool.coordinator();
@@ -1646,6 +1747,9 @@ function coordinatorWith(
     runtimes?: ReadonlyMap<string, FakeRuntimeAdapter>;
     mcpServers?: readonly ChatMcpServerConfig[];
     probeMcp?: (server: ChatMcpServerConfig) => Promise<ChatMcpProbeOutcome>;
+    resolveMcpEndpoint?: (
+      mcpId: string,
+    ) => { readonly mcpUrl: string; readonly healthUrl: string } | undefined;
     store?: MemoryChatConversationStore;
     viewerBackend?: ChatViewerBackend;
   } = {},
@@ -1668,6 +1772,9 @@ function coordinatorWith(
     ...(options.viewerBackend === undefined
       ? {}
       : { viewerBackend: options.viewerBackend }),
+    ...(options.resolveMcpEndpoint === undefined
+      ? {}
+      : { resolveMcpEndpoint: options.resolveMcpEndpoint }),
     workspaceRoot: "/private/chat-workspace",
     now: () => new Date(1_700_000_000_000 + sequence++),
     newId: () => String(sequence++),

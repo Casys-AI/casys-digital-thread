@@ -93,10 +93,11 @@ Deno.test("Lot 3 tasks compile both dedicated helpers and keep the host free of 
     "/usr/bin/docker",
     "C:\\Program Files\\Docker\\Docker\\resources\\bin\\docker.exe",
   ]);
+  // #57: app-managed providers bind ephemeral loopback ports, so the
+  // desktop profile grants the loopback interface instead of fixed ports.
+  // Loopback-only stays the boundary; the renderer never selects endpoints.
   assertEquals(denoConfig.permissions.desktop.net, [
-    "127.0.0.1:3020",
-    "127.0.0.1:5176",
-    "127.0.0.1:3014",
+    "127.0.0.1",
   ]);
   assertEquals("dev" in denoConfig.tasks, false);
   // The desktop shell holds user-fs access: the catalogue persists intents
@@ -117,7 +118,7 @@ Deno.test("Lot 3 tasks compile both dedicated helpers and keep the host free of 
     true,
   );
   assertEquals(
-    profileTest.includes("--allow-net=127.0.0.1:3020,127.0.0.1:5176,127.0.0.1:3014"),
+    profileTest.includes("--allow-net=127.0.0.1 --allow-env"),
     true,
   );
   assertEquals(

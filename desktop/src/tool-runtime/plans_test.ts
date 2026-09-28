@@ -32,6 +32,19 @@ Deno.test("fleet plan rejects a non-loopback endpoint", () => {
   assertEquals(health.hostname, "127.0.0.1");
 });
 
+Deno.test("fleet plan derives runtime endpoints from the allocated port", () => {
+  const plan = build123dHostPlan({
+    workdir: "/tmp/tool-runtime-test",
+    hostPort: 45678,
+  });
+  assertEquals(plan.hostPort, 45678);
+  assertEquals(plan.mcpUrl, "http://127.0.0.1:45678/mcp");
+  assertEquals(plan.healthUrl, "http://127.0.0.1:45678/health");
+  const historical = build123dHostPlan({ workdir: "/tmp/tool-runtime-test" });
+  assertEquals(historical.mcpUrl, "http://127.0.0.1:3014/mcp");
+  assertEquals(historical.healthUrl, "http://127.0.0.1:3014/health");
+});
+
 Deno.test("smoke verifier accepts the reviewed box result", () => {
   assertEquals(
     verifyBuild123dSmoke({
