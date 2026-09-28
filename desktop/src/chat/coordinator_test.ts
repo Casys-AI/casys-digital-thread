@@ -860,6 +860,99 @@ Deno.test("context marking waits for confirmed prompt submission", async () => {
   await coordinator.stop();
 });
 
+Deno.test("pre-submit cancel against a per-read promptStarted getter leaves no orphan rejection", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(
+    send(
+      "r1",
+      conversationId,
+      "The part ZR-GETTER-FACT is 37.125 mm wide. Acknowledge.",
+    ),
+  );
+  await until(() => pool.standalone.turns.length === 1);
+  pool.standalone.turns[0].events.push({ type: "text_delta", text: "Acknowledged." });
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  // Pinned acpx semantics (runtime.js:2068-2069): promptStarted is a getter
+  // returning a NEW promise per read. Every read follows the same outcome,
+  // so an abandoned first read rejects without a handler and kills the host
+  // (Node 26 default: exit 1 on unhandled rejection).
+  const gate = Promise.withResolvers<void>();
+  let reads = 0;
+  const orphans: unknown[] = [];
+  const onUnhandled = (event: PromiseRejectionEvent) => {
+    orphans.push(event.reason);
+    event.preventDefault();
+  };
+  globalThis.addEventListener("unhandledrejection", onUnhandled);
+  try {
+    const innerStartTurn = pool.mcp.runtime.startTurn;
+    pool.mcp.runtime.startTurn = (input) => {
+      const turn = innerStartTurn(input) as FakeTurn;
+      if (pool.mcp.turns.length > 1) return turn;
+      Object.defineProperty(turn, "promptStarted", {
+        configurable: true,
+        get() {
+          reads++;
+          return gate.promise.then(() => {});
+        },
+      });
+      const innerCancel = turn.cancel.bind(turn);
+      turn.cancel = async () => {
+        await innerCancel();
+        gate.reject(new Error("ACP turn cancelled before prompt submission."));
+      };
+      return turn;
+    };
+    await coordinator.command(
+      send("r2", conversationId, "Create the part with the width I gave you."),
+    );
+    await until(() => pool.mcp.turns.length === 1);
+    const cancelled = await coordinator.command({
+      protocol: DESKTOP_CHAT_PROTOCOL,
+      requestId: "cancel-1",
+      command: "turn.cancel",
+      conversationId,
+    });
+    assert(cancelled.ok);
+    gate.reject(new Error("ACP turn cancelled before prompt submission."));
+    await until(() =>
+      coordinator.snapshot(conversationId).conversations[0].status === "idle"
+    );
+    // Flush the orphan window: the abandoned promise (if any) rejects on
+    // microtasks, the runtime surfaces it on a later macrotask.
+    for (let i = 0; i < 5; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assertEquals(reads, 1, "promptStarted getter read more than once");
+    assertEquals(orphans, [], "orphan promptStarted rejection escaped the turn");
+    await coordinator.command(send("r3", conversationId, "Retry the part now."));
+    await until(() => pool.mcp.turns.length === 2);
+    const retry = pool.mcp.turns[1].text;
+    assert(retry.includes("ZR-GETTER-FACT"), "retry lost the untransmitted fact");
+    assert(retry.includes("37.125"), "retry lost the untransmitted width");
+    pool.mcp.turns[1].finish({ status: "completed" });
+    await until(() =>
+      coordinator.snapshot(conversationId).conversations[0].status === "idle"
+    );
+  } finally {
+    globalThis.removeEventListener("unhandledrejection", onUnhandled);
+  }
+  await coordinator.stop();
+});
+
 Deno.test("a later-queued message never leaks into the earlier turn seed", async () => {
   const pool = standalonePool({ probeTools: ["t_one"] });
   const coordinator = await pool.coordinator();

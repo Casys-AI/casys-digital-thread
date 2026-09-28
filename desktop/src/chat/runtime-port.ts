@@ -95,7 +95,9 @@ export interface RuntimeTurn {
    * asynchronously (the pinned acpx runtime) MUST expose it; runtimes whose
    * startTurn submits synchronously omit it. Rejects when the turn dies
    * before submission (notably on cancel), in which case nothing the caller
-   * passed was transmitted.
+   * passed was transmitted. Callers MUST read it exactly once: the pinned
+   * runtime implements it as a getter returning a new promise per access,
+   * and an abandoned read rejects without a handler.
    */
   readonly promptStarted?: Promise<void>;
   cancel(input?: { reason?: string }): Promise<void>;

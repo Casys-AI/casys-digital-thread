@@ -458,9 +458,13 @@ export class ChatCoordinator implements RuntimeInteractionSink {
           this.#requestElicitation(conversation, elicitation, context),
       });
       conversation.activeTurn = turn;
-      if (turn.promptStarted !== undefined) {
+      // Single read: the pinned runtime exposes promptStarted as a getter
+      // returning a new promise per access. A second read would orphan the
+      // first promise, whose rejection then kills the host (unhandled).
+      const promptStarted = turn.promptStarted;
+      if (promptStarted !== undefined) {
         try {
-          await turn.promptStarted;
+          await promptStarted;
         } catch (error) {
           // Pre-submission death: nothing was transmitted. Keep the seed
           // and current ids unmarked so the retry reseeds, and drop the
