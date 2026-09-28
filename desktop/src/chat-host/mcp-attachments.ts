@@ -10,6 +10,7 @@
  * unknown ids and non-loopback URLs are refused.
  */
 import type { McpRelay } from "./mcp-relay.ts";
+import type { McpCallTap } from "../chat/mcp-tap.ts";
 
 export interface McpAttachmentEndpoint {
   readonly mcpUrl: string;
@@ -42,6 +43,11 @@ export class McpAttachmentManager {
 
   relayUrl(mcpId: string): string | undefined {
     return this.#relays.get(mcpId)?.url;
+  }
+
+  /** DEV-ONLY tap of one attached MCP relay, if the relay carries one. */
+  relayTap(mcpId: string): McpCallTap | undefined {
+    return this.#relays.get(mcpId)?.tap;
   }
 
   /**

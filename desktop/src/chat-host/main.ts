@@ -17,6 +17,7 @@ import {
 } from "../../../src/presentation/desktop/chat/contracts.ts";
 import { builtinAdapterEntry } from "./agent-host.ts";
 import { AgentRuntimeFactory } from "./agent-runtime-factory.ts";
+import { createMcpCallTap, type McpTapQuery } from "../chat/mcp-tap.ts";
 import {
   McpAttachmentManager,
   parseMcpEnsurePayload,
@@ -62,6 +63,11 @@ const mcpServers = connectableMcpServers();
 const projectRelay = await startMcpRelay({
   upstreamMcpUrl: "http://127.0.0.1:3020/mcp",
 });
+// DEV-ONLY (#59): relay correlation taps attribute provider responses to
+// output-less tool events. Production never sets this variable, so the
+// packaged app records nothing and the limitation stands there.
+const devRelayTap = process.env.CASYS_DEV_RELAY_TAP === "1";
+if (devRelayTap) console.error("[chat-host] DEV relay tap enabled");
 // One runtime per agent profile x MCP set: the factory creates them
 // lazily; the legacy Codex profile keeps the historical session stores
 // so native sessions resume, every other profile is namespaced (#58).
@@ -96,6 +102,12 @@ const coordinator = await ChatCoordinator.create({
   mcpServers,
   probeMcp: (server) => probeChatMcpServer(server),
   resolveMcpEndpoint: (mcpId) => attachments.resolve(mcpId),
+  ...(devRelayTap
+    ? {
+      findMcpTapCall: (mcpId: string, query: McpTapQuery) =>
+        attachments.relayTap(mcpId)?.takeMatch(query),
+    }
+    : {}),
   viewerBackend: createRegistryViewerBackend({
     servers: mcpServers,
     resolveEndpoint: (server) => attachments.resolve(server),
@@ -105,7 +117,11 @@ const coordinator = await ChatCoordinator.create({
 });
 const attachments = new McpAttachmentManager({
   connectableIds: mcpServers.map((server) => server.id),
-  startRelay: (upstreamMcpUrl) => startMcpRelay({ upstreamMcpUrl }),
+  startRelay: (upstreamMcpUrl) =>
+    startMcpRelay({
+      upstreamMcpUrl,
+      ...(devRelayTap ? { tap: createMcpCallTap() } : {}),
+    }),
   releaseRuntimes: (mcpId) => {
     void agentFactory.releaseStandalone(mcpId).then((keys) => {
       for (const key of keys) coordinator.unregisterRuntime(key);

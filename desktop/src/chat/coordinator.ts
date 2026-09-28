@@ -55,6 +55,7 @@ import {
   profileSessionKey,
 } from "./agent-profiles.ts";
 import { STORE_MCP_TOOLS_MAX } from "./store-codec.ts";
+import { canonicalJson, type McpTapQuery, type McpTapRecord } from "./mcp-tap.ts";
 import {
   type ChatViewerBackend,
   createRefusingViewerBackend,
@@ -72,6 +73,10 @@ const TOOL_RESULT_JSON_MAX = 262_144;
  * visibly instead of silently eating a real tool.
  */
 const BEX_PSEUDO_TOOL_PREFIX = "reminderChild:";
+
+/** ACP title form for MCP tools via bex (`mcp__<server>__<tool>`). DEV tap key only. */
+const MCP_NAMESPACED_TITLE =
+  /^mcp__([A-Za-z0-9][A-Za-z0-9_-]*)__([A-Za-z0-9][A-Za-z0-9_.-]*)$/;
 /**
  * Viewer resource bytes must fit the 1M-char chat IPC line after base64
  * (x4/3) plus the JSON envelope. Whole App documents never cross IPC:
@@ -116,6 +121,8 @@ interface ConversationState {
   handle?: RuntimeHandle;
   activeTurn?: RuntimeTurn;
   activeAbort?: AbortController;
+  /** Epoch ms of the running turn start; scopes DEV tap attribution. */
+  turnStartedAt?: number;
   pending?: PendingInteraction;
   queueTail: Promise<void>;
   /**
@@ -172,6 +179,14 @@ export interface ChatCoordinatorOptions {
   readonly resolveMcpEndpoint?: (
     mcpId: string,
   ) => { readonly mcpUrl: string; readonly healthUrl: string } | undefined;
+  /**
+   * DEV-ONLY tap lookup (#59): attributes a relay-recorded provider
+   * response to an output-less tool event. Absent in production.
+   */
+  readonly findMcpTapCall?: (
+    mcpId: string,
+    query: McpTapQuery,
+  ) => McpTapRecord | undefined;
   readonly store: ChatConversationStore;
   /** Private host path. It is never copied into a renderer DTO. */
   readonly workspaceRoot: string;
@@ -191,6 +206,10 @@ export class ChatCoordinator implements RuntimeInteractionSink {
   readonly #resolveMcpEndpoint?: (
     mcpId: string,
   ) => { readonly mcpUrl: string; readonly healthUrl: string } | undefined;
+  readonly #findMcpTapCall?: (
+    mcpId: string,
+    query: McpTapQuery,
+  ) => McpTapRecord | undefined;
   readonly #store: ChatConversationStore;
   readonly #workspaceRoot: string;
   readonly #viewerBackend: ChatViewerBackend;
@@ -208,6 +227,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     this.#mcpServers = options.mcpServers;
     this.#probeMcp = options.probeMcp;
     this.#resolveMcpEndpoint = options.resolveMcpEndpoint;
+    this.#findMcpTapCall = options.findMcpTapCall;
     this.#store = options.store;
     this.#workspaceRoot = options.workspaceRoot;
     this.#viewerBackend = options.viewerBackend ??
@@ -559,6 +579,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
           this.#requestElicitation(conversation, elicitation, context),
       });
       conversation.activeTurn = turn;
+      conversation.turnStartedAt = this.#now().getTime();
       // Single read: the pinned runtime exposes promptStarted as a getter
       // returning a new promise per access. A second read would orphan the
       // first promise, whose rejection then kills the host (unhandled).
@@ -671,24 +692,98 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     event: Extract<RuntimeEvent, { type: "tool_call" }>,
     messageId: string,
   ): Promise<void> {
+    const mcpId = conversation.mcpId;
+    const toolCallId = event.toolCallId;
     if (
-      conversation.kind !== "standalone" || conversation.mcpId === undefined ||
-      conversation.mcpStatus !== "connected" || event.toolCallId === undefined
+      conversation.kind !== "standalone" || mcpId === undefined ||
+      conversation.mcpStatus !== "connected" || toolCallId === undefined
     ) return;
     const input = parseMcpRawInput(event.rawInput);
-    if (input === undefined || input.server !== conversation.mcpId) return;
-    const output = parseMcpRawOutput(event.rawOutput);
-    if (output === undefined) return;
+    if (input !== undefined && input.server === mcpId) {
+      const output = parseMcpRawOutput(event.rawOutput);
+      if (output === undefined) return;
+      await this.#retainToolResult(conversation, messageId, {
+        mcpId,
+        server: input.server,
+        tool: input.tool,
+        toolCallId,
+        args: input.arguments ?? {},
+        result: output.result,
+        error: output.error,
+      });
+      return;
+    }
+    await this.#captureFromTap(conversation, event, messageId, mcpId, toolCallId);
+  }
+
+  /**
+   * DEV-ONLY fallback (#59): attributes a tap-recorded provider response
+   * to an output-less ACP tool event. The namespaced title is only a
+   * lookup key into our own exact records; bytes always come from the
+   * relay tap, never from the event. No-op without a tap lookup.
+   */
+  async #captureFromTap(
+    conversation: ConversationState,
+    event: Extract<RuntimeEvent, { type: "tool_call" }>,
+    messageId: string,
+    mcpId: string,
+    toolCallId: string,
+  ): Promise<void> {
+    const lookup = this.#findMcpTapCall;
+    const since = conversation.turnStartedAt;
+    if (lookup === undefined || since === undefined) return;
+    if (typeof event.title !== "string") return;
+    const namespaced = MCP_NAMESPACED_TITLE.exec(event.title);
+    if (namespaced === null) return;
+    const [, server, tool] = namespaced;
+    if (server !== mcpId || !isChatViewerToolName(tool)) return;
+    if (typeof event.rawInput !== "object" || event.rawInput === null) return;
+    const record = lookup(mcpId, {
+      tool,
+      argsJson: canonicalJson(event.rawInput),
+      since,
+    });
+    if (record === undefined) return;
+    let result: unknown;
+    try {
+      result = JSON.parse(record.resultJson);
+    } catch {
+      return;
+    }
+    await this.#retainToolResult(conversation, messageId, {
+      mcpId,
+      server,
+      tool,
+      toolCallId,
+      args: event.rawInput,
+      result,
+      error: record.failed ? result : undefined,
+    });
+  }
+
+  async #retainToolResult(
+    conversation: ConversationState,
+    messageId: string,
+    resolved: {
+      readonly mcpId: string;
+      readonly server: string;
+      readonly tool: string;
+      readonly toolCallId: string;
+      readonly args: unknown;
+      readonly result: unknown;
+      readonly error: unknown;
+    },
+  ): Promise<void> {
     const appUri = viewerAppUri(
-      output.result,
-      this.#mcpExpectedViews(conversation.mcpId),
+      resolved.result,
+      this.#mcpExpectedViews(resolved.mcpId),
     );
     if (appUri === undefined) return;
     let parsedInput: Readonly<Record<string, ChatViewerJson>>;
     let parsedResult: ChatViewerJson;
     try {
-      parsedInput = parseChatViewerArguments(input.arguments ?? {});
-      parsedResult = parseChatViewerJson(output.result);
+      parsedInput = parseChatViewerArguments(resolved.args ?? {});
+      parsedResult = parseChatViewerJson(resolved.result);
       if (
         JSON.stringify(parsedInput).length > TOOL_RESULT_JSON_MAX ||
         JSON.stringify(parsedResult).length > TOOL_RESULT_JSON_MAX
@@ -699,20 +794,20 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     // A same-id redelivery replaces the entry but keeps its revision:
     // revisions identify result versions, not observation counts.
     const previous = conversation.toolResults.find((entry) =>
-      entry.toolCallId === event.toolCallId
+      entry.toolCallId === resolved.toolCallId
     );
     const revision = previous?.revision ??
       maxToolRevision(conversation.toolResults) + 1;
     const resultDigest = `sha256:${await sha256Hex(
       new TextEncoder().encode(JSON.stringify(parsedResult)),
     )}`;
-    const payloads = await this.#fetchArchivePayloads(input.server, parsedResult);
+    const payloads = await this.#fetchArchivePayloads(resolved.server, parsedResult);
     const artifacts = payloads.map((payload) =>
       Object.freeze({
         uri: payload.record.uri,
         fileName: archiveFileName(
           payload.record.uri,
-          input.tool,
+          resolved.tool,
           revision,
           payload.record.mimeType,
         ),
@@ -734,15 +829,15 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     // bytes ahead of their manifest.
     const appended = [
       ...conversation.toolResults.filter((entry) =>
-        entry.toolCallId !== event.toolCallId
+        entry.toolCallId !== resolved.toolCallId
       ),
       {
-        toolCallId: event.toolCallId,
-        server: input.server,
-        tool: input.tool,
+        toolCallId: resolved.toolCallId,
+        server: resolved.server,
+        tool: resolved.tool,
         messageId,
         appUri,
-        failed: output.error !== null && output.error !== undefined,
+        failed: resolved.error !== null && resolved.error !== undefined,
         input: parsedInput,
         result: parsedResult,
         capturedAt: this.#now().toISOString(),
@@ -788,7 +883,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     );
     if (failed.size > 0) {
       conversation.toolResults = conversation.toolResults.map((entry) =>
-        entry.toolCallId === event.toolCallId
+        entry.toolCallId === resolved.toolCallId
           ? {
             ...entry,
             artifacts: (entry.artifacts ?? []).map((artifact) =>

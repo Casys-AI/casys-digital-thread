@@ -19,6 +19,12 @@ import {
   type RuntimeTurnResult,
 } from "./runtime-port.ts";
 import { MemoryChatConversationStore, type StoredConversation } from "./store.ts";
+import {
+  canonicalJson,
+  createMcpCallTap,
+  type McpTapQuery,
+  type McpTapRecord,
+} from "./mcp-tap.ts";
 import type { ChatViewerBackend } from "./viewer-backend.ts";
 import { parseChatSnapshotDto } from "../../../src/presentation/desktop/chat/contracts.ts";
 import {
@@ -2192,6 +2198,7 @@ function standalonePool(options: {
   store?: MemoryChatConversationStore;
   viewerBackend?: ChatViewerBackend;
   agents?: AgentProfileHost;
+  findMcpTapCall?: (mcpId: string, query: McpTapQuery) => McpTapRecord | undefined;
 } = {}): {
   readonly project: FakeRuntimeAdapter;
   readonly standalone: FakeRuntimeAdapter;
@@ -2253,6 +2260,9 @@ function standalonePool(options: {
         ...(options.viewerBackend === undefined
           ? {}
           : { viewerBackend: options.viewerBackend }),
+        ...(options.findMcpTapCall === undefined
+          ? {}
+          : { findMcpTapCall: options.findMcpTapCall }),
       });
     },
   };
@@ -2340,6 +2350,7 @@ function coordinatorWith(
     store?: MemoryChatConversationStore;
     viewerBackend?: ChatViewerBackend;
     agents?: AgentProfileHost;
+    findMcpTapCall?: (mcpId: string, query: McpTapQuery) => McpTapRecord | undefined;
   } = {},
 ): Promise<ChatCoordinator> {
   let sequence = 0;
@@ -2364,6 +2375,9 @@ function coordinatorWith(
     ...(options.resolveMcpEndpoint === undefined
       ? {}
       : { resolveMcpEndpoint: options.resolveMcpEndpoint }),
+    ...(options.findMcpTapCall === undefined
+      ? {}
+      : { findMcpTapCall: options.findMcpTapCall }),
     workspaceRoot: "/private/chat-workspace",
     now: () => new Date(1_700_000_000_000 + sequence++),
     newId: () => String(sequence++),
@@ -2586,6 +2600,126 @@ function viewerToolResult(volume: number): Record<string, unknown> {
     _meta: { ui: { resourceUri: VIEWER_APP_URI } },
   };
 }
+
+Deno.test("dev tap attributes an output-less namespaced tool event", async () => {
+  const backend = new FakeViewerBackend();
+  const tap = createMcpCallTap();
+  const pool = standalonePool({
+    probeTools: ["t_one"],
+    viewerBackend: backend,
+    findMcpTapCall: (_mcpId, query) => tap.takeMatch(query),
+  });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await coordinator.command(send("r1", conversationId, "Model a box"));
+  await until(() => pool.mcp.turns.length === 1);
+  // Relay-side key order differs from the event: canonicalization matches.
+  tap.record({
+    tool: "t_one",
+    argsJson: canonicalJson({ b: 1, a: 2 }),
+    resultJson: canonicalJson(viewerToolResult(1000)),
+    failed: false,
+    at: 1_700_000_000_000 + 50_000,
+  });
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "mcp__build123d__t_one (completed)",
+    title: "mcp__build123d__t_one",
+    toolCallId: "tool-call-tap",
+    status: "completed",
+    rawInput: { a: 2, b: 1 },
+  });
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const viewers = coordinator.snapshot(conversationId).conversations[0].viewers;
+  assertEquals(viewers.length, 1);
+  assertEquals(viewers[0]?.toolCallId, "tool-call-tap");
+  assertEquals(viewers[0]?.tool, "t_one");
+  assertEquals(viewers[0]?.appUri, VIEWER_APP_URI);
+  await coordinator.stop();
+});
+
+Deno.test("dev tap skips on ambiguity and foreign titles", async () => {
+  const tap = createMcpCallTap();
+  const pool = standalonePool({
+    probeTools: ["t_one"],
+    findMcpTapCall: (_mcpId, query) => tap.takeMatch(query),
+  });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await coordinator.command(send("r1", conversationId, "Model a box"));
+  await until(() => pool.mcp.turns.length === 1);
+  const at = 1_700_000_000_000 + 50_000;
+  tap.record({
+    tool: "t_one",
+    argsJson: canonicalJson({}),
+    resultJson: "{}",
+    failed: false,
+    at,
+  });
+  tap.record({
+    tool: "t_one",
+    argsJson: canonicalJson({}),
+    resultJson: "{}",
+    failed: false,
+    at,
+  });
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "mcp__build123d__t_one (completed)",
+    title: "mcp__build123d__t_one",
+    toolCallId: "tool-call-ambiguous",
+    status: "completed",
+    rawInput: {},
+  });
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "mcp__foreign__t_one (completed)",
+    title: "mcp__foreign__t_one",
+    toolCallId: "tool-call-foreign",
+    status: "completed",
+    rawInput: {},
+  });
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  assertEquals(
+    coordinator.snapshot(conversationId).conversations[0].viewers,
+    [],
+  );
+  await coordinator.stop();
+});
+
+Deno.test("output-less tool events capture nothing without a tap", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await coordinator.command(send("r1", conversationId, "Model a box"));
+  await until(() => pool.mcp.turns.length === 1);
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "mcp__build123d__t_one (completed)",
+    title: "mcp__build123d__t_one",
+    toolCallId: "tool-call-plain",
+    status: "completed",
+    rawInput: { script: "result = 1" },
+  });
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  assertEquals(
+    coordinator.snapshot(conversationId).conversations[0].viewers,
+    [],
+  );
+  await coordinator.stop();
+});
 
 Deno.test("viewer captures the exact tool result and opens the expected App", async () => {
   const backend = new FakeViewerBackend();

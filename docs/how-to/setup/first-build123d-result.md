@@ -50,9 +50,14 @@ volume (`2000 mm^3`). The transcript keeps both results.
 `build123d_export` runs through Muse and the provider executes it, but the Muse adapter
 (`0.7.0`) forwards only a text summary of MCP tool results to the chat host — no
 structured output, no artifact URIs. Saved export archives and live viewers therefore do
-not appear with Muse yet. Export archives were proved through the Codex profile before
-agent profiles existed (#52 journey); re-proof on the current tree is pending. This
-guide will gain an export step once the adapter forwards tool outputs.
+not appear with Muse in the packaged app. Export archives were proved through the Codex
+profile before agent profiles existed (#52 journey); re-proof on the current tree is
+pending. This guide will gain an export step once the adapter forwards tool outputs.
+
+Development only: starting the chat host with `CASYS_DEV_RELAY_TAP=1` enables relay
+correlation taps that attribute exact provider responses to output-less tool events
+(unique match or nothing, never a wrong result). This exercises viewers and archives
+with Muse in dev; it is not production behavior and the packaged app never enables it.
 
 ## 6. Close and reopen
 
