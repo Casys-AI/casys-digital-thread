@@ -83,6 +83,42 @@ Deno.test("ChatCoordinator binds one project, streams sanitized events, and pres
   await coordinator.stop();
 });
 
+Deno.test("bex pseudo-tool housekeeping never lands in the transcript", async () => {
+  const adapter = new FakeRuntimeAdapter();
+  const coordinator = await coordinatorWith(adapter);
+  const conversationId = await createConversation(coordinator, "coffee-machine");
+
+  await coordinator.command(send("r1", conversationId, "Build it"));
+  await until(() => adapter.turns.length === 1);
+  adapter.turns[0].events.push({
+    type: "tool_call",
+    text: "reminderChild: inProgress (in_progress): Reminder child session",
+    title: "reminderChild: inProgress",
+    toolCallId: "ee959abe-c75f-4c67-96ec-700175d5381f",
+    status: "in_progress",
+    kind: "other",
+  });
+  adapter.turns[0].events.push({
+    type: "tool_call",
+    text: "mcp__build123d__build123d_execute (completed)",
+    title: "mcp__build123d__build123d_execute",
+    toolCallId: "call_real",
+    status: "completed",
+    kind: "other",
+  });
+  adapter.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+
+  const conversation = coordinator.snapshot(conversationId).conversations[0];
+  assertEquals(conversation.messages.map((message) => message.text), [
+    "Build it",
+    "mcp__build123d__build123d_execute — completed",
+  ]);
+  await coordinator.stop();
+});
+
 Deno.test("permission is separate from MRTR, correlated, and late replies fail closed", async () => {
   const adapter = new FakeRuntimeAdapter();
   const coordinator = await coordinatorWith(adapter);

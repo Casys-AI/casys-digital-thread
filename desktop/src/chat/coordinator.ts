@@ -65,6 +65,14 @@ const SESSION_PREFIX = "casys-desktop-exclusive";
 const TOOL_RESULTS_MAX = 20;
 const TOOL_RESULT_JSON_MAX = 262_144;
 /**
+ * Synthetic bex pseudo-tool titles (`reminderChild: ...`) are adapter
+ * session housekeeping, never user tools: MCP tool names cannot contain
+ * `:`, so the prefix cannot collide with a real namespaced call. Dropped
+ * before transcript and capture; if bex renames them the noise returns
+ * visibly instead of silently eating a real tool.
+ */
+const BEX_PSEUDO_TOOL_PREFIX = "reminderChild:";
+/**
  * Viewer resource bytes must fit the 1M-char chat IPC line after base64
  * (x4/3) plus the JSON envelope. Whole App documents never cross IPC:
  * `viewer.open` pins identity and the renderer fetches bytes separately.
@@ -626,6 +634,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         );
         if (id !== undefined) touched.push(id);
       } else if (event.type === "tool_call") {
+        if ((event.title ?? "").startsWith(BEX_PSEUDO_TOOL_PREFIX)) continue;
         const title = clean(event.title ?? event.text, 500);
         const suffix = event.status === undefined
           ? ""
