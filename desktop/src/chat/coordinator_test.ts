@@ -689,6 +689,177 @@ Deno.test("startTurn failure drops the pinned handle so the retry reseeds", asyn
   await coordinator.stop();
 });
 
+Deno.test("pre-submit cancel keeps seeded context unmarked so the retry reseeds", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(
+    send(
+      "r1",
+      conversationId,
+      "The part ZR-CANCEL-FACT is 37.125 mm wide. Acknowledge.",
+    ),
+  );
+  await until(() => pool.standalone.turns.length === 1);
+  pool.standalone.turns[0].events.push({ type: "text_delta", text: "Acknowledged." });
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  // True async runtime semantics: the first MCP turn submits only when
+  // promptStarted resolves; a pre-submit cancel rejects it with zero
+  // session/prompt calls, like the pinned acpx runtime.
+  const gate = Promise.withResolvers<void>();
+  const innerStartTurn = pool.mcp.runtime.startTurn;
+  pool.mcp.runtime.startTurn = (input) => {
+    const turn = innerStartTurn(input) as FakeTurn;
+    if (pool.mcp.turns.length > 1) return turn;
+    turn.promptStarted = gate.promise;
+    const innerCancel = turn.cancel.bind(turn);
+    turn.cancel = async () => {
+      await innerCancel();
+      gate.reject(new Error("ACP turn cancelled before prompt submission."));
+    };
+    return turn;
+  };
+  await coordinator.command(
+    send("r2", conversationId, "Create the part with the width I gave you."),
+  );
+  await until(() => pool.mcp.turns.length === 1);
+  assert(
+    pool.mcp.turns[0].text.includes("ZR-CANCEL-FACT"),
+    "seed was never computed for the first MCP turn",
+  );
+  const cancelled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "cancel-1",
+    command: "turn.cancel",
+    conversationId,
+  });
+  assert(cancelled.ok);
+  // Covers the interleave where cancel lands before the coordinator pins
+  // the turn: the runtime rejects submission either way.
+  gate.reject(new Error("ACP turn cancelled before prompt submission."));
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  assertEquals(pool.mcp.ensureInputs.length, 1);
+  await coordinator.command(send("r3", conversationId, "Retry the part now."));
+  await until(() => pool.mcp.turns.length === 2);
+  assertEquals(
+    pool.mcp.ensureInputs.length,
+    2,
+    "retry reused the pinned handle instead of re-ensuring",
+  );
+  const retry = pool.mcp.turns[1].text;
+  assertMatch(retry, /Prior conversation context follows/);
+  assertMatch(retry, /do not re-execute/);
+  assert(retry.includes("ZR-CANCEL-FACT"), "retry lost the untransmitted fact");
+  assert(retry.includes("37.125"), "retry lost the untransmitted width");
+  assert(retry.endsWith("Retry the part now."), "retry buries the current turn");
+  pool.mcp.turns[1].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await coordinator.stop();
+});
+
+Deno.test("pre-submit failure keeps seeded context unmarked and fails the turn", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await coordinator.command(
+    send("r1", conversationId, "The part ZR-FAIL-FACT is 12.5 mm wide. Acknowledge."),
+  );
+  await until(() => pool.standalone.turns.length === 1);
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const enabled = await coordinator.command({
+    protocol: DESKTOP_CHAT_PROTOCOL,
+    requestId: "enable-1",
+    command: "mcp.enable",
+    conversationId,
+    mcpId: "build123d",
+  });
+  assert(enabled.ok);
+  const gate = Promise.withResolvers<void>();
+  const innerStartTurn = pool.mcp.runtime.startTurn;
+  pool.mcp.runtime.startTurn = (input) => {
+    const turn = innerStartTurn(input) as FakeTurn;
+    if (pool.mcp.turns.length > 1) return turn;
+    turn.promptStarted = gate.promise;
+    return turn;
+  };
+  await coordinator.command(
+    send("r2", conversationId, "Create the part with the width I gave you."),
+  );
+  await until(() => pool.mcp.turns.length === 1);
+  gate.reject(new Error("submitter blew up"));
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "failed"
+  );
+  await coordinator.command(send("r3", conversationId, "Retry the part now."));
+  await until(() => pool.mcp.turns.length === 2);
+  const retry = pool.mcp.turns[1].text;
+  assert(retry.includes("ZR-FAIL-FACT"), "retry lost the untransmitted fact");
+  assert(retry.includes("12.5"), "retry lost the untransmitted width");
+  pool.mcp.turns[1].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  await coordinator.stop();
+});
+
+Deno.test("context marking waits for confirmed prompt submission", async () => {
+  const store = new MemoryChatConversationStore();
+  const pool = standalonePool({ probeTools: ["t_one"], store });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  const gate = Promise.withResolvers<void>();
+  const innerStartTurn = pool.standalone.runtime.startTurn;
+  pool.standalone.runtime.startTurn = (input) => {
+    const turn = innerStartTurn(input) as FakeTurn;
+    turn.promptStarted = gate.promise;
+    return turn;
+  };
+  await coordinator.command(send("r1", conversationId, "Remember PRE-SUBMIT-MARKER."));
+  await until(() => pool.standalone.turns.length === 1);
+  const userId = coordinator.snapshot(conversationId).conversations[0]
+    .messages[0].id;
+  const markedBefore = Object.values(
+    (await store.load())[0].knownMessageIdsByKey ?? {},
+  ).flat();
+  assertEquals(
+    markedBefore.includes(userId),
+    false,
+    "user message marked known before submission",
+  );
+  gate.resolve();
+  pool.standalone.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const markedAfter = Object.values(
+    (await store.load())[0].knownMessageIdsByKey ?? {},
+  ).flat();
+  assertEquals(
+    markedAfter.includes(userId),
+    true,
+    "user message not marked after confirmed submission",
+  );
+  await coordinator.stop();
+});
+
 Deno.test("a later-queued message never leaks into the earlier turn seed", async () => {
   const pool = standalonePool({ probeTools: ["t_one"] });
   const coordinator = await pool.coordinator();
@@ -1473,6 +1644,7 @@ class FakeTurn implements RuntimeTurn {
   readonly events = new AsyncEventQueue();
   readonly result: Promise<RuntimeTurnResult>;
   readonly text: string;
+  promptStarted?: Promise<void>;
   readonly #onElicitation: Parameters<ChatRuntimePort["startTurn"]>[0][
     "onElicitation"
   ];

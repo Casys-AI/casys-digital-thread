@@ -1,6 +1,6 @@
 # Standalone chat and MCP connection boundary (Desktop host, iteration 1)
 
-> Verified-Against: uncommitted #49 context-continuity follow-up (2026-09-27). What
+> Verified-Against: 7b870ee0 + uncommitted #49 pre-submit fix (2026-09-28). What
 > standalone chat supports, and the exact supported MCP connection boundary.
 
 Audience: both · Diátaxis: reference · Kind: contract note
@@ -60,7 +60,10 @@ list; viewers (#50) own MCP App rendering; #51 owns durable artifact reopening.
   re-execution). The seed rides the turn text
   because the pinned codex adapter drops session `_meta.systemPrompt`. Enable, disable,
   and re-probe each reseed exactly the delta. Restart restore prunes the map against
-  the live transcript.
+  the live transcript. Ids are marked only at confirmed prompt submission
+  (`promptStarted` on async runtimes): a cancel or failure before submission
+  leaves them unmarked and drops the handle, so the retry re-ensures and
+  reseeds with no tool replay.
 - Connection ownership, endpoints, and credentials stay host-side. The renderer sees
   identity and state only (`id`, `displayName`, `status`, tool names). Project
   conversations refuse `mcp.enable`/`mcp.disable`: standalone access cannot change the

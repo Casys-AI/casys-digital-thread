@@ -90,6 +90,14 @@ export type RuntimeTurnResult =
 export interface RuntimeTurn {
   readonly events: AsyncIterable<RuntimeEvent>;
   readonly result: Promise<RuntimeTurnResult>;
+  /**
+   * Resolves at confirmed prompt submission. Runtimes that submit
+   * asynchronously (the pinned acpx runtime) MUST expose it; runtimes whose
+   * startTurn submits synchronously omit it. Rejects when the turn dies
+   * before submission (notably on cancel), in which case nothing the caller
+   * passed was transmitted.
+   */
+  readonly promptStarted?: Promise<void>;
   cancel(input?: { reason?: string }): Promise<void>;
   closeStream(input?: { reason?: string }): Promise<void>;
 }

@@ -455,6 +455,25 @@ export class ChatCoordinator implements RuntimeInteractionSink {
           this.#requestElicitation(conversation, elicitation, context),
       });
       conversation.activeTurn = turn;
+      if (turn.promptStarted !== undefined) {
+        try {
+          await turn.promptStarted;
+        } catch (error) {
+          // Pre-submission death: nothing was transmitted. Keep the seed
+          // and current ids unmarked so the retry reseeds, and drop the
+          // handle so it re-ensures, mirroring the sync startTurn failure.
+          this.#releaseSessionIds(conversation);
+          conversation.handle = undefined;
+          if (abort.signal.aborted) {
+            conversation.status = "idle";
+            this.#append(conversation, "system", "status", "Turn cancelled.");
+          } else {
+            conversation.status = "failed";
+            this.#append(conversation, "system", "error", safeError(error));
+          }
+          return;
+        }
+      }
       if (seed !== undefined) {
         markKnown(conversation, conversation.sessionKey, seed.ids);
       }
