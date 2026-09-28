@@ -1,15 +1,14 @@
 /**
- * Lazy per-MCP attachments for the Chat Host (#57).
+ * Lazy per-MCP attachments for the Chat Host (#57, profiles #58).
  *
- * Relays and MCP runtimes start only when Desktop assigns a provider
- * endpoint (on demand), never for unused catalogue entries. A binding
- * change retargets the existing relay in place, so the agent runtime and
- * its session store survive provider restarts; release closes the relay
- * and drops the runtime. Endpoints are host-assigned: unknown ids and
- * non-loopback URLs are refused.
+ * Relays start only when Desktop assigns a provider endpoint (on demand),
+ * never for unused catalogue entries. A binding change retargets the
+ * existing relay in place, so agent runtimes and their session stores
+ * survive provider restarts. The relay is profile-independent and shared;
+ * agent runtimes are created per profile on demand by the runtime factory
+ * and dropped for every profile on release. Endpoints are host-assigned:
+ * unknown ids and non-loopback URLs are refused.
  */
-import type { ChatRuntimeAdapter } from "../chat/runtime-port.ts";
-import { chatRuntimeKey } from "../chat/runtime-port.ts";
 import type { McpRelay } from "./mcp-relay.ts";
 
 export interface McpAttachmentEndpoint {
@@ -20,33 +19,21 @@ export interface McpAttachmentEndpoint {
 export interface McpAttachmentManagerOptions {
   readonly connectableIds: readonly string[];
   readonly startRelay: (upstreamMcpUrl: string) => Promise<McpRelay>;
-  readonly createRuntime: (
-    mcpId: string,
-    relayUrl: string,
-  ) => Promise<ChatRuntimeAdapter>;
-  readonly registerRuntime: (key: string, adapter: ChatRuntimeAdapter) => void;
-  readonly unregisterRuntime: (key: string) => void;
+  /** Drops every profiled runtime for an MCP after its relay closes. */
+  readonly releaseRuntimes: (mcpId: string) => void;
 }
 
 export class McpAttachmentManager {
   readonly #connectable: ReadonlySet<string>;
   readonly #startRelay: (upstreamMcpUrl: string) => Promise<McpRelay>;
-  readonly #createRuntime: (
-    mcpId: string,
-    relayUrl: string,
-  ) => Promise<ChatRuntimeAdapter>;
-  readonly #registerRuntime: (key: string, adapter: ChatRuntimeAdapter) => void;
-  readonly #unregisterRuntime: (key: string) => void;
+  readonly #releaseRuntimes: (mcpId: string) => void;
   readonly #endpoints = new Map<string, McpAttachmentEndpoint>();
   readonly #relays = new Map<string, McpRelay>();
-  readonly #runtimes = new Map<string, ChatRuntimeAdapter>();
 
   constructor(options: McpAttachmentManagerOptions) {
     this.#connectable = new Set(options.connectableIds);
     this.#startRelay = options.startRelay;
-    this.#createRuntime = options.createRuntime;
-    this.#registerRuntime = options.registerRuntime;
-    this.#unregisterRuntime = options.unregisterRuntime;
+    this.#releaseRuntimes = options.releaseRuntimes;
   }
 
   resolve(mcpId: string): McpAttachmentEndpoint | undefined {
@@ -70,26 +57,17 @@ export class McpAttachmentManager {
       const created = await this.#startRelay(endpoint.mcpUrl);
       this.#relays.set(mcpId, created);
       this.#endpoints.set(mcpId, endpoint);
-      if (!this.#runtimes.has(mcpId)) {
-        const runtime = await this.#createRuntime(mcpId, created.url);
-        this.#runtimes.set(mcpId, runtime);
-        this.#registerRuntime(chatRuntimeKey("standalone", mcpId), runtime);
-      }
       return;
     }
     relay.setUpstream(endpoint.mcpUrl);
     this.#endpoints.set(mcpId, endpoint);
-    if (!this.#runtimes.has(mcpId)) {
-      const runtime = await this.#createRuntime(mcpId, relay.url);
-      this.#runtimes.set(mcpId, runtime);
-      this.#registerRuntime(chatRuntimeKey("standalone", mcpId), runtime);
-    }
   }
 
   /**
-   * Closes the relay and drops the runtime for one MCP. Sessions persist
-   * on disk; the next ensure recreates both. Unknown or absent ids report
-   * absent without failing.
+   * Closes the relay and drops every profiled runtime for one MCP.
+   * Sessions persist on disk; the next ensure recreates the relay while
+   * runtimes return on demand. Unknown or absent ids report absent
+   * without failing.
    */
   async release(mcpId: string): Promise<"released" | "absent"> {
     const relay = this.#relays.get(mcpId);
@@ -99,9 +77,7 @@ export class McpAttachmentManager {
     } finally {
       this.#relays.delete(mcpId);
       this.#endpoints.delete(mcpId);
-      if (this.#runtimes.delete(mcpId)) {
-        this.#unregisterRuntime(chatRuntimeKey("standalone", mcpId));
-      }
+      this.#releaseRuntimes(mcpId);
     }
     return "released";
   }

@@ -46,6 +46,14 @@ import type {
   StoredConversation,
   StoredWorkArtifact,
 } from "./store.ts";
+import {
+  type AgentProfileDefinition,
+  type AgentProfileHost,
+  isAgentAuthFailure,
+  LEGACY_AGENT_PROFILE_ID,
+  profileRuntimeKey,
+  profileSessionKey,
+} from "./agent-profiles.ts";
 import { STORE_MCP_TOOLS_MAX } from "./store-codec.ts";
 import {
   type ChatViewerBackend,
@@ -53,7 +61,6 @@ import {
   viewerResourceScope,
 } from "./viewer-backend.ts";
 
-const AGENT_NAME = "casys-codex";
 const SESSION_PREFIX = "casys-desktop-exclusive";
 const TOOL_RESULTS_MAX = 20;
 const TOOL_RESULT_JSON_MAX = 262_144;
@@ -75,6 +82,8 @@ interface ConversationState {
   readonly id: string;
   readonly kind: ChatConversationKind;
   readonly projectId?: string;
+  /** Active agent profile; explicit per conversation, never inherited. */
+  agentProfileId: string;
   sessionKey: string;
   /** Standalone MCP attachment; status failed keeps the zero-MCP runtime. */
   mcpId?: string;
@@ -141,6 +150,8 @@ interface ArchivePayload {
 export interface ChatCoordinatorOptions {
   /** One adapter per MCP set, keyed by chatRuntimeKey. */
   readonly runtimes: ReadonlyMap<string, ChatRuntimeAdapter>;
+  /** Host-owned agent profiles, default, and runtime factory. */
+  readonly agents: AgentProfileHost;
   /** Host-side connectable MCP registry (standalone only). */
   readonly mcpServers: readonly ChatMcpServerConfig[];
   /** Direct endpoint probe; distinguishes connection from execution failure. */
@@ -163,6 +174,7 @@ export interface ChatCoordinatorOptions {
 }
 
 export class ChatCoordinator implements RuntimeInteractionSink {
+  readonly #agents: AgentProfileHost;
   readonly #runtimes: Map<string, ChatRuntimeAdapter>;
   readonly #mcpServers: readonly ChatMcpServerConfig[];
   readonly #probeMcp: (
@@ -183,6 +195,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
   #stopPromise?: Promise<void>;
 
   private constructor(options: ChatCoordinatorOptions) {
+    this.#agents = options.agents;
     this.#runtimes = new Map(options.runtimes);
     this.#mcpServers = options.mcpServers;
     this.#probeMcp = options.probeMcp;
@@ -200,7 +213,11 @@ export class ChatCoordinator implements RuntimeInteractionSink {
 
   static async create(options: ChatCoordinatorOptions): Promise<ChatCoordinator> {
     const coordinator = new ChatCoordinator(options);
-    for (const stored of await options.store.load()) coordinator.#restore(stored);
+    let remapped = false;
+    for (const stored of await options.store.load()) {
+      remapped = coordinator.#restore(stored) || remapped;
+    }
+    if (remapped) await coordinator.#persist();
     return coordinator;
   }
 
@@ -255,6 +272,22 @@ export class ChatCoordinator implements RuntimeInteractionSink {
           maxVersions: TOOL_RESULTS_MAX,
         }),
       }),
+      agentProfiles: Object.freeze(
+        this.#agents.definitions.map((definition) => {
+          const status = this.#agents.statusOf(definition.id);
+          return Object.freeze({
+            id: definition.id,
+            displayName: definition.displayName,
+            available: status.available,
+            ...(status.version === undefined ? {} : { version: status.version }),
+            ...(status.missingReason === undefined
+              ? {}
+              : { missingReason: status.missingReason }),
+            modelsExposed: definition.modelsExposed,
+          });
+        }),
+      ),
+      defaultAgentProfileId: this.#agents.defaultProfileId(),
     });
   }
 
@@ -306,6 +339,32 @@ export class ChatCoordinator implements RuntimeInteractionSink {
           conversationId = request.conversationId;
           await this.#disableMcp(conversationId);
           break;
+        case "agent.select":
+          conversationId = request.conversationId;
+          await this.#selectAgent(conversationId, request.profileId);
+          break;
+        case "agent.set-default": {
+          const known = this.#agents.definitions.some(
+            (entry) => entry.id === request.profileId,
+          );
+          if (!known) throw new Error("agent profile is unknown");
+          await this.#agents.saveDefault(request.profileId);
+          return Object.freeze({
+            protocol: DESKTOP_CHAT_PROTOCOL,
+            requestId: request.requestId,
+            ok: true,
+          });
+        }
+        case "agent.reload-profiles": {
+          const reloaded = await this.#agents.reload();
+          if (!reloaded.ok) throw new Error(reloaded.error);
+          if (await this.#remapUnknownProfiles()) await this.#persist();
+          return Object.freeze({
+            protocol: DESKTOP_CHAT_PROTOCOL,
+            requestId: request.requestId,
+            ok: true,
+          });
+        }
         case "viewer.open": {
           conversationId = request.conversationId;
           const viewer = await this.#openViewer(conversationId, request.toolCallId);
@@ -398,13 +457,16 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     const kind: ChatConversationKind = projectId === undefined
       ? "standalone"
       : "project";
+    const agentProfileId = this.#agents.defaultProfileId();
+    const baseKey = kind === "project"
+      ? `${SESSION_PREFIX}/${projectId}/${id}`
+      : `${SESSION_PREFIX}/standalone/${id}`;
     this.#conversations.set(id, {
       id,
       kind,
       ...(projectId === undefined ? {} : { projectId }),
-      sessionKey: kind === "project"
-        ? `${SESSION_PREFIX}/${projectId}/${id}`
-        : `${SESSION_PREFIX}/standalone/${id}`,
+      agentProfileId,
+      sessionKey: profileSessionKey(baseKey, agentProfileId),
       mcpTools: [],
       knownByKey: new Map(),
       toolResults: [],
@@ -457,6 +519,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     try {
       conversation.status = "running";
       conversation.updatedAt = this.#now().toISOString();
+      await this.#ensureRuntimeFor(conversation);
       const runtime = this.#adapterFor(conversation).runtime;
       const seed = conversation.handle === undefined
         ? seedContextFor(conversation, conversation.sessionKey, userMessageId)
@@ -464,7 +527,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       const handle = conversation.handle ??
         await runtime.ensureSession({
           sessionKey: conversation.sessionKey,
-          agent: AGENT_NAME,
+          agent: this.#profileFor(conversation).agentName,
           mode: "persistent",
           cwd: this.#workspaceRoot,
           sessionOptions: { systemPrompt: systemPromptFor(conversation) },
@@ -506,7 +569,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
             this.#append(conversation, "system", "status", "Turn cancelled.");
           } else {
             conversation.status = "failed";
-            this.#append(conversation, "system", "error", safeError(error));
+            this.#appendTurnFailure(conversation, error);
           }
           return;
         }
@@ -523,7 +586,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       const result = await turn.result;
       if (result.status === "failed") {
         conversation.status = "failed";
-        this.#append(conversation, "system", "error", safeError(result.error.message));
+        this.#appendTurnFailure(conversation, result.error.message);
       } else {
         conversation.status = "idle";
         if (result.status === "cancelled") {
@@ -532,7 +595,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       }
     } catch (error) {
       conversation.status = "failed";
-      this.#append(conversation, "system", "error", safeError(error));
+      this.#appendTurnFailure(conversation, error);
       if (conversation.activeTurn === undefined) {
         // ensure/claim/startTurn never produced a turn: drop the pinned
         // handle so the retry re-ensures and recomputes the unmarked seed.
@@ -1108,6 +1171,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       this.#releaseSessionIds(conversation);
       conversation.handle = undefined;
     }
+    await this.#maybeReleaseRuntime(this.#profiledRuntimeKey(conversation));
     await this.#persist();
   }
 
@@ -1147,8 +1211,13 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     }
     if (!probe.ok) {
       if (conversation.mcpStatus === "connected") {
+        const releasedKey = this.#profiledRuntimeKey(conversation);
         await this.#detachHandle(conversation, "MCP connection failed");
-        conversation.sessionKey = standaloneSessionKey(conversation.id);
+        conversation.sessionKey = profileSessionKey(
+          standaloneSessionKey(conversation.id),
+          conversation.agentProfileId,
+        );
+        await this.#maybeReleaseRuntime(releasedKey);
       }
       conversation.mcpId = server.id;
       conversation.mcpStatus = "failed";
@@ -1162,17 +1231,26 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       await this.#persist();
       throw new Error(`MCP connection failed (${server.displayName}): ${probe.error}`);
     }
+    await this.#ensureKey(
+      conversation.agentProfileId,
+      chatRuntimeKey("standalone", server.id),
+    );
+    const releasedKey = this.#profiledRuntimeKey(conversation);
     await this.#detachHandle(conversation, "MCP attachment changed");
     conversation.mcpId = server.id;
     conversation.mcpStatus = "connected";
     conversation.mcpTools = sanitizeMcpTools(probe.tools);
-    conversation.sessionKey = standaloneSessionKey(conversation.id, server.id);
+    conversation.sessionKey = profileSessionKey(
+      standaloneSessionKey(conversation.id, server.id),
+      conversation.agentProfileId,
+    );
     this.#append(
       conversation,
       "system",
       "status",
       `${server.displayName} connected (${conversation.mcpTools.length} tools). The agent session restarts with it.`,
     );
+    await this.#maybeReleaseRuntime(releasedKey);
     await this.#persist();
   }
 
@@ -1185,18 +1263,89 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     this.#requireSettledForMcpSwitch(conversation);
     if (conversation.mcpId === undefined) return;
     const displayName = this.#mcpDisplayName(conversation.mcpId);
+    const releasedKey = this.#profiledRuntimeKey(conversation);
     await this.#detachHandle(conversation, "MCP detached");
     conversation.mcpId = undefined;
     conversation.mcpStatus = undefined;
     conversation.mcpTools = [];
-    conversation.sessionKey = standaloneSessionKey(conversation.id);
+    conversation.sessionKey = profileSessionKey(
+      standaloneSessionKey(conversation.id),
+      conversation.agentProfileId,
+    );
     this.#append(
       conversation,
       "system",
       "status",
       `${displayName} detached. The agent session restarts without it.`,
     );
+    await this.#maybeReleaseRuntime(releasedKey);
     await this.#persist();
+  }
+
+  #requireSettledForAgentSwitch(conversation: ConversationState): void {
+    if (
+      conversation.activeTurn !== undefined || conversation.status === "running" ||
+      conversation.status === "queued" || conversation.pending !== undefined
+    ) {
+      throw new Error("complete or cancel the active turn before switching agent");
+    }
+  }
+
+  /**
+   * Switches a conversation to another agent profile. History, sources,
+   * results, viewer references, and MCP attachments are preserved; only
+   * the agent session changes. The target runtime is created before any
+   * mutation, so a failed switch leaves an explicit recoverable state on
+   * the original profile and never falls back silently.
+   */
+  async #selectAgent(conversationId: string, profileId: string): Promise<void> {
+    const conversation = this.#conversation(conversationId);
+    if (conversation.status === "closed") throw new Error("conversation is closed");
+    const definition = this.#agents.definitions.find((entry) => entry.id === profileId);
+    if (definition === undefined) throw new Error("agent profile is unknown");
+    if (profileId === conversation.agentProfileId) return;
+    this.#requireSettledForAgentSwitch(conversation);
+    try {
+      await this.#ensureKey(profileId, this.#baseRuntimeKey(conversation));
+    } catch (error) {
+      const current = this.#profileFor(conversation).displayName;
+      this.#append(
+        conversation,
+        "system",
+        "error",
+        `Agent switch to ${definition.displayName} failed: ${
+          safeError(error)
+        } The conversation keeps running on ${current}.`,
+      );
+      await this.#persist();
+      throw error;
+    }
+    const releasedKey = this.#profiledRuntimeKey(conversation);
+    await this.#detachHandle(conversation, "Agent switched");
+    conversation.agentProfileId = profileId;
+    conversation.sessionKey = profileSessionKey(
+      this.#baseSessionKey(conversation),
+      profileId,
+    );
+    this.#append(
+      conversation,
+      "system",
+      "status",
+      `Switched to ${definition.displayName}. History, tools, and viewers are preserved; the agent session starts fresh.`,
+    );
+    await this.#maybeReleaseRuntime(releasedKey);
+    await this.#persist();
+  }
+
+  /** Bare session key for the conversation's kind + MCP state, without profile scoping. */
+  #baseSessionKey(conversation: ConversationState): string {
+    if (conversation.kind === "project") {
+      return `${SESSION_PREFIX}/${conversation.projectId}/${conversation.id}`;
+    }
+    return standaloneSessionKey(
+      conversation.id,
+      conversation.mcpStatus === "connected" ? conversation.mcpId : undefined,
+    );
   }
 
   #requireSettledForMcpSwitch(conversation: ConversationState): void {
@@ -1219,15 +1368,70 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     conversation.handle = undefined;
   }
 
-  #adapterFor(conversation: ConversationState): ChatRuntimeAdapter {
-    const adapter = this.#runtimes.get(
-      chatRuntimeKey(
-        conversation.kind,
-        conversation.mcpStatus === "connected" ? conversation.mcpId : undefined,
-      ),
+  #baseRuntimeKey(conversation: ConversationState): string {
+    return chatRuntimeKey(
+      conversation.kind,
+      conversation.mcpStatus === "connected" ? conversation.mcpId : undefined,
     );
+  }
+
+  #profiledRuntimeKey(conversation: ConversationState): string {
+    return profileRuntimeKey(
+      this.#baseRuntimeKey(conversation),
+      conversation.agentProfileId,
+    );
+  }
+
+  #profileFor(conversation: ConversationState): AgentProfileDefinition {
+    const definition = this.#agents.definitions.find(
+      (entry) => entry.id === conversation.agentProfileId,
+    );
+    if (definition === undefined) throw new Error("agent profile is unknown");
+    return definition;
+  }
+
+  #adapterFor(conversation: ConversationState): ChatRuntimeAdapter {
+    const adapter = this.#runtimes.get(this.#profiledRuntimeKey(conversation));
     if (adapter === undefined) throw new Error("chat runtime is not configured");
     return adapter;
+  }
+
+  /**
+   * Lazily creates the conversation's profiled runtime through the host
+   * factory. Failures reject with the host's explicit reason; the caller
+   * never falls back to another profile.
+   */
+  async #ensureRuntimeFor(conversation: ConversationState): Promise<void> {
+    await this.#ensureKey(
+      conversation.agentProfileId,
+      this.#baseRuntimeKey(conversation),
+    );
+  }
+
+  async #ensureKey(profileId: string, baseKey: string): Promise<void> {
+    const key = profileRuntimeKey(baseKey, profileId);
+    if (this.#runtimes.has(key)) return;
+    const adapter = await this.#agents.ensureRuntime(profileId, baseKey);
+    this.registerRuntime(key, adapter);
+  }
+
+  /**
+   * Closes an MCP-scoped runtime nobody uses anymore. Closed conversations
+   * hold no handle, so only live users pin a runtime. Base runtimes are
+   * process singletons and are never released; agent processes themselves
+   * close per session via detach, and relays via attachment release. A
+   * close failure is ignored: idle agent hosts expire on their own side
+   * within a minute.
+   */
+  async #maybeReleaseRuntime(key: string): Promise<void> {
+    if (!key.includes("+mcp:")) return;
+    for (const entry of this.#conversations.values()) {
+      if (entry.status !== "closed" && this.#profiledRuntimeKey(entry) === key) return;
+    }
+    const adapter = this.#runtimes.get(key);
+    if (adapter === undefined) return;
+    this.unregisterRuntime(key);
+    await adapter.close().catch(() => undefined);
   }
 
   #mcpDisplayName(mcpId: string): string {
@@ -1323,9 +1527,25 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       kind,
       text: sanitized,
       createdAt: this.#now().toISOString(),
+      // Provenance: user messages are the human's; every other message is
+      // produced under the active profile. Absent on legacy content.
+      ...(role === "user" ? {} : { agent: conversation.agentProfileId }),
     }));
     conversation.updatedAt = this.#now().toISOString();
     return id;
+  }
+
+  #appendTurnFailure(conversation: ConversationState, error: unknown): void {
+    const message = safeError(error);
+    this.#append(conversation, "system", "error", message);
+    if (isAgentAuthFailure(message)) {
+      this.#append(
+        conversation,
+        "system",
+        "status",
+        this.#profileFor(conversation).authRecovery,
+      );
+    }
   }
 
   #appendDelta(
@@ -1412,6 +1632,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       status: conversation.status,
       createdAt: conversation.createdAt,
       updatedAt: conversation.updatedAt,
+      agentProfileId: conversation.agentProfileId,
       messages: Object.freeze(includeMessages ? [...conversation.messages] : []),
       ...(mcp === undefined ? {} : { mcp }),
       ...(conversation.pending === undefined
@@ -1421,20 +1642,28 @@ export class ChatCoordinator implements RuntimeInteractionSink {
     });
   }
 
-  #restore(stored: StoredConversation): void {
+  #restore(stored: StoredConversation): boolean {
     const kind: ChatConversationKind = stored.kind ??
       (stored.projectId !== undefined ? "project" : "standalone");
     if (kind === "project") {
       if (
         stored.projectId === undefined ||
         !stored.sessionKey.startsWith(`${SESSION_PREFIX}/${stored.projectId}/`)
-      ) return;
+      ) return false;
     } else {
       if (
         stored.projectId !== undefined ||
         !stored.sessionKey.startsWith(`${SESSION_PREFIX}/standalone/`)
-      ) return;
+      ) return false;
     }
+    // Absent profile reads as legacy Codex and keeps the stored key
+    // verbatim: pre-profile conversations resume identical sessions and
+    // are never relabelled. An unknown stored id (deleted custom) remaps
+    // to legacy with one explicit note, never silently.
+    const knownIds = new Set(this.#agents.definitions.map((entry) => entry.id));
+    const storedProfileId = stored.agentProfileId ?? LEGACY_AGENT_PROFILE_ID;
+    const remapped = !knownIds.has(storedProfileId);
+    const agentProfileId = remapped ? LEGACY_AGENT_PROFILE_ID : storedProfileId;
     const mcpId = kind === "standalone" ? stored.mcpId : undefined;
     const mcpStatus = kind === "standalone" ? stored.mcpStatus : undefined;
     const mcpAttached = mcpId !== undefined && mcpStatus !== undefined;
@@ -1442,6 +1671,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       id: stored.id,
       kind,
       ...(stored.projectId === undefined ? {} : { projectId: stored.projectId }),
+      agentProfileId,
       sessionKey: stored.sessionKey,
       ...(mcpAttached ? { mcpId } : {}),
       ...(mcpAttached ? { mcpStatus } : {}),
@@ -1458,6 +1688,48 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       queueTail: Promise.resolve(),
       queueEpoch: 0,
     });
+    if (remapped) {
+      const conversation = this.#conversations.get(stored.id)!;
+      // Restored conversations hold no handle; the suffixed native session
+      // is orphaned on disk while the bare key starts fresh with a full
+      // bounded reseed on the next turn.
+      conversation.sessionKey = this.#baseSessionKey(conversation);
+      this.#noteProfileRemap(conversation, storedProfileId);
+    }
+    return remapped;
+  }
+
+  /**
+   * Remaps live conversations whose profile disappeared from the registry
+   * (custom removed by reload) to legacy with one explicit note each.
+   * Handles detach first so no turn can land on the orphaned runtime;
+   * the bare key starts fresh with a full bounded reseed on the next
+   * turn. Returns whether any conversation moved.
+   */
+  async #remapUnknownProfiles(): Promise<boolean> {
+    const knownIds = new Set(this.#agents.definitions.map((entry) => entry.id));
+    let remapped = false;
+    for (const conversation of this.#conversations.values()) {
+      if (knownIds.has(conversation.agentProfileId)) continue;
+      const storedProfileId = conversation.agentProfileId;
+      const releasedKey = this.#profiledRuntimeKey(conversation);
+      await this.#detachHandle(conversation, "Agent profile removed");
+      conversation.agentProfileId = LEGACY_AGENT_PROFILE_ID;
+      conversation.sessionKey = this.#baseSessionKey(conversation);
+      this.#noteProfileRemap(conversation, storedProfileId);
+      await this.#maybeReleaseRuntime(releasedKey);
+      remapped = true;
+    }
+    return remapped;
+  }
+
+  #noteProfileRemap(conversation: ConversationState, storedProfileId: string): void {
+    this.#append(
+      conversation,
+      "system",
+      "status",
+      `The previously selected agent '${storedProfileId}' is no longer available; Codex is active.`,
+    );
   }
 
   #persist(): Promise<void> {
@@ -1466,6 +1738,7 @@ export class ChatCoordinator implements RuntimeInteractionSink {
         id: entry.id,
         kind: entry.kind,
         ...(entry.projectId === undefined ? {} : { projectId: entry.projectId }),
+        agentProfileId: entry.agentProfileId,
         ...(entry.mcpId === undefined ? {} : { mcpId: entry.mcpId }),
         ...(entry.mcpStatus === undefined ? {} : { mcpStatus: entry.mcpStatus }),
         // The store cannot hold more names than its tamper-guard budget;
