@@ -713,6 +713,19 @@ export class ChatCoordinator implements RuntimeInteractionSink {
       });
       return;
     }
+    const claude = parseClaudeStyleToolResult(event, mcpId);
+    if (claude !== undefined) {
+      await this.#retainToolResult(conversation, messageId, {
+        mcpId,
+        server: mcpId,
+        tool: claude.tool,
+        toolCallId,
+        args: claude.args,
+        result: claude.result,
+        error: event.status === "failed" ? claude.result : undefined,
+      });
+      return;
+    }
     await this.#captureFromTap(conversation, event, messageId, mcpId, toolCallId);
   }
 
@@ -2143,6 +2156,52 @@ function parseMcpRawOutput(
   const output = value as Record<string, unknown>;
   if (!("result" in output)) return undefined;
   return { result: output.result, error: output.error };
+}
+
+/**
+ * Claude-style ACP tool result (#59): adapters that forward raw MCP shapes
+ * instead of the `{server, tool}` / `{result}` envelopes. The namespaced
+ * title carries identity, `rawInput` the exact arguments, and `rawOutput`
+ * the provider result as a JSON string (observed) or a single-text content
+ * block array (SDK shape). Returns undefined on any surprise so production
+ * never retains a misattributed result.
+ */
+function parseClaudeStyleToolResult(
+  event: Extract<RuntimeEvent, { type: "tool_call" }>,
+  mcpId: string,
+): { tool: string; args: unknown; result: unknown } | undefined {
+  if (typeof event.title !== "string") return undefined;
+  const namespaced = MCP_NAMESPACED_TITLE.exec(event.title);
+  if (namespaced === null) return undefined;
+  const [, server, tool] = namespaced;
+  if (server !== mcpId || !isChatViewerToolName(tool)) return undefined;
+  if (typeof event.rawInput !== "object" || event.rawInput === null) {
+    return undefined;
+  }
+  const result = parseClaudeStyleRawOutput(event.rawOutput);
+  if (result === undefined) return undefined;
+  return { tool, args: event.rawInput, result };
+}
+
+function parseClaudeStyleRawOutput(value: unknown): unknown {
+  if (typeof value === "string") return parseJsonObject(value);
+  if (Array.isArray(value) && value.length === 1) {
+    const block = value[0] as Record<string, unknown> | undefined;
+    if (typeof block?.text === "string") return parseJsonObject(block.text);
+  }
+  return undefined;
+}
+
+function parseJsonObject(value: string): Record<string, unknown> | undefined {
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return undefined;
+    }
+    return parsed as Record<string, unknown>;
+  } catch {
+    return undefined;
+  }
 }
 
 function bytesToBase64(bytes: Uint8Array): string {

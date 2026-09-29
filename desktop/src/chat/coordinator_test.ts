@@ -2695,6 +2695,106 @@ Deno.test("dev tap skips on ambiguity and foreign titles", async () => {
   await coordinator.stop();
 });
 
+Deno.test("claude-style tool events capture the string result without a tap", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await coordinator.command(send("r1", conversationId, "Model a box"));
+  await until(() => pool.mcp.turns.length === 1);
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "mcp__build123d__t_one (completed)",
+    title: "mcp__build123d__t_one",
+    toolCallId: "tool-call-claude",
+    status: "completed",
+    rawInput: { script: "result = 1" },
+    rawOutput: JSON.stringify(viewerToolResult(1000)),
+  });
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  const viewers = coordinator.snapshot(conversationId).conversations[0].viewers;
+  assertEquals(viewers.length, 1);
+  assertEquals(viewers[0]?.toolCallId, "tool-call-claude");
+  assertEquals(viewers[0]?.tool, "t_one");
+  assertEquals(viewers[0]?.appUri, VIEWER_APP_URI);
+  await coordinator.stop();
+});
+
+Deno.test("claude-style capture accepts a single text block array", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await coordinator.command(send("r1", conversationId, "Model a box"));
+  await until(() => pool.mcp.turns.length === 1);
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "mcp__build123d__t_one (completed)",
+    title: "mcp__build123d__t_one",
+    toolCallId: "tool-call-claude-blocks",
+    status: "completed",
+    rawInput: { script: "result = 1" },
+    rawOutput: [{ type: "text", text: JSON.stringify(viewerToolResult(1000)) }],
+  });
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  assertEquals(
+    coordinator.snapshot(conversationId).conversations[0].viewers.length,
+    1,
+  );
+  await coordinator.stop();
+});
+
+Deno.test("claude-style capture ignores foreign and unparsable shapes", async () => {
+  const pool = standalonePool({ probeTools: ["t_one"] });
+  const coordinator = await pool.coordinator();
+  const conversationId = await createStandaloneConversation(coordinator);
+  await enableTestMcp(coordinator, conversationId);
+  await coordinator.command(send("r1", conversationId, "Model a box"));
+  await until(() => pool.mcp.turns.length === 1);
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "mcp__foreign__t_one (completed)",
+    title: "mcp__foreign__t_one",
+    toolCallId: "tool-call-foreign",
+    status: "completed",
+    rawInput: { script: "result = 1" },
+    rawOutput: JSON.stringify(viewerToolResult(1000)),
+  });
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "mcp__build123d__t_one (completed)",
+    title: "mcp__build123d__t_one",
+    toolCallId: "tool-call-garbage",
+    status: "completed",
+    rawInput: { script: "result = 1" },
+    rawOutput: "not json",
+  });
+  pool.mcp.turns[0].events.push({
+    type: "tool_call",
+    text: "mcp__build123d__t_one (completed)",
+    title: "mcp__build123d__t_one",
+    toolCallId: "tool-call-scalar",
+    status: "completed",
+    rawInput: { script: "result = 1" },
+    rawOutput: JSON.stringify(42),
+  });
+  pool.mcp.turns[0].finish({ status: "completed" });
+  await until(() =>
+    coordinator.snapshot(conversationId).conversations[0].status === "idle"
+  );
+  assertEquals(
+    coordinator.snapshot(conversationId).conversations[0].viewers,
+    [],
+  );
+  await coordinator.stop();
+});
+
 Deno.test("output-less tool events capture nothing without a tap", async () => {
   const pool = standalonePool({ probeTools: ["t_one"] });
   const coordinator = await pool.coordinator();
